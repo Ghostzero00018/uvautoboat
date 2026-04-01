@@ -69,7 +69,7 @@ The project implements a hierarchical autonomous navigation framework combining 
 ### Project Status
 
 | Phase | Description | Status |
-|:------|:------------|:------:|
+| :------ | :------------ | :------: |
 | Phase 1 | Architecture & MVP | DONE |
 | Phase 2 | Obstacle Avoidance | DONE |
 | Phase 3 | Coverage & Search | ⏸️ Planned |
@@ -172,7 +172,7 @@ uvautoboat/
 ### Additional Documentation
 
 | Document | Description |
-|:---------|:------------|
+| :--------- | :------------ |
 | [Board.md](Board.md) | Development progress tracking and milestones |
 | [Vostok1 Dashboard Guide](web_dashboard/vostok1/README_vostok1_dashboard.md) | Web dashboard setup (rosbridge + web_video_server) and camera panel |
 | [Atlantis Dashboard Guide](web_dashboard/atlantis/README_atlantis_dashboard.md) | Atlantis dashboard setup and usage |
@@ -182,7 +182,7 @@ uvautoboat/
 **Wiki Documentation** (see [wiki/](wiki/) folder):
 
 | Wiki Page | Description |
-|:----------|:------------|
+| :---------- | :------------ |
 | [Home](wiki/Home.md) | Wiki landing page with navigation |
 | [Installation Guide](wiki/Installation_Guide.md) | Step-by-step setup instructions |
 | [Quick Start](wiki/Quick_Start.md) | 5-minute quick start guide |
@@ -194,7 +194,7 @@ uvautoboat/
 ### System Requirements
 
 | Component | Minimum | Recommended |
-|:----------|:--------|:------------|
+| :---------- | :-------- | :------------ |
 | OS | Ubuntu 24.04 LTS | Ubuntu 24.04 LTS |
 | RAM | 8 GB | 16 GB |
 | Storage | 40 GB | 60 GB |
@@ -204,7 +204,7 @@ uvautoboat/
 ### Key Features
 
 | Feature | Description |
-|:--------|:------------|
+| :-------- | :------------ |
 | **Autonomous Navigation** | GPS-based waypoint following with lawnmower pattern generation |
 | **3D Obstacle Avoidance** | Real-time LIDAR point cloud processing with sector analysis |
 | **Differential Thrust** | Independent left/right thruster control with PID heading |
@@ -231,7 +231,7 @@ If you're new to ROS 2 or autonomous navigation, this section provides essential
 **Key ROS 2 Concepts:**
 
 | Concept | Description | Example |
-|:--------|:------------|:--------|
+| :-------- | :------------ | :-------- |
 | **Node** | Independent program for a specific task | `vostok1_node` (navigation) |
 | **Topic** | Named channel for messages | `/wamv/sensors/gps/gps/fix` |
 | **Message** | Data structure sent over topics | GPS coordinates, thrust commands |
@@ -260,7 +260,7 @@ Local Y = (longitude - start_lon) × Earth_radius × cos(start_lat)
 **Processing Pipeline (OKO v2.0):**
 
 | Step | Filter | Purpose |
-|:-----|:-------|:--------|
+| :----- | :------- | :-------- |
 | 1 | Height: -15m to +10m | Exclude water/sky, catch lake banks |
 | 2 | Range: 5m to 50m | Ignore dock at spawn, focus on obstacles |
 | 3 | Water Plane Removal | Filter water surface reflections (5th percentile Z) |
@@ -273,7 +273,7 @@ Local Y = (longitude - start_lon) × Earth_radius × cos(start_lat)
 **Enhanced Features (OKO v2.0):**
 
 | Feature | Description |
-|:--------|:------------|
+| :-------- | :------------ |
 | **Temporal Filtering** | 5-scan history, requires 3/5 detections to confirm (reduces flickering) |
 | **Distance-Weighted Urgency** | Score 0.0 (safe) to 1.0 (critical) for smoother control |
 | **Obstacle Clustering** | Groups nearby points (2m eps) to identify individual obstacles |
@@ -319,7 +319,7 @@ yaw = atan2(siny_cosp, cosy_cosp)
 The WAM-V uses two independent thrusters:
 
 | Maneuver | Left | Right | Result |
-|:---------|:-----|:------|:-------|
+| :--------- | :----- | :------ | :------- |
 | Forward | +500 | +500 | Straight ahead |
 | Reverse | -500 | -500 | Straight back |
 | Turn Left | +200 | +500 | Gradual left |
@@ -337,7 +337,7 @@ correction = Kp × error + Ki × ∫error + Kd × d(error)/dt
 ```
 
 | Parameter | Default | Effect |
-|:----------|:--------|:-------|
+| :---------- | :-------- | :------- |
 | Kp | 400.0 | Proportional response (fast correction) |
 | Ki | 20.0 | Integral accumulation (eliminate steady-state error) |
 | Kd | 100.0 | Derivative damping (prevent overshoot) |
@@ -415,7 +415,7 @@ ros2 launch ~/seal_ws/src/uvautoboat/launch/vostok1.launch.yaml
 ### Five-Terminal Full Setup (Web Dashboard + Camera)
 
 | Terminal | Command | Purpose |
-|:---------|:--------|:--------|
+| :--------- | :-------- | :-------- |
 | **T1** | `ros2 launch vrx_gz competition.launch.py world:=sydney_regatta` | Gazebo simulation |
 | **T2** | `ros2 launch rosbridge_server rosbridge_websocket_launch.xml delay_between_messages:=0.0` | WebSocket bridge |
 | **T3** | `ros2 run web_video_server web_video_server` | MJPEG camera stream for dashboard (http://<host>:8080) |
@@ -448,7 +448,7 @@ Understanding the coordinate system is essential for working with VRX simulation
 ### Position (x, y, z)
 
 | Axis | Direction | Maritime Term |
-|:-----|:----------|:--------------|
+| :----- | :---------- | :-------------- |
 | **X** | Forward / Backward | Ahead / Astern |
 | **Y** | Left / Right | Port / Starboard |
 | **Z** | Up / Down | Above / Below waterline |
@@ -456,7 +456,7 @@ Understanding the coordinate system is essential for working with VRX simulation
 ### Orientation (Roll, Pitch, Yaw)
 
 | Rotation | Axis | Description | Maritime Term |
-|:---------|:-----|:------------|:--------------|
+| :--------- | :----- | :------------ | :-------------- |
 | **Roll** | X-axis | Side-to-side tilt | Heel to port/starboard |
 | **Pitch** | Y-axis | Front-to-back tilt | Bow up / Bow down |
 | **Yaw** | Z-axis | Horizontal rotation | Turn to port/starboard |
@@ -464,7 +464,7 @@ Understanding the coordinate system is essential for working with VRX simulation
 **Common Values:**
 
 | Pose | Roll | Pitch | Yaw | Result |
-|:-----|:----:|:-----:|:---:|:-------|
+| :----- | :----: | :-----: | :---: | :------- |
 | Default | 0 | 0 | 0 | Upright, facing +X |
 | 90° right turn | 0 | 0 | -1.57 | Facing +Y |
 | 90° left turn | 0 | 0 | 1.57 | Facing -Y |
@@ -479,9 +479,9 @@ Understanding the coordinate system is essential for working with VRX simulation
 AutoBoat provides multiple navigation systems:
 
 | Aspect | Vostok1 (Integrated) | Modular (TNO) | Atlantis (Control Group) |
-|:-------|:---------------------|:--------------|:-------------------------|
+| :------- | :--------------------- | :-------------- | :------------------------- |
 | **Approach** | Self-contained node | Distributed nodes | Integrated controller |
-| **LIDAR** | 3D PointCloud2 | 3D PointCloud2 | 3D PointCloud2  |
+| **LIDAR** | 3D PointCloud2 | 3D PointCloud2 | 3D PointCloud2 |
 | **Detection** | Full 3D volume | Full 3D volume | 3D Section Analysis |
 | **Control** | PID heading | PID (configurable) | PID heading |
 | **Monitoring** | Terminal + Web | Terminal (bilingual) | Web Dashboard |
@@ -493,16 +493,16 @@ AutoBoat provides multiple navigation systems:
 The modular system uses the following distributed nodes:
 
 | Node | Name | Function |
-|:-----|:-----|:---------|
+| :----- | :----- | :--------- |
 | **OKO** | `oko_perception` | 3D LIDAR obstacle detection |
 | **SPUTNIK** | `sputnik_planner` | GPS waypoint planning |
 | **BURAN** | `buran_controller` | PID heading control + Simple anti-stuck |
 
 | Component | Script Name | Function |
-|:-----|:-----|:---------|
+| :----- | :----- | :--------- |
 | **Perception** | `lidar_obstacle_avoidance.py` | Zero-latency 3D PointCloud2 processing & Sector Analysis |
 | **Planner** | `atlantis_planner` | checks between waypoints |
-| **Controller** | `atlantis_controller` | TO BE CHANGED|
+| **Controller** | `atlantis_controller` | TO BE CHANGED |
 
 The additional feauture for Atlantis method is that' unlike distributed architectures, Atlantis embeds the LidarObstacleDetector class directly within the controller loop. This ensures zero-latency obstacle reaction, allowing the boat to make steering decisions in the exact same millisecond that the Lidar scan is received.
 
@@ -584,7 +584,7 @@ Detailed ROS 2 connections for the Atlantis architecture. Note the direct LIDAR 
 **JSON Message Formats:**
 
 | Topic | Format |
-|:------|:-------|
+| :------ | :------- |
 | `/perception/obstacle_info` | `{obstacle_detected, min_distance, front_clear, left_clear, right_clear, is_critical}` |
 | `/planning/current_target` | `{current_position, target_waypoint, distance_to_target, waypoint_index, target_heading}` |
 | `/planning/mission_status` | `{state, current_waypoint, total_waypoints, progress_percent, elapsed_time}` |
@@ -662,7 +662,7 @@ The obstacle avoidance runs **continuously** - not as a one-time decision. The b
 **Real-Time Decision Example:**
 
 | Time | Front | Left | Right | Action |
-|:-----|:------|:-----|:------|:-------|
+| :----- | :------ | :----- | :------ | :------- |
 | 0.0s | 15m | 50m | 8m | ⚠️ Obstacle ahead → Turn LEFT (clearer) |
 | 0.1s | 20m | 45m | 10m | 🔄 Continue LEFT turn |
 | 0.2s | 35m | 40m | 15m | 📐 Front clearing, reduce turn |
@@ -675,7 +675,7 @@ The obstacle avoidance runs **continuously** - not as a one-time decision. The b
 #### Sensor Inputs
 
 | Topic | Type | Description |
-|:------|:-----|:------------|
+| :------ | :----- | :------------ |
 | `/wamv/sensors/gps/gps/fix` | `NavSatFix` | GPS coordinates |
 | `/wamv/sensors/imu/imu/data` | `Imu` | Orientation quaternion |
 | `/wamv/sensors/lidars/.../points` | `PointCloud2` | 3D LIDAR data |
@@ -683,14 +683,14 @@ The obstacle avoidance runs **continuously** - not as a one-time decision. The b
 #### Control Outputs
 
 | Topic | Type | Description |
-|:------|:-----|:------------|
+| :------ | :----- | :------------ |
 | `/wamv/thrusters/left/thrust` | `Float64` | Left thruster (-1000 to +1000 N) |
 | `/wamv/thrusters/right/thrust` | `Float64` | Right thruster (-1000 to +1000 N) |
 
 #### Dashboard Topics (Vostok1/Modular)
 
 | Topic | Description |
-|:------|:------------|
+| :------ | :------------ |
 | `/vostok1/mission_status` | Mission state (JSON) |
 | `/vostok1/config` | Current parameters |
 | `/planning/mission_status` | Modular mission state |
@@ -738,7 +738,7 @@ ros2 launch plan vostok1_modular_navigation.launch.py kp:=500.0 ki:=30.0 kd:=150
 **Available Parameters (in `vostok1.launch.yaml`):**
 
 | Node | Parameter | Default | Description |
-|:-----|:----------|:--------|:------------|
+| :----- | :---------- | :-------- | :------------ |
 | **OKO** | `min_safe_distance` | 12.0 | Obstacle safe distance (m) |
 | | `critical_distance` | 4.0 | Critical obstacle distance (m) |
 | | `min_height` | -15.0 | Min Z to detect (lake bank, water) |
@@ -778,7 +778,7 @@ ros2 run control keyboard_teleop
 **Throttle (persists like a lever):**
 
 | Key | Action |
-|:---:|:-------|
+| :---: | :------- |
 | `W` / `↑` | Increase throttle (speed up) |
 | `S` / `↓` | Decrease throttle (slow down / reverse) |
 | `Space` | All stop (zero throttle + center rudder) |
@@ -787,7 +787,7 @@ ros2 run control keyboard_teleop
 **Rudder (auto-returns to center):**
 
 | Key | Action |
-|:---:|:-------|
+| :---: | :------- |
 | `A` / `←` | Steer left |
 | `D` / `→` | Steer right |
 | `Q` | Hard left turn |
@@ -797,7 +797,7 @@ ros2 run control keyboard_teleop
 **Power:**
 
 | Key | Action |
-|:---:|:-------|
+| :---: | :------- |
 | `+` / `=` | Increase max thrust |
 | `-` | Decrease max thrust |
 | `H` | Show help |
@@ -825,7 +825,7 @@ sudo apt install ros-jazzy-rosbridge-suite
 ### Dashboard Panels
 
 | Panel | Description |
-|:------|:------------|
+| :------ | :------------ |
 | **Connection Status** | WebSocket connection indicator |
 | **GPS Position** | Latitude, longitude, local coordinates |
 | **Mission Status** | State, waypoint progress, distance |
@@ -841,7 +841,7 @@ sudo apt install ros-jazzy-rosbridge-suite
 Runtime parameter tuning:
 
 | Section | Parameters | Description |
-|:--------|:-----------|:------------|
+| :-------- | :----------- | :------------ |
 | **Path** | Lanes, Length, Width | Lawnmower pattern |
 | **PID** | Kp, Ki, Kd | Heading controller gains |
 | **Speed** | Base, Max | Motion control |
@@ -849,7 +849,7 @@ Runtime parameter tuning:
 **Buttons:**
 
 | Button | Action |
-|:-------|:-------|
+| :------- | :------- |
 | **Apply Config** | Send all parameters |
 | **Go Home** | Return to spawn point |
 
@@ -863,7 +863,7 @@ The Vostok1 (BURAN) controller implements a straightforward anti-stuck strategy:
 ### Features
 
 | Feature | Description |
-|:--------|:------------|
+| :-------- | :------------ |
 | **Simple Escape** | Turn left continuously until front clearance > safe distance |
 | **Stuck Detection** | Monitors position movement over configurable timeout (default 12s) |
 | **Skip During Avoidance** | Won't trigger stuck detection while actively avoiding obstacles |
@@ -894,7 +894,7 @@ The Vostok1 (BURAN) controller implements a straightforward anti-stuck strategy:
 ### Parameters
 
 | Parameter | Default | Description |
-|:----------|:--------|:------------|
+| :---------- | :-------- | :------------ |
 | `stuck_timeout` | 12.0s | Time before declaring stuck |
 | `stuck_threshold` | 1.0m | Minimum movement to avoid stuck detection |
 | `drift_compensation_gain` | 0.3 | Kalman drift correction strength |
@@ -929,7 +929,7 @@ When obstacles block waypoints, the system uses two strategies to continue the m
 When the boat is physically stuck and cannot move:
 
 | Attempt | Action |
-|:--------|:-------|
+| :-------- | :------- |
 | 1st | Smart escape maneuver (probe + reverse + turn) |
 | 2nd | Request detour waypoint around obstacle |
 | 3rd | Extended escape with no-go zone |
@@ -940,7 +940,7 @@ When the boat is physically stuck and cannot move:
 When the boat keeps circling near a waypoint but can't reach it:
 
 | Condition | Action |
-|:----------|:-------|
+| :---------- | :------- |
 | Distance < 20m | Start tracking obstacle blocking time |
 | Obstacle detected | Accumulate blocking time |
 | Blocking time ≥ 45s | **Skip waypoint** automatically |
@@ -950,7 +950,7 @@ When the boat keeps circling near a waypoint but can't reach it:
 When returning home encounters obstacles, the system uses **detour insertion** instead of skipping:
 
 | Condition | Action |
-|:----------|:-------|
+| :---------- | :------- |
 | Distance < 20m | Start tracking obstacle blocking time |
 | Blocking time ≥ 15s | **Insert detour waypoint** perpendicular to obstacle |
 | Detour reached | Continue toward home |
@@ -1018,7 +1018,7 @@ LiDAR Point Cloud
 ### Key Features
 
 | Feature | Description |
-|:--------|:------------|
+| :-------- | :------------ |
 | **Spatial Spread Analysis** | Calculates 3D point cloud dispersion to identify diffuse smoke vs compact objects |
 | **Horizontal/Vertical Ratio** | Smoke spreads wider than tall; trees/terrain are vertically dominant |
 | **Real-time Detection** | Updates at LiDAR frequency (~10 Hz) with sub-meter accuracy |
@@ -1030,7 +1030,7 @@ LiDAR Point Cloud
 Located in `launch/vostok1.launch.yaml`:
 
 | Parameter | Default | Description |
-|:----------|:--------|:------------|
+| :---------- | :-------- | :------------ |
 | `smoke_detection_enabled` | true | Enable/disable active smoke detection |
 | `smoke_min_height` | 2.5m | Minimum height for smoke candidates |
 | `smoke_max_height` | 10.0m | Maximum height for smoke plume |
@@ -1054,7 +1054,7 @@ Filters: Diffuse (>2.5m) + Horizontal-dominant (wider than tall)
 ### Detection Examples
 
 | Scenario | Height | Points | H/V Spread | Result |
-|:---------|:-------|:-------|:-----------|:-------|
+| :--------- | :------- | :------- | :----------- | :------- |
 | **Real smoke plume** | 3-7m | 520 | 5.8m / 3.4m | ✅ DETECTED |
 | **Lake bank trees** | 2.5-10m | 420 | 2.5m / 8.2m | ❌ Rejected (too vertical) |
 | **Buoy/marker** | 3.0m | 85 | - | ❌ Rejected (too few points) |
@@ -1063,7 +1063,7 @@ Filters: Diffuse (>2.5m) + Horizontal-dominant (wider than tall)
 ### ROS 2 Topics
 
 | Topic | Type | Description |
-|:------|:-----|:------------|
+| :------ | :----- | :------------ |
 | `/perception/smoke_detected` | String (JSON) | Smoke detection status with position and metrics |
 
 **Message Format:**
@@ -1091,7 +1091,7 @@ The **vostok1_cli** provides terminal-based mission control when the web dashboa
 ### Features
 
 | Feature | Description |
-|:--------|:------------|
+| :-------- | :------------ |
 | **Auto-Ready Check** | Waits for navigation system before sending commands |
 | **All-in-One Generate** | Waypoints + PID + Speed in a single command |
 | **Dual Mode** | Works with both modular and integrated systems |
@@ -1100,7 +1100,7 @@ The **vostok1_cli** provides terminal-based mission control when the web dashboa
 ### Modes
 
 | Mode | Flag | Description |
-|:-----|:-----|:------------|
+| :----- | :----- | :------------ |
 | **Modular** | `--mode modular` (default) | Sputnik + Buran |
 | **Sputnik** | `--mode sputnik` | Alias for modular |
 | **Vostok1** | `--mode vostok1` | Integrated navigation |
@@ -1174,7 +1174,7 @@ ros2 run plan vostok1_cli interactive
 ```
 
 | Command | Action |
-|:--------|:-------|
+| :-------- | :------- |
 | `g [lanes] [length] [width]` | Generate waypoints |
 | `c` | Confirm waypoints |
 | `s` | Start mission |
@@ -1288,7 +1288,7 @@ Interrupts:
 ### Performance Specifications
 
 | Metric | Value | Notes |
-|:-------|:------|:------|
+| :------- | :------ | :------ |
 | **Control Loop Frequency** | 30 Hz | BURAN/Atlantis controller update rate |
 | **LIDAR Processing Rate** | 10-20 Hz | Depends on Gazebo simulation speed |
 | **GPS Update Rate** | 10 Hz | VRX default sensor rate |
@@ -1312,7 +1312,7 @@ Local Y = (lon - start_lon) × 6,371,000m × cos(start_lat)
 **Height Reference (LiDAR mounted ~2-3m above water):**
 
 | Surface | Z Value |
-|:--------|:--------|
+| :-------- | :-------- |
 | Water surface | ≈ -3m |
 | Lake bank/terrain | ≈ -2.5m |
 | Concrete harbour | ≈ -1 to -0.5m |
@@ -1321,7 +1321,7 @@ Local Y = (lon - start_lon) × 6,371,000m × cos(start_lat)
 **Sector Analysis:**
 
 | Sector | Angle Range | Purpose |
-|:-------|:------------|:--------|
+| :------- | :------------ | :-------- |
 | Front | -45° to +45° | Forward detection |
 | Left | +45° to +135° | Left clearance |
 | Right | -135° to -45° | Right clearance |
@@ -1339,7 +1339,7 @@ P(State | Data) = P(Data | State) × P(State) / P(Data)
 ```
 
 | Term | Meaning | Example |
-|:-----|:--------|:--------|
+| :----- | :-------- | :-------- |
 | **Prior** | Belief before measurement | "Drift was ~0.1 m/s" |
 | **Likelihood** | Probability of data | "GPS shows velocity mismatch" |
 | **Posterior** | Updated belief | "Drift is now ~0.15 m/s" |
@@ -1372,7 +1372,7 @@ GPS Input → SPUTNIK Planner → Waypoints/Targets → BURAN Controller
 ### States of Sputnik
 
 | State | Description |
-|:------|:------------|
+| :------ | :------------ |
 | **INIT** | Waiting for GPS fix |
 | **WAITING_CONFIRM** | Waypoints generated, awaiting user confirmation |
 | **READY** | Confirmed, ready to start mission |
@@ -1398,7 +1398,7 @@ Lane 3: End <────────────────────┘
 ### Configuration Parameters
 
 | Parameter | Default | Description |
-|:----------|:--------|:------------|
+| :---------- | :-------- | :------------ |
 | `scan_length` | 15.0m | Length of each lane |
 | `scan_width` | 30.0m | Spacing between lanes |
 | `lanes` | 10 | Number of parallel lanes |
@@ -1410,7 +1410,7 @@ Lane 3: End <────────────────────┘
 **Subscriptions:**
 
 | Topic | Description |
-|:------|:------------|
+| :------ | :------------ |
 | `/wamv/sensors/gps/gps/fix` | GPS position |
 | `/perception/obstacle_info` | Obstacle detection from OKO |
 | `/sputnik/mission_command` | CLI/dashboard commands |
@@ -1419,7 +1419,7 @@ Lane 3: End <────────────────────┘
 **Publications:**
 
 | Topic | Description |
-|:------|:------------|
+| :------ | :------------ |
 | `/planning/waypoints` | Full waypoint list (JSON) |
 | `/planning/current_target` | Current navigation target (JSON) |
 | `/planning/mission_status` | Mission state and progress (JSON) |
@@ -1428,7 +1428,7 @@ Lane 3: End <────────────────────┘
 ### Key Features
 
 | Feature | Description |
-|:--------|:------------|
+| :-------- | :------------ |
 | **Autonomous Navigation** | GPS-based waypoint following with lawnmower pattern generation |
 | **3D Obstacle Avoidance** | Real-time LIDAR point cloud processing with sector analysis |
 | **A\* Path Planning** | Integrated A* algorithm dynamically plans detours around obstacle clusters and hazard zones |
@@ -1446,7 +1446,7 @@ Lane 3: End <────────────────────┘
 ### Expected Log Messages
 
 | Stage | Expected Output |
-|:------|:----------------|
+| :------ | :---------------- |
 | Startup | "MISSION DÉMARRÉE / MISSION STARTED" |
 | Navigation | "PT X/19 \| Pos: (x, y) \| Cible: (tx, ty)" |
 | Obstacle | "🚨 OBSTACLE DETECTED!" |
@@ -1458,7 +1458,7 @@ Lane 3: End <────────────────────┘
 ### Common Issues
 
 | Problem | Solution |
-|:--------|:---------|
+| :-------- | :--------- |
 | **Boat not moving** | Check GPS: `ros2 topic echo /wamv/sensors/gps/gps/fix --once` |
 | **Spinning in circles** | Reduce PID: `ros2 param set /vostok1_node kp 300` |
 | **Dashboard disconnected** | Restart rosbridge, check port 9090 |
@@ -1498,7 +1498,7 @@ The repository includes several diagnostic and automation scripts in the root di
 ### System Diagnostics
 
 | Script | Purpose | Usage |
-|:-------|:--------|:------|
+| :------- | :-------- | :------ |
 | `quick_test.sh` | Quick system diagnostics | `./quick_test.sh` |
 | `diagnose_boat.sh` | Detailed boat system diagnosis | `./diagnose_boat.sh` |
 | `monitor_boat.sh` | Real-time system monitoring | `./monitor_boat.sh` |
@@ -1541,7 +1541,7 @@ chmod +x one_click_launch_all/launch_vostok1_complete.sh
 **What it launches:**
 
 | Component | Description |
-|:----------|:------------|
+| :---------- | :------------ |
 | Gazebo Simulation | VRX competition environment |
 | rosbridge WebSocket | Dashboard communication (port 9090) |
 | web_video_server | Camera MJPEG stream (port 8080) |
@@ -1633,9 +1633,9 @@ gz service -s /world/sydney_regatta/set_pose \
 ### Planned Features
 
 | Feature | Priority | Description |
-|:--------|:---------|:------------|
+| :-------- | :--------- | :------------ |
 | **A-Star Path Planning** | Implemented | Grid-based pathfinding in SPUTNIK |
-| **Hybrid Mode** | Implemented | Pre-compute routes between waypoints with lawnmower algorithm|
+| **Hybrid Mode** | Implemented | Pre-compute routes between waypoints with lawnmower algorithm |
 | **Hazard Zone Avoidance** | Implemented | Pre determined rectangular no-go zones |
 | **Dynamic Replanning** | High | Replan path when new obstacles detected |
 | **Coverage Planning** | Medium | Boustrophedon pattern for area coverage |
@@ -1670,14 +1670,14 @@ Current position ──>└─────────────────�
 **Two Operating Modes for Better User Experience:**
 
 | Mode | Parameter | Description |
-|:-----|:----------|:------------|
+| :----- | :---------- | :------------ |
 | **Hybrid** | `astar_hybrid_mode: true` | Pre-plans A* routes between lawnmower waypoints at generation time |
 | **Runtime** | `astar_enabled: true` | Plans detours on-the-voyage when WAMV-boat gets stuck |
 
 **Configuration:**
 
 | Parameter | Default | Description |
-|:----------|:--------|:------------|
+| :---------- | :-------- | :------------ |
 | `astar_resolution` | 3.0m | Grid cell size |
 | `astar_safety_margin` | 12.0m | Buffer around obstacles |
 | `astar_max_expansions` | 20000 | Max search iterations |
@@ -1710,7 +1710,7 @@ S = Start, G = Goal, X = Obstacle
 ### Technical Debt
 
 | Issue | Status | Description |
-|:------|:------:|:------------|
+| :------ | :------: | :------------ |
 | **ROS 2 Parameter Migration** | ✅ Done | Parameters now configurable via `vostok1.launch.yaml` |
 | **Multi-Terminal Launch** | ✅ Done | `one_click_launch_all/launch_vostok1_complete.sh` now available |
 | **Debugging Required** | 🔄 In Progress | Complex planning and obstacle detection still need debugging |
