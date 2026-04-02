@@ -82,19 +82,13 @@ See [Board.md](Board.md) for detailed milestones and progress tracking.
 ```text
 uvautoboat/
 ├── control/                    # ROS 2 Control Package
-│   ├── control/
-│   │   ├── atlantis_controller.py   # Integrated controller (Atlantis team)
-│   │   ├── buran_controller.py      # Modular controller (BURAN)
-│   │   ├── keyboard_teleop.py       # Manual control interface
-│   │   ├── lidar_obstacle_avoidance.py  # Shared obstacle detection library
-│   │   ├── gps_imu_pose.py          # GPS/IMU pose estimation
-│   │   ├── pose_filter.py           # Pose filtering utilities
-│   │   └── all_in_one_stack.py      # Legacy integrated solution
-│   ├── config/
-│   │   └── (legacy hazard zone configs)
-│   └── launch/
-│       ├── all_in_one_bringup.launch.py  # Legacy integrated launch
-│       └── README_QUICKSTART.md     # Quick start guide
+│   └── control/
+│       ├── atlantis_controller.py   # Integrated controller (Atlantis team)
+│       ├── buran_controller.py      # Modular controller (BURAN)
+│       ├── buran_controller_fixed.py # Fixed variant for testing
+│       ├── keyboard_teleop.py       # Manual control interface
+│       ├── lidar_obstacle_avoidance.py  # Shared obstacle detection library
+│       └── robust_avoidance.py      # Robust avoidance controller
 ├── plan/                       # ROS 2 Planning Package
 │   ├── plan/
 │   │   ├── oko_perception.py        # 3D LIDAR perception (OKO)
@@ -111,7 +105,6 @@ uvautoboat/
 │   │   ├── tf_broadcaster_gazebo.py # Gazebo-specific TF
 │   │   └── tf_broadcaster_gps.py    # GPS-based TF
 │   └── launch/
-│       ├── vostok1_modular_navigation.launch.py
 │       ├── atlantis.launch.yaml     # Atlantis-specific config
 │       └── demo.launch.py           # Demo/testing launch
 ├── environment_plugins/        # Gazebo plugins (smoke dead-zone)
@@ -131,15 +124,20 @@ uvautoboat/
 │   ├── sydney_regatta_smoke_wildlife.sdf # Smoke + wildlife + kill-zone
 │   ├── sydney_regatta_randomsmoke.sdf   # Random smoke generation
 │   ├── wamv_3d_lidar.xacro         # Default 3D LIDAR config (backup)
+│   ├── wildlife_task_DEFAULT.sdf     # Wildlife task reference world
 │   └── cardboardbox/                # Custom obstacle model
 ├── wiki/                       # GitHub Wiki documentation
 │   ├── Home.md                      # Wiki landing page
-│   ├── Installation-Guide.md        # Setup instructions
-│   ├── Quick-Start.md               # 5-minute quick start
-│   ├── System-Overview.md           # Architecture deep-dive
+│   ├── Installation_Guide.md        # Setup instructions
+│   ├── Quick_Start.md               # 5-minute quick start
+│   ├── System_Overview.md           # Architecture deep-dive
 │   ├── SASS.md                      # Simple Anti-Stuck System (deprecated: see v2.1 update)
-│   ├── 3D-LIDAR-Processing.md       # OKO perception details
-│   └── Common-Issues.md             # Troubleshooting guide
+│   ├── 3D_LIDAR_Processing.md       # OKO perception details
+│   └── Common_Issues.md             # Troubleshooting guide
+├── robust_avoidance/           # Robust avoidance documentation & scripts
+│   ├── AVOIDANCE_CODE_EXPLANATION.md   # Technical obstacle avoidance docs
+│   ├── diagnose_boat.sh             # Boat diagnosis script
+│   └── monitor.sh                   # Real-time monitoring
 ├── one_click_launch_all/       # Automated launcher scripts
 │   └── launch_vostok1_complete.sh   # One-click full system launch
 ├── legacy/                     # Deprecated code (for reference only)
@@ -150,7 +148,6 @@ uvautoboat/
 ├── diagnose_boat.sh            # Detailed boat diagnosis
 ├── monitor_boat.sh             # Real-time system monitoring
 ├── Board.md                    # Development progress tracking
-├── AVOIDANCE_CODE_EXPLANATION.md   # Technical obstacle avoidance docs
 └── README.md                   # This file
 ```
 
@@ -177,7 +174,7 @@ uvautoboat/
 | [Vostok1 Dashboard Guide](web_dashboard/vostok1/README_vostok1_dashboard.md) | Web dashboard setup (rosbridge + web_video_server) and camera panel |
 | [Atlantis Dashboard Guide](web_dashboard/atlantis/README_atlantis_dashboard.md) | Atlantis dashboard setup and usage |
 | [Control Quick Start](control/launch/README_QUICKSTART.md) | Quick start guide for control stack |
-| [AVOIDANCE_CODE_EXPLANATION.md](AVOIDANCE_CODE_EXPLANATION.md) | Technical obstacle avoidance documentation (Chinese) |
+| [AVOIDANCE_CODE_EXPLANATION.md](robust_avoidance/AVOIDANCE_CODE_EXPLANATION.md) | Technical obstacle avoidance documentation (Chinese) |
 
 **Wiki Documentation** (see [wiki/](wiki/) folder):
 
@@ -338,15 +335,15 @@ correction = Kp × error + Ki × ∫error + Kd × d(error)/dt
 
 | Parameter | Default | Effect |
 | :---------- | :-------- | :------- |
-| Kp | 400.0 | Proportional response (fast correction) |
+| Kp | 500.0 | Proportional response (fast correction) |
 | Ki | 20.0 | Integral accumulation (eliminate steady-state error) |
-| Kd | 100.0 | Derivative damping (prevent overshoot) |
+| Kd | 150.0 | Derivative damping (prevent overshoot) |
 
 ### Simulation Time (use_sim_time)
 
 When running in Gazebo, time moves differently than real-world time. The `use_sim_time` parameter synchronizes ROS nodes with simulation time.
 
- Currently only `control/launch/all_in_one_bringup.launch.py` sets this flag for its nodes; other launches run on wall time unless updated.
+ Current launch files run on wall time by default. Set `use_sim_time: true` in your launch configuration if simulation clock synchronization is needed.
 
 ---
 
@@ -399,16 +396,12 @@ echo "source ~/seal_ws/install/setup.bash" >> ~/.bashrc
 **Terminal 1** — Launch Simulation:
 
 ```bash
-ros2 launch vrx_gz competition.launch.py world:=sydney_regatta
+ros2 launch vrx_gz competition.launch.py world:=sydney_regatta_smoke
 ```
 
-**Terminal 2** — Run Navigation (choose one):
+**Terminal 2** — Run Navigation:
 
 ```bash
-# Integrated Vostok1
-ros2 run plan vostok1
-
-# Modular system (configurable)
 ros2 launch ~/seal_ws/src/uvautoboat/launch/vostok1.launch.yaml
 ```
 
@@ -416,18 +409,18 @@ ros2 launch ~/seal_ws/src/uvautoboat/launch/vostok1.launch.yaml
 
 | Terminal | Command | Purpose |
 | :--------- | :-------- | :-------- |
-| **T1** | `ros2 launch vrx_gz competition.launch.py world:=sydney_regatta` | Gazebo simulation |
+| **T1** | `ros2 launch vrx_gz competition.launch.py world:=sydney_regatta_smoke` | Gazebo simulation |
 | **T2** | `ros2 launch rosbridge_server rosbridge_websocket_launch.xml delay_between_messages:=0.0` | WebSocket bridge |
 | **T3** | `ros2 run web_video_server web_video_server` | MJPEG camera stream for dashboard (http://<host>:8080) |
-| **T4** | `ros2 run plan vostok1` **or** `ros2 launch ~/seal_ws/src/uvautoboat/launch/vostok1.launch.yaml` | Navigation (integrated or modular) |
-| **T5** | `cd ~/seal_ws/src/uvautoboat/web_dashboard/vostok1 && python3 -m http.server 8000` | Dashboard web server |
+| **T4** | `ros2 launch ~/seal_ws/src/uvautoboat/launch/vostok1.launch.yaml` | Navigation (modular) |
+| **T5** | `cd ~/seal_ws/src/uvautoboat/web_dashboard/vostok1 && python3 -m http.server 8002` | Dashboard web server |
 
 > **Important:** The `delay_between_messages:=0.0` parameter is required for ROS 2 Jazzy due to a parameter type bug.
 > This starts a WebSocket server on `ws://localhost:9090`.
 > **Camera panel:** Default topic `/wamv/sensors/cameras/front_left_camera_sensor/image_raw`; change it in the dashboard input and click “Refresh” if needed.
 > **Note:** T5 must run in a separate terminal — it's a simple HTTP server, not a ROS node.
 
-Then open: **<http://localhost:8000>**
+Then open: **<http://localhost:8002>**
 
 ### Expected Output
 
@@ -478,15 +471,15 @@ Understanding the coordinate system is essential for working with VRX simulation
 
 AutoBoat provides multiple navigation systems:
 
-| Aspect | Vostok1 (Integrated) | Modular (TNO) | Atlantis (Control Group) |
-| :------- | :--------------------- | :-------------- | :------------------------- |
-| **Approach** | Self-contained node | Distributed nodes | Integrated controller |
-| **LIDAR** | 3D PointCloud2 | 3D PointCloud2 | 3D PointCloud2 |
-| **Detection** | Full 3D volume | Full 3D volume | 3D Section Analysis |
-| **Control** | PID heading | PID (configurable) | PID heading |
-| **Monitoring** | Terminal + Web | Terminal (bilingual) | Web Dashboard |
-| **Anti-Stuck** | Simple (turn left) | Simple (turn left) | Adaptive Escape (Work in progress) |
-| **Best For** | Production use | Custom tuning | Robust Path Validation |
+| Aspect | Modular (OKO-SPUTNIK-BURAN) | Atlantis (Control Group) |
+| :------- | :-------------- | :------------------------- |
+| **Approach** | Distributed nodes | Integrated controller |
+| **LIDAR** | 3D PointCloud2 | 3D PointCloud2 |
+| **Detection** | Full 3D volume | 3D Section Analysis |
+| **Control** | PID (configurable) | PID heading |
+| **Monitoring** | Terminal (bilingual) + Web | Web Dashboard |
+| **Anti-Stuck** | Simple (turn left) | Adaptive Escape (Work in progress) |
+| **Best For** | Production use & custom tuning | Robust Path Validation |
 
 ### Modular Architecture (OKO-SPUTNIK-BURAN)
 
@@ -701,27 +694,9 @@ The obstacle avoidance runs **continuously** - not as a one-time decision. The b
 
 ## Usage Guide
 
-### Option A: Integrated Vostok1 (Recommended)
+### Modular Navigation (YAML Launch) — Recommended
 
-Full-featured single-node implementation:
-
-```bash
-ros2 run plan vostok1
-```
-
-**Terminal Output:**
-
-```text
-[INFO] PROJET-17 — Vostok 1 Navigation System
-[INFO] Waiting for GPS signal...
-[INFO] MISSION DÉMARRÉE ! | MISSION STARTED!
-[INFO] PT 1/19 | Pos: (5.2, 3.1) | Cible: (15.0, 0.0) | Dist: 10.2m | Cap: 45°
-[INFO] ✅ DÉGAGÉ | CLEAR (F:50.0 L:50.0 R:50.0)
-```
-
-### Option B: Modular Navigation (YAML Launch)
-
-For configurable PID and distributed architecture:
+The primary navigation system uses the modular OKO-SPUTNIK-BURAN architecture:
 
 ```bash
 ros2 launch ~/seal_ws/src/uvautoboat/launch/vostok1.launch.yaml
@@ -729,40 +704,34 @@ ros2 launch ~/seal_ws/src/uvautoboat/launch/vostok1.launch.yaml
 
 > **Note:** The YAML launch file contains all default parameters. Edit the file directly to customize, or use the Python launch file for command-line arguments.
 
-**Alternative with Python Launch (supports command-line args):**
-
-```bash
-ros2 launch plan vostok1_modular_navigation.launch.py kp:=500.0 ki:=30.0 kd:=150.0
-```
-
 **Available Parameters (in `vostok1.launch.yaml`):**
 
 | Node | Parameter | Default | Description |
 | :----- | :---------- | :-------- | :------------ |
-| **OKO** | `min_safe_distance` | 12.0 | Obstacle safe distance (m) |
-| | `critical_distance` | 4.0 | Critical obstacle distance (m) |
-| | `min_height` | -15.0 | Min Z to detect (lake bank, water) |
-| | `max_height` | 10.0 | Max Z to detect |
-| | `min_range` | 5.0 | Ignore obstacles closer (boat structure) |
-| | `max_range` | 50.0 | Max detection range (m) |
+| **OKO** | `min_safe_distance` | 10.0 | Obstacle safe distance (m) |
+| | `critical_distance` | 5.5 | Critical obstacle distance (m) |
+| | `min_height` | -1.2 | Min Z to detect (low piers) |
+| | `max_height` | 1.5 | Max Z to detect (navigation hazards) |
+| | `min_range` | 2.2 | Ignore obstacles closer (boat hull) |
+| | `max_range` | 100.0 | Max detection range (m) |
 | | `temporal_history_size` | 3 | Scans to keep in history (faster response) |
 | | `temporal_threshold` | 2 | Min detections to confirm obstacle (2/3) |
-| | `cluster_distance` | 2.0 | Max distance between cluster points (m) |
-| | `min_cluster_size` | 3 | Min points per cluster (detect small obstacles) |
-| | `water_plane_threshold` | 0.5 | Tolerance for water plane removal (m) |
+| | `cluster_distance` | 3.0 | Max distance between cluster points (m) |
+| | `min_cluster_size` | 8 | Min points per cluster (detect obstacles) |
+| | `water_plane_threshold` | 0.32 | Tolerance for water plane removal (m) |
 | | `velocity_history_size` | 5 | Frames for velocity estimation |
 | **SPUTNIK** | `scan_length` | 15.0 | Lawnmower lane length (m) |
 | | `scan_width` | 30.0 | Lane spacing (m) |
 | | `lanes` | 10 | Number of lawnmower lanes |
-| | `waypoint_tolerance` | 2.0 | Arrival radius (m) |
+| | `waypoint_tolerance` | 3.5 | Arrival radius (m) |
 | | `waypoint_skip_timeout` | 45.0 | Skip blocked waypoint after (s) |
-| **BURAN** | `kp` | 400.0 | PID Proportional gain |
+| **BURAN** | `kp` | 500.0 | PID Proportional gain |
 | | `ki` | 20.0 | PID Integral gain |
-| | `kd` | 100.0 | PID Derivative gain |
-| | `base_speed` | 500.0 | Base thrust speed (N) |
+| | `kd` | 150.0 | PID Derivative gain |
+| | `base_speed` | 400.0 | Base thrust speed (N) |
 | | `max_speed` | 800.0 | Maximum thrust (N) |
-| | `obstacle_slow_factor` | 0.3 | Speed reduction near obstacles |
-| | `critical_distance` | 5.0 | Stop distance (m) |
+| | `obstacle_slow_factor` | 0.5 | Speed reduction near obstacles |
+| | `critical_distance` | 6.0 | Stop distance (m) |
 | | `stuck_timeout` | 12.0 | Simple anti-stuck: stuck detection time (s) |
 | | `stuck_threshold` | 1.0 | Simple anti-stuck: min movement to not be stuck (m) |
 | | `drift_compensation_gain` | 0.3 | Kalman drift correction strength |
@@ -920,20 +889,19 @@ The estimated drift is applied during navigation to compensate for environmental
 
 ## Waypoint Skip Strategy
 
-The Atlantis controller includes a Waypoint Timeout feature (deafult is 60 seconds) that automatically skips a target if the vessel cannot reach it due to currents or persistent obstacles. This was a update for Atlantis Controller.
+The SPUTNIK planner includes a Waypoint Timeout feature (default: 45 seconds) that automatically skips a target if the vessel cannot reach it due to currents or persistent obstacles.
 
 When obstacles block waypoints, the system uses two strategies to continue the mission:
 
 ### 1. Stuck-Based Skip
 
-When the boat is physically stuck and cannot move:
+When the boat is physically stuck and cannot move, BURAN's anti-stuck system activates:
 
 | Attempt | Action |
 | :-------- | :------- |
-| 1st | Smart escape maneuver (probe + reverse + turn) |
-| 2nd | Request detour waypoint around obstacle |
-| 3rd | Extended escape with no-go zone |
-| 4th+ | **Skip waypoint** and continue to next |
+| 1st | Turn left until clear |
+| 2nd+ | Continue turning and retry approach |
+| Timeout (45s) | **Skip waypoint** and continue to next |
 
 ### 2. Obstacle Blocking Skip
 
@@ -1110,7 +1078,7 @@ The **vostok1_cli** provides terminal-based mission control when the web dashboa
 ### Waypoint Generation
 
 ```bash
-# Default: 8 lanes, 50m length, 20m width
+# Default: 10 lanes, 15m length, 30m width
 ros2 run plan vostok1_cli generate
 
 # Custom parameters
@@ -1208,7 +1176,7 @@ ros2 run plan vostok1_cli --mode vostok1 interactive
 >
 > ```bash
 > # Terminal 1: Start Gazebo simulation
-> ros2 launch vrx_gz competition.launch.py world:=sydney_regatta
+> ros2 launch vrx_gz competition.launch.py world:=sydney_regatta_smoke
 >
 > # Terminal 2: Start modular navigation system
 > ros2 launch ~/seal_ws/src/uvautoboat/launch/vostok1.launch.yaml
@@ -1460,7 +1428,7 @@ Lane 3: End <────────────────────┘
 | Problem | Solution |
 | :-------- | :--------- |
 | **Boat not moving** | Check GPS: `ros2 topic echo /wamv/sensors/gps/gps/fix --once` |
-| **Spinning in circles** | Reduce PID: `ros2 param set /vostok1_node kp 300` |
+| **Spinning in circles** | Reduce PID: `ros2 param set /buran_controller_node kp 300` |
 | **Dashboard disconnected** | Restart rosbridge, check port 9090 |
 | **No obstacles detected** | Check LIDAR: `ros2 topic hz /wamv/sensors/lidars/lidar_wamv/points` |
 | **Critical at spawn** | Increase `min_range` to 5.0 in launch file |
@@ -1483,7 +1451,7 @@ ros2 topic hz /wamv/sensors/lidars/lidar_wamv/points
 ros2 node list | grep vostok
 
 # List parameters
-ros2 param list /vostok1_node
+ros2 param list /buran_controller_node
 
 # Check anti-stuck status
 ros2 topic echo /control/anti_stuck_status
@@ -1546,7 +1514,7 @@ chmod +x one_click_launch_all/launch_vostok1_complete.sh
 | rosbridge WebSocket | Dashboard communication (port 9090) |
 | web_video_server | Camera MJPEG stream (port 8080) |
 | Navigation System | Vostok1 modular navigation |
-| Web Dashboard | HTTP server (port 8000) |
+| Web Dashboard | HTTP server (port 8002) |
 
 > **Note:** The script opens multiple terminal windows. Use `Ctrl+C` in the main terminal to stop all processes.
 
@@ -1588,15 +1556,14 @@ colcon test-result --verbose
 
 ```bash
 # Simulation
-ros2 launch vrx_gz competition.launch.py world:=sydney_regatta
+ros2 launch vrx_gz competition.launch.py world:=sydney_regatta_smoke
 
 # Navigation
-ros2 run plan vostok1
 ros2 launch ~/seal_ws/src/uvautoboat/launch/vostok1.launch.yaml
 
 # Dashboard
 ros2 launch rosbridge_server rosbridge_websocket_launch.xml delay_between_messages:=0.0
-cd ~/seal_ws/src/uvautoboat/web_dashboard/vostok1 && python3 -m http.server 8000
+cd ~/seal_ws/src/uvautoboat/web_dashboard/vostok1 && python3 -m http.server 8002
 ```
 
 ### A* Path Planning
