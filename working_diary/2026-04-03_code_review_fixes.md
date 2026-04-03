@@ -3,7 +3,7 @@
 ## Summary
 
 Performed a full code review of the uvautoboat repository. Identified 22 issues across
-CRITICAL / HIGH / MEDIUM / LOW severity. Fixed 7 of them in this session.
+CRITICAL / HIGH / MEDIUM / LOW severity. Fixed 8 of them in this session (7 bug fixes + 1 DX improvement).
 
 ## Changes Made
 
@@ -84,6 +84,18 @@ CRITICAL / HIGH / MEDIUM / LOW severity. Fixed 7 of them in this session.
 **Fix:** Merged into a single subscription that includes both the field remapping and `updateDetourBadge()` call.
 
 **Effect:** Mission status updates fire once per message instead of twice.
+
+---
+
+### Fix 7: Dashboard cache-busting for app.js
+
+**File:** `web_dashboard/vostok1/index.html` line 931
+
+**Problem:** `app.js` was loaded with a static version query (`?v=14`). Firefox cached the file aggressively, so code changes weren't picked up without a manual hard refresh (Ctrl+Shift+R). This caused confusion during testing — fixes appeared in the source files but the dashboard kept running old code.
+
+**Fix:** Replaced the static `<script src="app.js?v=14">` tag with a dynamic loader that appends `Date.now()` as the version (e.g. `app.js?v=1775207602310`), forcing a fresh fetch every page load.
+
+**Effect:** Verified working — dashboard server logs show `GET /app.js?v=1775207602310 HTTP/1.1 200` (fresh load) instead of `GET /app.js?v=14 HTTP/1.1 304` (cached). Note: the `index.html` itself may still be cached by the browser; one initial hard refresh is needed after this change to pick up the new HTML, after which all future `app.js` updates load automatically.
 
 ---
 
