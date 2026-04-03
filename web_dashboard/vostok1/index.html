@@ -3,8 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>Vostok1 Dashboard</title>
-    <link rel="stylesheet" href="style_merged.css?v=2">
+    <link rel="icon" href="data:,">
+    <script>
+        // Cache-bust: always load the latest CSS
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = 'style_merged.css?v=' + Date.now();
+        document.head.appendChild(link);
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/roslib@1/build/roslib.min.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />

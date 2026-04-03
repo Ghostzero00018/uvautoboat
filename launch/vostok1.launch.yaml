@@ -31,8 +31,8 @@
 #
 #   T5: RViz (optional visualization): ros2 launch vrx_gz rviz.launch.py
 #
-#   T6: Web dashboard: cd ~/seal_ws/src/uvautoboat/web_dashboard/vostok1 && python3 -m http.server 8000
-#       Browser: open http://localhost:8000 (wait for GPS to publish first fix)
+#   T6: Web dashboard: cd ~/seal_ws/src/uvautoboat/web_dashboard/vostok1 && python3 -m http.server 8002
+#       Browser: open http://localhost:8002 (wait for GPS to publish first fix)
 #
 # NOTE: GPS can take 10–30s to initialize in VRX. If the dashboard shows "waiting for GPS",
 #       wait longer or check with: ros2 topic echo /wamv/sensors/gps/gps/fix --once

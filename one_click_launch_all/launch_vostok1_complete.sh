@@ -377,7 +377,7 @@ echo "  - Run 'ros2 run plan vostok1_cli start' to begin mission (if the web das
 echo ""
 echo -e "${BLUE}Useful Commands:${NC}"
 echo "  Monitor GPS:        ros2 topic echo /wamv/sensors/gps/gps/fix"
-echo "  Check LIDAR:        ros2 topic hz /wamv/sensors/lidars/lidar_wamv/points"
+echo "  Check LIDAR:        ros2 topic hz /wamv/sensors/lidars/lidar_wamv_sensor/points"
 echo "  View obstacles:     ros2 topic echo /perception/obstacle_info"
 echo "  List all nodes:     ros2 node list"
 echo "  Kill everything:    pkill -9 gz && pkill -9 ros2 && pkill -9 rosbridge"

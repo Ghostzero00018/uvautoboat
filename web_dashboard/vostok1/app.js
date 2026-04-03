@@ -974,16 +974,23 @@ function addLog(message, type = 'info') {
     }
 }
 
+// GPS origin — set from first GPS fix, matching how sputnik stores start_gps
+let gpsOrigin = null;
+
 // Convert GPS to local coordinates (simplified)
 function gpsToLocal(lat, lon) {
-    // This is a simplified conversion - vostok1 uses proper UTM conversion
-    // For display purposes only
-    const originLat = -33.8361;
-    const originLon = 151.0697;
-    
-    const latDiff = (lat - originLat) * 111320; // meters per degree latitude
-    const lonDiff = (lon - originLon) * 111320 * Math.cos(originLat * Math.PI / 180);
-    
+    // Use first GPS fix as origin, same as sputnik_planner
+    if (!gpsOrigin) {
+        if (lat !== 0 && lon !== 0) {
+            gpsOrigin = { lat: lat, lon: lon };
+        } else {
+            return { x: 0, y: 0 };
+        }
+    }
+
+    const latDiff = (lat - gpsOrigin.lat) * 111320; // meters per degree latitude
+    const lonDiff = (lon - gpsOrigin.lon) * 111320 * Math.cos(gpsOrigin.lat * Math.PI / 180);
+
     return { x: lonDiff, y: latDiff };
 }
 
@@ -1523,8 +1530,10 @@ function generateWaypoints() {
     });
     configPublisher.publish(configMsg);
 
-    // Then send generate command
-    sendMissionCommand('generate_waypoints');
+    // Wait for sputnik to process config before generating waypoints
+    setTimeout(() => {
+        sendMissionCommand('generate_waypoints');
+    }, 200);
     
     // Calculate and display preview info
     const totalWaypoints = lanes * 2 - 1;
