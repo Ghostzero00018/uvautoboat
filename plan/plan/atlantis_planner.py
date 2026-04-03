@@ -109,7 +109,7 @@ class AtlantisPlanner(Node):
                 user_input = input("Command (r/b) > ").strip().lower()
                 if user_input == 'b': self.generate_return_home_path()
                 elif user_input == 'r': self.generate_lawnmower_path()
-            except: pass
+            except Exception: pass
 
     def lidar_callback(self, msg):
         try:
@@ -131,7 +131,7 @@ class AtlantisPlanner(Node):
                 try:
                     if hasattr(obs, "intensity") and obs.intensity < 5.0:
                         continue
-                except:
+                except Exception:
                     pass
 
                 # 2. Smoke floats → remove high points

@@ -542,9 +542,19 @@ class BuranController(Node):
                 self.approach_slow_factor = float(config['approach_slow_factor'])
                 updated.append(f"approach_slow_factor={self.approach_slow_factor}")
 
+            # Sync updated values to ROS parameter server
+            params_to_sync = []
+            for key in config:
+                if hasattr(self, key):
+                    params_to_sync.append(
+                        rclpy.parameter.Parameter(key, value=getattr(self, key))
+                    )
+            if params_to_sync:
+                self.set_parameters(params_to_sync)
+
             if updated:
                 self.get_logger().info(f"⚙️ Config updated: {', '.join(updated)}")
-                
+
         except Exception as e:
             self.get_logger().error(f"Config parse error: {e}")
 

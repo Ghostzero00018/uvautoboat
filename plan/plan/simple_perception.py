@@ -32,7 +32,7 @@ class SimplePerception(Node):
             try:
                 # Unpack x, y, z (assumes float32)
                 x, y, z = struct.unpack_from('fff', data, i)
-            except:
+            except Exception:
                 continue
 
             dist = math.sqrt(x*x + y*y)

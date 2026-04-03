@@ -170,7 +170,7 @@ class AtlantisPlanner(Node):
                     self.get_logger().info("Mission stopped")
                 elif cmd == 'p':
                     self.print_status()
-            except: 
+            except Exception:
                 pass
 
     def print_status(self):

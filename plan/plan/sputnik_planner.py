@@ -496,8 +496,6 @@ class SputnikPlanner(Node):
                         self.state = "READY"
                         self.mission_armed = False
                         self.publish_mission_status_timer()  # Publish READY state
-                        # Brief wait for BURAN to process state change
-                        time.sleep(0.1)
                         self.get_logger().info("🏠 GOING HOME! (Transitioning from DRIVING)")
                     else:
                         self.get_logger().info("🏠 GOING HOME!")
@@ -538,7 +536,7 @@ class SputnikPlanner(Node):
             self.obstacle_clusters = [(c.get('x', 0.0), c.get('y', 0.0)) for c in clusters if 'x' in c and 'y' in c]
             if not self.obstacle_detected:
                 self.detour_waypoint_inserted = False  # allow new detour once clear
-        except:
+        except Exception:
             pass
     
     def detour_request_callback(self, msg):

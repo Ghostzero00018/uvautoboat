@@ -202,9 +202,21 @@ launch:
       value: 0.01         # Kalman filter process noise (drift estimator)
     - name: kalman_measurement_noise
       value: 0.5          # Kalman filter measurement noise (drift estimator)
-    # BURAN v2.1 Enhanced Control
+    # Smoothness Controls
+    - name: slew_rate_limit
+      value: 80.0          # Max thrust change per cycle (N)
     - name: turn_deadband_deg
-      value: 0.5          # Ignore tiny heading errors below this threshold (degrees)
+      value: 0.5           # Ignore tiny heading errors below this threshold (degrees)
+    # Obstacle Proximity
+    - name: min_safe_distance
+      value: 12.0          # Obstacle avoidance trigger distance (m)
+    - name: max_reverse_distance
+      value: 25.0          # Max meters to reverse during escape
+    - name: bank_slow_distance
+      value: 6.0           # Start slowing when this close to obstacles (m)
+    - name: bank_slow_factor
+      value: 0.25          # Speed multiplier when near banks
+    # BURAN v2.1 Enhanced Control
     - name: avoid_diff_gain
       value: 18.0         # Very mild differential steering
     - name: use_vfh_bias

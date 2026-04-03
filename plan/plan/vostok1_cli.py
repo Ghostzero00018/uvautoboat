@@ -228,19 +228,19 @@ class MissionCLI(Node):
     def mission_status_callback(self, msg):
         try:
             self.mission_status = json.loads(msg.data)
-        except:
+        except Exception:
             pass
-            
+
     def config_callback(self, msg):
         try:
             self.config_status = json.loads(msg.data)
-        except:
+        except Exception:
             pass
-    
+
     def buran_status_callback(self, msg):
         try:
             self.buran_status = json.loads(msg.data)
-        except:
+        except Exception:
             pass
     
     def wait_for_ready(self, timeout=5.0):

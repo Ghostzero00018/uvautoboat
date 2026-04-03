@@ -259,7 +259,7 @@ class OkoPerception(Node):
             # Narrower when heading straight, wider when turning
             heading_diff = abs(self.target_angle)
             self.front_half_width = math.pi/6 + (math.pi/12) * min(1.0, heading_diff / (math.pi/2))
-        except:
+        except Exception:
             pass
 
     def config_callback(self, msg):
@@ -292,8 +292,11 @@ class OkoPerception(Node):
 
             for config_key, (attr_name, type_func) in param_map.items():
                 if config_key in config:
-                    setattr(self, attr_name, type_func(config[config_key]))
-                    updated.append(f"{attr_name}={getattr(self, attr_name)}")
+                    new_val = type_func(config[config_key])
+                    setattr(self, attr_name, new_val)
+                    # Sync to ROS parameter server so ros2 param get returns current values
+                    self.set_parameters([rclpy.parameter.Parameter(attr_name, value=new_val)])
+                    updated.append(f"{attr_name}={new_val}")
 
             if updated:
                 self.get_logger().info(f"⚙️ OKO config updated: {', '.join(updated)}")

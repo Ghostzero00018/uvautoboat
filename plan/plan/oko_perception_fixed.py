@@ -124,8 +124,8 @@ class OkoPerception(Node):
                     continue
                 
                 points.append((x, y, z, dist))
-                
-            except:
+
+            except Exception:
                 continue
         
         # No valid points
