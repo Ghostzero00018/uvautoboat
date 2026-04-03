@@ -60,15 +60,15 @@ let currentState = {
     thrusters: { left: 0, right: 0 },
     mission: { state: 'IDLE', waypoint: 0, distance: 0 },
     config: {
-        scan_length: 150.0,
-        scan_width: 50.0,
-        lanes: 8,
-        kp: 400.0,
+        scan_length: 15.0,
+        scan_width: 30.0,
+        lanes: 10,
+        kp: 500.0,
         ki: 20.0,
-        kd: 100.0,
-        base_speed: 500.0,
+        kd: 150.0,
+        base_speed: 400.0,
         max_speed: 800.0,
-        min_safe_distance: 15.0
+        min_safe_distance: 10.0
     },
     world: {
         name: 'unknown',
@@ -395,37 +395,18 @@ function subscribeToTopics() {
     missionStatusTopic.subscribe((message) => {
         const data = JSON.parse(message.data);
         if (DEBUG_MODE) console.log('Mission status:', data);
-        updateMissionStatus(data);
+        updateMissionStatus({
+            state: data.state,
+            waypoint: data.current_waypoint,
+            total_waypoints: data.total_waypoints,
+            distance_to_waypoint: data.distance_to_target || 0,
+            local_x: data.position ? data.position[0] : 0,
+            local_y: data.position ? data.position[1] : 0
+        });
         updateDetourBadge(data.detour_active || false);
     });
-    
-    // Obstacle status
-    const obstacleStatusTopic = new ROSLIB.Topic({
-        ros: ros,
-        name: '/vostok1/obstacle_status',
-        messageType: 'std_msgs/String'
-    });
-    
-    obstacleStatusTopic.subscribe((message) => {
-        const data = JSON.parse(message.data);
-        if (DEBUG_MODE) console.log('Obstacle status:', data);
-        updateObstacleStatus(data);
-    });
-    
-    // Simple Anti-Stuck Status
-    const antiStuckTopic = new ROSLIB.Topic({
-        ros: ros,
-        name: '/vostok1/anti_stuck_status',
-        messageType: 'std_msgs/String'
-    });
-    
-    antiStuckTopic.subscribe((message) => {
-        const data = JSON.parse(message.data);
-        if (DEBUG_MODE) console.log('Anti-stuck status:', data);
-        updateAntiStuckStatus(data);
-    });
-    
-    // Also subscribe to modular controller anti-stuck (for modular mode)
+
+    // Modular controller anti-stuck status
     const buranAntiStuckTopic = new ROSLIB.Topic({
         ros: ros,
         name: '/control/anti_stuck_status',
@@ -439,31 +420,6 @@ function subscribeToTopics() {
     });
 
     // ==================== MODULAR NAVIGATION SUPPORT ====================
-// Subscribe to modular navigation topics (sputnik_planner, oko_perception, buran_controller)
-    
-    // Modular mission status from sputnik_planner
-    const modularMissionTopic = new ROSLIB.Topic({
-        ros: ros,
-        name: '/planning/mission_status',
-        messageType: 'std_msgs/String'
-    });
-    
-    modularMissionTopic.subscribe((message) => {
-        const data = JSON.parse(message.data);
-        if (DEBUG_MODE) console.log('Modular mission status:', data);
-        // Convert modular format to vostok1 format
-        // Sputnik uses: current_waypoint, total_waypoints, progress_percent, elapsed_time, position
-        updateMissionStatus({
-            state: data.state,
-            waypoint: data.current_waypoint,
-            total_waypoints: data.total_waypoints,
-            distance_to_waypoint: data.distance_to_target || 0,
-            // Add local position from sputnik's position array
-            local_x: data.position ? data.position[0] : 0,
-            local_y: data.position ? data.position[1] : 0
-        });
-    });
-    
     // Modular current target from sputnik_planner (for distance info)
     const modularTargetTopic = new ROSLIB.Topic({
         ros: ros,

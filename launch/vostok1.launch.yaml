@@ -155,7 +155,7 @@ launch:
     - name: pollutant_scan_enabled
       value: false      # Disabled: using LiDAR smoke detection instead
     - name: pollutant_sdf_glob
-      value: "/home/ghostzero/seal_ws/src/uvautoboat/test_environment/*smoke*.sdf"  # Absolute path to smoke SDF files
+      value: ""  # DEPRECATED: overridden by launch script; left empty to avoid hardcoded paths
     # Note: hazard_world_boxes removed - not used when hazard_enabled=false (see line 125)
 
 # ============================================================================
@@ -203,8 +203,8 @@ launch:
     - name: kalman_measurement_noise
       value: 0.5          # Kalman filter measurement noise (drift estimator)
     # BURAN v2.1 Enhanced Control
-    - name: dead_zone_threshold
-      value: 0.5          # Dead zone for minor thrust adjustments
+    - name: turn_deadband_deg
+      value: 0.5          # Ignore tiny heading errors below this threshold (degrees)
     - name: avoid_diff_gain
       value: 18.0         # Very mild differential steering
     - name: use_vfh_bias
