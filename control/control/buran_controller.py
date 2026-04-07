@@ -640,8 +640,6 @@ class BuranController(Node):
             self.reverse_start_pos = None
             self.force_turn_after_reverse = False
             self.avoidance_mode = True
-            if self.reverse_start_time is None:
-                self.reverse_start_time = None
         else:
             self.reverse_start_time = None
             self.reverse_start_pos = None
