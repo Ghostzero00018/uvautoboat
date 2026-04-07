@@ -76,6 +76,9 @@ NC='\033[0m'  # No Color
 die() { echo -e "${RED}$*${NC}"; exit 1; }
 
 # Cleanup on exit (kills all spawned components)
+# CAUTION: pkill -9 -f matches processes system-wide by name pattern.
+# On a shared machine or multi-session setup, this may kill processes belonging
+# to other users or unrelated workflows. Safe for single-user dev environments.
 cleanup() {
     echo -e "${YELLOW}Stopping all Robust Avoidance components...${NC}"
     # Redirect stderr to suppress "Killed" messages from bash job control
