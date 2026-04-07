@@ -80,7 +80,12 @@ import json
 import sys
 import argparse
 import time
+from pathlib import Path
 from typing import Optional, Tuple
+
+# Derive repo root from this file's location: plan/plan/vostok1_cli.py -> repo root
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_LAUNCH_FILE = _REPO_ROOT / 'launch' / 'vostok1.launch.yaml'
 
 
 class MissionCLI(Node):
@@ -254,7 +259,7 @@ class MissionCLI(Node):
                 return True
         print("⚠️ Navigation system not responding. Is it running?")
         if self.mode == 'modular' or self.mode == 'sputnik':
-            print("   Start with: ros2 launch ~/seal_ws/src/uvautoboat/launch/vostok1.launch.yaml")
+            print(f"   Start with: ros2 launch {_LAUNCH_FILE}")
         else:
             print("   Start with: ros2 run plan vostok1")
         return False
@@ -496,7 +501,7 @@ class MissionCLI(Node):
                 print("⚠️ No status received")
                 print("   Check if the navigation system is running:")
                 if self.mode == 'modular' or self.mode == 'sputnik':
-                    print("   ros2 launch ~/seal_ws/src/uvautoboat/launch/vostok1.launch.yaml")
+                    print(f"   ros2 launch {_LAUNCH_FILE}")
                 else:
                     print("   ros2 run plan vostok1")
         
