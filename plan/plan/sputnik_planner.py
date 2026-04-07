@@ -547,7 +547,7 @@ class SputnikPlanner(Node):
             
             if detour_x is not None and detour_y is not None and self.state == "DRIVING":
                 # Insert detour waypoint before current target
-                detour_wp = {'x': detour_x, 'y': detour_y, 'is_detour': True}
+                detour_wp = (detour_x, detour_y)
                 self.waypoints.insert(self.current_wp_index, detour_wp)
                 self.get_logger().info(f"📍 Detour waypoint inserted at ({detour_x:.1f}, {detour_y:.1f})")
                 self.publish_waypoints()
