@@ -198,9 +198,9 @@ class SputnikPlanner(Node):
         self.hazard_enabled = self.get_parameter('hazard_enabled').value
         hazard_local = self._parse_hazard_boxes(str(self.get_parameter('hazard_boxes').value))
         hazard_world = self._parse_hazard_boxes(str(self.get_parameter('hazard_world_boxes').value))
-        origin_wx = float(self.get_parameter('hazard_origin_world_x').value)
-        origin_wy = float(self.get_parameter('hazard_origin_world_y').value)
-        self.hazard_boxes = hazard_local + self._world_boxes_to_local(hazard_world, origin_wx, origin_wy)
+        self.hazard_origin_world_x = float(self.get_parameter('hazard_origin_world_x').value)
+        self.hazard_origin_world_y = float(self.get_parameter('hazard_origin_world_y').value)
+        self.hazard_boxes = hazard_local + self._world_boxes_to_local(hazard_world, self.hazard_origin_world_x, self.hazard_origin_world_y)
         self.plan_avoid_margin = float(self.get_parameter('plan_avoid_margin').value)
         self.hull_radius = float(self.get_parameter('hull_radius').value)
 
@@ -644,8 +644,8 @@ class SputnikPlanner(Node):
                     hazard_world = self._parse_hazard_boxes(str(config['hazard_world_boxes']))
                     self.hazard_boxes = self._world_boxes_to_local(
                         hazard_world,
-                        getattr(self, 'hazard_origin_world_x', 0.0),
-                        getattr(self, 'hazard_origin_world_y', 0.0)
+                        self.hazard_origin_world_x,
+                        self.hazard_origin_world_y
                     )
                     self.get_logger().info(f"Loaded {len(self.hazard_boxes)} hazard boxes from config")
                 except Exception as e:
