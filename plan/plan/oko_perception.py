@@ -26,7 +26,6 @@ Topics:
     
     Publishes:
         /perception/obstacle_info (String) - JSON with obstacle distances per sector
-        /perception/obstacle_detected (Bool) - Simple obstacle detection flag
 """
 
 import rclpy
@@ -39,7 +38,7 @@ import numpy as np
 from collections import deque
 
 from sensor_msgs.msg import PointCloud2
-from std_msgs.msg import String, Bool
+from std_msgs.msg import String
 
 
 class OkoPerception(Node):
@@ -158,9 +157,6 @@ class OkoPerception(Node):
         # --- PUBLISHERS ---
         self.pub_obstacle_info = self.create_publisher(
             String, '/perception/obstacle_info', 10
-        )
-        self.pub_obstacle_detected = self.create_publisher(
-            Bool, '/perception/obstacle_detected', 10
         )
         self.pub_smoke_detected = self.create_publisher(
             String, '/perception/smoke_detected', 10
@@ -959,11 +955,6 @@ class OkoPerception(Node):
         info_msg = String()
         info_msg.data = json.dumps(obstacle_info)
         self.pub_obstacle_info.publish(info_msg)
-        
-        # Publish simple detection flag
-        detected_msg = Bool()
-        detected_msg.data = bool(self.obstacle_detected)
-        self.pub_obstacle_detected.publish(detected_msg)
         
         # Bilingual logging (throttled)
         if self.obstacle_detected:
