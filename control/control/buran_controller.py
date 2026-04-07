@@ -142,16 +142,16 @@ class BuranController(Node):
         super().__init__('buran_controller_node')
 
         # --- PID PARAMETERS ---
-        self.declare_parameter('kp', 400.0)
+        self.declare_parameter('kp', 500.0)
         self.declare_parameter('ki', 20.0)
-        self.declare_parameter('kd', 100.0)
+        self.declare_parameter('kd', 150.0)
 
         # Speed parameters
-        self.declare_parameter('base_speed', 500.0)
+        self.declare_parameter('base_speed', 400.0)
         self.declare_parameter('max_speed', 800.0)
         self.declare_parameter('obstacle_slow_factor', 0.3)
         # Approach slowdown near waypoint
-        self.declare_parameter('approach_slow_distance', 5.0)
+        self.declare_parameter('approach_slow_distance', 10.0)
         self.declare_parameter('approach_slow_factor', 0.7)
         # Smoothness controls
         self.declare_parameter('slew_rate_limit', 80.0)       # Max thrust change per cycle (N)

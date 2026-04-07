@@ -172,7 +172,7 @@ class SputnikPlanner(Node):
         self.declare_parameter('scan_length', 15.0)
         self.declare_parameter('scan_width', 30.0)
         self.declare_parameter('lanes', 10)
-        self.declare_parameter('waypoint_tolerance', 2.0)
+        self.declare_parameter('waypoint_tolerance', 3.5)
         self.declare_parameter('waypoint_skip_timeout', 45.0)  # Skip waypoint if blocked for this long
         # World metadata (for dashboards)
         self.declare_parameter('world_name', 'unknown')

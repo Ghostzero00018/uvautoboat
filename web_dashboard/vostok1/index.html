@@ -301,15 +301,15 @@
                     <div class="waypoint-config-inline">
                         <div class="config-item-inline">
                             <label for="wp-lanes">Lanes | Couloirs:</label>
-                            <input type="number" id="wp-lanes" min="1" max="50" value="8">
+                            <input type="number" id="wp-lanes" min="1" max="50" value="10">
                         </div>
                         <div class="config-item-inline">
                             <label for="wp-length">Length | Longueur (m):</label>
-                            <input type="number" id="wp-length" min="10" max="500" step="10" value="150">
+                            <input type="number" id="wp-length" min="10" max="500" step="10" value="15">
                         </div>
                         <div class="config-item-inline">
                             <label for="wp-width">Lane Width | Largeur (m):</label>
-                            <input type="number" id="wp-width" min="5" max="100" step="5" value="50">
+                            <input type="number" id="wp-width" min="5" max="100" step="5" value="30">
                         </div>
                     </div>
                     <button id="btn-generate-waypoints" class="mission-btn generate">
@@ -490,7 +490,7 @@
                                 Kp (Proportional):
                                 <span class="info-tooltip" title="Controls heading correction strength. Higher = faster response, may overshoot | Contrôle la force de correction de cap">ℹ️</span>
                             </label>
-                            <input type="number" id="cfg-kp" min="0" max="2000" step="50" value="400" data-default="400">
+                            <input type="number" id="cfg-kp" min="0" max="2000" step="50" value="500" data-default="500">
                             <span class="value-display"></span>
                         </div>
                         <div class="config-item">
@@ -506,7 +506,7 @@
                                 Kd (Derivative):
                                 <span class="info-tooltip" title="Dampens oscillations. Higher = smoother but slower | Amortit les oscillations">ℹ️</span>
                             </label>
-                            <input type="number" id="cfg-kd" min="0" max="500" step="10" value="100" data-default="100">
+                            <input type="number" id="cfg-kd" min="0" max="500" step="10" value="150" data-default="150">
                             <span class="value-display"></span>
                         </div>
                     </div>
@@ -574,9 +574,9 @@
                         ✅ Apply Config | Appliquer
                     </button>
                 </div>
-                <input type="hidden" id="cfg-lanes" value="8">
-                <input type="hidden" id="cfg-scan-length" value="150">
-                <input type="hidden" id="cfg-scan-width" value="50">
+                <input type="hidden" id="cfg-lanes" value="10">
+                <input type="hidden" id="cfg-scan-length" value="15">
+                <input type="hidden" id="cfg-scan-width" value="30">
             </div>
 
             <!-- Perception & Control Tuning Panel -->

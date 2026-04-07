@@ -1162,21 +1162,32 @@ function updateConfigFromROS(data) {
     updateMissionControlUI(data);
 }
 
+// Read and validate a numeric input using its HTML min/max/default attributes
+function readInput(id, fallback) {
+    const el = document.getElementById(id);
+    const raw = (el.type === 'hidden' || el.step === '1' || Number.isInteger(fallback))
+        ? parseInt(el.value) : parseFloat(el.value);
+    if (isNaN(raw)) return fallback;
+    const min = el.min !== '' ? parseFloat(el.min) : -Infinity;
+    const max = el.max !== '' ? parseFloat(el.max) : Infinity;
+    return Math.max(min, Math.min(max, raw));
+}
+
 // Send configuration to Vostok1
 function sendConfig(pidOnly = false, restart = false) {
     if (!connected || !configPublisher) {
         addLog('Not connected to ROS', 'error');
         return;
     }
-    
+
     let config = {};
-    
+
     if (pidOnly) {
         // Only send PID parameters
         config = {
-            kp: parseFloat(document.getElementById('cfg-kp').value),
-            ki: parseFloat(document.getElementById('cfg-ki').value),
-            kd: parseFloat(document.getElementById('cfg-kd').value)
+            kp: readInput('cfg-kp', 500),
+            ki: readInput('cfg-ki', 20),
+            kd: readInput('cfg-kd', 150)
         };
         addLog('Sending PID config... | Envoi configuration PID...', 'info');
     } else {
@@ -1185,26 +1196,26 @@ function sendConfig(pidOnly = false, restart = false) {
 
         // Send all parameters
         config = {
-            lanes: parseInt(document.getElementById('cfg-lanes').value),
-            scan_length: parseFloat(document.getElementById('cfg-scan-length').value),
-            scan_width: parseFloat(document.getElementById('cfg-scan-width').value),
-            kp: parseFloat(document.getElementById('cfg-kp').value),
-            ki: parseFloat(document.getElementById('cfg-ki').value),
-            kd: parseFloat(document.getElementById('cfg-kd').value),
-            base_speed: parseFloat(document.getElementById('cfg-base-speed').value),
-            max_speed: parseFloat(document.getElementById('cfg-max-speed').value),
-            min_safe_distance: parseFloat(document.getElementById('cfg-safe-dist').value),
+            lanes: readInput('cfg-lanes', 8),
+            scan_length: readInput('cfg-scan-length', 15.0),
+            scan_width: readInput('cfg-scan-width', 30.0),
+            kp: readInput('cfg-kp', 500),
+            ki: readInput('cfg-ki', 20),
+            kd: readInput('cfg-kd', 150),
+            base_speed: readInput('cfg-base-speed', 400),
+            max_speed: readInput('cfg-max-speed', 800),
+            min_safe_distance: readInput('cfg-safe-dist', 15),
             // Waypoint approach parameters
-            waypoint_tolerance: parseFloat(document.getElementById('cfg-waypoint-tolerance').value),
-            approach_slow_distance: parseFloat(document.getElementById('cfg-approach-slow-distance').value),
-            approach_slow_factor: parseFloat(document.getElementById('cfg-approach-slow-factor').value),
+            waypoint_tolerance: readInput('cfg-waypoint-tolerance', 3.5),
+            approach_slow_distance: readInput('cfg-approach-slow-distance', 10),
+            approach_slow_factor: readInput('cfg-approach-slow-factor', 0.7),
             // A* detour options based on selected navigation mode
             astar_enabled: (navMode === 'runtime' || navMode === 'hybrid'),
             astar_hybrid_mode: (navMode === 'hybrid'),
             hazard_enabled: (navMode === 'hybrid'),
-            astar_resolution: parseFloat(document.getElementById('cfg-astar-resolution').value),
-            astar_safety_margin: parseFloat(document.getElementById('cfg-astar-safety').value),
-            astar_max_expansions: parseInt(document.getElementById('cfg-astar-max').value)
+            astar_resolution: readInput('cfg-astar-resolution', 3.0),
+            astar_safety_margin: readInput('cfg-astar-safety', 12.0),
+            astar_max_expansions: readInput('cfg-astar-max', 20000)
         };
         addLog('Sending full config... | Envoi configuration complète...', 'info');
     }
@@ -1425,10 +1436,10 @@ function generateWaypoints() {
         return;
     }
     
-    // Get waypoint parameters from mission control inputs
-    const lanes = parseInt(document.getElementById('wp-lanes').value);
-    const length = parseFloat(document.getElementById('wp-length').value);
-    const width = parseFloat(document.getElementById('wp-width').value);
+    // Get waypoint parameters from mission control inputs (validated)
+    const lanes = readInput('wp-lanes', 10);
+    const length = readInput('wp-length', 15.0);
+    const width = readInput('wp-width', 30.0);
     
     // Update hidden config fields for compatibility
     document.getElementById('cfg-lanes').value = lanes;
