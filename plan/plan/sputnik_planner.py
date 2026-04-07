@@ -369,7 +369,6 @@ class SputnikPlanner(Node):
             
     def mission_command_callback(self, msg):
         """Handle mission commands from CLI/dashboard"""
-        import json
         try:
             cmd = json.loads(msg.data)
             command = cmd.get('command', '')
@@ -523,7 +522,6 @@ class SputnikPlanner(Node):
     
     def obstacle_callback(self, msg):
         """Track obstacle detection for waypoint skip logic"""
-        import json
         try:
             data = json.loads(msg.data)
             self.obstacle_detected = data.get('obstacle_detected', False)
@@ -541,7 +539,6 @@ class SputnikPlanner(Node):
     
     def detour_request_callback(self, msg):
         """Handle detour waypoint request from BURAN controller"""
-        import json
         try:
             data = json.loads(msg.data)
             # Support both 'x'/'y' and 'detour_x'/'detour_y' keys
@@ -559,7 +556,6 @@ class SputnikPlanner(Node):
 
     def replan_request_callback(self, msg):
         """Handle replan request from BURAN controller when path is blocked"""
-        import json
         try:
             data = json.loads(msg.data)
             reason = data.get('reason', 'unknown')
@@ -576,7 +572,6 @@ class SputnikPlanner(Node):
 
     def skip_waypoint_callback(self, msg):
         """Handle skip waypoint request from BURAN controller after multiple stuck attempts"""
-        import json
         try:
             data = json.loads(msg.data)
             reason = data.get('reason', 'stuck_multiple_times')
@@ -597,7 +592,6 @@ class SputnikPlanner(Node):
 
     def config_callback(self, msg):
         """Handle runtime configuration changes"""
-        import json
         try:
             config = json.loads(msg.data)
             regenerate = False
@@ -658,7 +652,6 @@ class SputnikPlanner(Node):
             
     def publish_config(self):
         """Publish current configuration"""
-        import json
         config = {
             'lanes': self.lanes,
             'scan_length': self.scan_length,
