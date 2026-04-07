@@ -961,6 +961,8 @@ class SputnikPlanner(Node):
         in_obstacle_cluster = dist < 8.0 and self.obstacle_detected
         
         if timeout_exceeded or in_obstacle_cluster:
+            if self.current_wp_index >= len(self.waypoints):
+                return  # Already past last waypoint
             wp_num = self.current_wp_index + 1
             total_wp = len(self.waypoints)
             target_x, target_y = self.waypoints[self.current_wp_index]
@@ -987,7 +989,6 @@ class SputnikPlanner(Node):
 
     def insert_detour_waypoint(self, curr_x, curr_y):
         """Insert a detour waypoint perpendicular to current heading"""
-        import math
         
         # Get current heading from GPS velocity or use direction to waypoint
         if self.current_wp_index < len(self.waypoints):

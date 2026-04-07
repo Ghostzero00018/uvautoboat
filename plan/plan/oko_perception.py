@@ -926,10 +926,10 @@ class OkoPerception(Node):
         # Convert numpy types to Python native types for JSON serialization
         obstacle_info = {
             'obstacle_detected': bool(self.obstacle_detected),
-            'min_distance': float(round(self.min_obstacle_distance, 2)),
-            'front_clear': float(round(self.front_clear, 2)),
-            'left_clear': float(round(self.left_clear, 2)),
-            'right_clear': float(round(self.right_clear, 2)),
+            'min_distance': float(round(self.min_obstacle_distance, 2)) if math.isfinite(self.min_obstacle_distance) else 999.9,
+            'front_clear': float(round(self.front_clear, 2)) if math.isfinite(self.front_clear) else 999.9,
+            'left_clear': float(round(self.left_clear, 2)) if math.isfinite(self.left_clear) else 999.9,
+            'right_clear': float(round(self.right_clear, 2)) if math.isfinite(self.right_clear) else 999.9,
             'is_critical': bool(self.min_obstacle_distance < self.critical_distance),
             # BURAN-compatible fields
             'urgency': float(round(self.overall_urgency, 3)),
