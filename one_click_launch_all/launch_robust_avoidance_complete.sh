@@ -338,6 +338,8 @@ source \"$INSTALL_DIR/setup.bash\"
 echo 'Starting RViz...'
 sleep 3
 cd \"$WS_ROOT\"
+# NOTE: rviz.launch.py only exists in vrx_gazebo (legacy package), not in vrx_gz.
+# vrx_gz is used for Gazebo Harmonic simulation; vrx_gazebo provides the RViz config.
 ros2 launch vrx_gazebo rviz.launch.py
 " &
     RVIZ_PID=$!
