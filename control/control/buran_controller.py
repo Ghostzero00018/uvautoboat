@@ -149,16 +149,16 @@ class BuranController(Node):
         # Speed parameters
         self.declare_parameter('base_speed', 400.0)
         self.declare_parameter('max_speed', 800.0)
-        self.declare_parameter('obstacle_slow_factor', 0.3)
+        self.declare_parameter('obstacle_slow_factor', 0.5)
         # Approach slowdown near waypoint
         self.declare_parameter('approach_slow_distance', 10.0)
         self.declare_parameter('approach_slow_factor', 0.7)
         # Smoothness controls
         self.declare_parameter('slew_rate_limit', 80.0)       # Max thrust change per cycle (N)
-        self.declare_parameter('turn_deadband_deg', 2.0)      # Ignore tiny heading errors
+        self.declare_parameter('turn_deadband_deg', 0.5)      # Ignore tiny heading errors
 
         # Obstacle avoidance
-        self.declare_parameter('critical_distance', 5.0)
+        self.declare_parameter('critical_distance', 6.0)
         self.declare_parameter('min_safe_distance', 12.0)
         self.declare_parameter('reverse_timeout', 3.0)  # Shorter default reverse timeout
         self.declare_parameter('max_reverse_distance', 25.0)  # Max meters to reverse during escape
