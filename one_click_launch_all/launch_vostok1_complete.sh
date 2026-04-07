@@ -259,7 +259,7 @@ sleep 4
 print_status "Launching Gazebo (Sydney Regatta - $WORLD)..."
 gnome-terminal --wait --tab --title="gazebo" -- bash -i -c "
 source \"$INSTALL_DIR/setup.bash\"
-echo 'Starting Gazebo with world: $WORLD'
+echo \"Starting Gazebo with world: $WORLD\"
 echo 'Note: GPS may take 10-30 seconds to initialize'
 ros2 launch vrx_gz competition.launch.py world:=$WORLD
 " &

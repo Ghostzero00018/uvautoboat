@@ -110,7 +110,13 @@ function updateWorldBanner(name, hasSmoke) {
     const banner = document.getElementById('world-banner-text');
     if (!banner) return;
     const smokeText = hasSmoke ? 'with smoke sources detected' : 'no smoke sources detected';
-    banner.innerHTML = `Currently loaded world is <b><i>${name || 'unknown'}</i></b> - ${smokeText}`;
+    banner.textContent = 'Currently loaded world is ';
+    const nameEl = document.createElement('b');
+    const italicEl = document.createElement('i');
+    italicEl.textContent = name || 'unknown';
+    nameEl.appendChild(italicEl);
+    banner.appendChild(nameEl);
+    banner.appendChild(document.createTextNode(` - ${smokeText}`));
 }
 
 
