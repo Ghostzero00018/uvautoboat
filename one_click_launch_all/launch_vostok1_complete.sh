@@ -22,6 +22,20 @@
 #   - BURAN Controller (PID control with obstacle avoidance)
 #   - Web Video Server (camera stream for dashboard)
 #   - Web Dashboard (real-time monitoring interface)
+#
+# Launch sequence and files called:
+#   T1  Gazebo         ros2 launch vrx_gz competition.launch.py world:=$WORLD
+#   T2  ROS Bridge     ros2 launch rosbridge_server rosbridge_websocket_launch.xml  :9090
+#   T3  Nav Stack      ros2 launch launch/vostok1.launch.yaml                       (OKO+SPUTNIK+BURAN)
+#                        → plan/plan/oko_perception.py
+#                        → plan/plan/sputnik_planner.py
+#                        → control/control/buran_controller.py
+#                        → passes test_environment/${WORLD}.sdf to SPUTNIK for pollutant scanning
+#   T4  Video Server   ros2 run web_video_server web_video_server                   :8080
+#   T5  RViz           ros2 launch vrx_gazebo rviz.launch.py                        (optional)
+#   T6  Dashboard      python3 -m http.server 8002                                  :8002
+#                        → serves web_dashboard/vostok1/ (index.html, app.js, style_merged.css)
+#
 # Default options
 # ----------------------------------------------------------------------------
 # Author: IMT Nord Europe UVAutoBoat Team
