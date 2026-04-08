@@ -2,6 +2,10 @@
 """
 Buran Controller - Motion Control System
 
+Module: BURAN (Control)  —  named after the Soviet space shuttle, executing the maneuvers
+Role:   PID heading control, thruster output, and obstacle avoidance maneuvers.
+See also: OKO (Perception) and SPUTNIK (Planning)
+
 Part of the modular Vostok1 architecture.
 Subscribes to planner targets and perception data, outputs thruster commands.
 

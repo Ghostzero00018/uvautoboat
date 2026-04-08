@@ -2,6 +2,11 @@
 # PROJET-17 — Vostok1 Modular Navigation System
 # ============================================================================
 #
+# Module naming convention (Russian space program theme):
+#   OKO     = Perception  — "eye": LiDAR obstacle detection
+#   SPUTNIK = Planning    — "satellite": waypoint generation & mission management
+#   BURAN   = Control     — "snowstorm/shuttle": PID steering & obstacle avoidance
+#
 # Launches the modular Vostok1-based navigation system:
 #   - oko_perception (OKO) - 3D LIDAR obstacle detection
 #   - sputnik_planner (SPUTNIK) - GPS waypoint planning

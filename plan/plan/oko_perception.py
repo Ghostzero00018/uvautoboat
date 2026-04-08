@@ -2,6 +2,10 @@
 """
 OKO Perception - 3D LiDAR Point Cloud Processing (Enhanced v2.0)
 
+Module: OKO (Perception)  —  named after the Russian word for "eye"
+Role:   Processes 3D LiDAR point clouds and publishes obstacle information.
+See also: SPUTNIK (Planning) and BURAN (Control)
+
 Part of the modular Vostok1 architecture.
 Subscribes to 3D LiDAR data, processes point cloud, publishes obstacle information.
 

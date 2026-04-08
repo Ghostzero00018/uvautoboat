@@ -2,6 +2,10 @@
 """
 Sputnik Planner - GPS Waypoint Navigation Planning
 
+Module: SPUTNIK (Planning)  —  named after the first satellite, guiding the path
+Role:   Generates waypoints, manages mission state, and publishes navigation targets.
+See also: OKO (Perception) and BURAN (Control)
+
 Part of the modular Vostok1 architecture.
 Generates lawnmower pattern waypoints, publishes navigation path.
 

@@ -9,6 +9,11 @@
 #     - Vostok1 dashboard:        http://localhost:8002
 #     This prevents port conflicts when switching between systems.
 #
+# Module naming convention (Russian space program theme):
+#   OKO     = Perception  — "eye": LiDAR obstacle detection
+#   SPUTNIK = Planning    — "satellite": waypoint generation & mission management
+#   BURAN   = Control     — "snowstorm/shuttle": PID steering & obstacle avoidance
+#
 # This script launches the complete Vostok1 autonomous navigation system:
 #   - VRX Gazebo Simulation (Sydney Regatta World)
 #   - ROS Bridge (WebSocket bridge for web dashboard)

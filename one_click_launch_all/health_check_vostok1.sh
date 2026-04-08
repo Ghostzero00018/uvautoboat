@@ -5,6 +5,11 @@
 # Run this from another terminal while the simulation is running.
 # It checks nodes, topics, parameters, publish rates, and services.
 #
+# Module naming convention (Russian space program theme):
+#   OKO     = Perception  — "eye": LiDAR obstacle detection
+#   SPUTNIK = Planning    — "satellite": waypoint generation & mission management
+#   BURAN   = Control     — "snowstorm/shuttle": PID steering & obstacle avoidance
+#
 # Usage:
 #   bash health_check_vostok1.sh          # Full check
 #   bash health_check_vostok1.sh --quick  # Nodes + topics only
