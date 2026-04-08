@@ -36,17 +36,16 @@
 #   T6  Dashboard      python3 -m http.server 8002                                  :8002
 #                        → serves web_dashboard/vostok1/ (index.html, app.js, style_merged.css)
 #
-# Default options
 # ----------------------------------------------------------------------------
 # Author: IMT Nord Europe UVAutoBoat Team
 #
 # Usage:
-#   chmod +x launch_vostok1_complete.sh
-#   ./launch_vostok1_complete.sh [OPTIONS]
+#   cd <workspace>/src/uvautoboat/one_click_launch_all
+#   bash launch_vostok1_complete.sh [OPTIONS]
 #
 # Options:
 #   --world <world_name>       Gazebo world (default: sydney_regatta_smoke)
-#   For example: ./launch_vostok1_complete.sh --world sydney_regatta_DEFAULT
+#   For example: bash launch_vostok1_complete.sh --world sydney_regatta_DEFAULT
 #
 #   --skip-rviz                Skip RViz launch (default: launch RViz)
 #   --skip-dashboard           Skip web dashboard (default: launch dashboard)

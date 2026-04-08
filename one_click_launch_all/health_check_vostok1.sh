@@ -3,7 +3,7 @@
 # Vostok1 System Health Check
 # ============================================================================
 # Run this from another terminal while the simulation is running.
-# It checks nodes, topics, parameters, publish rates, and services.
+# It checks nodes, topics, publisher counts, parameter values, and port connectivity.
 #
 # Module naming convention (Russian space program theme):
 #   OKO     = Perception  — "eye": LiDAR obstacle detection
@@ -11,7 +11,8 @@
 #   BURAN   = Control     — "snowstorm/shuttle": PID steering & obstacle avoidance
 #
 # Usage:
-#   bash health_check_vostok1.sh          # Full check
+#   cd <workspace>/src/uvautoboat/one_click_launch_all
+#   bash health_check_vostok1.sh          # Full check (44 checks, ~10s)
 #   bash health_check_vostok1.sh --quick  # Nodes + topics only
 # ============================================================================
 
