@@ -517,7 +517,7 @@
                                 Base:
                                 <span class="info-tooltip" title="Normal cruising speed (thrust units) | Vitesse de croisière normale">ℹ️</span>
                             </label>
-                            <input type="number" id="cfg-base-speed" min="100" max="2000" step="50" value="500" data-default="500">
+                            <input type="number" id="cfg-base-speed" min="100" max="2000" step="50" value="400" data-default="400">
                             <span class="value-display"></span>
                         </div>
                         <div class="config-item">
@@ -533,7 +533,7 @@
                                 Safe Dist. (m):
                                 <span class="info-tooltip" title="Minimum safe distance from obstacles. Boat slows down within this range | Distance minimale des obstacles">ℹ️</span>
                             </label>
-                            <input type="number" id="cfg-safe-dist" min="5" max="50" step="1" value="15" data-default="15">
+                            <input type="number" id="cfg-safe-dist" min="5" max="50" step="1" value="12" data-default="12">
                             <span class="value-display"></span>
                         </div>
                     </div>
@@ -652,12 +652,12 @@
                                     <h4>Detection Thresholds | Seuils Détection</h4>
                                     <div class="param-item">
                                         <label for="oko-safe-dist">Safe Distance (m):</label>
-                                        <input type="number" id="oko-safe-dist" step="0.5" value="11.0">
+                                        <input type="number" id="oko-safe-dist" step="0.5" value="10.0">
                                         <span class="param-hint">Start slowing</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="oko-critical-dist">Critical Distance (m):</label>
-                                        <input type="number" id="oko-critical-dist" step="0.1" value="3.5">
+                                        <input type="number" id="oko-critical-dist" step="0.1" value="5.5">
                                         <span class="param-hint">Emergency threshold</span>
                                     </div>
                                 </div>
@@ -771,12 +771,12 @@
                                     <h4>Distance Thresholds | Seuils Distance</h4>
                                     <div class="param-item">
                                         <label for="buran-critical-dist">Critical Distance (m):</label>
-                                        <input type="number" id="buran-critical-dist" step="0.1" value="3.5">
+                                        <input type="number" id="buran-critical-dist" step="0.1" value="6.0">
                                         <span class="param-hint">Panic/reverse</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="buran-safe-dist">Safe Distance (m):</label>
-                                        <input type="number" id="buran-safe-dist" step="0.5" value="11.0">
+                                        <input type="number" id="buran-safe-dist" step="0.5" value="12.0">
                                         <span class="param-hint">Start slowing</span>
                                     </div>
                                     <div class="param-item">
@@ -804,7 +804,7 @@
                                     <h4>Steering | Direction</h4>
                                     <div class="param-item">
                                         <label for="buran-avoid-gain">Avoid Diff Gain:</label>
-                                        <input type="number" id="buran-avoid-gain" step="5" min="10" max="100" value="35">
+                                        <input type="number" id="buran-avoid-gain" step="5" min="10" max="100" value="18">
                                         <span class="param-hint">Steering aggressiveness</span>
                                     </div>
                                     <div class="param-item">
@@ -817,7 +817,7 @@
                                     </div>
                                     <div class="param-item">
                                         <label for="buran-max-turn">Max Turn Angle (°):</label>
-                                        <input type="number" id="buran-max-turn" step="5" min="10" max="60" value="20">
+                                        <input type="number" id="buran-max-turn" step="5" min="10" max="90" value="45">
                                         <span class="param-hint">Avoidance turn limit</span>
                                     </div>
                                 </div>
@@ -844,7 +844,7 @@
                                     <h4>Critical Obstacle | Obstacle Critique</h4>
                                     <div class="param-item">
                                         <label for="buran-reverse-timeout">Reverse Timeout (s):</label>
-                                        <input type="number" id="buran-reverse-timeout" step="0.5" value="2.5">
+                                        <input type="number" id="buran-reverse-timeout" step="0.5" value="4.0">
                                         <span class="param-hint">Reverse duration</span>
                                     </div>
                                     <div class="param-item">
@@ -858,7 +858,7 @@
                                     <h4>Turn Behavior | Comportement Virage</h4>
                                     <div class="param-item">
                                         <label for="buran-turn-deadband">Turn Deadband (deg):</label>
-                                        <input type="number" id="buran-turn-deadband" step="0.5" value="1.5">
+                                        <input type="number" id="buran-turn-deadband" step="0.5" value="0.5">
                                         <span class="param-hint">Precision threshold</span>
                                     </div>
                                     <div class="param-item">
