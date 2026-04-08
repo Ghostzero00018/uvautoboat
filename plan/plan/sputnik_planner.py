@@ -264,6 +264,7 @@ class SputnikPlanner(Node):
         self.detour_distance = 14.0  # Lateral distance for detour waypoints
         self.detour_forward_offset = 10.0  # Forward offset when inserting side detour
         self.detour_start_time = None
+        self.min_obstacle_distance_for_skip = 15.0  # Skip waypoints within this distance of obstacles
         self.pollutant_sources = []  # {name, world:[x,y,z], local:[x,y]}
         self.detected_pollutants = set()  # Track which pollutants have been detected
         self.pollutant_detection_distance = 25.0  # Detection radius in meters (smoke plumes)
@@ -1000,7 +1001,41 @@ class SputnikPlanner(Node):
                 f"(target: ({target_x:.1f}, {target_y:.1f}))"
             )
             self.blocked_reason = "skipped_" + reason
-            self.advance_to_next_waypoint()
+            self.skip_blocked_waypoints(curr_x, curr_y)
+
+    def skip_blocked_waypoints(self, curr_x, curr_y):
+        """Skip current waypoint and any subsequent waypoints near known obstacles.
+        Handles long linear obstacles (e.g. piers) by skipping the entire blocked
+        stretch instead of trying each waypoint individually."""
+        skipped = 0
+        while self.current_wp_index < len(self.waypoints):
+            wx, wy = self.waypoints[self.current_wp_index]
+            # Check if this waypoint is near any known obstacle cluster
+            near_obstacle = False
+            for ox, oy in self.obstacle_clusters:
+                if math.hypot(wx - ox, wy - oy) < self.min_obstacle_distance_for_skip:
+                    near_obstacle = True
+                    break
+            # Also check if waypoint is close to current blocked position
+            if not near_obstacle and skipped > 0:
+                # Stop skipping — this waypoint is likely past the obstacle
+                break
+            self.current_wp_index += 1
+            skipped += 1
+
+        # Reset tracking for the new waypoint
+        self.waypoint_start_time = None
+        self.obstacle_blocking_time = 0.0
+        self.blocked_reason = ""
+        self.last_obstacle_check = None
+        self.detour_waypoint_inserted = False
+        self.detour_count = 0
+        self.last_detour_time = 0.0
+
+        if skipped > 1:
+            self.get_logger().warn(
+                f"⏭️ Burst-skipped {skipped} waypoints (long obstacle detected)"
+            )
 
     def _is_detour_clear(self, detour_x, detour_y, min_clearance=8.0):
         """Check if proposed detour point is far enough from known obstacles."""
@@ -1017,9 +1052,9 @@ class SputnikPlanner(Node):
             return  # Cooldown active
         if self.detour_count >= self.max_detours_per_waypoint:
             self.get_logger().warn(
-                f"Detour cap reached ({self.detour_count}/{self.max_detours_per_waypoint}) — skipping waypoint"
+                f"Detour cap reached ({self.detour_count}/{self.max_detours_per_waypoint}) — burst-skipping blocked waypoints"
             )
-            self.advance_to_next_waypoint()
+            self.skip_blocked_waypoints(curr_x, curr_y)
             return
 
         # Get current heading from GPS velocity or use direction to waypoint
@@ -1044,8 +1079,8 @@ class SputnikPlanner(Node):
             detour_x = curr_x + self.detour_distance * math.cos(detour_angle)
             detour_y = curr_y + self.detour_distance * math.sin(detour_angle)
             if not self._is_detour_clear(detour_x, detour_y):
-                self.get_logger().warn("Both detour sides obstructed — skipping waypoint")
-                self.advance_to_next_waypoint()
+                self.get_logger().warn("Both detour sides obstructed — burst-skipping blocked waypoints")
+                self.skip_blocked_waypoints(curr_x, curr_y)
                 return
 
         # Insert detour waypoint before current target
@@ -1071,9 +1106,9 @@ class SputnikPlanner(Node):
             return  # Cooldown active
         if self.detour_count >= self.max_detours_per_waypoint:
             self.get_logger().warn(
-                f"Detour cap reached ({self.detour_count}/{self.max_detours_per_waypoint}) — skipping waypoint"
+                f"Detour cap reached ({self.detour_count}/{self.max_detours_per_waypoint}) — burst-skipping blocked waypoints"
             )
-            self.advance_to_next_waypoint()
+            self.skip_blocked_waypoints(curr_x, curr_y)
             return
 
         lateral = self.detour_distance
@@ -1090,8 +1125,8 @@ class SputnikPlanner(Node):
             detour_x = curr_x + lateral * math.cos(angle) + forward * math.cos(heading)
             detour_y = curr_y + lateral * math.sin(angle) + forward * math.sin(heading)
             if not self._is_detour_clear(detour_x, detour_y):
-                self.get_logger().warn("Both side detour directions obstructed — skipping waypoint")
-                self.advance_to_next_waypoint()
+                self.get_logger().warn("Both side detour directions obstructed — burst-skipping blocked waypoints")
+                self.skip_blocked_waypoints(curr_x, curr_y)
                 return
             side = opp_side
 
