@@ -229,7 +229,7 @@ launch:
     - name: use_vfh_bias
       value: false        # Disable VFH/polar steering bias by default
     - name: max_avoidance_turn_deg
-      value: 20.0         # Maximum obstacle avoidance turn angle (degrees)
+      value: 45.0         # Maximum obstacle avoidance turn angle (degrees)
 
 # ============================================================================
 # Waypoint Visualizer - RViz Visualization (Optional but Recommended)

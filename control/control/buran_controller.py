@@ -164,12 +164,12 @@ class BuranController(Node):
         # Obstacle avoidance
         self.declare_parameter('critical_distance', 6.0)
         self.declare_parameter('min_safe_distance', 12.0)
-        self.declare_parameter('reverse_timeout', 3.0)  # Shorter default reverse timeout
+        self.declare_parameter('reverse_timeout', 4.0)  # Reverse timeout (synced to YAML)
         self.declare_parameter('max_reverse_distance', 25.0)  # Max meters to reverse during escape
         # Softer avoidance steering to avoid sharp pivots
-        self.declare_parameter('avoid_diff_gain', 25.0)  # VFH/polar differential steering gain (reduced from 40)
+        self.declare_parameter('avoid_diff_gain', 18.0)  # VFH/polar differential steering gain (synced to YAML)
         self.declare_parameter('use_vfh_bias', False)    # Enable/disable VFH/polar steering bias
-        self.declare_parameter('max_avoidance_turn_deg', 20.0)  # Maximum turn angle during obstacle avoidance (degrees)
+        self.declare_parameter('max_avoidance_turn_deg', 45.0)  # Maximum turn angle during obstacle avoidance (degrees)
 
         # Simple anti-stuck parameters
         self.declare_parameter('stuck_timeout', 3.0)
@@ -327,9 +327,6 @@ class BuranController(Node):
         self.pub_right = self.create_publisher(Float64, '/wamv/thrusters/right/thrust', 10)
         self.pub_status = self.create_publisher(String, '/control/status', 10)
         self.pub_anti_stuck = self.create_publisher(String, '/control/anti_stuck_status', 10)
-        
-        # Request detour waypoint publisher
-        self.pub_detour_request = self.create_publisher(String, '/planning/detour_request', 10)
         
         # Request replan from planner (when path is blocked)
         self.pub_replan_request = self.create_publisher(String, '/control/replan_request', 10)
@@ -950,14 +947,13 @@ class BuranController(Node):
             self.stuck_check_time = self.get_clock().now()
     
     def execute_smart_escape(self):
-        """Simple escape: turn left until path is clear, then resume navigation"""
+        """Escape: turn toward clearer side until path is clear, then resume navigation"""
         # SAFETY: Abort escape immediately if mission is no longer active
         if not self.mission_active:
             self._reset_all_escape_state()
             self.stop()
             return
 
-        # Simple strategy: Turn left until front is clear
         if self.front_clear > self.min_safe_distance:
             # Path is clear - exit escape mode
             self.get_logger().info("✅ Path clear - escape complete")
@@ -968,11 +964,17 @@ class BuranController(Node):
             self.last_position = (self.current_x, self.current_y)
             self.stuck_check_time = self.get_clock().now()
         else:
-            # Keep turning left until clear
+            # Turn toward clearer side
             turn_power = 450.0
-            self.send_thrust(-turn_power, turn_power)
+            if self.right_clear > self.left_clear:
+                self.send_thrust(turn_power, -turn_power)
+                direction = "RIGHT"
+            else:
+                self.send_thrust(-turn_power, turn_power)
+                direction = "LEFT"
             self.get_logger().info(
-                f"🔄 Turning left (front: {self.front_clear:.1f}m)",
+                f"🔄 Escape turning {direction} "
+                f"(front: {self.front_clear:.1f}m L: {self.left_clear:.1f}m R: {self.right_clear:.1f}m)",
                 throttle_duration_sec=1.0
             )
     
@@ -1003,23 +1005,6 @@ class BuranController(Node):
         # Update legacy tuple for backward compatibility
         self.drift_vector = self.drift_kalman.get_drift()
     
-    def calculate_drift_compensation(self):
-        """Calculate thrust compensation for drift"""
-        drift_magnitude = math.hypot(self.drift_vector[0], self.drift_vector[1])
-        
-        if drift_magnitude < 0.1:
-            return 0.0, 0.0
-        
-        drift_angle = math.atan2(self.drift_vector[1], self.drift_vector[0])
-        relative_drift = self.normalize_angle(drift_angle - self.current_yaw)
-        
-        compensation = min(150.0, drift_magnitude * self.drift_compensation_gain * 100.0)
-        
-        if relative_drift > 0:
-            return compensation, -compensation
-        else:
-            return -compensation, compensation
-    
     def request_waypoint_skip(self):
         """Request planner to skip current waypoint after too many stuck attempts"""
         msg = String()
@@ -1030,6 +1015,17 @@ class BuranController(Node):
         })
         self.pub_skip_request.publish(msg)
         self.get_logger().warn(f"⏭️ Waypoint skip requested after {self.consecutive_stuck_count} stuck attempts")
+
+    def request_replan(self, reason="unknown"):
+        """Request planner to replan path via A* when current path is blocked"""
+        msg = String()
+        msg.data = json.dumps({
+            'type': 'replan',
+            'current_position': [round(self.current_x, 2), round(self.current_y, 2)],
+            'reason': reason
+        })
+        self.pub_replan_request.publish(msg)
+        self.get_logger().warn(f"Replan requested: {reason}")
 
     def publish_anti_stuck_status(self):
         """Publish anti-stuck system status for dashboard"""

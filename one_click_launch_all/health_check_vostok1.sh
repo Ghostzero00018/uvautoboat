@@ -174,6 +174,7 @@ check_param "/buran_controller_node" "obstacle_slow_factor" "0.5"
 check_param "/buran_controller_node" "turn_deadband_deg" "0.5"
 check_param "/buran_controller_node" "critical_distance" "6.0"
 check_param "/buran_controller_node" "min_safe_distance" "12.0"
+check_param "/buran_controller_node" "max_avoidance_turn_deg" "45.0"
 
 section "Parameter Check (SPUTNIK)"
 

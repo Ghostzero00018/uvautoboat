@@ -257,6 +257,10 @@ class SputnikPlanner(Node):
         self.go_home_mode = False  # Track if we're in return-home mode
         self.home_detour_timeout = 15.0  # Insert detour after this many seconds in home mode
         self.detour_waypoint_inserted = False
+        self.detour_count = 0  # Detours inserted for current original waypoint
+        self.max_detours_per_waypoint = 3  # Cap: after this many, skip the waypoint
+        self.detour_cooldown = 5.0  # Minimum seconds between detour insertions
+        self.last_detour_time = 0.0  # Timestamp of last detour insertion
         self.detour_distance = 14.0  # Lateral distance for detour waypoints
         self.detour_forward_offset = 10.0  # Forward offset when inserting side detour
         self.detour_start_time = None
@@ -402,11 +406,13 @@ class SputnikPlanner(Node):
                         # CRITICAL: Reset all home-mode and finish-related state when restarting from FINISHED
                         self.go_home_mode = False  # Clear home mode flag
                         self.detour_waypoint_inserted = False
+                        self.detour_count = 0
                     self.state = "DRIVING"
                     self.mission_armed = True
                     self.mission_start_time = self.get_clock().now()
                     self.obstacle_blocking_time = 0.0
                     self.detour_waypoint_inserted = False
+                    self.detour_count = 0
                     self.get_logger().info("🚀 MISSION STARTED!")
                     # Force immediate publishes so BURAN responds instantly
                     self.publish_mission_status_timer()
@@ -433,6 +439,7 @@ class SputnikPlanner(Node):
                     # Reset obstacle blocking time for fresh start
                     self.obstacle_blocking_time = 0.0
                     self.detour_waypoint_inserted = False
+                    self.detour_count = 0
                     self.get_logger().info(f"▶️ MISSION RESUMED from {self.state}")
                     # Force immediate status publish so BURAN resets and starts
                     self.publish_mission_status_timer()
@@ -510,6 +517,7 @@ class SputnikPlanner(Node):
                     self.go_home_mode = True  # Enable home mode for smarter obstacle handling
                     self.obstacle_blocking_time = 0.0
                     self.detour_waypoint_inserted = False
+                    self.detour_count = 0
                     self.get_logger().info(f"   Destination: {self.start_gps[0]:.6f}, {self.start_gps[1]:.6f}")
                     self.get_logger().info(f"   Position locale: ({home_x:.1f}m, {home_y:.1f}m)")
                     # Publish updated waypoints
@@ -536,8 +544,9 @@ class SputnikPlanner(Node):
             # Capture clusters for A* detours
             clusters = data.get('clusters', [])
             self.obstacle_clusters = [(c.get('x', 0.0), c.get('y', 0.0)) for c in clusters if 'x' in c and 'y' in c]
-            if not self.obstacle_detected:
-                self.detour_waypoint_inserted = False  # allow new detour once clear
+            # Note: detour_waypoint_inserted is only reset on waypoint reach,
+            # advance, or detour timeout — NOT on momentary obstacle clears,
+            # which caused a feedback loop inserting 300+ detour waypoints.
         except Exception:
             pass
     
@@ -905,6 +914,8 @@ class SputnikPlanner(Node):
         self.blocked_reason = ""
         self.last_obstacle_check = None
         self.detour_waypoint_inserted = False  # Reset for next waypoint
+        self.detour_count = 0
+        self.last_detour_time = 0.0
 
     def check_waypoint_skip(self, curr_x, curr_y, dist):
         """
@@ -991,27 +1002,62 @@ class SputnikPlanner(Node):
             self.blocked_reason = "skipped_" + reason
             self.advance_to_next_waypoint()
 
+    def _is_detour_clear(self, detour_x, detour_y, min_clearance=8.0):
+        """Check if proposed detour point is far enough from known obstacles."""
+        for ox, oy in self.obstacle_clusters:
+            if math.hypot(detour_x - ox, detour_y - oy) < min_clearance:
+                return False
+        return True
+
     def insert_detour_waypoint(self, curr_x, curr_y):
         """Insert a detour waypoint perpendicular to current heading"""
-        
+        import time
+        now = time.time()
+        if now - self.last_detour_time < self.detour_cooldown:
+            return  # Cooldown active
+        if self.detour_count >= self.max_detours_per_waypoint:
+            self.get_logger().warn(
+                f"Detour cap reached ({self.detour_count}/{self.max_detours_per_waypoint}) — skipping waypoint"
+            )
+            self.advance_to_next_waypoint()
+            return
+
         # Get current heading from GPS velocity or use direction to waypoint
         if self.current_wp_index < len(self.waypoints):
             target_x, target_y = self.waypoints[self.current_wp_index]
             heading = math.atan2(target_y - curr_y, target_x - curr_x)
         else:
             heading = 0.0
-        
-        # Try left first (perpendicular)
-        detour_angle = heading + math.pi / 2
+
+        # Choose clearer side based on OKO data
+        if self.left_clear >= self.right_clear:
+            detour_angle = heading + math.pi / 2  # Left
+        else:
+            detour_angle = heading - math.pi / 2  # Right
         detour_x = curr_x + self.detour_distance * math.cos(detour_angle)
         detour_y = curr_y + self.detour_distance * math.sin(detour_angle)
-        
+
+        # Validate detour point is not obstructed
+        if not self._is_detour_clear(detour_x, detour_y):
+            # Try opposite side
+            detour_angle = heading - math.pi / 2 if self.left_clear >= self.right_clear else heading + math.pi / 2
+            detour_x = curr_x + self.detour_distance * math.cos(detour_angle)
+            detour_y = curr_y + self.detour_distance * math.sin(detour_angle)
+            if not self._is_detour_clear(detour_x, detour_y):
+                self.get_logger().warn("Both detour sides obstructed — skipping waypoint")
+                self.advance_to_next_waypoint()
+                return
+
         # Insert detour waypoint before current target
         self.waypoints.insert(self.current_wp_index, (detour_x, detour_y))
         self.detour_waypoint_inserted = True
-        
+        self.detour_count += 1
+        self.last_detour_time = now
+        self.detour_start_time = self.get_clock().now()
+
         self.get_logger().warn(
-            f"DETOUR! Inserting detour waypoint at ({detour_x:.1f}, {detour_y:.1f})"
+            f"DETOUR {self.detour_count}/{self.max_detours_per_waypoint}! "
+            f"Inserting at ({detour_x:.1f}, {detour_y:.1f})"
         )
         
         # Publish updated waypoints
@@ -1019,17 +1065,44 @@ class SputnikPlanner(Node):
 
     def insert_side_detour(self, curr_x, curr_y, heading, side='left'):
         """Insert a perpendicular + forward detour based on obstacle side."""
-        import math
+        import time
+        now = time.time()
+        if now - self.last_detour_time < self.detour_cooldown:
+            return  # Cooldown active
+        if self.detour_count >= self.max_detours_per_waypoint:
+            self.get_logger().warn(
+                f"Detour cap reached ({self.detour_count}/{self.max_detours_per_waypoint}) — skipping waypoint"
+            )
+            self.advance_to_next_waypoint()
+            return
+
         lateral = self.detour_distance
         forward = self.detour_forward_offset
         angle = heading + (math.pi / 2 if side == 'left' else -math.pi / 2)
         detour_x = curr_x + lateral * math.cos(angle) + forward * math.cos(heading)
         detour_y = curr_y + lateral * math.sin(angle) + forward * math.sin(heading)
+
+        # Validate detour point is not obstructed
+        if not self._is_detour_clear(detour_x, detour_y):
+            # Try opposite side
+            opp_side = 'right' if side == 'left' else 'left'
+            angle = heading + (math.pi / 2 if opp_side == 'left' else -math.pi / 2)
+            detour_x = curr_x + lateral * math.cos(angle) + forward * math.cos(heading)
+            detour_y = curr_y + lateral * math.sin(angle) + forward * math.sin(heading)
+            if not self._is_detour_clear(detour_x, detour_y):
+                self.get_logger().warn("Both side detour directions obstructed — skipping waypoint")
+                self.advance_to_next_waypoint()
+                return
+            side = opp_side
+
         self.waypoints.insert(self.current_wp_index, (detour_x, detour_y))
         self.detour_waypoint_inserted = True
+        self.detour_count += 1
+        self.last_detour_time = now
         self.detour_start_time = self.get_clock().now()
         self.get_logger().warn(
-            f"📍 Side detour ({side.upper()}): ({detour_x:.1f}, {detour_y:.1f}) | "
+            f"📍 Side detour {self.detour_count}/{self.max_detours_per_waypoint} ({side.upper()}): "
+            f"({detour_x:.1f}, {detour_y:.1f}) | "
             f"Front={self.front_clear:.1f}m L={self.left_clear:.1f}m R={self.right_clear:.1f}m"
         )
         self.publish_waypoints()
