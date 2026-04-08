@@ -42,15 +42,15 @@ setup(
     ],
     entry_points={
         'console_scripts': [
-            # Modular BURAN Controller
+            # === Core Vostok1 node (launched by vostok1.launch.yaml) ===
             'buran_controller = control.buran_controller:main',
-            'buran_controller_fixed = control.buran_controller_fixed:main',
 
-            # Helper for Obstacle Avoidance (if run standalone)
-            'lidar_obstacle_avoidance = control.lidar_obstacle_avoidance:main',
+            # === Standalone utilities (not in launch file, run manually) ===
+            'lidar_obstacle_avoidance = control.lidar_obstacle_avoidance:main',  # Standalone LiDAR avoidance
+            'keyboard_teleop = control.keyboard_teleop:main',      # Manual thruster control for testing
 
-            # Other Controllers & Utilities
-            'keyboard_teleop = control.keyboard_teleop:main',
+            # === Testing / debug variants ===
+            'buran_controller_fixed = control.buran_controller_fixed:main',  # BURAN with debug fixes
         ],
     },
 )

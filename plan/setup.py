@@ -45,24 +45,24 @@ setup(
     ],
     entry_points={
         'console_scripts': [
-            # Modular Vostok1 (OKO + SPUTNIK + BURAN)
-            'vostok1_cli = plan.vostok1_cli:main',
+            # === Core Vostok1 nodes (launched by vostok1.launch.yaml) ===
             'sputnik_planner = plan.sputnik_planner:main',
             'oko_perception = plan.oko_perception:main',
-
-            # Perception & Utilities
-            'mission_trigger = plan.mission_trigger:main',
             'waypoint_visualizer = plan.waypoint_visualizer:main',
-            'tf_broadcaster = plan.tf_broadcaster:main',
-            'tf_broadcaster_gazebo = plan.tf_broadcaster_gazebo:main',
-            'tf_broadcaster_gps = plan.tf_broadcaster_gps:main',
-            'simple_perception = plan.simple_perception:main',
-            'lidar_obstacle_avoidance = plan.lidar_obstacle_avoidance:main',
-            'gps_imu_pose = plan.gps_imu_pose:main',
-            'pose_filter = plan.pose_filter:main',
+            'vostok1_cli = plan.vostok1_cli:main',
 
-            # Testing / Fixed versions
-            'oko_perception_fixed = plan.oko_perception_fixed:main',
+            # === Standalone utilities (not in launch file, run manually) ===
+            'mission_trigger = plan.mission_trigger:main',         # Manual mission start trigger
+            'tf_broadcaster = plan.tf_broadcaster:main',           # TF frame publisher
+            'tf_broadcaster_gazebo = plan.tf_broadcaster_gazebo:main',  # TF for Gazebo sim
+            'tf_broadcaster_gps = plan.tf_broadcaster_gps:main',   # TF from GPS data
+            'simple_perception = plan.simple_perception:main',     # Simplified obstacle detection
+            'lidar_obstacle_avoidance = plan.lidar_obstacle_avoidance:main',  # Standalone LiDAR avoidance
+            'gps_imu_pose = plan.gps_imu_pose:main',              # GPS+IMU pose estimation
+            'pose_filter = plan.pose_filter:main',                 # Pose smoothing filter
+
+            # === Testing / debug variants ===
+            'oko_perception_fixed = plan.oko_perception_fixed:main',  # OKO with debug fixes
         ],
     },
 )
