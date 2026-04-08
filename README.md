@@ -363,7 +363,7 @@ When running in Gazebo, time moves differently than real-world time. The `use_si
 mkdir -p ~/seal_ws/src && cd ~/seal_ws/src
 
 # 2. Clone repositories
-git clone https://github.com/Erk732/uvautoboat.git
+git clone https://github.com/Ghostzero00018/uvautoboat.git
 git clone https://github.com/osrf/vrx.git
 
 # 3. Install dependencies
