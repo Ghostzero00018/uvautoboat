@@ -1,8 +1,4 @@
-# 2026-04-08 — Obstacle Avoidance Fixes
-
-## Summary
-
-Fixed the detour waypoint explosion (300+ waypoints generated during obstacle encounters) and strengthened BURAN's reactive avoidance. Also fixed a critical missing method bug and removed dead code. All changes validated via simulation — mission completed 18 waypoints in 4.9 minutes with no waypoint explosion.
+# 2026-04-08 — Obstacle Avoidance Fixes, Repo Cleanup, and Dashboard Sync
 
 ## Problem
 
@@ -191,7 +187,119 @@ Ran full simulation via `bash launch_vostok1_complete.sh` after `colcon build --
 - No "Detour cap reached" — didn't need to hit cap (good)
 - **Total waypoints stayed at 18 — no explosion**
 
-## Deferred
+---
 
-- **VFH steering** (`use_vfh_bias`): remains disabled by default. Test separately after core fixes are validated.
-- **Obstacle avoidance tuning**: further parameter tuning (detour distance, cooldown, cap value) based on more simulation runs with different obstacle configurations.
+## Additional Work (Afternoon)
+
+### Fix 12: Burst-skip for long linear obstacles
+
+**File:** `plan/plan/sputnik_planner.py`
+
+**Problem:** Lawnmower pattern crossing a long obstacle (e.g. pier) generated 100+ detours — each waypoint along the pier got 3 detours before skipping to the next, which was also blocked.
+
+**Fix:** Added `skip_blocked_waypoints(curr_x, curr_y)` method that skips the current waypoint AND all subsequent waypoints near known obstacle clusters. All 5 skip paths now use this instead of single-waypoint advance.
+
+**Effect:** Long obstacles cause a single burst-skip past the blocked stretch instead of trying each waypoint individually.
+
+---
+
+### Fix 13: A* detour cap and cooldown
+
+**File:** `plan/plan/sputnik_planner.py`
+
+**Problem:** `plan_astar_detour()` had no cap or cooldown — fired dozens of times per second, growing waypoints from 203 to 303+. The detour_count/cooldown guards only covered `insert_detour_waypoint` and `insert_side_detour`.
+
+**Fix:** Added same cooldown (5s) and cap (max 3) checks to `plan_astar_detour()`. Counter increments after successful A* insertion.
+
+**Effect:** All three detour paths now consistently capped. A* can't flood waypoints.
+
+---
+
+### Fix 14: Dashboard presets synced to YAML
+
+**Files:** `web_dashboard/vostok1/app.js`, `web_dashboard/vostok1/index.html`
+
+**Problem:** All 4 tuning presets (universal, buoyField, pier, openWater) and 10 HTML input defaults had outdated values that overrode our avoidance fixes when used.
+
+**Fix:** Updated all presets and HTML defaults to match current YAML. Removed `no_go_zone_radius` and `detour_distance` from presets (BURAN doesn't use these).
+
+Key values synced: `max_avoidance_turn_deg` (45.0), `reverse_timeout` (4.0), `avoid_diff_gain` (18.0), `turn_deadband_deg` (0.5), `base_speed` (400), distances (OKO/BURAN safe/critical).
+
+---
+
+### Fix 15: Dashboard dead code removal
+
+**Files:** `app.js`, `index.html`, `style_merged.css`
+
+**Removed:**
+- Dead pollutant UI functions (`updatePollutantSources`, `updatePollutantStatusUI`, `clearPollutantMarkers`, pollutant topic subscription) — ~140 lines
+- Empty `initStyleToggle()` stub and its call
+- Orphaned HTML elements (`escape-history`, `no-go-zones`)
+- Dead CSS classes (`.ideology-icon`, `.milspec-emblem`, `.style-toggle-btn`)
+- `app.js.backup` (3092-line pre-refactoring backup)
+- `Longtermism.png` (unused image)
+
+---
+
+### Fix 16: Config panel overflow
+
+**File:** `web_dashboard/vostok1/style_merged.css`
+
+**Problem:** Advanced Configuration section content overflowed panel boundaries.
+
+**Fix:** Added `min-width: 0`, `overflow: hidden`, `text-overflow: ellipsis` to config grid, sections, and labels. Reduced input width from 90px to 80px with `flex-shrink: 0`.
+
+**Effect:** Content stays within boundaries. Visual polish still needed (deferred).
+
+---
+
+### Repo cleanup: Legacy organization
+
+**Moved to `legacy/` with organized subdirectories:**
+- `legacy/atlantis/` — old Atlantis planner, controller, launch, dashboard
+- `legacy/robust_avoidance/` — old robust avoidance controller, launch, dashboard, docs
+- `legacy/all_in_one/` — old monolithic all-in-one stack (was flat in legacy/)
+- `legacy/misc/` — old root scripts, pollutant planner, demo launcher, PORT_ALLOCATION.md
+
+**Cleaned up:**
+- Removed stale entry points from `plan/setup.py` and `control/setup.py`
+- Added category comments to setup.py entry points (core/utilities/testing)
+- Updated `legacy/DEPRECATED.md` with full inventory
+- Removed `robust_avoidance/` and old dashboard directories from active codebase
+
+---
+
+### Documentation improvements
+
+- Added module naming legend (OKO/SPUTNIK/BURAN) to 6 key files
+- Added file/command reference section to `launch_vostok1_complete.sh`
+- Unified shell script usage syntax to `bash` style
+- Fixed inaccurate health check description
+
+---
+
+## Testing (Afternoon)
+
+**Pier scenario:**
+- A* cap working — limited attempts per waypoint, then skips
+- Waypoint count bounded (grew to 17, not 300+)
+- Mission completed in 9.5 minutes
+- Boat still has difficulty smoothly bypassing long piers (deferred to future tuning)
+
+**Health check after all changes:** 45/45 PASS
+
+---
+
+## Tomorrow's Planned Work (2026-04-09)
+
+1. **Web dashboard overhaul** — improve UI layout, visual polish for config panel overflow, review overall design and responsiveness
+2. **README update** — update project README to reflect current modular architecture, remove references to deprecated systems
+3. **LiDAR tuning** — adjust OKO perception parameters (min_height, water_plane_threshold, sector widths) for better pier/low-obstacle detection
+4. **Test map check** — verify alignment between web dashboard minimap and Gazebo simulation world coordinates
+5. **Control part check** — review BURAN control loop, VFH steering integration test, drift compensation evaluation
+
+## Deferred from Today
+
+- **VFH steering** (`use_vfh_bias`): remains disabled by default. Test separately.
+- **Pier avoidance**: boat detects pier but struggles to route around its end. Needs deeper A* grid resolution or pier-specific planning logic.
+- **Dashboard visual polish**: config panel layout works but needs beautification.
