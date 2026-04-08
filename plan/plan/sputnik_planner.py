@@ -1144,6 +1144,13 @@ class SputnikPlanner(Node):
 
     def plan_astar_detour(self, curr_x, curr_y, target_x, target_y):
         """Run A* to replace the current leg with a detour path."""
+        import time
+        now = time.time()
+        if now - self.last_detour_time < self.detour_cooldown:
+            return None  # Cooldown active
+        if self.detour_count >= self.max_detours_per_waypoint:
+            return None  # Cap reached — caller will skip
+
         # Inflate hazards by margin+hull to keep clearance
         inflate = self.plan_avoid_margin + self.hull_radius
         hazard_blocks = []
@@ -1174,6 +1181,8 @@ class SputnikPlanner(Node):
         self.waypoints[self.current_wp_index:self.current_wp_index + 1] = filtered
         self.publish_waypoints()
         self.detour_waypoint_inserted = True
+        self.detour_count += 1
+        self.last_detour_time = now
         return filtered
 
     def finish_mission(self, final_x, final_y):
