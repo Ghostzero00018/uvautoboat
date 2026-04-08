@@ -42,9 +42,6 @@ setup(
     ],
     entry_points={
         'console_scripts': [
-            # Atlantis Controller
-            'atlantis_controller = control.atlantis_controller:main',
-
             # Modular BURAN Controller
             'buran_controller = control.buran_controller:main',
             'buran_controller_fixed = control.buran_controller_fixed:main',
@@ -54,7 +51,6 @@ setup(
 
             # Other Controllers & Utilities
             'keyboard_teleop = control.keyboard_teleop:main',
-            'robust_avoidance = control.robust_avoidance:main',
         ],
     },
 )

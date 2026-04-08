@@ -45,9 +45,6 @@ setup(
     ],
     entry_points={
         'console_scripts': [
-            # Atlantis Planner
-            'atlantis_planner = plan.atlantis_planner:main',
-
             # Modular Vostok1 (OKO + SPUTNIK + BURAN)
             'vostok1_cli = plan.vostok1_cli:main',
             'sputnik_planner = plan.sputnik_planner:main',
@@ -60,13 +57,11 @@ setup(
             'tf_broadcaster_gazebo = plan.tf_broadcaster_gazebo:main',
             'tf_broadcaster_gps = plan.tf_broadcaster_gps:main',
             'simple_perception = plan.simple_perception:main',
-            'pollutant_planner = plan.pollutant_planner:main',
             'lidar_obstacle_avoidance = plan.lidar_obstacle_avoidance:main',
             'gps_imu_pose = plan.gps_imu_pose:main',
             'pose_filter = plan.pose_filter:main',
 
             # Testing / Fixed versions
-            'atlantis_planner_fixed = plan.atlantis_planner_fixed:main',
             'oko_perception_fixed = plan.oko_perception_fixed:main',
         ],
     },
