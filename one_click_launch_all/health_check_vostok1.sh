@@ -4,6 +4,9 @@
 # ============================================================================
 # Run this from another terminal while the simulation is running.
 # It checks nodes, topics, publisher counts, parameter values, and port connectivity.
+# The script auto-detects the boat's mission state and adjusts expectations:
+#   IDLE    — nodes should be up, but mission topics may not exist yet
+#   ACTIVE  — all topics and publishers should be present
 #
 # Module naming convention (Russian space program theme):
 #   OKO     = Perception  — "eye": LiDAR obstacle detection
@@ -12,7 +15,7 @@
 #
 # Usage:
 #   cd <workspace>/src/uvautoboat/one_click_launch_all
-#   bash health_check_vostok1.sh          # Full check (44 checks, ~10s)
+#   bash health_check_vostok1.sh          # Full check (~10s)
 #   bash health_check_vostok1.sh --quick  # Nodes + topics only
 # ============================================================================
 
@@ -75,16 +78,29 @@ for node in "${OPTIONAL_NODES[@]}"; do
 done
 
 # ============================================================================
-# 2. TOPIC CHECK
+# 2. STATE DETECTION
+# ============================================================================
+section "Boat State Detection"
+
+RUNNING_TOPICS=$(ros2 topic list 2>/dev/null)
+
+# Detect mission state: if mission_status topic exists, mission has been started
+BOAT_STATE="IDLE"
+if echo "$RUNNING_TOPICS" | grep -q "^/planning/mission_status$"; then
+    BOAT_STATE="ACTIVE"
+fi
+info "Detected state: ${BOAT_STATE}"
+if [ "$BOAT_STATE" == "IDLE" ]; then
+    info "Mission not started — topics that require an active mission will show as INFO instead of FAIL"
+fi
+
+# ============================================================================
+# 3. TOPIC CHECK
 # ============================================================================
 section "Topic Check"
 
-EXPECTED_TOPICS=(
-    "/perception/obstacle_info"
-    "/planning/mission_status"
-    "/planning/waypoints"
-    "/control/status"
-    "/sputnik/config"
+# Topics that always exist when nodes are running
+ALWAYS_TOPICS=(
     "/wamv/sensors/gps/gps/fix"
     "/wamv/sensors/imu/imu/data"
     "/wamv/sensors/lidars/lidar_wamv_sensor/points"
@@ -92,11 +108,28 @@ EXPECTED_TOPICS=(
     "/wamv/thrusters/right/thrust"
 )
 
-RUNNING_TOPICS=$(ros2 topic list 2>/dev/null)
+# Topics that only appear after a mission starts or when nodes are actively publishing
+MISSION_TOPICS=(
+    "/perception/obstacle_info"
+    "/planning/mission_status"
+    "/planning/waypoints"
+    "/control/status"
+    "/sputnik/config"
+)
 
-for topic in "${EXPECTED_TOPICS[@]}"; do
+for topic in "${ALWAYS_TOPICS[@]}"; do
     if echo "$RUNNING_TOPICS" | grep -q "^${topic}$"; then
         pass "$topic"
+    else
+        fail "$topic — not found"
+    fi
+done
+
+for topic in "${MISSION_TOPICS[@]}"; do
+    if echo "$RUNNING_TOPICS" | grep -q "^${topic}$"; then
+        pass "$topic"
+    elif [ "$BOAT_STATE" == "IDLE" ]; then
+        info "$topic — not yet active (normal in IDLE state)"
     else
         fail "$topic — not found"
     fi
@@ -118,21 +151,26 @@ if [ "$1" == "--quick" ]; then
 fi
 
 # ============================================================================
-# 3. TOPIC PUBLISHER CHECK (lightweight — no subscribing to large messages)
+# 4. TOPIC PUBLISHER CHECK (lightweight — no subscribing to large messages)
 # ============================================================================
 section "Topic Publisher Check"
 
 check_publisher() {
     local topic=$1
     local label=$2
-    local info
-    info=$(ros2 topic info "$topic" 2>/dev/null)
+    local mission_only=${3:-false}  # "true" = only expected during active mission
+    local tinfo
+    tinfo=$(ros2 topic info "$topic" 2>/dev/null)
     local pub_count
-    pub_count=$(echo "$info" | grep -oP 'Publisher count: \K\d+')
+    pub_count=$(echo "$tinfo" | grep -oP 'Publisher count: \K\d+')
     local sub_count
-    sub_count=$(echo "$info" | grep -oP 'Subscription count: \K\d+')
+    sub_count=$(echo "$tinfo" | grep -oP 'Subscription count: \K\d+')
     if [ -z "$pub_count" ]; then
-        fail "$label — cannot get topic info"
+        if [ "$mission_only" == "true" ] && [ "$BOAT_STATE" == "IDLE" ]; then
+            info "$label — not yet active (normal in IDLE state)"
+        else
+            fail "$label — cannot get topic info"
+        fi
     elif [ "$pub_count" -ge 1 ]; then
         pass "$label — ${pub_count} publisher(s), ${sub_count} subscriber(s)"
     else
@@ -143,12 +181,12 @@ check_publisher() {
 check_publisher "/wamv/sensors/gps/gps/fix" "GPS"
 check_publisher "/wamv/sensors/imu/imu/data" "IMU"
 check_publisher "/wamv/sensors/lidars/lidar_wamv_sensor/points" "LiDAR"
-check_publisher "/perception/obstacle_info" "OKO obstacle info"
-check_publisher "/planning/mission_status" "SPUTNIK mission status"
-check_publisher "/control/status" "BURAN control status"
+check_publisher "/perception/obstacle_info" "OKO obstacle info" "true"
+check_publisher "/planning/mission_status" "SPUTNIK mission status" "true"
+check_publisher "/control/status" "BURAN control status" "true"
 
 # ============================================================================
-# 4. PARAMETER CHECK
+# 5. PARAMETER CHECK
 # ============================================================================
 section "Parameter Check (BURAN)"
 
@@ -192,7 +230,7 @@ check_param "/oko_perception_node" "min_height" "-1.2"
 check_param "/oko_perception_node" "max_range" "100.0"
 
 # ============================================================================
-# 5. SERVICE / CONNECTIVITY CHECK
+# 6. SERVICE / CONNECTIVITY CHECK
 # ============================================================================
 section "Connectivity Check"
 
@@ -226,13 +264,17 @@ else
 fi
 
 # ============================================================================
-# 6. SUMMARY
+# 7. SUMMARY
 # ============================================================================
 section "Summary"
+echo -e "  State: ${CYAN}${BOAT_STATE}${NC}"
 echo -e "  ${GREEN}PASS: $PASS${NC}  ${RED}FAIL: $FAIL${NC}  ${YELLOW}WARN: $WARN${NC}"
 echo ""
 if [ $FAIL -eq 0 ]; then
     echo -e "${GREEN}All checks passed. System is healthy.${NC}"
+    if [ "$BOAT_STATE" == "IDLE" ]; then
+        echo -e "${CYAN}Note: Some checks were skipped (IDLE state). Start a mission for full validation.${NC}"
+    fi
 else
     echo -e "${RED}$FAIL issue(s) detected — check FAIL items above.${NC}"
 fi

@@ -786,32 +786,35 @@ h2 {
 .config-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 20px;
+    gap: 16px;
     margin-bottom: 25px;
-    overflow: hidden;
 }
 
 .config-section {
     background: #f8f9fa;
-    border: 1px solid #e0e0e0;
+    border: 1px solid #e9ecef;
     border-radius: 8px;
-    padding: 18px;
+    padding: 16px;
     min-width: 0;
     overflow: hidden;
 }
 
 .config-section h3 {
-    font-size: 16px;
+    font-size: 14px;
+    font-weight: 600;
     color: var(--accent);
-    margin: 0 0 15px 0;
-    padding-bottom: 10px;
+    margin: 0 0 14px 0;
+    padding-bottom: 8px;
     border-bottom: 2px solid var(--accent);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .config-item {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
+    flex-direction: column;
+    gap: 4px;
     margin-bottom: 12px;
 }
 
@@ -820,30 +823,40 @@ h2 {
 }
 
 .config-item label {
-    font-size: 13px;
-    color: #333;
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    font-size: 12px;
+    font-weight: 600;
+    color: #495057;
+    line-height: 1.3;
+}
+
+.config-item label .info-tooltip {
+    font-size: 11px;
+    cursor: help;
+    opacity: 0.6;
+}
+
+.config-item label .info-tooltip:hover {
+    opacity: 1;
 }
 
 .config-item input {
-    width: 80px;
-    flex-shrink: 0;
-    padding: 8px 12px;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
     font-family: var(--font-mono);
     font-size: 14px;
     color: #333;
     background: white;
-    border: 2px solid #e0e0e0;
-    border-radius: 6px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
     text-align: center;
+    transition: all 0.2s ease;
 }
 
 .config-item input:focus {
     outline: none;
     border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
 .config-buttons {
@@ -894,10 +907,9 @@ h2 {
 
 .value-display {
     font-size: 11px;
-    margin-left: 8px;
     font-style: italic;
-    min-width: 100px;
-    text-align: right;
+    color: #6c757d;
+    text-align: center;
 }
 
 .info-tooltip {
