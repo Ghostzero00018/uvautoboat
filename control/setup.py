@@ -46,7 +46,6 @@ setup(
             'buran_controller = control.buran_controller:main',
 
             # === Standalone utilities (not in launch file, run manually) ===
-            'lidar_obstacle_avoidance = control.lidar_obstacle_avoidance:main',  # Standalone LiDAR avoidance
             'keyboard_teleop = control.keyboard_teleop:main',      # Manual thruster control for testing
 
             # === Testing / debug variants ===
