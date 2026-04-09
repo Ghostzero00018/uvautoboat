@@ -194,6 +194,25 @@ uvautoboat/
 
 ---
 
+## Contributors
+
+**Current maintainers:**
+
+- [Ghostzero00018](https://github.com/Ghostzero00018)
+- [atshehu1776](https://github.com/atshehu1776)
+
+**Previous contributors:**
+
+- [Erk732](https://github.com/Erk732)
+- [Ghostzero00018](https://github.com/Ghostzero00018)
+- [ITSHT](https://github.com/ITSHT)
+- [YinLi-Y2Y2](https://github.com/YinLi-Y2Y2)
+- [zhiyanPiao-Y2Y2](https://github.com/zhiyanPiao-Y2Y2)
+- [guillaumeLozenguez](https://github.com/guillaumeLozenguez)
+- [atshehu1776](https://github.com/atshehu1776)
+
+---
+
 ## License
 
 Apache License 2.0 — see [LICENSE](LICENSE).
