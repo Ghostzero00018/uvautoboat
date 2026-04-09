@@ -1619,7 +1619,7 @@ See `legacy/DEPRECATED.md` for a full inventory. Legacy code is preserved for re
 
 ### Reporting Issues
 
-Open an issue on [GitHub](https://github.com/Erk732/uvautoboat/issues) with:
+Open an issue on [GitHub](https://github.com/Ghostzero00018/uvautoboat/issues) with:
 
 - Problem description
 - Steps to reproduce
@@ -1685,4 +1685,4 @@ See [LICENSE](LICENSE) for details.
 
 Built with [ROS 2 Jazzy](https://docs.ros.org/en/jazzy/) + [Gazebo Harmonic](https://gazebosim.org/docs/harmonic)
 
-[Report Bug](https://github.com/Erk732/uvautoboat/issues) · [Request Feature](https://github.com/Erk732/uvautoboat/issues)
+[Report Bug](https://github.com/Ghostzero00018/uvautoboat/issues) · [Request Feature](https://github.com/Ghostzero00018/uvautoboat/issues)

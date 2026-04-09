@@ -80,7 +80,7 @@ Welcome to the **AutoBoat Wiki**! This documentation provides comprehensive guid
 | Phase 3 | Coverage & Search | ⏸️ Planned |
 | Phase 4 | Integration & Testing | 🔄 80% |
 
-See [Board.md](https://github.com/Erk732/uvautoboat/blob/main/Board.md) for detailed milestones.
+See [Board.md](https://github.com/Ghostzero00018/uvautoboat/blob/main/Board.md) for detailed milestones.
 
 ---
 
@@ -96,7 +96,7 @@ See [Board.md](https://github.com/Erk732/uvautoboat/blob/main/Board.md) for deta
 
 ## 🔗 External Links
 
-- **[GitHub Repository](https://github.com/Erk732/uvautoboat)**
-- **[Report Issues](https://github.com/Erk732/uvautoboat/issues)**
+- **[GitHub Repository](https://github.com/Ghostzero00018/uvautoboat)**
+- **[Report Issues](https://github.com/Ghostzero00018/uvautoboat/issues)**
 - **[VRX Official Wiki](https://github.com/osrf/vrx/wiki)**
 - **[ROS 2 Documentation](https://docs.ros.org/en/jazzy/)**

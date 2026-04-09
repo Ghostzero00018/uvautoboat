@@ -628,7 +628,7 @@ If your problem isn't listed here:
    ros2 run plan vostok1 --ros-args --log-level debug
    ```
 
-3. **Report issue**: [GitHub Issues](https://github.com/Erk732/uvautoboat/issues)
+3. **Report issue**: [GitHub Issues](https://github.com/Ghostzero00018/uvautoboat/issues)
    - Include system info (Ubuntu version, ROS 2 version)
    - Paste relevant logs
    - Describe steps to reproduce

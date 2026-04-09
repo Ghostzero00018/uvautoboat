@@ -29,7 +29,7 @@ See **[UPLOAD_INSTRUCTIONS.md](UPLOAD_INSTRUCTIONS.md)** for detailed steps.
 
 ```bash
 # From uvautoboat directory
-git clone https://github.com/Erk732/uvautoboat.wiki.git wiki-repo
+git clone https://github.com/Ghostzero00018/uvautoboat.wiki.git wiki-repo
 cp wiki/*.md wiki-repo/
 cd wiki-repo
 git add *.md
@@ -156,7 +156,7 @@ Wiki content was extracted and reorganized from:
 2. Reference in wiki:
 
    ```markdown
-   ![Alt](https://raw.githubusercontent.com/Erk732/uvautoboat/main/images/file.png)
+   ![Alt](https://raw.githubusercontent.com/Ghostzero00018/uvautoboat/main/images/file.png)
    ```
 
 ---

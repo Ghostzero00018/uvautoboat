@@ -85,7 +85,7 @@ cd ~/seal_ws/src
 ### Step 2: Clone AutoBoat Repository
 
 ```bash
-git clone https://github.com/Erk732/uvautoboat.git
+git clone https://github.com/Ghostzero00018/uvautoboat.git
 ```
 
 ### Step 3: Clone VRX (if not already done)

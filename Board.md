@@ -1,13 +1,13 @@
 # 📋 AutoBoat Development Board
 
-[![Status](https://img.shields.io/badge/Status-Active-green)](https://github.com/Erk732/uvautoboat)
-[![Progress](https://img.shields.io/badge/Progress-90%25-blue)](https://github.com/Erk732/uvautoboat)
+[![Status](https://img.shields.io/badge/Status-Active-green)](https://github.com/Ghostzero00018/uvautoboat)
+[![Progress](https://img.shields.io/badge/Progress-90%25-blue)](https://github.com/Ghostzero00018/uvautoboat)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 | | |
 |---|---|
 | **Project** | AutoBoat Navigation System |
-| **Repository** | [Erk732/uvautoboat](https://github.com/Erk732/uvautoboat) |
+| **Repository** | [Ghostzero00018/uvautoboat](https://github.com/Ghostzero00018/uvautoboat) |
 | **Last Updated** | 11/12/2025 |
 | **Status** | 🟢 Vostok1 Production Ready (A* path planning + one-click launcher + wiki docs) |
 

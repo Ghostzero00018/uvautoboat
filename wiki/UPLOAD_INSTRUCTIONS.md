@@ -8,7 +8,7 @@ Step-by-step guide to upload these wiki pages to your GitHub repository wiki.
 
 ### Step 1: Enable Wiki on GitHub
 
-1. Go to your repository: `https://github.com/Erk732/uvautoboat`
+1. Go to your repository: `https://github.com/Ghostzero00018/uvautoboat`
 2. Click **Settings** (top menu)
 3. Scroll down to **Features** section
 4. Check ✅ **Wikis** to enable
@@ -62,7 +62,7 @@ GitHub wikis are actually Git repositories!
 
 ```bash
 cd ~/seal_ws/src/uvautoboat
-git clone https://github.com/Erk732/uvautoboat.wiki.git wiki-repo
+git clone https://github.com/Ghostzero00018/uvautoboat.wiki.git wiki-repo
 ```
 
 ### Step 2: Copy Wiki Files
@@ -93,7 +93,7 @@ Create a script to automate the upload process:
 # upload-wiki.sh
 
 WIKI_DIR="wiki"
-WIKI_REPO="https://github.com/Erk732/uvautoboat.wiki.git"
+WIKI_REPO="https://github.com/Ghostzero00018/uvautoboat.wiki.git"
 
 # Clone wiki repo
 git clone $WIKI_REPO wiki-repo
@@ -123,7 +123,7 @@ chmod +x upload-wiki.sh
 
 After uploading, verify the wiki:
 
-1. Go to `https://github.com/Erk732/uvautoboat/wiki`
+1. Go to `https://github.com/Ghostzero00018/uvautoboat/wiki`
 2. Check **Home** page loads correctly
 3. Click links to verify page navigation
 4. Check images display properly
@@ -245,7 +245,7 @@ To add images to wiki:
 2. **Reference in wiki markdown**:
 
    ```markdown
-   ![Alt text](https://raw.githubusercontent.com/Erk732/uvautoboat/main/images/new-image.png)
+   ![Alt text](https://raw.githubusercontent.com/Ghostzero00018/uvautoboat/main/images/new-image.png)
    ```
 
 ---
@@ -263,7 +263,7 @@ Use relative wiki links:
 NOT:
 
 ```markdown
-[Installation Guide](https://github.com/Erk732/uvautoboat/wiki/Installation_Guide)
+[Installation Guide](https://github.com/Ghostzero00018/uvautoboat/wiki/Installation_Guide)
 ```
 
 ### Code Blocks
@@ -313,7 +313,7 @@ Use proper hierarchy:
 **Solution**: Use raw GitHub URLs:
 
 ```markdown
-https://raw.githubusercontent.com/Erk732/uvautoboat/main/images/file.png
+https://raw.githubusercontent.com/Ghostzero00018/uvautoboat/main/images/file.png
 ```
 
 ### Links Broken
