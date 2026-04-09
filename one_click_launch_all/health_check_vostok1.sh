@@ -84,14 +84,30 @@ section "Boat State Detection"
 
 RUNNING_TOPICS=$(ros2 topic list 2>/dev/null)
 
-# Detect mission state: if mission_status topic exists, mission has been started
+# Detect mission state by reading actual planner state from topic content
+# Topics persist after first publish, so topic existence alone is not reliable
 BOAT_STATE="IDLE"
 if echo "$RUNNING_TOPICS" | grep -q "^/planning/mission_status$"; then
-    BOAT_STATE="ACTIVE"
+    # Read one message (3s timeout), strip ANSI codes, extract state from JSON
+    MISSION_MSG=$(timeout 3 ros2 topic echo /planning/mission_status --once 2>&1 | sed 's/\x1b\[[0-9;]*m//g')
+    PLANNER_STATE=$(echo "$MISSION_MSG" | grep -oP '"state":\s*"\K[^"]+')
+    if [ -n "$PLANNER_STATE" ]; then
+        # INIT/IDLE/FINISHED/JOYSTICK = not actively navigating
+        ACTIVE_STATES="DRIVING RUNNING PAUSED READY WAYPOINTS_PREVIEW WAITING_CONFIRM"
+        if echo "$ACTIVE_STATES" | grep -qw "$PLANNER_STATE"; then
+            BOAT_STATE="ACTIVE"
+        fi
+        info "Detected state: ${BOAT_STATE} (planner: ${PLANNER_STATE})"
+    else
+        # Topic exists but couldn't read — assume active (safe default)
+        BOAT_STATE="ACTIVE"
+        info "Detected state: ${BOAT_STATE} (topic exists, could not read state)"
+    fi
+else
+    info "Detected state: ${BOAT_STATE} (mission_status topic not found)"
 fi
-info "Detected state: ${BOAT_STATE}"
 if [ "$BOAT_STATE" == "IDLE" ]; then
-    info "Mission not started — topics that require an active mission will show as INFO instead of FAIL"
+    info "No active mission — topics that require a running mission will show as INFO instead of FAIL"
 fi
 
 # ============================================================================
@@ -194,8 +210,11 @@ check_param() {
     local node=$1
     local param=$2
     local expected=$3
+    local raw
+    # Strip ANSI color codes and RTPS error noise, then extract the value from "X value is: Y"
+    raw=$(ros2 param get "$node" "$param" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | grep -oP 'value is: \K[-\d.]+')
     local actual
-    actual=$(ros2 param get "$node" "$param" 2>/dev/null | grep -oP '[-\d.]+')
+    actual=$(echo "$raw" | tail -1)
     if [ -z "$actual" ]; then
         fail "$param — cannot read (node down?)"
     elif [ "$actual" == "$expected" ]; then
