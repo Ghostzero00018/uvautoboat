@@ -200,4 +200,4 @@ Apache License 2.0 — see [LICENSE](LICENSE).
 
 **AutoBoat** — IMT Nord Europe, PROJET-17
 
-[Report Bug](https://github.com/Erk732/uvautoboat/issues) · [Full Manual](USER_MANUAL.md)
+[Report Bug](https://github.com/Ghostzero00018/uvautoboat/issues) · [Full Manual](USER_MANUAL.md)
