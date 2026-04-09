@@ -98,17 +98,15 @@ function initWorldBanner() {
     }
 }
 
+let _prevBanner = {};
 function updateWorldBanner(name, hasSmoke) {
+    if (_prevBanner.name === name && _prevBanner.hasSmoke === hasSmoke) return;
+    _prevBanner.name = name;
+    _prevBanner.hasSmoke = hasSmoke;
     const banner = document.getElementById('world-banner-text');
     if (!banner) return;
     const smokeText = hasSmoke ? 'with smoke sources detected' : 'no smoke sources detected';
-    banner.textContent = 'Currently loaded world is ';
-    const nameEl = document.createElement('b');
-    const italicEl = document.createElement('i');
-    italicEl.textContent = name || 'unknown';
-    nameEl.appendChild(italicEl);
-    banner.appendChild(nameEl);
-    banner.appendChild(document.createTextNode(` - ${smokeText}`));
+    banner.innerHTML = `Currently loaded world is <b><i>${(name || 'unknown').replace(/</g, '&lt;')}</i></b> - ${smokeText}`;
 }
 
 
@@ -279,6 +277,11 @@ function connectToROS() {
         if (DEBUG_MODE) console.log('Connection closed');
         connected = false;
         updateConnectionStatus(false);
+        // Clear publishers so they get recreated with the new ros object on reconnect
+        missionCommandPublisher = null;
+        configPublisher = null;
+        modularConfigPublisher = null;
+        modularMissionCommandPublisher = null;
         addLog('Connection closed. Retrying in 5s...', 'warning');
         setTimeout(connectToROS, 5000);
     });
@@ -399,9 +402,9 @@ function subscribeToTopics() {
             total_waypoints: data.total_waypoints,
             distance_to_waypoint: data.distance_to_target || 0,
             local_x: data.position ? data.position[0] : 0,
-            local_y: data.position ? data.position[1] : 0
+            local_y: data.position ? data.position[1] : 0,
+            detour_active: data.detour_active || false
         });
-        updateDetourBadge(data.detour_active || false);
     });
 
     // Modular controller anti-stuck status
@@ -428,10 +431,8 @@ function subscribeToTopics() {
     modularTargetTopic.subscribe((message) => {
         const data = JSON.parse(message.data);
         if (DEBUG_MODE) console.log('Modular current target:', data);
-        // Update distance to waypoint display
-        if (data.distance_to_target !== undefined) {
-            document.getElementById('distance').textContent = data.distance_to_target.toFixed(1) + 'm';
-        }
+        // Distance display is handled by updateMissionStatus() from /planning/mission_status
+        // This topic is kept for other current_target data if needed in the future
     });
     
     // Modular waypoints from sputnik_planner
@@ -712,73 +713,102 @@ function updateDetourBadge(isActive) {
 }
 
 // Simulate obstacle data (would parse from PointCloud2 or custom topic)
+// Cache for obstacle status to avoid redundant DOM updates at ~10Hz
+let _prevObstacle = {};
+
 function updateObstacleStatus(data) {
     currentState.obstacles.min = data.min_distance;
     currentState.obstacles.front = data.front_clear;
     currentState.obstacles.left = data.left_clear;
     currentState.obstacles.right = data.right_clear;
-    
+
     const minDist = data.min_distance;
-    document.getElementById('min-obstacle').textContent = 
-        minDist >= 999 ? '∞' : minDist.toFixed(1) + 'm';
-    
-    document.getElementById('front-clear').textContent = 
-        data.front_clear ? `✓ ${data.front_distance.toFixed(1)}m` : `✗ ${data.front_distance.toFixed(1)}m`;
-    document.getElementById('left-clear').textContent = 
-        data.left_clear ? `✓ ${data.left_distance.toFixed(1)}m` : `✗ ${data.left_distance.toFixed(1)}m`;
-    document.getElementById('right-clear').textContent = 
-        data.right_clear ? `✓ ${data.right_distance.toFixed(1)}m` : `✗ ${data.right_distance.toFixed(1)}m`;
-    
+    const minDistText = minDist >= 999 ? '∞' : minDist.toFixed(1) + 'm';
+    const frontText = data.front_clear ? `✓ ${data.front_distance.toFixed(1)}m` : `✗ ${data.front_distance.toFixed(1)}m`;
+    const leftText = data.left_clear ? `✓ ${data.left_distance.toFixed(1)}m` : `✗ ${data.left_distance.toFixed(1)}m`;
+    const rightText = data.right_clear ? `✓ ${data.right_distance.toFixed(1)}m` : `✗ ${data.right_distance.toFixed(1)}m`;
+
+    if (_prevObstacle.minDist !== minDistText) {
+        document.getElementById('min-obstacle').textContent = minDistText;
+        _prevObstacle.minDist = minDistText;
+    }
+    if (_prevObstacle.front !== frontText) {
+        document.getElementById('front-clear').textContent = frontText;
+        _prevObstacle.front = frontText;
+    }
+    if (_prevObstacle.left !== leftText) {
+        document.getElementById('left-clear').textContent = leftText;
+        _prevObstacle.left = leftText;
+    }
+    if (_prevObstacle.right !== rightText) {
+        document.getElementById('right-clear').textContent = rightText;
+        _prevObstacle.right = rightText;
+    }
+
     // OKO v2.0: Update urgency display if element exists
     const urgencyEl = document.getElementById('urgency');
     if (urgencyEl && data.urgency !== undefined) {
         const urgencyPct = (data.urgency * 100).toFixed(0);
-        urgencyEl.textContent = `${urgencyPct}%`;
-        urgencyEl.className = data.urgency > 0.7 ? 'value critical' : 
-                              data.urgency > 0.3 ? 'value warning' : 'value';
+        const urgencyClass = data.urgency > 0.7 ? 'value critical' :
+                             data.urgency > 0.3 ? 'value warning' : 'value';
+        if (_prevObstacle.urgency !== urgencyPct) {
+            urgencyEl.textContent = `${urgencyPct}%`;
+            _prevObstacle.urgency = urgencyPct;
+        }
+        if (_prevObstacle.urgencyClass !== urgencyClass) {
+            urgencyEl.className = urgencyClass;
+            _prevObstacle.urgencyClass = urgencyClass;
+        }
     }
-    
+
     // OKO v2.0: Update obstacle count if element exists
     const countEl = document.getElementById('obstacle-count');
-    if (countEl && data.obstacle_count !== undefined) {
+    if (countEl && data.obstacle_count !== undefined && _prevObstacle.count !== data.obstacle_count) {
         countEl.textContent = data.obstacle_count;
+        _prevObstacle.count = data.obstacle_count;
     }
-    
+
     // OKO v2.0: Update best gap if element exists
     const gapEl = document.getElementById('best-gap');
     if (gapEl && data.best_gap) {
-        const gap = data.best_gap;
-        gapEl.textContent = `${gap.direction.toFixed(0)}° (${gap.width.toFixed(0)}°)`;
+        const gapText = `${data.best_gap.direction.toFixed(0)}° (${data.best_gap.width.toFixed(0)}°)`;
+        if (_prevObstacle.gap !== gapText) {
+            gapEl.textContent = gapText;
+            _prevObstacle.gap = gapText;
+        }
     }
-    
-    // Update status badge with bilingual message from vostok1
+
+    // Update status badge with bilingual message
     const statusBadge = document.getElementById('obstacle-status');
+    let statusText, statusClass;
     if (data.status) {
-        // Use the bilingual status text from vostok1.py
-        statusBadge.textContent = data.status;
-        
-        // Set class based on emoji indicator
-        if (data.status.includes('✅')) {
-            statusBadge.className = 'value badge clear';
-        } else if (data.status.includes('🚨')) {
-            statusBadge.className = 'value badge critical';
-        } else {
-            statusBadge.className = 'value badge warning';
-        }
+        statusText = data.status;
+        statusClass = data.status.includes('✅') ? 'value badge clear' :
+                      data.status.includes('🚨') ? 'value badge critical' : 'value badge warning';
     } else {
-        // Fallback to old behavior if status not provided
         if (minDist > 15 || minDist >= 999) {
-            statusBadge.textContent = 'Clear | Dégagé';
-            statusBadge.className = 'value badge clear';
+            statusText = 'Clear | Dégagé';
+            statusClass = 'value badge clear';
         } else if (minDist > 5) {
-            statusBadge.textContent = 'Warning | Attention';
-            statusBadge.className = 'value badge warning';
+            statusText = 'Warning | Attention';
+            statusClass = 'value badge warning';
         } else {
-            statusBadge.textContent = 'Critical | Critique';
-            statusBadge.className = 'value badge critical';
+            statusText = 'Critical | Critique';
+            statusClass = 'value badge critical';
         }
+    }
+    if (_prevObstacle.statusText !== statusText) {
+        statusBadge.textContent = statusText;
+        _prevObstacle.statusText = statusText;
+    }
+    if (_prevObstacle.statusClass !== statusClass) {
+        statusBadge.className = statusClass;
+        _prevObstacle.statusClass = statusClass;
     }
 }
+
+// Cache for anti-stuck status to avoid redundant DOM updates
+let _prevAntiStuck = {};
 
 // Update Simple Anti-Stuck Status
 function updateAntiStuckStatus(data) {
@@ -787,55 +817,71 @@ function updateAntiStuckStatus(data) {
     const escapePhase = document.getElementById('escape-phase');
     const noGoZones = document.getElementById('no-go-zones');
     const driftVector = document.getElementById('drift-vector');
-    const escapeHistory = document.getElementById('escape-history');
-    const probeResults = document.getElementById('probe-results');
-    
+
     if (stuckStatus) {
-        if (data.is_stuck && data.escape_mode) {
-            stuckStatus.textContent = `STUCK | BLOQUÉ (Attempt ${data.consecutive_attempts})`;
-            stuckStatus.className = 'value badge critical';
-        } else {
-            stuckStatus.textContent = 'Normal';
-            stuckStatus.className = 'value badge clear';
+        const stuckText = (data.is_stuck && data.escape_mode)
+            ? `STUCK | BLOQUÉ (Attempt ${data.consecutive_attempts})` : 'Normal';
+        const stuckClass = (data.is_stuck && data.escape_mode)
+            ? 'value badge critical' : 'value badge clear';
+        if (_prevAntiStuck.stuckText !== stuckText) {
+            stuckStatus.textContent = stuckText;
+            stuckStatus.className = stuckClass;
+            _prevAntiStuck.stuckText = stuckText;
         }
     }
 
     if (escapePhase) {
-        escapePhase.textContent = data.escape_mode ? 'TURNING LEFT | Virage Gauche' : 'IDLE | Attente';
-        escapePhase.className = data.escape_mode ? 'value active' : 'value';
+        const phaseText = data.escape_mode ? 'TURNING LEFT | Virage Gauche' : 'IDLE | Attente';
+        if (_prevAntiStuck.phase !== phaseText) {
+            escapePhase.textContent = phaseText;
+            escapePhase.className = data.escape_mode ? 'value active' : 'value';
+            _prevAntiStuck.phase = phaseText;
+        }
     }
 
-    if (noGoZones) {
+    if (noGoZones && !_prevAntiStuck.noGoSet) {
         noGoZones.textContent = 'N/A (Simple mode)';
+        _prevAntiStuck.noGoSet = true;
     }
 
-    if (driftVector) {
+    if (driftVector && data.drift_vector) {
         const dx = data.drift_vector[0];
         const dy = data.drift_vector[1];
         const magnitude = Math.hypot(dx, dy);
+        let driftText;
         if (magnitude > 0.1) {
             const angle = Math.atan2(dy, dx) * 180 / Math.PI;
-            driftVector.textContent = `${magnitude.toFixed(2)} m/s @ ${angle.toFixed(0)}°`;
+            driftText = `${magnitude.toFixed(2)} m/s @ ${angle.toFixed(0)}°`;
         } else {
-            driftVector.textContent = 'Minimal';
+            driftText = 'Minimal';
+        }
+        if (_prevAntiStuck.drift !== driftText) {
+            driftVector.textContent = driftText;
+            _prevAntiStuck.drift = driftText;
         }
     }
-    
+
     // Display Kalman filter uncertainty
     const driftUncertainty = document.getElementById('drift-uncertainty');
     if (driftUncertainty && data.drift_uncertainty) {
         const ux = data.drift_uncertainty[0];
         const uy = data.drift_uncertainty[1];
         const avgUncertainty = Math.hypot(ux, uy);
+        let uncText, uncColor;
         if (avgUncertainty < 0.1) {
-            driftUncertainty.textContent = 'High conf. | Haute conf.';
-            driftUncertainty.style.color = '#4CAF50';
+            uncText = 'High conf. | Haute conf.';
+            uncColor = '#4CAF50';
         } else if (avgUncertainty < 0.5) {
-            driftUncertainty.textContent = `σ=${avgUncertainty.toFixed(2)}`;
-            driftUncertainty.style.color = '#FFC107';
+            uncText = `σ=${avgUncertainty.toFixed(2)}`;
+            uncColor = '#FFC107';
         } else {
-            driftUncertainty.textContent = `σ=${avgUncertainty.toFixed(2)} (converging | convergence)`;
-            driftUncertainty.style.color = '#FF9800';
+            uncText = `σ=${avgUncertainty.toFixed(2)} (converging | convergence)`;
+            uncColor = '#FF9800';
+        }
+        if (_prevAntiStuck.uncText !== uncText) {
+            driftUncertainty.textContent = uncText;
+            driftUncertainty.style.color = uncColor;
+            _prevAntiStuck.uncText = uncText;
         }
     }
 
@@ -919,6 +965,7 @@ function initConfigPanel() {
         'cfg-lanes', 'cfg-scan-length', 'cfg-scan-width',
         'cfg-kp', 'cfg-ki', 'cfg-kd',
         'cfg-base-speed', 'cfg-max-speed', 'cfg-safe-dist',
+        'cfg-waypoint-tolerance', 'cfg-approach-slow-distance', 'cfg-approach-slow-factor',
         'cfg-astar-resolution', 'cfg-astar-safety', 'cfg-astar-max',
         'wp-lanes', 'wp-length', 'wp-width'
     ];
@@ -1071,15 +1118,22 @@ function updateConfigFromROS(data) {
         'cfg-safe-dist': data.min_safe_distance
     };
     
-    // Also update mission control inputs
+    // Also update mission control inputs (only during active mission — in INIT/IDLE
+    // the user is configuring a new mission and their inputs should not be overwritten)
     const wpInputs = {
         'wp-lanes': data.lanes,
         'wp-length': data.scan_length,
         'wp-width': data.scan_width
     };
-    
+
+    // Don't overwrite route config inputs when boat is idle/init (user is editing for next mission)
+    const isConfiguring = ['INIT', 'IDLE'].includes(missionState.state);
+
     for (const [id, value] of Object.entries(inputs)) {
         const el = document.getElementById(id);
+        // Don't update route params (lanes/scan) from ROS while user is configuring
+        const isRouteParam = ['cfg-lanes', 'cfg-scan-length', 'cfg-scan-width'].includes(id);
+        if (isRouteParam && isConfiguring) continue;
         // Don't update if input is dirty (user modified) or focused
         if (el && !dirtyInputs.has(id) && document.activeElement !== el && value !== undefined) {
             el.value = value;
@@ -1090,8 +1144,10 @@ function updateConfigFromROS(data) {
             el.classList.remove('input-dirty');
         }
     }
-    
+
     for (const [id, value] of Object.entries(wpInputs)) {
+        // Don't overwrite wp inputs while user is configuring a new mission
+        if (isConfiguring) continue;
         const el = document.getElementById(id);
         // Don't update if input is dirty (user modified) or focused
         if (el && !dirtyInputs.has(id) && document.activeElement !== el && value !== undefined) {
@@ -1286,15 +1342,6 @@ function addTerminalLine(message) {
     while (terminal.children.length > 200) {
         terminal.removeChild(terminal.firstChild);
     }
-
-    // World info if available
-    if (data.world_name) {
-        currentState.world.name = data.world_name;
-    }
-    if (data.pollutant_sources) {
-        currentState.world.hasSmoke = (data.pollutant_sources.length || 0) > 0;
-    }
-    updateWorldBanner(currentState.world.name, currentState.world.hasSmoke);
 }
 
 function updateWorldFromConfig(data) {
@@ -1334,64 +1381,94 @@ function initTerminal() {
 
 // ========== MISSION CONTROL FUNCTIONS ==========
 
+// Debounce guard — prevents duplicate commands from rapid clicks
+let lastCommandTime = 0;
+const COMMAND_DEBOUNCE_MS = 800;
+
+function debounceCommand(fn) {
+    const now = Date.now();
+    if (now - lastCommandTime < COMMAND_DEBOUNCE_MS) {
+        addLog('Command ignored (too fast) | Commande ignorée (trop rapide)', 'warning');
+        return;
+    }
+    lastCommandTime = now;
+    fn();
+}
+
 // Initialize mission control panel
 function initMissionControl() {
     if (DEBUG_MODE) console.log('Initializing mission control...');
-    
+
     // Step 1: Generate Waypoints
     document.getElementById('btn-generate-waypoints').addEventListener('click', () => {
-        generateWaypoints();
+        debounceCommand(() => generateWaypoints());
     });
-    
+
     // Step 2: Confirm/Cancel Waypoints
     document.getElementById('btn-confirm-waypoints').addEventListener('click', () => {
-        sendMissionCommand('confirm_waypoints');
-        setTimeout(() => alert('✅ Waypoints Confirmed\n\nRoute locked. Ready to start mission.\n\n✅ Waypoints Confirmés\n\nRoute verrouillée. Prêt à démarrer la mission.'), 100);
+        debounceCommand(() => {
+            sendMissionCommand('confirm_waypoints');
+            setTimeout(() => alert('✅ Waypoints Confirmed\n\nRoute locked. Ready to start mission.\n\n✅ Waypoints Confirmés\n\nRoute verrouillée. Prêt à démarrer la mission.'), 100);
+        });
     });
 
     document.getElementById('btn-cancel-waypoints').addEventListener('click', () => {
-        sendMissionCommand('cancel_waypoints');
-        clearWaypointPreview();
-        setTimeout(() => alert('❌ Waypoints Cancelled\n\nRoute cleared. Generate new waypoints.\n\n❌ Waypoints Annulés\n\nRoute effacée. Générer de nouveaux waypoints.'), 100);
+        debounceCommand(() => {
+            sendMissionCommand('cancel_waypoints');
+            clearWaypointPreview();
+            setTimeout(() => alert('❌ Waypoints Cancelled\n\nRoute cleared. Generate new waypoints.\n\n❌ Waypoints Annulés\n\nRoute effacée. Générer de nouveaux waypoints.'), 100);
+        });
     });
-    
+
     // Step 3: Start/Stop/Resume/Reset Mission
     document.getElementById('btn-start-mission').addEventListener('click', () => {
-        sendMissionCommand('start_mission');
-        setTimeout(() => alert('✅ Mission Started\n\nThe boat will begin navigation.\n\n✅ Mission Démarrée\n\nLe bateau va commencer la navigation.'), 100);
+        debounceCommand(() => {
+            sendMissionCommand('start_mission');
+            setTimeout(() => alert('✅ Mission Started\n\nThe boat will begin navigation.\n\n✅ Mission Démarrée\n\nLe bateau va commencer la navigation.'), 100);
+        });
     });
 
     document.getElementById('btn-stop-mission').addEventListener('click', () => {
-        sendMissionCommand('stop_mission');
-        // Send a second stop shortly after to ensure controllers see it (helps during anti-stuck)
-        setTimeout(() => sendMissionCommand('stop_mission'), 200);
-        setTimeout(() => alert('⏸️ Mission Stopped\n\nNavigation paused. Use Resume to continue.\n\n⏸️ Mission Arrêtée\n\nNavigation en pause. Utilisez Reprendre pour continuer.'), 100);
+        debounceCommand(() => {
+            sendMissionCommand('stop_mission');
+            // Send a second stop shortly after to ensure controllers see it (helps during anti-stuck)
+            setTimeout(() => sendMissionCommand('stop_mission'), 200);
+            setTimeout(() => alert('⏸️ Mission Stopped\n\nNavigation paused. Use Resume to continue.\n\n⏸️ Mission Arrêtée\n\nNavigation en pause. Utilisez Reprendre pour continuer.'), 100);
+        });
     });
 
     document.getElementById('btn-resume-mission').addEventListener('click', () => {
-        sendMissionCommand('resume_mission');
-        setTimeout(() => alert('▶️ Mission Resumed\n\nNavigation continuing.\n\n▶️ Mission Reprise\n\nNavigation en cours.'), 100);
+        debounceCommand(() => {
+            sendMissionCommand('resume_mission');
+            setTimeout(() => alert('▶️ Mission Resumed\n\nNavigation continuing.\n\n▶️ Mission Reprise\n\nNavigation en cours.'), 100);
+        });
     });
-    
+
     document.getElementById('btn-reset-mission').addEventListener('click', () => {
         if (confirm('Reset mission and clear waypoints? | Réinitialiser la mission et effacer les waypoints?')) {
-            sendMissionCommand('reset_mission');
-            clearWaypointPreview();
-            addLog('Mission reset - ready for new waypoints | Prêt pour nouveaux waypoints', 'warning');
-            setTimeout(() => alert('🔄 Mission Reset\n\nAll waypoints cleared. Ready for new mission.\n\n🔄 Mission Réinitialisée\n\nTous les waypoints effacés. Prêt pour nouvelle mission.'), 100);
+            debounceCommand(() => {
+                sendMissionCommand('reset_mission');
+                clearWaypointPreview();
+                missionState.startLat = null;
+                missionState.startLon = null;
+                addLog('Mission reset - ready for new waypoints | Prêt pour nouveaux waypoints', 'warning');
+                setTimeout(() => alert('🔄 Mission Reset\n\nAll waypoints cleared. Ready for new mission.\n\n🔄 Mission Réinitialisée\n\nTous les waypoints effacés. Prêt pour nouvelle mission.'), 100);
+            });
         }
     });
 
     // Go Home - One-click return to spawn point
     document.getElementById('btn-go-home').addEventListener('click', () => {
         if (confirm('🏠 Go Home: The boat will navigate to its starting point. Continue? | Le bateau va naviguer vers son point de départ. Continuer?')) {
-            sendMissionCommand('go_home');
-            addLog('🏠 Go Home activated | Retour maison activé', 'info');
-            setTimeout(() => alert('🏠 Go Home Activated\n\nBoat navigating to starting position.\n\n🏠 Retour Maison Activé\n\nBateau naviguant vers position de départ.'), 100);
+            debounceCommand(() => {
+                sendMissionCommand('go_home');
+                addLog('🏠 Go Home activated | Retour maison activé', 'info');
+                setTimeout(() => alert('🏠 Go Home Activated\n\nBoat navigating to starting position.\n\n🏠 Retour Maison Activé\n\nBateau naviguant vers position de départ.'), 100);
+            });
         }
     });
 
-    // Emergency Stop - Immediately halt the boat
+    // Emergency Stop - Immediately halt the boat (no debounce — safety critical)
     document.getElementById('btn-emergency-stop').addEventListener('click', () => {
         emergencyStop();
     });
@@ -1451,9 +1528,10 @@ function generateWaypoints() {
     configPublisher.publish(configMsg);
 
     // Wait for sputnik to process config before generating waypoints
+    // 500ms is conservative for local rosbridge; covers slow config parsing
     setTimeout(() => {
         sendMissionCommand('generate_waypoints');
-    }, 200);
+    }, 500);
     
     // Calculate and display preview info
     const totalWaypoints = lanes * 2 - 1;
@@ -1634,11 +1712,15 @@ function updateMissionControlUI(state) {
     if (btnConfirm) btnConfirm.disabled = !canDecide;
     if (btnCancel) btnCancel.disabled = !canDecide;
 
-    // Start/Go Home allowed when waypoints exist, not in joystick override, not awaiting decision, and state is ready/paused/stop family
+    // Start allowed when waypoints exist, not in joystick override, not awaiting decision, and state is ready/paused/stop family
     const startAllowedStates = ['READY', 'PAUSED', 'STOP', 'STOPPED', 'EMERGENCY_STOP', 'PANIC', 'FINISHED', 'IDLE', 'INIT'];
     const canStart = hasWaypoints && !missionState.joystickOverride && !awaitingDecision && startAllowedStates.includes(missionState.state);
     if (btnStart) btnStart.disabled = !canStart;
-    if (btnGoHome) btnGoHome.disabled = !canStart;
+
+    // Go Home creates its own waypoint (spawn point) — doesn't need existing waypoints, just GPS and connected
+    const goHomeAllowedStates = ['READY', 'PAUSED', 'STOP', 'STOPPED', 'EMERGENCY_STOP', 'PANIC', 'FINISHED', 'IDLE', 'INIT', 'DRIVING'];
+    const canGoHome = connected && missionState.gpsReady && !missionState.joystickOverride && !awaitingDecision && goHomeAllowedStates.includes(missionState.state);
+    if (btnGoHome) btnGoHome.disabled = !canGoHome;
 
     // Resume allowed when paused/stop family and waypoints exist (no joystick override) and not awaiting decision
     const canResume = hasWaypoints && !missionState.joystickOverride && !awaitingDecision && resumableStates.includes(missionState.state);
@@ -1667,26 +1749,37 @@ function updateMissionControlUI(state) {
 // Display waypoints on map
 // fitToWaypoints: only zoom to fit when waypoints change, not on every update
 function displayWaypointsOnMap(waypoints, fitToWaypoints = false) {
-    // Clear existing waypoint markers
-    clearWaypointPreview();
-    
     if (!waypoints || waypoints.length === 0) return;
-    
+
     // Get reference point: use mission start if available, otherwise use current boat position
     let startLat = missionState.startLat;
     let startLon = missionState.startLon;
-    
+
     if (!startLat || !startLon) {
         // Fallback: use boat's current GPS position as reference
         // This allows waypoints to display even if config hasn't arrived yet
         startLat = currentState.gps.lat;
         startLon = currentState.gps.lon;
-        
+
         if (!startLat || !startLon || startLat === 0) {
             // Still no reference point, can't display waypoints yet
             return;
         }
+        // Lock in the fallback reference so waypoints don't jitter as the boat moves
+        missionState.startLat = startLat;
+        missionState.startLon = startLon;
     }
+
+    // Skip redraw if nothing visually changed (same waypoints, same current index)
+    const currentWpIndex = (missionState.currentWaypoint || 1) - 1;
+    const cacheKey = JSON.stringify(waypoints) + ':' + currentWpIndex;
+    if (!fitToWaypoints && cacheKey === displayWaypointsOnMap._lastCacheKey) {
+        return;  // Nothing changed, skip expensive clear+redraw
+    }
+    displayWaypointsOnMap._lastCacheKey = cacheKey;
+
+    // Clear existing waypoint markers
+    clearWaypointPreview();
     
     // Convert local coordinates to GPS
     // Handle both formats: [{x, y}] from vostok1 or [[x, y]] from sputnik
@@ -1699,9 +1792,6 @@ function displayWaypointsOnMap(waypoints, fitToWaypoints = false) {
     
     // Create waypoint markers
     waypointLatLngs.forEach((wp, idx) => {
-        // Note: missionState.currentWaypoint is 1-indexed (from planner), but idx is 0-indexed
-        // Default to 0 if not yet initialized (after page refresh)
-        const currentWpIndex = (missionState.currentWaypoint || 1) - 1;
         const isCurrentTarget = idx === currentWpIndex;
         const isPassed = idx < currentWpIndex;
         
@@ -2693,59 +2783,81 @@ const progressState = {
 };
 
 // Update mission progress
+// Cache for mission progress to avoid redundant DOM updates at 5Hz
+let _prevProgress = {};
+
 function updateMissionProgress() {
     const progressSection = document.getElementById('mission-progress-section');
 
     // Show progress bar when mission is running
     const runningStates = ['RUNNING', 'DRIVING', 'PAUSED'];
     if (runningStates.includes(missionState.state) && missionState.totalWaypoints > 0) {
-        progressSection.style.display = 'block';
+        if (_prevProgress.visible !== true) {
+            progressSection.style.display = 'block';
+            _prevProgress.visible = true;
+        }
 
         // Calculate progress percentage
         const waypointProgress = (missionState.currentWaypoint / missionState.totalWaypoints) * 100;
+        const progressPct = waypointProgress.toFixed(0) + '%';
 
         // Update progress bar
         const progressBar = document.getElementById('mission-progress-bar');
         const progressText = document.getElementById('mission-progress-text');
-        progressBar.style.width = waypointProgress + '%';
-        progressText.textContent = waypointProgress.toFixed(0) + '%';
+        if (_prevProgress.pct !== progressPct) {
+            progressBar.style.width = waypointProgress + '%';
+            progressText.textContent = progressPct;
+            _prevProgress.pct = progressPct;
+        }
 
         // Color-code based on speed
-        if (currentState.gps.speed < 0.5) {
-            progressBar.className = 'mission-progress-bar slow';
-        } else if (currentState.gps.speed < 1.5) {
-            progressBar.className = 'mission-progress-bar normal';
-        } else {
-            progressBar.className = 'mission-progress-bar fast';
+        const speedClass = currentState.gps.speed < 0.5 ? 'mission-progress-bar slow' :
+                           currentState.gps.speed < 1.5 ? 'mission-progress-bar normal' : 'mission-progress-bar fast';
+        if (_prevProgress.speedClass !== speedClass) {
+            progressBar.className = speedClass;
+            _prevProgress.speedClass = speedClass;
         }
 
         // Update waypoint count
-        document.getElementById('progress-waypoints').textContent =
-            `${missionState.currentWaypoint}/${missionState.totalWaypoints}`;
+        const wpText = `${missionState.currentWaypoint}/${missionState.totalWaypoints}`;
+        if (_prevProgress.wp !== wpText) {
+            document.getElementById('progress-waypoints').textContent = wpText;
+            _prevProgress.wp = wpText;
+        }
 
         // Update distance (simplified - would need actual path tracking)
         if (currentValidation) {
             const totalDist = currentValidation.estimates.distance;
             const traveledDist = (missionState.currentWaypoint / missionState.totalWaypoints) * totalDist;
-            document.getElementById('progress-distance').textContent =
-                `${traveledDist.toFixed(0)}m / ${totalDist.toFixed(0)}m`;
+            const distText = `${traveledDist.toFixed(0)}m / ${totalDist.toFixed(0)}m`;
+            if (_prevProgress.dist !== distText) {
+                document.getElementById('progress-distance').textContent = distText;
+                _prevProgress.dist = distText;
+            }
         }
 
         // Update current speed from GPS
         const currentSpeed = currentState.gps.speed || 0;
-        document.getElementById('progress-current-speed').textContent =
-            currentSpeed.toFixed(1) + ' m/s';
+        const speedText = currentSpeed.toFixed(1) + ' m/s';
+        if (_prevProgress.speed !== speedText) {
+            document.getElementById('progress-current-speed').textContent = speedText;
+            _prevProgress.speed = speedText;
+        }
 
         // Calculate average speed
         progressState.speedSamples.push(currentSpeed);
         if (progressState.speedSamples.length > 30) {
-            progressState.speedSamples.shift(); // Keep last 30 samples
+            progressState.speedSamples.shift();
         }
         const avgSpeed = progressState.speedSamples.reduce((a, b) => a + b, 0) / progressState.speedSamples.length;
-        document.getElementById('progress-avg-speed').textContent =
-            avgSpeed.toFixed(1) + ' m/s';
+        const avgText = avgSpeed.toFixed(1) + ' m/s';
+        if (_prevProgress.avg !== avgText) {
+            document.getElementById('progress-avg-speed').textContent = avgText;
+            _prevProgress.avg = avgText;
+        }
 
         // Calculate time remaining
+        let timeText = '--:--';
         if (currentValidation && avgSpeed > 0.1) {
             const totalDist = currentValidation.estimates.distance;
             const traveledDist = (missionState.currentWaypoint / missionState.totalWaypoints) * totalDist;
@@ -2753,10 +2865,11 @@ function updateMissionProgress() {
             const remainingTime = remainingDist / avgSpeed;
             const mins = Math.floor(remainingTime / 60);
             const secs = Math.floor(remainingTime % 60);
-            document.getElementById('progress-time-remaining').textContent =
-                `${mins}:${secs.toString().padStart(2, '0')}`;
-        } else {
-            document.getElementById('progress-time-remaining').textContent = '--:--';
+            timeText = `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+        if (_prevProgress.time !== timeText) {
+            document.getElementById('progress-time-remaining').textContent = timeText;
+            _prevProgress.time = timeText;
         }
 
         // Update status
@@ -2764,10 +2877,17 @@ function updateMissionProgress() {
         if (missionState.blockedReason && missionState.blockedReason !== 'None') {
             statusText += ` (${missionState.blockedReason})`;
         }
-        document.getElementById('progress-status').textContent = statusText;
+        if (_prevProgress.status !== statusText) {
+            document.getElementById('progress-status').textContent = statusText;
+            _prevProgress.status = statusText;
+        }
 
     } else {
-        progressSection.style.display = 'none';
+        if (_prevProgress.visible !== false) {
+            progressSection.style.display = 'none';
+            _prevProgress.visible = false;
+            _prevProgress = { visible: false };
+        }
         progressState.speedSamples = [];
     }
 }
