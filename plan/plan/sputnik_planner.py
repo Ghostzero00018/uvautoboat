@@ -1001,9 +1001,9 @@ class SputnikPlanner(Node):
                 f"(target: ({target_x:.1f}, {target_y:.1f}))"
             )
             self.blocked_reason = "skipped_" + reason
-            self.skip_blocked_waypoints(curr_x, curr_y)
+            self.skip_blocked_waypoints()
 
-    def skip_blocked_waypoints(self, curr_x, curr_y):
+    def skip_blocked_waypoints(self):
         """Skip current waypoint and any subsequent waypoints near known obstacles.
         Handles long linear obstacles (e.g. piers) by skipping the entire blocked
         stretch instead of trying each waypoint individually."""
@@ -1054,7 +1054,7 @@ class SputnikPlanner(Node):
             self.get_logger().warn(
                 f"Detour cap reached ({self.detour_count}/{self.max_detours_per_waypoint}) — burst-skipping blocked waypoints"
             )
-            self.skip_blocked_waypoints(curr_x, curr_y)
+            self.skip_blocked_waypoints()
             return
 
         # Get current heading from GPS velocity or use direction to waypoint
@@ -1080,7 +1080,7 @@ class SputnikPlanner(Node):
             detour_y = curr_y + self.detour_distance * math.sin(detour_angle)
             if not self._is_detour_clear(detour_x, detour_y):
                 self.get_logger().warn("Both detour sides obstructed — burst-skipping blocked waypoints")
-                self.skip_blocked_waypoints(curr_x, curr_y)
+                self.skip_blocked_waypoints()
                 return
 
         # Insert detour waypoint before current target
@@ -1108,7 +1108,7 @@ class SputnikPlanner(Node):
             self.get_logger().warn(
                 f"Detour cap reached ({self.detour_count}/{self.max_detours_per_waypoint}) — burst-skipping blocked waypoints"
             )
-            self.skip_blocked_waypoints(curr_x, curr_y)
+            self.skip_blocked_waypoints()
             return
 
         lateral = self.detour_distance
@@ -1126,7 +1126,7 @@ class SputnikPlanner(Node):
             detour_y = curr_y + lateral * math.sin(angle) + forward * math.sin(heading)
             if not self._is_detour_clear(detour_x, detour_y):
                 self.get_logger().warn("Both side detour directions obstructed — burst-skipping blocked waypoints")
-                self.skip_blocked_waypoints(curr_x, curr_y)
+                self.skip_blocked_waypoints()
                 return
             side = opp_side
 

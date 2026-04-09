@@ -265,7 +265,6 @@ class OkoPerception(Node):
     def config_callback(self, msg):
         """Handle runtime configuration changes from web dashboard"""
         try:
-            import json
             config = json.loads(msg.data)
             updated = []
 
@@ -372,12 +371,6 @@ class OkoPerception(Node):
                 if dist < self.min_range or dist > self.max_range:
                     range_filtered += 1
                     continue
-                '''
-                # Only consider points in front (positive x) CHNAGE HERE TO 0.2m ORIGINAL LINES FOR BOAT REFLECTIONS
-                if x < 0.2:
-                    behind_filtered += 1
-                    continue
-                '''
                 # BOAT SELF-FILTER for points behind the LiDARs (IF YOU WANT TO FILTER BEHIND THE BOAT)
                 # The WAM-V is approx 5m long and 2.4m wide.
                 # Filter out any points INSIDE this box.
@@ -395,14 +388,7 @@ class OkoPerception(Node):
                 if is_in_width and is_in_length:
                     behind_filtered += 1
                     continue
-                '''
-                if you want to filter a specific area behind the boat, uncomment this
-                # Filter specific area behind boat (e.g., reflections from yellow box)
-                if x > -4.0 and x < 0.8 and abs(y) < 1.3:
-                    behind_filtered += 1
-                    continue 
-                '''
-                
+
                 # 5. Ground plane removal - filter water surface
                 if self.water_plane_z is not None:
                     if abs(z - self.water_plane_z) < self.water_plane_threshold:
@@ -420,7 +406,6 @@ class OkoPerception(Node):
             self.water_plane_z = sorted_z[len(sorted_z) // 20]  # 5th percentile
 
         # 6. SMOKE DETECTION ANALYSIS (v2.2)
-        smoke_detected = False
         smoke_center_x, smoke_center_y, smoke_distance = 0.0, 0.0, 0.0
         smoke_point_count = len(smoke_points)
 
@@ -451,8 +436,6 @@ class OkoPerception(Node):
             is_horizontal_dominant = horizontal_spread > vertical_spread * 0.8  # Smoke is wider than tall
 
             if is_diffuse and is_horizontal_dominant:
-                smoke_detected = True
-
                 # Log smoke detection (throttled)
                 self.get_logger().info(
                     f"🌫️ SMOKE DETECTED: {smoke_point_count} points at {smoke_distance:.1f}m "

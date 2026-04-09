@@ -90,8 +90,6 @@ class WaypointVisualizer(Node):
             data = json.loads(msg.data)
             if 'current_waypoint' in data:
                 self.current_wp_index = data['current_waypoint'] - 1  # Convert 1-indexed to 0-indexed
-            if 'total_waypoints' in data:
-                self.total_waypoints = data['total_waypoints']
         except json.JSONDecodeError:
             pass
 
