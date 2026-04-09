@@ -104,8 +104,6 @@ uvautoboat/
 │       ├── tf_broadcaster.py        # Transform broadcasting
 │       ├── tf_broadcaster_gazebo.py # Gazebo-specific TF
 │       └── tf_broadcaster_gps.py    # GPS-based TF
-├── environment_plugins/        # Gazebo plugins (smoke dead-zone)
-│   └── src/dead_zone_plugin.cc      # Kills wildlife in smoke radius
 ├── launch/                     # Top-level launch files
 │   └── vostok1.launch.yaml         # Modular system configuration
 ├── web_dashboard/              # Real-time monitoring interfaces
@@ -114,15 +112,9 @@ uvautoboat/
 │       ├── app.js                   # Dashboard logic
 │       ├── style_merged.css         # Dashboard styles
 │       └── README_vostok1_dashboard.md
-├── test_environment/           # Custom Gazebo worlds and models
-│   ├── sydney_regatta_DEFAULT.sdf  # Original VRX world (reference)
-│   ├── sydney_regatta_custom.sdf   # Custom world with obstacles
-│   ├── sydney_regatta_smoke.sdf    # Smoke dead-zone testing
-│   ├── sydney_regatta_smoke_wildlife.sdf # Smoke + wildlife + kill-zone
-│   ├── sydney_regatta_randomsmoke.sdf   # Random smoke generation
-│   ├── wamv_3d_lidar.xacro         # Default 3D LIDAR config (backup)
-│   ├── wildlife_task_DEFAULT.sdf     # Wildlife task reference world
-│   └── cardboardbox/                # Custom obstacle model
+├── test_environment/           # Gazebo worlds and LiDAR reference
+│   ├── sydney_regatta_DEFAULT.sdf  # Default VRX world (clean environment)
+│   └── wamv_3d_lidar.xacro         # Default 3D LIDAR config (backup)
 ├── wiki/                       # GitHub Wiki documentation
 │   ├── Home.md                      # Wiki landing page
 │   ├── Installation_Guide.md        # Setup instructions
@@ -140,6 +132,8 @@ uvautoboat/
 │   ├── robust_avoidance/            # Old robust avoidance controller and docs
 │   ├── all_in_one/                  # Old monolithic all-in-one stack
 │   ├── misc/                        # Old scripts, pollutant planner, demo launcher
+│   ├── test_worlds/                 # Custom SDF worlds (smoke, wildlife, custom)
+│   ├── environment_plugins/         # Gazebo dead-zone plugin (C++)
 │   └── DEPRECATED.md                # Full deprecation inventory
 ├── images/                     # Documentation images
 ├── Board.md                    # Development progress tracking
@@ -390,7 +384,7 @@ echo "source ~/seal_ws/install/setup.bash" >> ~/.bashrc
 **Terminal 1** — Launch Simulation:
 
 ```bash
-ros2 launch vrx_gz competition.launch.py world:=sydney_regatta_smoke
+ros2 launch vrx_gz competition.launch.py world:=sydney_regatta_DEFAULT
 ```
 
 **Terminal 2** — Run Navigation:
@@ -403,7 +397,7 @@ ros2 launch ~/seal_ws/src/uvautoboat/launch/vostok1.launch.yaml
 
 | Terminal | Command | Purpose |
 | :--------- | :-------- | :-------- |
-| **T1** | `ros2 launch vrx_gz competition.launch.py world:=sydney_regatta_smoke` | Gazebo simulation |
+| **T1** | `ros2 launch vrx_gz competition.launch.py world:=sydney_regatta_DEFAULT` | Gazebo simulation |
 | **T2** | `ros2 launch rosbridge_server rosbridge_websocket_launch.xml delay_between_messages:=0.0` | WebSocket bridge |
 | **T3** | `ros2 run web_video_server web_video_server` | MJPEG camera stream for dashboard (http://<host>:8080) |
 | **T4** | `ros2 launch ~/seal_ws/src/uvautoboat/launch/vostok1.launch.yaml` | Navigation (modular) |
@@ -1099,7 +1093,7 @@ ros2 run plan vostok1_cli interactive
 >
 > ```bash
 > # Terminal 1: Start Gazebo simulation
-> ros2 launch vrx_gz competition.launch.py world:=sydney_regatta_smoke
+> ros2 launch vrx_gz competition.launch.py world:=sydney_regatta_DEFAULT
 >
 > # Terminal 2: Start modular navigation system
 > ros2 launch ~/seal_ws/src/uvautoboat/launch/vostok1.launch.yaml
@@ -1414,7 +1408,7 @@ chmod +x one_click_launch_all/launch_vostok1_complete.sh
 ./one_click_launch_all/launch_vostok1_complete.sh --skip-dashboard
 
 # Combine options
-./one_click_launch_all/launch_vostok1_complete.sh --world sydney_regatta_custom --skip-dashboard
+./one_click_launch_all/launch_vostok1_complete.sh --world sydney_regatta_DEFAULT --skip-dashboard
 ```
 
 **What it launches:**
@@ -1467,7 +1461,7 @@ colcon test-result --verbose
 
 ```bash
 # Simulation
-ros2 launch vrx_gz competition.launch.py world:=sydney_regatta_smoke
+ros2 launch vrx_gz competition.launch.py world:=sydney_regatta_DEFAULT
 
 # Navigation
 ros2 launch ~/seal_ws/src/uvautoboat/launch/vostok1.launch.yaml

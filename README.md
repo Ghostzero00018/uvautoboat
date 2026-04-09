@@ -80,7 +80,7 @@ Then open **<http://localhost:8002>** for the web dashboard.
 
 | Terminal | Command | Purpose |
 | ---------- | --------- | --------- |
-| T1 | `ros2 launch vrx_gz competition.launch.py world:=sydney_regatta_smoke` | Gazebo simulation |
+| T1 | `ros2 launch vrx_gz competition.launch.py world:=sydney_regatta_DEFAULT` | Gazebo simulation |
 | T2 | `ros2 launch rosbridge_server rosbridge_websocket_launch.xml delay_between_messages:=0.0` | WebSocket bridge |
 | T3 | `ros2 run web_video_server web_video_server` | Camera stream (port 8080) |
 | T4 | `ros2 launch ~/seal_ws/src/uvautoboat/launch/vostok1.launch.yaml` | Navigation system |

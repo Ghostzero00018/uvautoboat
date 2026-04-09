@@ -5,9 +5,7 @@
 # ============================================================================
 #
 # ℹ️  DASHBOARD PORT: This dashboard runs on PORT 8002
-#     - Robust Avoidance dashboard: http://localhost:8001
-#     - Vostok1 dashboard:        http://localhost:8002
-#     This prevents port conflicts when switching between systems.
+#     Vostok1 dashboard: http://localhost:8002
 #
 # Module naming convention (Russian space program theme):
 #   OKO     = Perception  — "eye": LiDAR obstacle detection
@@ -164,9 +162,9 @@ Example:
   ./launch_vostok1_complete.sh --world sydney_regatta_DEFAULT --skip-rviz
 
 Worlds available:
-  - sydney_regatta_smoke_wildlife (recommended, with obstacles + wildlife)
-  - sydney_regatta_smoke (smoke task only)
-  - sydney_regatta_DEFAULT (clean environment for testing)
+  - sydney_regatta_DEFAULT (default, clean environment)
+  - sydney_regatta_smoke (with smoke generators)
+  - sydney_regatta_smoke_wildlife (smoke + wildlife + kill-zone)
 EOF
             exit 0
             ;;
