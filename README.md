@@ -79,44 +79,41 @@ See [Board.md](Board.md) for detailed milestones and progress tracking.
 
 ### Project Structure
 
+> **Note:** Only the Vostok1 modular system (OKO-SPUTNIK-BURAN) is actively developed. All Atlantis and robust_avoidance code has been moved to `legacy/`.
+
 ```text
 uvautoboat/
 ├── control/                    # ROS 2 Control Package
 │   └── control/
-│       ├── atlantis_controller.py   # Integrated controller (Atlantis team)
-│       ├── buran_controller.py      # Modular controller (BURAN)
+│       ├── buran_controller.py      # Modular controller (BURAN) — active
 │       ├── buran_controller_fixed.py # Fixed variant for testing
 │       ├── keyboard_teleop.py       # Manual control interface
-│       ├── lidar_obstacle_avoidance.py  # Shared obstacle detection library
-│       └── robust_avoidance.py      # Robust avoidance controller
+│       └── lidar_obstacle_avoidance.py  # Shared obstacle detection library
 ├── plan/                       # ROS 2 Planning Package
-│   ├── plan/
-│   │   ├── oko_perception.py        # 3D LIDAR perception (OKO)
-│   │   ├── sputnik_planner.py       # Waypoint planner (SPUTNIK) + A* path planning
-│   │   ├── atlantis_planner.py      # Alternative planner (Atlantis)
-│   │   ├── vostok1_cli.py           # Terminal mission control
-│   │   ├── lidar_obstacle_avoidance.py  # LIDAR processing module
-│   │   ├── grid_map.py              # Grid mapping for A* planning
-│   │   ├── pollutant_planner.py     # Pollutant tracking utility
-│   │   ├── waypoint_visualizer.py   # RViz visualization
-│   │   ├── mission_trigger.py       # Mission triggering logic
-│   │   ├── simple_perception.py     # Simplified perception module
-│   │   ├── tf_broadcaster.py        # Transform broadcasting
-│   │   ├── tf_broadcaster_gazebo.py # Gazebo-specific TF
-│   │   └── tf_broadcaster_gps.py    # GPS-based TF
-│   └── launch/
-│       ├── atlantis.launch.yaml     # Atlantis-specific config
-│       └── demo.launch.py           # Demo/testing launch
+│   └── plan/
+│       ├── oko_perception.py        # 3D LIDAR perception (OKO) — active
+│       ├── sputnik_planner.py       # Waypoint planner (SPUTNIK) + A* — active
+│       ├── vostok1_cli.py           # Terminal mission control
+│       ├── lidar_obstacle_avoidance.py  # LIDAR processing module
+│       ├── grid_map.py              # Grid mapping for A* planning
+│       ├── waypoint_visualizer.py   # RViz visualization
+│       ├── mission_trigger.py       # Mission triggering logic
+│       ├── simple_perception.py     # Simplified perception module
+│       ├── gps_imu_pose.py          # GPS/IMU pose estimation
+│       ├── pose_filter.py           # Pose filtering utility
+│       ├── tf_broadcaster.py        # Transform broadcasting
+│       ├── tf_broadcaster_gazebo.py # Gazebo-specific TF
+│       └── tf_broadcaster_gps.py    # GPS-based TF
 ├── environment_plugins/        # Gazebo plugins (smoke dead-zone)
 │   └── src/dead_zone_plugin.cc      # Kills wildlife in smoke radius
 ├── launch/                     # Top-level launch files
-│   ├── vostok1.launch.yaml         # Modular system configuration
-│   └── atlantis.launch.py          # Atlantis system configuration
+│   └── vostok1.launch.yaml         # Modular system configuration
 ├── web_dashboard/              # Real-time monitoring interfaces
-│   ├── vostok1/                     # Vostok1 dashboard
-│   │   └── README_vostok1_dashboard.md
-│   └── atlantis/                    # Atlantis dashboard
-│       └── README_atlantis_dashboard.md
+│   └── vostok1/                     # Vostok1 dashboard (active)
+│       ├── index.html               # Dashboard HTML
+│       ├── app.js                   # Dashboard logic
+│       ├── style_merged.css         # Dashboard styles
+│       └── README_vostok1_dashboard.md
 ├── test_environment/           # Custom Gazebo worlds and models
 │   ├── sydney_regatta_DEFAULT.sdf  # Original VRX world (reference)
 │   ├── sydney_regatta_custom.sdf   # Custom world with obstacles
@@ -131,22 +128,20 @@ uvautoboat/
 │   ├── Installation_Guide.md        # Setup instructions
 │   ├── Quick_Start.md               # 5-minute quick start
 │   ├── System_Overview.md           # Architecture deep-dive
-│   ├── SASS.md                      # Simple Anti-Stuck System (deprecated: see v2.1 update)
+│   ├── SASS.md                      # Simple Anti-Stuck System
 │   ├── 3D_LIDAR_Processing.md       # OKO perception details
 │   └── Common_Issues.md             # Troubleshooting guide
-├── robust_avoidance/           # Robust avoidance documentation & scripts
-│   ├── AVOIDANCE_CODE_EXPLANATION.md   # Technical obstacle avoidance docs
-│   ├── diagnose_boat.sh             # Boat diagnosis script
-│   └── monitor.sh                   # Real-time monitoring
 ├── one_click_launch_all/       # Automated launcher scripts
-│   └── launch_vostok1_complete.sh   # One-click full system launch
+│   ├── launch_vostok1_complete.sh   # One-click full system launch
+│   └── health_check_vostok1.sh      # System health check (45 checks)
+├── working_diary/              # Daily development logs
 ├── legacy/                     # Deprecated code (for reference only)
-│   ├── vostok1_integrated.py        # Old monolithic navigation (DEPRECATED)
-│   └── DEPRECATED.md                # Deprecation notes
+│   ├── atlantis/                    # Old Atlantis planner, controller, launch, dashboard
+│   ├── robust_avoidance/            # Old robust avoidance controller and docs
+│   ├── all_in_one/                  # Old monolithic all-in-one stack
+│   ├── misc/                        # Old scripts, pollutant planner, demo launcher
+│   └── DEPRECATED.md                # Full deprecation inventory
 ├── images/                     # Documentation images
-├── quick_test.sh               # Quick system diagnostics
-├── diagnose_boat.sh            # Detailed boat diagnosis
-├── monitor_boat.sh             # Real-time system monitoring
 ├── Board.md                    # Development progress tracking
 └── README.md                   # This file
 ```
@@ -172,9 +167,7 @@ uvautoboat/
 | :--------- | :------------ |
 | [Board.md](Board.md) | Development progress tracking and milestones |
 | [Vostok1 Dashboard Guide](web_dashboard/vostok1/README_vostok1_dashboard.md) | Web dashboard setup (rosbridge + web_video_server) and camera panel |
-| [Atlantis Dashboard Guide](web_dashboard/atlantis/README_atlantis_dashboard.md) | Atlantis dashboard setup and usage |
-| [Control Quick Start](control/launch/README_QUICKSTART.md) | Quick start guide for control stack |
-| [AVOIDANCE_CODE_EXPLANATION.md](robust_avoidance/AVOIDANCE_CODE_EXPLANATION.md) | Technical obstacle avoidance documentation (Chinese) |
+| [Avoidance Code Explanation](legacy/robust_avoidance/docs/AVOIDANCE_CODE_EXPLANATION.md) | Technical obstacle avoidance documentation (legacy, Chinese) |
 
 **Wiki Documentation** (see [wiki/](wiki/) folder):
 
@@ -467,39 +460,17 @@ Understanding the coordinate system is essential for working with VRX simulation
 
 ## System Architecture
 
-### Navigation Systems Comparison
-
-AutoBoat provides multiple navigation systems:
-
-| Aspect | Modular (OKO-SPUTNIK-BURAN) | Atlantis (Control Group) |
-| :------- | :-------------- | :------------------------- |
-| **Approach** | Distributed nodes | Integrated controller |
-| **LIDAR** | 3D PointCloud2 | 3D PointCloud2 |
-| **Detection** | Full 3D volume | 3D Section Analysis |
-| **Control** | PID (configurable) | PID heading |
-| **Monitoring** | Terminal (bilingual) + Web | Web Dashboard |
-| **Anti-Stuck** | Simple (turn left) | Adaptive Escape (Work in progress) |
-| **Best For** | Production use & custom tuning | Robust Path Validation |
-
 ### Modular Architecture (OKO-SPUTNIK-BURAN)
 
-The modular system uses the following distributed nodes:
+The active navigation system uses three distributed ROS 2 nodes:
 
 | Node | Name | Function |
 | :----- | :----- | :--------- |
-| **OKO** | `oko_perception` | 3D LIDAR obstacle detection |
-| **SPUTNIK** | `sputnik_planner` | GPS waypoint planning |
-| **BURAN** | `buran_controller` | PID heading control + Simple anti-stuck |
+| **OKO** | `oko_perception` | 3D LIDAR obstacle detection, smoke filtering, obstacle clustering |
+| **SPUTNIK** | `sputnik_planner` | GPS waypoint planning, A* detour, mission management |
+| **BURAN** | `buran_controller` | PID heading control, obstacle avoidance, anti-stuck recovery |
 
-| Component | Script Name | Function |
-| :----- | :----- | :--------- |
-| **Perception** | `lidar_obstacle_avoidance.py` | Zero-latency 3D PointCloud2 processing & Sector Analysis |
-| **Planner** | `atlantis_planner` | checks between waypoints |
-| **Controller** | `atlantis_controller` | TO BE CHANGED |
-
-The additional feauture for Atlantis method is that' unlike distributed architectures, Atlantis embeds the LidarObstacleDetector class directly within the controller loop. This ensures zero-latency obstacle reaction, allowing the boat to make steering decisions in the exact same millisecond that the Lidar scan is received.
-
-PLEASE REMIND THAT ATLANTIS FEATURES ARE INTEGRATED INTO THE sputnik_planner and, buran_controller!
+> **Note:** Earlier Atlantis and robust_avoidance systems have been deprecated. Their useful features (LiDAR processing, path validation) were integrated into OKO/SPUTNIK/BURAN. Legacy code is preserved in `legacy/` for reference.
 
 ### Modular Topic Flow Diagram
 
@@ -539,39 +510,6 @@ Detailed ROS 2 topic connections between the modular nodes:
 │  ├─ /sputnik/set_config         ◄─────────── Dashboard (waypoint radius, etc.) │
 │  └─ /sputnik/mission_command    ◄─────────── CLI: start, pause, stop, go_home  │
 └─────────────────────────────────────────────────────────────────────────────────┘
-```
-
-### Atlantis Topic Flow Diagram
-
-Detailed ROS 2 connections for the Atlantis architecture. Note the direct LIDAR ingestion by both nodes:
-
-```text
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                          ATLANTIS INTEGRATED SYSTEM                             │
-├─────────────────────────────────────────────────────────────────────────────────┤
-│                                                                                 │
-│               (Shared Library: lidar_obstacle_avoidance.py)                     │
-│               ┌───────────────────────────────────────────┐                     │
-│               │                                           │                     │
-│  ┌──────────┐ ▼ /wamv/sensors/lidars/lidar_wamv.../points ▼    ┌──────────┐     │
-│  │ PLANNER  │◄───────────────────────┬───────────────────────► │CONTROLLER│     │
-│  │(Atlantis)│                        │                         │(Atlantis)│     │
-│  └──────────┘                        │                         └──────────┘     │
-│       │                              │                              ▲  ▲        │
-│       │ /atlantis/path ──────────────┼──────────────────────────────┘  │        │
-│       │                              │                                 │        │
-│       ▼                              │   /wamv/sensors/gps/gps/fix ────┘        │
-│  /atlantis/waypoints                 │   /wamv/sensors/imu/imu/data ───┐        │
-│  /atlantis/obstacle_map              │                                 │        │
-│       │                              │                                 │        │
-│       ▼                              │                                 │        │
-│  Web Dashboard                       │  /wamv/thrusters/left/thrust ───┼──► GZ  │
-│                                      │  /wamv/thrusters/right/thrust ──┼──► GZ  │
-│                                      │                                 │        │
-│  External Control:                   │  /atlantis/mission_status ──────► DASH   │
-│  ├─ /atlantis/replan    ───────────► │  /atlantis/anti_stuck_status ───► DASH   │
-│  └─ /atlantis/start     ───────────► │                                          │
-└──────────────────────────────────────┴──────────────────────────────────────────┘
 ```
 
 **JSON Message Formats:**
@@ -680,15 +618,17 @@ The obstacle avoidance runs **continuously** - not as a one-time decision. The b
 | `/wamv/thrusters/left/thrust` | `Float64` | Left thruster (-1000 to +1000 N) |
 | `/wamv/thrusters/right/thrust` | `Float64` | Right thruster (-1000 to +1000 N) |
 
-#### Dashboard Topics (Vostok1/Modular)
+#### Dashboard Topics
 
 | Topic | Description |
 | :------ | :------------ |
-| `/vostok1/mission_status` | Mission state (JSON) |
-| `/vostok1/config` | Current parameters |
-| `/planning/mission_status` | Modular mission state |
-| `/control/anti_stuck_status` | Simple anti-stuck status |
-| `/perception/obstacle_info` | Obstacle detection |
+| `/planning/mission_status` | Mission state and progress (JSON) |
+| `/planning/waypoints` | Waypoint list (JSON) |
+| `/planning/current_target` | Current navigation target (JSON) |
+| `/sputnik/config` | Current planner configuration (JSON) |
+| `/control/status` | BURAN controller status (JSON) |
+| `/control/anti_stuck_status` | Anti-stuck recovery status (JSON) |
+| `/perception/obstacle_info` | Obstacle detection from OKO (JSON) |
 
 ---
 
@@ -1062,18 +1002,15 @@ The **vostok1_cli** provides terminal-based mission control when the web dashboa
 | :-------- | :------------ |
 | **Auto-Ready Check** | Waits for navigation system before sending commands |
 | **All-in-One Generate** | Waypoints + PID + Speed in a single command |
-| **Dual Mode** | Works with both modular and integrated systems |
 | **Interactive Shell** | Rapid command entry without retyping prefixes |
 
 ### Modes
 
 | Mode | Flag | Description |
 | :----- | :----- | :------------ |
-| **Modular** | `--mode modular` (default) | Sputnik + Buran |
+| **Modular** | `--mode modular` (default) | Sputnik + Buran (active system) |
 | **Sputnik** | `--mode sputnik` | Alias for modular |
-| **Vostok1** | `--mode vostok1` | Integrated navigation |
 
-> **Note:** Default mode is `modular` since the Sputnik + Buran architecture is the primary system.
 >
 ### Waypoint Generation
 
@@ -1154,21 +1091,6 @@ ros2 run plan vostok1_cli interactive
 | `pid <kp> <ki> <kd>` | Set PID parameters |
 | `speed <base> <max>` | Set speed limits |
 | `q` | Quit interactive mode |
-
-### Vostok1 Mode Examples
-
-For the integrated Vostok1 architecture (single node):
-
-```bash
-# Generate waypoints
-ros2 run plan vostok1_cli --mode vostok1 generate --lanes 8 --length 15 --width 5
-
-# Start mission
-ros2 run plan vostok1_cli --mode vostok1 start
-
-# Interactive mode
-ros2 run plan vostok1_cli --mode vostok1 interactive
-```
 
 ### Typical Workflow
 
@@ -1257,13 +1179,13 @@ Interrupts:
 
 | Metric | Value | Notes |
 | :------- | :------ | :------ |
-| **Control Loop Frequency** | 30 Hz | BURAN/Atlantis controller update rate |
+| **Control Loop Frequency** | 30 Hz | BURAN controller update rate |
 | **LIDAR Processing Rate** | 10-20 Hz | Depends on Gazebo simulation speed |
 | **GPS Update Rate** | 10 Hz | VRX default sensor rate |
 | **IMU Update Rate** | 100 Hz | VRX default sensor rate |
 | **WebSocket Latency** | < 50 ms | rosbridge to dashboard |
 | **Obstacle Detection Range** | 5-50 m | Configurable via `min_range`/`max_range` |
-| **Waypoint Arrival Tolerance** | 2.0 m | Default `waypoint_tolerance` |
+| **Waypoint Arrival Tolerance** | 3.5 m | Default `waypoint_tolerance` |
 | **Thrust Range** | -1000 to +1000 N | Per thruster |
 
 ### GPS Navigation
@@ -1370,7 +1292,7 @@ Lane 3: End <────────────────────┘
 | `scan_length` | 15.0m | Length of each lane |
 | `scan_width` | 30.0m | Spacing between lanes |
 | `lanes` | 10 | Number of parallel lanes |
-| `waypoint_tolerance` | 2.0m | Arrival radius for waypoint |
+| `waypoint_tolerance` | 3.5m | Arrival radius for waypoint |
 | `waypoint_skip_timeout` | 45.0s | Skip blocked waypoint after this time |
 
 ### ROS 2 Topics
@@ -1461,29 +1383,17 @@ ros2 topic echo /control/anti_stuck_status
 
 ## Utility Scripts
 
-The repository includes several diagnostic and automation scripts in the root directory:
-
-### System Diagnostics
-
-| Script | Purpose | Usage |
-| :------- | :-------- | :------ |
-| `quick_test.sh` | Quick system diagnostics | `./quick_test.sh` |
-| `diagnose_boat.sh` | Detailed boat system diagnosis | `./diagnose_boat.sh` |
-| `monitor_boat.sh` | Real-time system monitoring | `./monitor_boat.sh` |
+### Health Check
 
 ```bash
-# Make scripts executable (first time only)
-chmod +x quick_test.sh diagnose_boat.sh monitor_boat.sh
+# Run system health check (45 checks: nodes, topics, params, connectivity)
+bash one_click_launch_all/health_check_vostok1.sh
 
-# Run quick diagnostics
-./quick_test.sh
-
-# Detailed diagnosis (checks ROS2, workspace, topics, nodes)
-./diagnose_boat.sh
-
-# Real-time monitoring (live topic data)
-./monitor_boat.sh
+# Quick mode (nodes + topics only)
+bash one_click_launch_all/health_check_vostok1.sh --quick
 ```
+
+The health check auto-detects the boat's mission state (IDLE/ACTIVE) and adjusts expectations — mission-dependent topics show as INFO instead of FAIL when no mission is running.
 
 ### One-Click Launch
 
@@ -1695,7 +1605,16 @@ S = Start, G = Goal, X = Obstacle
 
 ### Legacy Directory
 
-Old python codes, files etc. all of them moved into the "Legacy" directory to avoid confusion. If you want to take more deep look please feel free to check Legacy directory, but please mind that codes in the Legacy can be out of date!
+All deprecated code has been organized into `legacy/` with subdirectories:
+
+| Directory | Contents |
+| :---------- | :--------- |
+| `legacy/atlantis/` | Atlantis planner, controller, launch config, and dashboard |
+| `legacy/robust_avoidance/` | Robust avoidance controller, launch config, and documentation |
+| `legacy/all_in_one/` | Old monolithic all-in-one navigation stack |
+| `legacy/misc/` | Old root scripts, pollutant planner, demo launcher |
+
+See `legacy/DEPRECATED.md` for a full inventory. Legacy code is preserved for reference but is not maintained.
 
 ### Reporting Issues
 
@@ -1749,7 +1668,7 @@ Open an issue on [GitHub](https://github.com/Erk732/uvautoboat/issues) with:
 
 Project finished by IMT NORD EUROPE DNM DMI-2026
 
-Last updated at 14.12.2025
+Last updated at 09.04.2026
 
 ---
 
