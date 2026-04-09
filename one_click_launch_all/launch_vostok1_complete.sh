@@ -44,7 +44,7 @@
 #   bash launch_vostok1_complete.sh [OPTIONS]
 #
 # Options:
-#   --world <world_name>       Gazebo world (default: sydney_regatta_smoke)
+#   --world <world_name>       Gazebo world (default: sydney_regatta_DEFAULT)
 #   For example: bash launch_vostok1_complete.sh --world sydney_regatta_DEFAULT
 #
 #   --skip-rviz                Skip RViz launch (default: launch RViz)
@@ -117,7 +117,7 @@ cleanup() {
 trap cleanup INT TERM
 
 # Default options
-WORLD="sydney_regatta_smoke"
+WORLD="sydney_regatta_DEFAULT"
 LAUNCH_RVIZ=true
 LAUNCH_DASHBOARD=true
 LAUNCH_CAMERA=true
@@ -153,7 +153,7 @@ PROJET-17 Vostok1 Complete Launch Script
 Usage: ./launch_vostok1_complete.sh [OPTIONS]
 
 Options:
-  --world <world_name>       Gazebo world (default: sydney_regatta_smoke)
+  --world <world_name>       Gazebo world (default: sydney_regatta_DEFAULT)
   --skip-rviz                Skip RViz launch
   --skip-dashboard           Skip web dashboard launch
   --skip-camera              Skip web video server launch
