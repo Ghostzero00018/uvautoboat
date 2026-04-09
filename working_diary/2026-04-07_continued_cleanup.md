@@ -97,6 +97,7 @@ Continued from the 2026-04-03 code review session. Fixed all 7 remaining LOW iss
 **Problem:** `sendConfig()` and `generateWaypoints()` read input values with `parseFloat()`/`parseInt()` without validation. NaN or out-of-range values could be sent to ROS nodes.
 
 **Fix:** Added `readInput()` helper that:
+
 - Falls back to a safe default if value is NaN
 - Clamps to the HTML element's `min`/`max` range
 Applied to all config inputs in `sendConfig()` and `generateWaypoints()`.
@@ -110,8 +111,9 @@ Applied to all config inputs in `sendConfig()` and `generateWaypoints()`.
 **Files:** `web_dashboard/vostok1/index.html`
 
 **Problem:** Waypoint generation inputs and hidden config fields had wrong defaults:
+
 | Input | Old | New (YAML) |
-|-------|-----|------------|
+| ------- | ----- | ------------ |
 | wp-lanes / cfg-lanes | 8 | 10 |
 | wp-length / cfg-scan-length | 150 | 15 |
 | wp-width / cfg-scan-width | 50 | 30 |
@@ -127,8 +129,9 @@ Applied to all config inputs in `sendConfig()` and `generateWaypoints()`.
 **Files:** `buran_controller.py`, `sputnik_planner.py`, `index.html`, `app.js`
 
 **Problem:** Several Python `declare_parameter()` defaults and HTML input defaults diverged from YAML:
+
 | Parameter | Old Python/HTML | New (YAML) |
-|-----------|----------------|------------|
+| ----------- | ---------------- | ------------ |
 | kp | 400.0 | 500.0 |
 | kd | 100.0 | 150.0 |
 | base_speed | 500.0 | 400.0 |
@@ -172,8 +175,9 @@ Applied to all config inputs in `sendConfig()` and `generateWaypoints()`.
 **File:** `control/control/buran_controller.py`
 
 **Problem:** Three more Python defaults didn't match YAML:
+
 | Parameter | Old Python | New (YAML) |
-|-----------|-----------|------------|
+| ----------- | ----------- | ------------ |
 | obstacle_slow_factor | 0.3 | 0.5 |
 | turn_deadband_deg | 2.0 | 0.5 |
 | critical_distance | 5.0 | 6.0 |
@@ -251,6 +255,7 @@ Applied to all config inputs in `sendConfig()` and `generateWaypoints()`.
 **Purpose:** System health monitoring script to run from another terminal during simulation.
 
 **Checks:**
+
 1. **Nodes** — verifies OKO, SPUTNIK, BURAN, rosbridge, web_video_server are running
 2. **Topics** — confirms all expected topics exist, verifies orphan topic is removed
 3. **Publishers** — checks publisher/subscriber counts for key topics (lightweight, no subscribing)
@@ -266,6 +271,7 @@ Applied to all config inputs in `sendConfig()` and `generateWaypoints()`.
 ## Testing
 
 Ran full system via `./launch_vostok1_complete.sh` after rebuilding with `colcon build --packages-select plan control`. All components launched successfully:
+
 - Gazebo simulation (sydney_regatta_smoke): OK
 - ROS Bridge: OK
 - Navigation stack (OKO/SPUTNIK/BURAN): OK
@@ -274,6 +280,7 @@ Ran full system via `./launch_vostok1_complete.sh` after rebuilding with `colcon
 - Web Dashboard: OK
 
 Health check confirmed:
+
 - All 7 expected nodes running
 - All expected topics present, orphan topic removed
 - All key topics have active publishers
@@ -282,12 +289,14 @@ Health check confirmed:
 
 ## Final Status
 
-**Total issues identified across both sessions: 29**
+Total issues identified across both sessions: 29
+
 - 16 fixed on 2026-04-03
 - 11 fixed on 2026-04-07 (7 original LOW + 4 newly discovered)
 - 2 dismissed with documentation comments on 2026-04-07
 
 **Additional work on 2026-04-07:**
+
 - 2 more issues found and fixed in third review round (waypoint bounds, infinity JSON)
 - 1 shell quoting clarity fix
 - 1 XSS prevention fix
@@ -296,4 +305,5 @@ Health check confirmed:
 **All issues resolved. No known code issues remaining.**
 
 ### Known Functional Issue
+
 Boat has difficulty bypassing some obstacles — not yet investigated. This is a behavior/tuning issue, not a code bug.

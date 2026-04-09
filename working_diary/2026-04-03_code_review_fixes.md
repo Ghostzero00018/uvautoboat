@@ -50,14 +50,15 @@ CRITICAL / HIGH / MEDIUM / LOW severity. Fixed 16 of them in this session, dismi
 **Problem:** Multiple defaults diverged from YAML values.
 
 **Changes:**
-| Parameter         | Old (JS) | New (JS) | YAML   |
-|-------------------|----------|----------|--------|
-| scan_width        | 50.0     | 30.0     | 30.0   |
-| lanes             | 8        | 10       | 10     |
-| kp                | 400.0    | 500.0    | 500.0  |
-| kd                | 100.0    | 150.0    | 150.0  |
-| base_speed        | 500.0    | 400.0    | 400.0  |
-| min_safe_distance | 15.0     | 10.0     | 10.0   |
+
+| Parameter | Old (JS) | New (JS) | YAML |
+| --------- | -------- | -------- | ---- |
+| scan_width | 50.0 | 30.0 | 30.0 |
+| lanes | 8 | 10 | 10 |
+| kp | 400.0 | 500.0 | 500.0 |
+| kd | 100.0 | 150.0 | 150.0 |
+| base_speed | 500.0 | 400.0 | 400.0 |
+| min_safe_distance | 15.0 | 10.0 | 10.0 |
 
 **Effect:** Dashboard displays correct values before first ROS message arrives.
 
@@ -154,6 +155,7 @@ CRITICAL / HIGH / MEDIUM / LOW severity. Fixed 16 of them in this session, dismi
 **Problem:** `style_merged.css?v=2` used a static version tag (same issue as app.js). Also, `index.html` itself was cached by Firefox (`304`), and `favicon.ico` returned `404` on every load.
 
 **Fix:**
+
 - Dynamic `Date.now()` loader for CSS
 - `Cache-Control: no-cache, no-store, must-revalidate` meta headers for `index.html`
 - `<link rel="icon" href="data:,">` to suppress favicon request
@@ -181,6 +183,7 @@ CRITICAL / HIGH / MEDIUM / LOW severity. Fixed 16 of them in this session, dismi
 **Problem:** Dashboard config updates used `setattr()` directly, never calling `set_parameters()`. `ros2 param get` returned stale launch-time values.
 
 **Fix:**
+
 - OKO: Added `self.set_parameters([rclpy.parameter.Parameter(...)])` in the config loop
 - BURAN: Added bulk `set_parameters()` sync at the end of `config_callback`
 
@@ -195,8 +198,9 @@ CRITICAL / HIGH / MEDIUM / LOW severity. Fixed 16 of them in this session, dismi
 **Problem:** 5 parameters were declared in Python with defaults but never appeared in the YAML. The YAML wasn't a complete config reference.
 
 **Added:**
+
 | Parameter | Value | Purpose |
-|-----------|-------|---------|
+| ----------- | ------- | --------- |
 | `slew_rate_limit` | 80.0 | Max thrust change per cycle (N) |
 | `min_safe_distance` | 12.0 | Obstacle avoidance trigger distance (m) |
 | `max_reverse_distance` | 25.0 | Max meters to reverse during escape |
@@ -214,6 +218,7 @@ CRITICAL / HIGH / MEDIUM / LOW severity. Fixed 16 of them in this session, dismi
 **Problem:** Bare `except:` catches `KeyboardInterrupt` and `SystemExit`, making Ctrl+C unreliable and silently swallowing errors.
 
 **Fix:** Replaced all `except:` with `except Exception:` in:
+
 - `oko_perception.py` (1)
 - `sputnik_planner.py` (1)
 - `vostok1_cli.py` (3)
@@ -229,12 +234,14 @@ CRITICAL / HIGH / MEDIUM / LOW severity. Fixed 16 of them in this session, dismi
 ## Issues Identified but NOT Fixed
 
 ### Dismissed (2)
+
 - **vrx_gazebo package name**: Both `vrx_gazebo` and `vrx_gz` exist in the workspace. RViz launched successfully. Not an issue on this machine.
 - **`pkill -9` system-wide**: Single user, single session — non-issue in practice.
 
 ### Remaining (7)
+
 | # | Severity | Issue |
-|---|----------|-------|
+| --- | ---------- | ------- |
 | 15 | LOW | Orphan topic `/perception/obstacle_detected` |
 | 17 | LOW | `initializeCamera()` dead code in app.js |
 | 18 | LOW | No-op assignment in buran_controller line 633-634 |
@@ -246,6 +253,7 @@ CRITICAL / HIGH / MEDIUM / LOW severity. Fixed 16 of them in this session, dismi
 ## Testing
 
 Ran full system via `./launch_vostok1_complete.sh` three times during the session. All components launched successfully each time:
+
 - Gazebo simulation: OK
 - ROS Bridge: OK (single `/planning/mission_status`, no legacy topics)
 - Navigation stack (OKO/SPUTNIK/BURAN): OK

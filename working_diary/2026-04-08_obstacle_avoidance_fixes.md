@@ -7,6 +7,7 @@ During simulation, the boat generated 300+ detour waypoints when encountering ob
 ## Root Cause Analysis
 
 ### Detour Explosion (SPUTNIK)
+
 - `obstacle_callback` (line 540) reset `detour_waypoint_inserted = False` whenever obstacles momentarily cleared between LiDAR scans, allowing immediate re-insertion
 - No cumulative cap on detour insertions per waypoint
 - No cooldown between detour insertions
@@ -14,6 +15,7 @@ During simulation, the boat generated 300+ detour waypoints when encountering ob
 - Neither insertion function validated that the detour point was actually clear of obstacles
 
 ### Weak BURAN Avoidance
+
 - `max_avoidance_turn_deg = 20` — too conservative, boat couldn't turn sharply enough
 - Escape mode always turned LEFT regardless of which side had more clearance
 - `request_replan()` called at line 662 but method never defined — caused silent `AttributeError` during high-urgency encounters
@@ -40,6 +42,7 @@ During simulation, the boat generated 300+ detour waypoints when encountering ob
 **Problem:** No limit on how many detours could be inserted for a single original waypoint.
 
 **Fix:** Added:
+
 - `detour_count` — tracks insertions per waypoint
 - `max_detours_per_waypoint = 3` — after 3 failed detours, skip the waypoint
 - `detour_cooldown = 5.0s` — minimum time between detour insertions
@@ -58,6 +61,7 @@ Guards added to both `insert_detour_waypoint()` and `insert_side_detour()`. Coun
 **Problem:** Detour waypoints were inserted without checking if the destination was obstructed.
 
 **Fix:** Added `_is_detour_clear(detour_x, detour_y, min_clearance=8.0)` helper that checks against known OKO obstacle clusters. Both insertion functions now:
+
 1. Validate the chosen side
 2. If blocked, try the opposite side
 3. If both blocked, skip the waypoint
@@ -119,8 +123,9 @@ Guards added to both `insert_detour_waypoint()` and `insert_side_detour()`. Coun
 **File:** `control/control/buran_controller.py`
 
 **Problem:** Two code defaults didn't match YAML (YAML wins at runtime, but inconsistency is confusing):
+
 | Parameter | Old Code Default | YAML |
-|-----------|-----------------|------|
+| ----------- | ----------------- | ------ |
 | reverse_timeout | 3.0 | 4.0 |
 | avoid_diff_gain | 25.0 | 18.0 |
 
@@ -135,6 +140,7 @@ Guards added to both `insert_detour_waypoint()` and `insert_side_detour()`. Coun
 **File:** `control/control/buran_controller.py`
 
 **Removed:**
+
 - `pub_detour_request` publisher (line 332) — declared but never used to publish
 - `calculate_drift_compensation()` method — defined but never called in the control loop
 
@@ -178,6 +184,7 @@ Ran full simulation via `bash launch_vostok1_complete.sh` after `colcon build --
 **Health check:** 45/45 PASS, 0 FAIL, 0 WARN
 
 **Simulation results:**
+
 - Mission completed: 18 waypoints in 4.9 minutes
 - Obstacle encountered at ~5.6m distance (urgency peaked at 97%)
 - Detour timeout fired once (15.1s) — working as expected
@@ -232,6 +239,7 @@ Key values synced: `max_avoidance_turn_deg` (45.0), `reverse_timeout` (4.0), `av
 **Files:** `app.js`, `index.html`, `style_merged.css`
 
 **Removed:**
+
 - Dead pollutant UI functions (`updatePollutantSources`, `updatePollutantStatusUI`, `clearPollutantMarkers`, pollutant topic subscription) — ~140 lines
 - Empty `initStyleToggle()` stub and its call
 - Orphaned HTML elements (`escape-history`, `no-go-zones`)
@@ -256,12 +264,14 @@ Key values synced: `max_avoidance_turn_deg` (45.0), `reverse_timeout` (4.0), `av
 ### Repo cleanup: Legacy organization
 
 **Moved to `legacy/` with organized subdirectories:**
+
 - `legacy/atlantis/` — old Atlantis planner, controller, launch, dashboard
 - `legacy/robust_avoidance/` — old robust avoidance controller, launch, dashboard, docs
 - `legacy/all_in_one/` — old monolithic all-in-one stack (was flat in legacy/)
 - `legacy/misc/` — old root scripts, pollutant planner, demo launcher, PORT_ALLOCATION.md
 
 **Cleaned up:**
+
 - Removed stale entry points from `plan/setup.py` and `control/setup.py`
 - Added category comments to setup.py entry points (core/utilities/testing)
 - Updated `legacy/DEPRECATED.md` with full inventory
@@ -281,6 +291,7 @@ Key values synced: `max_avoidance_turn_deg` (45.0), `reverse_timeout` (4.0), `av
 ## Testing (Afternoon)
 
 **Pier scenario:**
+
 - A* cap working — limited attempts per waypoint, then skips
 - Waypoint count bounded (grew to 17, not 300+)
 - Mission completed in 9.5 minutes
