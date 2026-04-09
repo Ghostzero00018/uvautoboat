@@ -646,8 +646,8 @@ h2 {
 .legend-color.boat { background: #ff6b6b; }
 .legend-color.waypoint { background: #3388ff; }
 .legend-color.current-wp { background: #ffa500; }
-.legend-color.path { background: #3388ff; }
-.legend-color.trajectory { background: #667eea; }
+.legend-color.path { background: #aa44ff; }
+.legend-color.trajectory { background: #00cc66; }
 
 /* ========== INFO GRID ========== */
 .info-grid {

@@ -147,7 +147,7 @@ function initMap() {
     });
     
     boatMarker = L.marker([-33.8361, 151.0697], { icon: boatIcon }).addTo(map);
-    trajectoryLine = L.polyline([], { color: '#667eea', weight: 3 }).addTo(map);
+    trajectoryLine = L.polyline([], { color: '#00cc66', weight: 3 }).addTo(map);
     
     // Add follow boat toggle button
     const FollowBoatControl = L.Control.extend({
@@ -616,8 +616,8 @@ function updateGPS(message) {
 
         // Add to trajectory
         trajectoryPoints.push(latLng);
-        if (trajectoryPoints.length > 300) {
-            trajectoryPoints.shift(); // Keep last 300 points (extended trail)
+        if (trajectoryPoints.length > 1000) {
+            trajectoryPoints.shift(); // Keep last 1000 points (extended trail)
         }
 
         // Use requestAnimationFrame for smooth rendering
@@ -1841,7 +1841,7 @@ function displayWaypointsOnMap(waypoints, fitToWaypoints = false) {
     // Draw path line connecting waypoints
     const pathCoords = waypointLatLngs.map(wp => [wp.lat, wp.lon]);
     waypointPath = L.polyline(pathCoords, {
-        color: '#3388ff',
+        color: '#aa44ff',
         weight: 2,
         opacity: 0.7,
         dashArray: '5, 10'
