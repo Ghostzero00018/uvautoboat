@@ -913,6 +913,25 @@
                 </div>
             </div>
 
+            <!-- Health Check Panel -->
+            <div class="panel health-check-panel">
+                <div class="terminal-header">
+                    <h2>Health Check | Diagnostic Système</h2>
+                    <div class="terminal-controls">
+                        <span id="health-check-status" class="health-status-badge">Idle</span>
+                        <button id="btn-run-health-check" class="terminal-btn">Run | Lancer</button>
+                        <button id="btn-clear-health-check" class="terminal-btn">Clear | Effacer</button>
+                        <label class="auto-scroll-label">
+                            <input type="checkbox" id="health-auto-scroll" checked>
+                            Auto-scroll
+                        </label>
+                    </div>
+                </div>
+                <div id="health-check-output" class="terminal-container health-check-container">
+                    <div class="terminal-line system">[SYSTEM] Click "Run" to execute health_check_vostok1.sh</div>
+                </div>
+            </div>
+
             <!-- Logs Panel -->
             <div class="panel logs-panel">
                 <div class="terminal-header">

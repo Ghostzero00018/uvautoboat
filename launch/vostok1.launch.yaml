@@ -241,3 +241,14 @@ launch:
     exec: waypoint_visualizer
     name: waypoint_visualizer_node
     output: screen
+
+# ============================================================================
+# Health Check Service - exposes /health_check/run (std_srvs/Trigger)
+# Wraps one_click_launch_all/health_check_vostok1.sh so the web dashboard
+# can run diagnostics on demand via rosbridge.
+# ============================================================================
+- node:
+    pkg: plan
+    exec: health_check_service
+    name: health_check_service
+    output: screen

@@ -126,7 +126,7 @@ h2 {
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
-.map-panel, .logs-panel, .config-panel, .terminal-panel, .mission-control-panel, .camera-panel {
+.map-panel, .logs-panel, .config-panel, .terminal-panel, .mission-control-panel, .camera-panel, .health-check-panel {
     grid-column: span 2;
 }
 
@@ -1114,7 +1114,7 @@ h2 {
 
 /* ========== RESPONSIVE ========== */
 @media (max-width: 1200px) {
-    .map-panel, .logs-panel, .config-panel, .terminal-panel, .mission-control-panel {
+    .map-panel, .logs-panel, .config-panel, .terminal-panel, .mission-control-panel, .health-check-panel {
         grid-column: span 1;
     }
     .config-grid {
@@ -1822,4 +1822,62 @@ h2 {
         transform: translateX(400px);
         opacity: 0;
     }
+}
+
+/* ========== HEALTH CHECK PANEL ========== */
+.health-check-container {
+    max-height: 500px;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    white-space: pre;
+}
+
+.health-check-container .terminal-line {
+    color: #e0e0e0;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    white-space: pre;
+}
+
+.health-check-container .terminal-line.pass { color: #66bb6a; }
+.health-check-container .terminal-line.fail { color: #ef5350; font-weight: 600; }
+.health-check-container .terminal-line.warn-line { color: #ffa726; }
+.health-check-container .terminal-line.info { color: #64b5f6; }
+.health-check-container .terminal-line.section {
+    color: #81d4fa;
+    font-weight: 700;
+    margin-top: 6px;
+}
+.health-check-container .terminal-line.summary {
+    color: #ce93d8;
+    font-weight: 600;
+}
+
+.health-status-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    background: #424242;
+    color: #bdbdbd;
+    margin-right: 8px;
+}
+.health-status-badge.running {
+    background: #1976d2;
+    color: #fff;
+    animation: pulse 1.2s ease-in-out infinite;
+}
+.health-status-badge.ok {
+    background: #2e7d32;
+    color: #fff;
+}
+.health-status-badge.error {
+    background: #c62828;
+    color: #fff;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
 }

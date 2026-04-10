@@ -2969,3 +2969,126 @@ window.addEventListener('load', () => {
         if (DEBUG_MODE) console.log('Phase 2 features initialized');
     }, 1500);
 });
+
+// ============================================================================
+// Health Check Panel — calls /health_check/run (std_srvs/Trigger) via rosbridge
+// ============================================================================
+function classifyHealthLine(line) {
+    if (/\[PASS\]/.test(line)) return 'pass';
+    if (/\[FAIL\]/.test(line)) return 'fail';
+    if (/\[WARN\]/.test(line)) return 'warn-line';
+    if (/\[INFO\]/.test(line)) return 'info';
+    if (/^={5,}.*={5,}$/.test(line)) return 'section';
+    if (/^(PASS|FAIL|WARN|State):/.test(line.trim())) return 'summary';
+    return '';
+}
+
+function clearHealthOutput() {
+    const container = document.getElementById('health-check-output');
+    if (container) container.innerHTML = '';
+}
+
+function appendHealthLine(raw) {
+    const container = document.getElementById('health-check-output');
+    if (!container) return;
+    const div = document.createElement('div');
+    const cls = classifyHealthLine(raw);
+    div.className = 'terminal-line' + (cls ? ' ' + cls : '');
+    div.textContent = raw.length === 0 ? '\u00A0' : raw;
+    container.appendChild(div);
+    const autoScroll = document.getElementById('health-auto-scroll');
+    if (!autoScroll || autoScroll.checked) {
+        container.scrollTop = container.scrollHeight;
+    }
+}
+
+function setHealthStatus(state, label) {
+    const badge = document.getElementById('health-check-status');
+    if (!badge) return;
+    badge.className = 'health-status-badge' + (state ? ' ' + state : '');
+    badge.textContent = label;
+}
+
+let healthLineTopic = null;
+let healthStatusTopic = null;
+
+function subscribeHealthTopics() {
+    if (!ros || !ros.isConnected) return;
+    if (healthLineTopic && healthStatusTopic) return;
+
+    healthLineTopic = new ROSLIB.Topic({
+        ros: ros,
+        name: '/health_check/line',
+        messageType: 'std_msgs/msg/String'
+    });
+    healthLineTopic.subscribe((msg) => {
+        appendHealthLine(msg.data || '');
+    });
+
+    healthStatusTopic = new ROSLIB.Topic({
+        ros: ros,
+        name: '/health_check/status',
+        messageType: 'std_msgs/msg/String'
+    });
+    healthStatusTopic.subscribe((msg) => {
+        const btn = document.getElementById('btn-run-health-check');
+        if (msg.data === 'running') {
+            clearHealthOutput();
+            appendHealthLine('[SYSTEM] Health check started, streaming live...');
+            setHealthStatus('running', 'Running...');
+            if (btn) btn.disabled = true;
+        } else if (msg.data === 'ok') {
+            setHealthStatus('ok', 'All OK');
+            if (btn) btn.disabled = false;
+        } else if (msg.data === 'error') {
+            setHealthStatus('error', 'Issues found');
+            if (btn) btn.disabled = false;
+        }
+    });
+}
+
+function runHealthCheck() {
+    const btn = document.getElementById('btn-run-health-check');
+    if (!ros || !ros.isConnected) {
+        setHealthStatus('error', 'No rosbridge');
+        clearHealthOutput();
+        appendHealthLine('[ERROR] Not connected to rosbridge — start the simulation first.');
+        return;
+    }
+    subscribeHealthTopics();
+    if (btn) btn.disabled = true;
+    setHealthStatus('running', 'Starting...');
+    clearHealthOutput();
+    appendHealthLine('[SYSTEM] Requesting health check...');
+
+    const healthService = new ROSLIB.Service({
+        ros: ros,
+        name: '/health_check/run',
+        serviceType: 'std_srvs/srv/Trigger'
+    });
+    const request = new ROSLIB.ServiceRequest({});
+    healthService.callService(request, (response) => {
+        if (response && !response.success) {
+            if (btn) btn.disabled = false;
+            setHealthStatus('error', 'Rejected');
+            appendHealthLine('[ERROR] ' + (response.message || 'Unknown error'));
+        }
+    }, (error) => {
+        if (btn) btn.disabled = false;
+        setHealthStatus('error', 'Service failed');
+        appendHealthLine('[ERROR] Service call failed: ' + error);
+        appendHealthLine('Is /health_check/run running? Check that health_check_service node is launched.');
+    });
+}
+
+window.addEventListener('load', () => {
+    const runBtn = document.getElementById('btn-run-health-check');
+    const clearBtn = document.getElementById('btn-clear-health-check');
+    if (runBtn) runBtn.addEventListener('click', runHealthCheck);
+    if (clearBtn) clearBtn.addEventListener('click', () => {
+        clearHealthOutput();
+        appendHealthLine('[SYSTEM] Output cleared.');
+        setHealthStatus('', 'Idle');
+    });
+    setTimeout(subscribeHealthTopics, 2000);
+});

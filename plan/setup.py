@@ -46,6 +46,7 @@ setup(
             'oko_perception = plan.oko_perception:main',
             'waypoint_visualizer = plan.waypoint_visualizer:main',
             'vostok1_cli = plan.vostok1_cli:main',
+            'health_check_service = plan.health_check_service:main',
 
             # === Standalone utilities (not in launch file, run manually) ===
             'mission_trigger = plan.mission_trigger:main',         # Manual mission start trigger
