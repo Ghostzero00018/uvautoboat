@@ -1,6 +1,4 @@
 from setuptools import find_packages, setup
-import os
-from glob import glob
 
 package_name = 'control'
 
@@ -12,9 +10,6 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-        # Uses glob to find all launch files (prevents errors if specific files are missing)
-        (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
-        (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
     ],
     install_requires=[
         'setuptools',

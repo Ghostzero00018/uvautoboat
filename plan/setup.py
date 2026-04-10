@@ -12,10 +12,6 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-        # Install Python launch files
-        (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
-        # Install YAML launch files
-        (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.yaml')),
         # Install rviz config files
         (os.path.join('share', package_name, 'rviz'), glob('rviz/*.rviz')),
     ],

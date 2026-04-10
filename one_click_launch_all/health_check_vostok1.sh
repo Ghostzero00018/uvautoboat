@@ -38,6 +38,13 @@ info() { echo -e "  ${CYAN}[INFO]${NC} $1"; }
 
 section() { echo -e "\n${BLUE}========== $1 ==========${NC}"; }
 
+# Prime DDS discovery — the first ros2 node/topic list call after process
+# startup often returns incomplete results due to discovery lag. Throw away
+# one call, wait briefly, then capture a stable snapshot.
+ros2 node list >/dev/null 2>&1
+ros2 topic list >/dev/null 2>&1
+sleep 1.5
+
 # ============================================================================
 # 1. NODE CHECK
 # ============================================================================
