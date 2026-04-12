@@ -111,7 +111,7 @@ cleanup() {
     done
 }
 
-# Only clean up on user/system signals, not on normal exit
+# Only clean up on user/system signals, not on normal exit.
 trap cleanup INT TERM
 
 # Default options
