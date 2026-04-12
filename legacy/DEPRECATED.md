@@ -12,6 +12,7 @@ The current system uses the **modular Vostok1 architecture** (OKO + SPUTNIK + BU
 | `robust_avoidance/` | Robust avoidance controller, launch, dashboard, and docs | 2025-12-12 |
 | `misc/` | Standalone planners, old scripts, and port allocation docs | Various |
 | `fixed_variants/` | Earlier snapshots of OKO and BURAN (oko_perception_fixed.py, buran_controller_fixed.py) | 2026-04-12 |
+| `utilities/` | Standalone helper nodes not used by the active Vostok1 system: mission_trigger, tf_broadcaster (3 variants), simple_perception, gps_imu_pose, pose_filter | 2026-04-12 |
 
 ## Why Deprecated?
 

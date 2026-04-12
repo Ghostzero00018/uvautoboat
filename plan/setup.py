@@ -47,15 +47,6 @@ setup(
             'waypoint_visualizer = plan.waypoint_visualizer:main',
             'vostok1_cli = plan.vostok1_cli:main',
             'health_check_service = plan.health_check_service:main',
-
-            # === Standalone utilities (not in launch file, run manually) ===
-            'mission_trigger = plan.mission_trigger:main',         # Manual mission start trigger
-            'tf_broadcaster = plan.tf_broadcaster:main',           # TF frame publisher
-            'tf_broadcaster_gazebo = plan.tf_broadcaster_gazebo:main',  # TF for Gazebo sim
-            'tf_broadcaster_gps = plan.tf_broadcaster_gps:main',   # TF from GPS data
-            'simple_perception = plan.simple_perception:main',     # Simplified obstacle detection
-            'gps_imu_pose = plan.gps_imu_pose:main',              # GPS+IMU pose estimation
-            'pose_filter = plan.pose_filter:main',                 # Pose smoothing filter
         ],
     },
 )
