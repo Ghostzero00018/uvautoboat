@@ -437,7 +437,7 @@ class SputnikPlanner(Node):
                 self.get_logger().info("📡 Publishing PAUSED state - BURAN should stop immediately")
                 
             elif command == 'resume_mission':
-                resumable_states = {"PAUSED", "JOYSTICK", "STOP", "STOPPED", "EMERGENCY_STOP", "WAITING_CONFIRM", "READY"}
+                resumable_states = {"PAUSED", "JOYSTICK", "EMERGENCY_STOP", "WAITING_CONFIRM", "READY"}
                 if self.waypoints and self.state in resumable_states:
                     self.state = "DRIVING"
                     self.mission_armed = True

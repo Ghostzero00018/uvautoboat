@@ -1683,7 +1683,7 @@ function updateMissionControlUI(state) {
     const btnJoyDisable = document.getElementById('btn-joystick-disable');
     const btnGoHome = document.getElementById('btn-go-home');
     const hasWaypoints = (missionState.totalWaypoints || 0) > 0 || (missionState.waypoints && missionState.waypoints.length > 0);
-    const resumableStates = ['PAUSED', 'STOP', 'STOPPED', 'EMERGENCY_STOP', 'PANIC'];
+    const resumableStates = ['PAUSED', 'EMERGENCY_STOP'];
     const awaitingDecision = ['WAITING_CONFIRM', 'WAYPOINTS_PREVIEW'].includes(missionState.state);
     
     // Reset all buttons
@@ -1709,12 +1709,12 @@ function updateMissionControlUI(state) {
     if (btnCancel) btnCancel.disabled = !canDecide;
 
     // Start allowed when waypoints exist, not in joystick override, not awaiting decision, and state is ready/paused/stop family
-    const startAllowedStates = ['READY', 'PAUSED', 'STOP', 'STOPPED', 'EMERGENCY_STOP', 'PANIC', 'FINISHED', 'IDLE', 'INIT'];
+    const startAllowedStates = ['READY', 'PAUSED', 'EMERGENCY_STOP', 'FINISHED', 'IDLE', 'INIT'];
     const canStart = hasWaypoints && !missionState.joystickOverride && !awaitingDecision && startAllowedStates.includes(missionState.state);
     if (btnStart) btnStart.disabled = !canStart;
 
     // Go Home creates its own waypoint (spawn point) — doesn't need existing waypoints, just GPS and connected
-    const goHomeAllowedStates = ['READY', 'PAUSED', 'STOP', 'STOPPED', 'EMERGENCY_STOP', 'PANIC', 'FINISHED', 'IDLE', 'INIT', 'DRIVING'];
+    const goHomeAllowedStates = ['READY', 'PAUSED', 'EMERGENCY_STOP', 'FINISHED', 'IDLE', 'INIT', 'DRIVING'];
     const canGoHome = connected && missionState.gpsReady && !missionState.joystickOverride && !awaitingDecision && goHomeAllowedStates.includes(missionState.state);
     if (btnGoHome) btnGoHome.disabled = !canGoHome;
 

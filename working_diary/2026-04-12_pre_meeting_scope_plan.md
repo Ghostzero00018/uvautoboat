@@ -93,7 +93,7 @@ small polish pass goes a long way in the demo.
 
 ## Explicitly OUT of Scope
 
-- Obstacle-avoidance plan (`bright-cooking-shamir.md`)
+- Obstacle-avoidance plan (`obstacle-avoidance-fix.md`)
 - VRX upstream PR / issue #876 comment posts
 - VFH steering, OKO LiDAR tuning, pier A\* routing
 - `request_replan()` AttributeError fix in BURAN:662

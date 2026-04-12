@@ -175,7 +175,7 @@ CSS:
 
 ### From Previous Days
 
-- **Obstacle avoidance detour explosion plan** (`~/.claude/plans/bright-cooking-shamir.md`):
+- **Obstacle avoidance detour explosion plan** (`~/.claude/plans/obstacle-avoidance-fix.md`):
   - SPUTNIK: remove premature `detour_waypoint_inserted = False` reset, add detour cap + cooldown, validate detour clearance, choose clearer side, reset counter on advance
   - BURAN: add missing `request_replan()` method (silent AttributeError crasher at line 662), raise `max_avoidance_turn_deg` 20° → 45°, clearance-aware escape side, sync defaults to YAML
   - Dead code: remove unused `pub_detour_request`, `calculate_drift_compensation()`

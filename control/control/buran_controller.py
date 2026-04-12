@@ -437,13 +437,20 @@ class BuranController(Node):
             self.get_logger().warn(f"Invalid mission command: {e}")
             return
 
-        if command in ('stop_mission', 'emergency_stop', 'panic_stop'):
+        if command == 'emergency_stop':
+            self.stop_override = True
+            self.mission_active = False
+            self._reset_all_escape_state()
+            self.stop()
+            self.send_thrust(0.0, 0.0)
+            self.get_logger().warn("🚨 EMERGENCY STOP — override latched, escape state reset. Thrusters cut until resume/clear.")
+        elif command == 'stop_mission':
             self.stop_override = True
             self.mission_active = False
             self.stop()
             self.send_thrust(0.0, 0.0)
             self.get_logger().warn("🛑 STOP override latched (command). Thrusters cut until resume/clear.")
-        elif command in ('force_resume', 'resume_mission', 'clear_stop_override', 'joystick_enable', 'go_home', 'start_mission'):
+        elif command in ('resume_mission', 'joystick_enable', 'go_home', 'start_mission'):
             if self.stop_override:
                 self.get_logger().info(f"Clearing STOP override due to command: {command}")
             self.stop_override = False
