@@ -642,7 +642,7 @@ ros2 launch ~/seal_ws/src/uvautoboat/launch/vostok1.launch.yaml
 
 | Node | Parameter | Default | Description |
 | :----- | :---------- | :-------- | :------------ |
-| **OKO** | `min_safe_distance` | 10.0 | Obstacle safe distance (m) |
+| **OKO** | `oko_min_safe_distance` | 10.0 | Obstacle safe distance (m) |
 | | `critical_distance` | 5.5 | Critical obstacle distance (m) |
 | | `min_height` | -1.2 | Min Z to detect (low piers) |
 | | `max_height` | 1.5 | Max Z to detect (navigation hazards) |

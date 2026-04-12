@@ -295,8 +295,7 @@ gnome-terminal --wait --tab --title="navigation" -- bash -i -c "
 source \"$INSTALL_DIR/setup.bash\"
 echo 'Starting Vostok1 Modular Navigation System...'
 echo 'Components: OKO (perception) | SPUTNIK (planner) | BURAN (control)'
-ros2 launch \"$WS_ROOT/src/uvautoboat/launch/vostok1.launch.yaml\" \
-    sputnik_planner_node.world_name:=${WORLD}
+ros2 launch \"$WS_ROOT/src/uvautoboat/launch/vostok1.launch.yaml\"
 " &
 NAV_PID=$!
 sleep 8  # Wait for navigation stack to initialize

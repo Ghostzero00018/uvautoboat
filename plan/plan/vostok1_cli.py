@@ -281,7 +281,7 @@ class MissionCLI(Node):
     def generate_waypoints(self, lanes=8, length=50.0, width=20.0,
                             kp=None, ki=None, kd=None, base_speed=None, max_speed=None, max_turn=None,
                             stuck_timeout=None, stuck_threshold=None,
-                            min_height=None, safe_dist=None, approach_dist=None, approach_factor=None,
+                            min_height=None, safe_dist=None, oko_safe_dist=None, approach_dist=None, approach_factor=None,
                             hazard=False, hazard_boxes=None, hazard_origin_x=None, hazard_origin_y=None,
                             astar=False, astar_hybrid=False, astar_resolution=None, astar_safety=None, astar_max=None):
         """Generate waypoints with specified parameters and optional PID/speed/turn/hazard/A* config"""
@@ -323,6 +323,9 @@ class MissionCLI(Node):
         # BURAN distance parameters
         if safe_dist is not None:
             config['min_safe_distance'] = safe_dist
+        # OKO distance parameter (separate from BURAN's min_safe_distance)
+        if oko_safe_dist is not None:
+            config['oko_min_safe_distance'] = oko_safe_dist
         if approach_dist is not None:
             config['approach_slow_distance'] = approach_dist
         if approach_factor is not None:
@@ -690,6 +693,7 @@ Examples:
     gen_parser.add_argument('--min-height', type=float, help='Min LiDAR height threshold in meters (optional, OKO)')
     # BURAN distance parameters
     gen_parser.add_argument('--safe-dist', type=float, help='Min safe distance in meters (optional, BURAN)')
+    gen_parser.add_argument('--oko-safe-dist', type=float, help='OKO detection safe distance in meters (optional, OKO)')
     gen_parser.add_argument('--approach-dist', type=float, help='Approach slow-down distance in meters (optional, BURAN)')
     gen_parser.add_argument('--approach-factor', type=float, help='Approach slow-down speed factor 0-1 (optional, BURAN)')
     # Hazard/A* options (forwarded to Sputnik)
@@ -742,7 +746,8 @@ Examples:
                 base_speed=args.base, max_speed=args.max, max_turn=args.max_turn,
                 stuck_timeout=args.stuck_timeout, stuck_threshold=args.stuck_threshold,
                 min_height=args.min_height,
-                safe_dist=args.safe_dist, approach_dist=args.approach_dist,
+                safe_dist=args.safe_dist, oko_safe_dist=args.oko_safe_dist,
+                approach_dist=args.approach_dist,
                 approach_factor=args.approach_factor,
                 hazard=args.hazard, hazard_boxes=args.hazard_boxes,
                 hazard_origin_x=args.hazard_origin_x, hazard_origin_y=args.hazard_origin_y,

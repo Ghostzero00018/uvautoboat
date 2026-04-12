@@ -58,7 +58,7 @@ class OkoPerception(Node):
         # --- PARAMETERS ---
         # Tuned for lake bank detection (LiDAR mounted high on WAM-V frame)
         # Lake banks appear BELOW the LiDAR (negative Z values)
-        self.declare_parameter('min_safe_distance', 12.0)  # Detection threshold
+        self.declare_parameter('oko_min_safe_distance', 12.0)  # Detection threshold
         self.declare_parameter('critical_distance', 4.0)   # Emergency stop threshold
         self.declare_parameter('hysteresis_distance', 1.5) # Prevent oscillation
         self.declare_parameter('min_height', -15.0)  # Lake bank is ~2-3m below LiDAR
@@ -183,7 +183,7 @@ class OkoPerception(Node):
     def _load_parameters(self):
         """Load/reload all parameters from parameter server"""
         # Basic parameters
-        self.min_safe_distance = self.get_parameter('min_safe_distance').value
+        self.min_safe_distance = self.get_parameter('oko_min_safe_distance').value
         self.critical_distance = self.get_parameter('critical_distance').value
         self.hysteresis_distance = self.get_parameter('hysteresis_distance').value
         self.min_height = self.get_parameter('min_height').value
@@ -218,7 +218,7 @@ class OkoPerception(Node):
             param_name = param.name
 
             # Check if it's one of our parameters
-            if param_name in ['min_safe_distance', 'critical_distance', 'hysteresis_distance',
+            if param_name in ['oko_min_safe_distance', 'critical_distance', 'hysteresis_distance',
                              'min_height', 'max_height', 'min_range', 'max_range', 'sample_rate',
                              'temporal_history_size', 'temporal_threshold', 'cluster_distance',
                              'min_cluster_size', 'water_plane_threshold', 'velocity_history_size',
@@ -274,7 +274,7 @@ class OkoPerception(Node):
                 'max_height': ('max_height', float),
                 'min_range': ('min_range', float),
                 'max_range': ('max_range', float),
-                'min_safe_distance': ('min_safe_distance', float),
+                'oko_min_safe_distance': ('oko_min_safe_distance', float),
                 'critical_distance': ('critical_distance', float),
                 'hysteresis_distance': ('hysteresis_distance', float),
                 'cluster_distance': ('cluster_distance', float),

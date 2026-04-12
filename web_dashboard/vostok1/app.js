@@ -2005,7 +2005,7 @@ const TUNING_PRESETS = {
             max_height: 0.8,
             min_range: 0.8,
             max_range: 80.0,
-            min_safe_distance: 11.0,
+            oko_min_safe_distance: 11.0,
             critical_distance: 3.5,
             cluster_distance: 1.5,
             min_cluster_size: 4,
@@ -2013,7 +2013,6 @@ const TUNING_PRESETS = {
             temporal_threshold: 3,
             water_plane_threshold: 0.2,
             hysteresis_distance: 1.3,
-            // Smoke detection (v2.1) - Tuned for sydney_regatta_smoke.sdf
             smoke_filter_enabled: true,
             smoke_min_height: 0.3,
             smoke_max_height: 10.0,
@@ -2044,7 +2043,7 @@ const TUNING_PRESETS = {
             max_height: 0.8,
             min_range: 0.8,
             max_range: 80.0,
-            min_safe_distance: 10.0,
+            oko_min_safe_distance: 10.0,
             critical_distance: 2.5,
             cluster_distance: 1.2,
             min_cluster_size: 3,
@@ -2083,7 +2082,7 @@ const TUNING_PRESETS = {
             max_height: 1.0,
             min_range: 0.5,
             max_range: 60.0,
-            min_safe_distance: 12.0,
+            oko_min_safe_distance: 12.0,
             critical_distance: 2.0,
             cluster_distance: 0.5,
             min_cluster_size: 3,
@@ -2122,7 +2121,7 @@ const TUNING_PRESETS = {
             max_height: 3.0,
             min_range: 3.0,
             max_range: 80.0,
-            min_safe_distance: 15.0,
+            oko_min_safe_distance: 15.0,
             critical_distance: 5.0,
             cluster_distance: 3.0,
             min_cluster_size: 6,
@@ -2227,7 +2226,7 @@ function updateOkoInputs(params) {
     document.getElementById('oko-max-height').value = params.max_height;
     document.getElementById('oko-min-range').value = params.min_range;
     document.getElementById('oko-max-range').value = params.max_range;
-    document.getElementById('oko-safe-dist').value = params.min_safe_distance;
+    document.getElementById('oko-safe-dist').value = params.oko_min_safe_distance;
     document.getElementById('oko-critical-dist').value = params.critical_distance;
     document.getElementById('oko-cluster-dist').value = params.cluster_distance;
     document.getElementById('oko-min-cluster-size').value = params.min_cluster_size;
@@ -2288,7 +2287,7 @@ function applyOkoParameters(presetParams = null) {
         max_height: parseFloat(document.getElementById('oko-max-height').value),
         min_range: parseFloat(document.getElementById('oko-min-range').value),
         max_range: parseFloat(document.getElementById('oko-max-range').value),
-        min_safe_distance: parseFloat(document.getElementById('oko-safe-dist').value),
+        oko_min_safe_distance: parseFloat(document.getElementById('oko-safe-dist').value),
         critical_distance: parseFloat(document.getElementById('oko-critical-dist').value),
         cluster_distance: parseFloat(document.getElementById('oko-cluster-dist').value),
         min_cluster_size: parseInt(document.getElementById('oko-min-cluster-size').value),

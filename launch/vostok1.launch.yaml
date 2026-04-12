@@ -66,8 +66,8 @@ launch:
     name: oko_perception_node
     output: screen
     param:
-    - name: min_safe_distance
-      value: 10.0       # Moderately conservative
+    - name: oko_min_safe_distance
+      value: 10.0       # OKO detection threshold (separate from BURAN's min_safe_distance)
     - name: critical_distance
       value: 5.5        # Emergency stop threshold
     - name: hysteresis_distance
@@ -123,6 +123,8 @@ launch:
     name: sputnik_planner_node
     output: screen
     param:
+    - name: world_name
+      value: sydney_regatta_DEFAULT
     - name: scan_length
       value: 15.0
     - name: scan_width
