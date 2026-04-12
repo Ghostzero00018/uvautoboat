@@ -25,12 +25,12 @@ visible to the supervisor on Apr 15 is cut.
 
 ## Trimmed Scope — 5 Items
 
-### 1. Pre-demo safety (~1h) — do first, non-negotiable
+### 1. Pre-demo safety (~1h) — do first, non-negotiable ✅ DONE
 
-- Re-apply `publish_model_pose=true` at `wamv_gazebo.urdf.xacro:94`.
-- Stash the fix in a `scripts/patch_vrx.sh` called by the launcher so it
-  survives a future `git pull` of VRX.
-- Run `health_check_vostok1.sh` — confirm 45/45 PASS still holds.
+- [x] Re-apply `publish_model_pose=true` at `wamv_gazebo.urdf.xacro:94`.
+- [x] Stash the fix in `one_click_launch_all/patch_vrx.sh` called by the
+  launcher so it survives a future `git pull` of VRX.
+- [x] Run `health_check_vostok1.sh` — 45/45 PASS confirmed.
 
 **Why kept:** if forgotten, LiDAR renders at origin during demo and undermines
 the whole perception story. Cheapest + highest-impact item.
@@ -103,7 +103,7 @@ Mention these verbally in the meeting as known next steps.
 ## Daily Split (Revised)
 
 | Day | Repo work | Other |
-|-----|-----------|-------|
+| ----- | --------- | ------- |
 | Apr 12 (Sun) | Item 1: pre-demo safety (~1h) + Item 2: repo cleanup (~2h) | PPT outline, teammate sync |
 | Apr 13 (Mon) | Item 3: README rewrite + screenshots (~½ day) | PPT slides draft |
 | Apr 14 (Tue) | Item 4: dashboard polish (~2–3h) + Item 5: dry-run (~2h) | PPT polish, rehearsal |

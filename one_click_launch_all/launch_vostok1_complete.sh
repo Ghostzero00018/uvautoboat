@@ -272,6 +272,9 @@ pkill -9 -f "http.server 8002" &> /dev/null || true
 sleep 4
 
 # T1: Launch Gazebo (VRX Simulation)
+# Apply upstream VRX patches (issue #876 workaround — LiDAR at origin fix)
+bash "$(dirname "$0")/patch_vrx.sh"
+
 print_status "Launching Gazebo (Sydney Regatta - $WORLD)..."
 gnome-terminal --wait --tab --title="gazebo" -- bash -i -c "
 source \"$INSTALL_DIR/setup.bash\"
