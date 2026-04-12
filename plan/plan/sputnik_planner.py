@@ -215,8 +215,8 @@ class SputnikPlanner(Node):
         self.declare_parameter('astar_safety_margin', 12.0)
         self.declare_parameter('astar_max_expansions', 20000)
         # Pollutant source scanning (smoke generators in SDF)
-        self.declare_parameter('pollutant_scan_enabled', True)
-        self.declare_parameter('pollutant_sdf_glob', 'test_environment/*smoke*.sdf')
+        self.declare_parameter('pollutant_scan_enabled', False)
+        self.declare_parameter('pollutant_sdf_glob', '')
         self.astar_enabled = bool(self.get_parameter('astar_enabled').value)
         self.astar_hybrid_mode = bool(self.get_parameter('astar_hybrid_mode').value)
         self.astar = AStarSolver(

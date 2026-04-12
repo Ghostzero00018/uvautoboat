@@ -157,13 +157,8 @@ launch:
       value: 12.0       # Safety margin around obstacles (m)
     - name: astar_max_expansions
       value: 20000      # Max node expansions for A* search
-    # Pollutant Source Detection (Smoke Generators in SDF) - DEPRECATED
-    # Note: Replaced by LiDAR-based smoke detection in OKO perception
-    - name: pollutant_scan_enabled
-      value: false      # Disabled: using LiDAR smoke detection instead
-    - name: pollutant_sdf_glob
-      value: ""  # DEPRECATED: overridden by launch script; left empty to avoid hardcoded paths
     # Note: hazard_world_boxes removed - not used when hazard_enabled=false (see line 125)
+    # Note: pollutant_scan_enabled removed (default false; smoke worlds moved to legacy)
 
 # ============================================================================
 # BURAN - Controller Node (PID Control with Obstacle Avoidance)

@@ -2974,6 +2974,8 @@ function classifyHealthLine(line) {
     if (/\[FAIL\]/.test(line)) return 'fail';
     if (/\[WARN\]/.test(line)) return 'warn-line';
     if (/\[INFO\]/.test(line)) return 'info';
+    if (/\[DONE\]/.test(line)) return 'done';
+    if (/\[SYSTEM\]/.test(line)) return 'info';
     if (/^={5,}.*={5,}$/.test(line)) return 'section';
     if (/^(PASS|FAIL|WARN|State):/.test(line.trim())) return 'summary';
     return '';
@@ -3008,6 +3010,8 @@ function setHealthStatus(state, label) {
 let healthLineTopic = null;
 let healthStatusTopic = null;
 
+let healthCheckStartTime = null;
+
 function subscribeHealthTopics() {
     if (!ros || !ros.isConnected) return;
     if (healthLineTopic && healthStatusTopic) return;
@@ -3029,15 +3033,20 @@ function subscribeHealthTopics() {
     healthStatusTopic.subscribe((msg) => {
         const btn = document.getElementById('btn-run-health-check');
         if (msg.data === 'running') {
-            clearHealthOutput();
-            appendHealthLine('[SYSTEM] Health check started, streaming live...');
+            healthCheckStartTime = Date.now();
             setHealthStatus('running', 'Running...');
             if (btn) btn.disabled = true;
-        } else if (msg.data === 'ok') {
-            setHealthStatus('ok', 'All OK');
-            if (btn) btn.disabled = false;
-        } else if (msg.data === 'error') {
-            setHealthStatus('error', 'Issues found');
+        } else if (msg.data === 'ok' || msg.data === 'error') {
+            const elapsed = healthCheckStartTime
+                ? ((Date.now() - healthCheckStartTime) / 1000).toFixed(1) + 's'
+                : '';
+            healthCheckStartTime = null;
+            const label = msg.data === 'ok' ? 'All OK' : 'Issues found';
+            setHealthStatus(msg.data, label);
+            setTimeout(() => {
+                appendHealthLine('');
+                appendHealthLine('[DONE] Health check finished' + (elapsed ? ' in ' + elapsed : '') + '.');
+            }, 500);
             if (btn) btn.disabled = false;
         }
     });
@@ -3053,9 +3062,10 @@ function runHealthCheck() {
     }
     subscribeHealthTopics();
     if (btn) btn.disabled = true;
+    healthCheckStartTime = Date.now();
     setHealthStatus('running', 'Starting...');
     clearHealthOutput();
-    appendHealthLine('[SYSTEM] Requesting health check...');
+    appendHealthLine('[SYSTEM] Health check started, streaming live...');
 
     const healthService = new ROSLIB.Service({
         ros: ros,
@@ -3087,4 +3097,118 @@ window.addEventListener('load', () => {
         setHealthStatus('', 'Idle');
     });
     setTimeout(subscribeHealthTopics, 2000);
+});
+
+// ============================================================================
+// JSON LOG EXPORT
+// ============================================================================
+
+function downloadJSON(data, filename) {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+function getTimestamp() {
+    return new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+}
+
+function collectSystemSnapshot() {
+    return {
+        exported_at: new Date().toISOString(),
+        gps: currentState.gps,
+        mission: currentState.mission,
+        obstacles: currentState.obstacles,
+        thrusters: currentState.thrusters,
+        config: currentState.config,
+        world: currentState.world
+    };
+}
+
+function collectTerminalLines(containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) return [];
+    return Array.from(container.querySelectorAll('.log-entry, .terminal-line'))
+        .map(el => el.textContent.trim())
+        .filter(line => line.length > 0);
+}
+
+function exportPanel(panelName) {
+    const ts = getTimestamp();
+    let data, filename;
+
+    switch (panelName) {
+        case 'system':
+            data = collectSystemSnapshot();
+            filename = `vostok1_system_${ts}.json`;
+            break;
+        case 'health':
+            data = {
+                exported_at: new Date().toISOString(),
+                lines: collectTerminalLines('health-check-output')
+            };
+            filename = `vostok1_health_check_${ts}.json`;
+            break;
+        case 'logs':
+            data = {
+                exported_at: new Date().toISOString(),
+                lines: collectTerminalLines('logs')
+            };
+            filename = `vostok1_logs_${ts}.json`;
+            break;
+        case 'terminal':
+            data = {
+                exported_at: new Date().toISOString(),
+                lines: collectTerminalLines('terminal-output')
+            };
+            filename = `vostok1_terminal_${ts}.json`;
+            break;
+        default:
+            return;
+    }
+
+    downloadJSON(data, filename);
+    addLog(`Exported ${panelName} logs to ${filename}`, 'info');
+}
+
+function addExportButton(headerSelector, panelName, label) {
+    const header = document.querySelector(headerSelector);
+    if (!header) return;
+    const btn = document.createElement('button');
+    btn.className = 'terminal-btn export-btn';
+    btn.textContent = label || 'Export JSON';
+    btn.title = `Export ${panelName} data as JSON`;
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        exportPanel(panelName);
+    });
+    header.style.display = 'flex';
+    header.style.justifyContent = 'space-between';
+    header.style.alignItems = 'center';
+    header.appendChild(btn);
+}
+
+function addExportButtonToControls(controlsSelector, panelName, label) {
+    const controls = document.querySelector(controlsSelector);
+    if (!controls) return;
+    const btn = document.createElement('button');
+    btn.className = 'terminal-btn export-btn';
+    btn.textContent = label || 'Export JSON';
+    btn.title = `Export ${panelName} data as JSON`;
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        exportPanel(panelName);
+    });
+    controls.appendChild(btn);
+}
+
+window.addEventListener('load', () => {
+    addExportButtonToControls('.health-check-panel .terminal-controls', 'health', 'Export JSON');
+    addExportButtonToControls('.logs-panel .terminal-controls', 'logs', 'Export JSON');
+    addExportButtonToControls('.terminal-panel .terminal-controls', 'terminal', 'Export JSON');
+    addExportButton('.mission-control-panel h2', 'system', 'Export Snapshot');
 });

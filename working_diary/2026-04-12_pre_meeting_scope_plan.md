@@ -45,6 +45,15 @@ the whole perception story. Cheapest + highest-impact item.
   `legacy/fixed_variants/`; removed entry points from setup.py; updated
   USER_MANUAL.md tree and legacy/DEPRECATED.md
 - [x] Build verified: 7 packages clean, health check 45/45 PASS
+- [x] Audited vostok1_cli.py — marked `--mode vostok1` deprecated, added
+  runtime warning
+- [x] Added emergency_stop handling to SPUTNIK (distinct `EMERGENCY_STOP`
+  state) + BURAN (resets escape state) + dashboard (red pulsing badge) + CLI
+- [x] Added CLI args: `--safe-dist`, `--approach-dist`, `--approach-factor`
+- [x] Removed dead code: `panic_stop`, `force_resume`, `clear_stop_override`
+  in BURAN; `STOP`/`STOPPED`/`PANIC` states; `restart_mission` in dashboard
+- [x] Moved 7 unused standalone utilities to `legacy/utilities/`
+- [x] Fixed package.xml: added missing `std_srvs`, removed 17 unused deps
 
 **Why kept:** first impression when the supervisor browses the repo tree. A
 tidy tree signals a maintained project.

@@ -235,10 +235,13 @@ h2 {
     text-transform: uppercase;
 }
 
+.mission-badge.init { background: #495057; color: white; }
 .mission-badge.idle { background: #6c757d; color: white; }
+.mission-badge.waiting_confirm { background: #ffc107; color: black; }
 .mission-badge.waypoints_preview { background: #17a2b8; color: white; }
 .mission-badge.ready { background: #28a745; color: white; }
 .mission-badge.running { background: #ffc107; color: black; animation: pulse 1s infinite; }
+.mission-badge.driving { background: #007bff; color: white; animation: pulse 1s infinite; }
 .mission-badge.paused { background: #fd7e14; color: white; }
 .mission-badge.joystick { background: #e83e8c; color: white; }
 .mission-badge.finished { background: #6f42c1; color: white; }
@@ -969,6 +972,16 @@ h2 {
 .terminal-btn:hover {
     background: var(--accent);
     color: white;
+}
+
+.export-btn {
+    font-size: 10px;
+    padding: 3px 8px;
+    margin-left: auto;
+    opacity: 0.7;
+}
+.export-btn:hover {
+    opacity: 1;
 }
 
 .auto-scroll-label {
@@ -1857,6 +1870,13 @@ h2 {
 .health-check-container .terminal-line.summary {
     color: #ce93d8;
     font-weight: 600;
+}
+.health-check-container .terminal-line.done {
+    color: #69f0ae;
+    font-weight: 700;
+    margin-top: 6px;
+    border-top: 1px solid #333;
+    padding-top: 4px;
 }
 
 .health-status-badge {

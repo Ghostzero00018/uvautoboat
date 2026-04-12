@@ -163,8 +163,7 @@ Example:
 
 Worlds available:
   - sydney_regatta_DEFAULT (default, clean environment)
-  - sydney_regatta_smoke (with smoke generators)
-  - sydney_regatta_smoke_wildlife (smoke + wildlife + kill-zone)
+  - (smoke worlds moved to legacy/ — use --world with any VRX world name)
 EOF
             exit 0
             ;;
@@ -297,9 +296,7 @@ source \"$INSTALL_DIR/setup.bash\"
 echo 'Starting Vostok1 Modular Navigation System...'
 echo 'Components: OKO (perception) | SPUTNIK (planner) | BURAN (control)'
 ros2 launch \"$WS_ROOT/src/uvautoboat/launch/vostok1.launch.yaml\" \
-    world:=${WORLD} \
-    sputnik_planner_node.world_name:=${WORLD} \
-    sputnik_planner_node.pollutant_sdf_glob:=$WS_ROOT/src/uvautoboat/test_environment/${WORLD}.sdf
+    sputnik_planner_node.world_name:=${WORLD}
 " &
 NAV_PID=$!
 sleep 8  # Wait for navigation stack to initialize
