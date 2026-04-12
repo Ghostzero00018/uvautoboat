@@ -1004,7 +1004,7 @@ function initConfigPanel() {
 
     // Apply all config button (applies all parameters including PID, speed, and scan settings)
     document.getElementById('btn-apply-config').addEventListener('click', () => {
-        sendConfig(false, false);  // Send ALL parameters (PID, speed, scan settings)
+        sendConfig(false);  // Send ALL parameters (PID, speed, scan settings)
         // Don't clear dirty state immediately - wait for ROS to confirm
         // The dirty state will be cleared when we receive matching values from ROS
         // For now, just give feedback
@@ -1211,7 +1211,7 @@ function readInput(id, fallback) {
 }
 
 // Send configuration to Vostok1
-function sendConfig(pidOnly = false, restart = false) {
+function sendConfig(pidOnly = false) {
     if (!connected || !configPublisher) {
         addLog('Not connected to ROS', 'error');
         return;
@@ -1257,11 +1257,6 @@ function sendConfig(pidOnly = false, restart = false) {
         addLog('Sending full config... | Envoi configuration complète...', 'info');
     }
 
-    if (restart) {
-        config.restart_mission = true;
-        addLog('Restarting mission... | Redémarrage de la mission...', 'warning');
-    }
-    
     const message = new ROSLIB.Message({
         data: JSON.stringify(config)
     });
@@ -1670,7 +1665,8 @@ function updateMissionControlUI(state) {
             'DRIVING': 'Driving | Navigation',
             'PAUSED': 'Paused | Pause',
             'JOYSTICK': 'Joystick',
-            'FINISHED': 'Finished | Terminé'
+            'FINISHED': 'Finished | Terminé',
+            'EMERGENCY_STOP': '⚠ EMERGENCY STOP'
         };
         stateBadge.textContent = stateLabels[missionState.state] || missionState.state;
         stateBadge.className = `mission-badge ${missionState.state.toLowerCase()}`;

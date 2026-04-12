@@ -6,7 +6,7 @@ Use this when the web dashboard is unavailable.
 
 MODES:
     --mode modular   (default) Use modular Sputnik planner + Buran controller
-    --mode vostok1   Use integrated Vostok1 navigation
+    --mode vostok1   (deprecated) Legacy integrated Vostok1 navigation
 
 Usage (Modular - Sputnik Planner - Default):
     # Generate waypoints with default parameters
@@ -106,7 +106,7 @@ class MissionCLI(Node):
             command_topic = '/vostok1/mission_command'
             status_topic = '/vostok1/mission_status'
             config_status_topic = '/vostok1/config'
-            self.get_logger().info("Mode: INTEGRATED (Vostok1)")
+            self.get_logger().warn("Mode: INTEGRATED (Vostok1) — deprecated, no active nodes listen on /vostok1/* topics")
         
         # Publishers
         self.config_pub = self.create_publisher(String, config_topic, 10)
@@ -281,7 +281,7 @@ class MissionCLI(Node):
     def generate_waypoints(self, lanes=8, length=50.0, width=20.0,
                             kp=None, ki=None, kd=None, base_speed=None, max_speed=None, max_turn=None,
                             stuck_timeout=None, stuck_threshold=None,
-                            min_height=None,
+                            min_height=None, safe_dist=None, approach_dist=None, approach_factor=None,
                             hazard=False, hazard_boxes=None, hazard_origin_x=None, hazard_origin_y=None,
                             astar=False, astar_hybrid=False, astar_resolution=None, astar_safety=None, astar_max=None):
         """Generate waypoints with specified parameters and optional PID/speed/turn/hazard/A* config"""
@@ -319,6 +319,14 @@ class MissionCLI(Node):
         # OKO parameters
         if min_height is not None:
             config['min_height'] = min_height
+
+        # BURAN distance parameters
+        if safe_dist is not None:
+            config['min_safe_distance'] = safe_dist
+        if approach_dist is not None:
+            config['approach_slow_distance'] = approach_dist
+        if approach_factor is not None:
+            config['approach_slow_factor'] = approach_factor
 
         # Hazard/A* options
         if hazard:
@@ -396,6 +404,23 @@ class MissionCLI(Node):
             print(f"⚠️ Stop command sent. Current state: {state}")
             print("   If boat is still moving, try 'stop' again or 'reset'")
         
+    def emergency_stop(self):
+        """Emergency stop — cuts thrust and latches stop override"""
+        print("\n🚨 EMERGENCY STOP...")
+        for i in range(5):
+            self.send_command('emergency_stop')
+            time.sleep(0.1)
+            rclpy.spin_once(self, timeout_sec=0.1)
+
+        time.sleep(0.3)
+        self._spin_for_status(timeout=1.0)
+        count, state = self._waypoint_info()
+
+        if state == "EMERGENCY_STOP":
+            print("🚨 EMERGENCY STOP confirmed. Use 'resume' or 'reset' to recover.")
+        else:
+            print(f"⚠️ Emergency stop sent. Current state: {state}")
+
     def resume_mission(self):
         """Resume the mission"""
         if not self._auto_confirm_if_needed(for_command='resume'):
@@ -553,6 +578,7 @@ class MissionCLI(Node):
         print("  c                          - Confirm waypoints")
         print("  s                          - Start mission")
         print("  x                          - Stop mission")
+        print("  e                          - 🚨 Emergency stop")
         print("  r                          - Resume mission")
         print("  reset                      - Reset mission")
         print("  home                       - 🏠 Go home (return to spawn)")
@@ -582,6 +608,8 @@ class MissionCLI(Node):
                     self.start_mission()
                 elif cmd[0] == 'x' or cmd[0] == 'stop':
                     self.stop_mission()
+                elif cmd[0] == 'e' or cmd[0] == 'emergency':
+                    self.emergency_stop()
                 elif cmd[0] == 'r' or cmd[0] == 'resume':
                     self.resume_mission()
                 elif cmd[0] == 'reset':
@@ -640,7 +668,7 @@ Examples:
     # Global mode argument
     parser.add_argument('--mode', '-m', type=str, default='modular',
                         choices=['vostok1', 'modular', 'sputnik'],
-                        help='Mode: vostok1 (integrated) or modular/sputnik (default: modular)')
+                        help='Mode: modular/sputnik (default) or vostok1 (deprecated, legacy integrated system)')
     
     subparsers = parser.add_subparsers(dest='command', help='Command to execute')
     
@@ -660,6 +688,10 @@ Examples:
     gen_parser.add_argument('--stuck-threshold', type=float, help='Stuck detection threshold in meters (optional, BURAN)')
     # OKO parameters
     gen_parser.add_argument('--min-height', type=float, help='Min LiDAR height threshold in meters (optional, OKO)')
+    # BURAN distance parameters
+    gen_parser.add_argument('--safe-dist', type=float, help='Min safe distance in meters (optional, BURAN)')
+    gen_parser.add_argument('--approach-dist', type=float, help='Approach slow-down distance in meters (optional, BURAN)')
+    gen_parser.add_argument('--approach-factor', type=float, help='Approach slow-down speed factor 0-1 (optional, BURAN)')
     # Hazard/A* options (forwarded to Sputnik)
     gen_parser.add_argument('--hazard', action='store_true', help='Enable hazard avoidance (Sputnik)')
     gen_parser.add_argument('--hazard-boxes', type=str, help='Hazard world boxes string \"xmin,ymin,xmax,ymax;...\"')
@@ -674,6 +706,7 @@ Examples:
     # Simple commands
     subparsers.add_parser('start', help='Start mission')
     subparsers.add_parser('stop', help='Stop mission')
+    subparsers.add_parser('emergency', help='🚨 Emergency stop — cuts thrust and latches stop')
     subparsers.add_parser('resume', help='Resume mission')
     subparsers.add_parser('reset', help='Reset mission')
     subparsers.add_parser('home', help='🏠 Go home - Return to spawn point')
@@ -709,6 +742,8 @@ Examples:
                 base_speed=args.base, max_speed=args.max, max_turn=args.max_turn,
                 stuck_timeout=args.stuck_timeout, stuck_threshold=args.stuck_threshold,
                 min_height=args.min_height,
+                safe_dist=args.safe_dist, approach_dist=args.approach_dist,
+                approach_factor=args.approach_factor,
                 hazard=args.hazard, hazard_boxes=args.hazard_boxes,
                 hazard_origin_x=args.hazard_origin_x, hazard_origin_y=args.hazard_origin_y,
                 astar=args.astar, astar_hybrid=args.astar_hybrid,
@@ -719,6 +754,8 @@ Examples:
             cli.start_mission()
         elif args.command == 'stop':
             cli.stop_mission()
+        elif args.command == 'emergency':
+            cli.emergency_stop()
         elif args.command == 'resume':
             cli.resume_mission()
         elif args.command == 'reset':

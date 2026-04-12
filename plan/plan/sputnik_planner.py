@@ -421,15 +421,19 @@ class SputnikPlanner(Node):
                 else:
                     self.get_logger().warn(f"Cannot start - state={self.state}, waypoints={len(self.waypoints)}")
                     
+            elif command == 'emergency_stop':
+                prev_state = self.state
+                self.state = "EMERGENCY_STOP"
+                self.mission_armed = False
+                self.get_logger().error(f"🚨 EMERGENCY STOP (was {prev_state} → now EMERGENCY_STOP)")
+                self.publish_mission_status_timer()
+
             elif command == 'stop_mission':
                 prev_state = self.state
                 self.state = "PAUSED"
                 self.mission_armed = False
                 self.get_logger().info(f"🛑 MISSION STOPPED (was {prev_state} → now PAUSED)")
-                # Force immediate status publish so BURAN stops quickly and processes state change
                 self.publish_mission_status_timer()
-                # Also publish once more after a brief delay to ensure BURAN receives it
-                # (helps with timing issues where BURAN checks mission status between publishes)
                 self.get_logger().info("📡 Publishing PAUSED state - BURAN should stop immediately")
                 
             elif command == 'resume_mission':

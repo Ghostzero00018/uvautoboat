@@ -242,6 +242,12 @@ h2 {
 .mission-badge.paused { background: #fd7e14; color: white; }
 .mission-badge.joystick { background: #e83e8c; color: white; }
 .mission-badge.finished { background: #6f42c1; color: white; }
+.mission-badge.emergency_stop { background: #dc3545; color: white; animation: emergency-pulse 0.5s infinite; }
+
+@keyframes emergency-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
 
 @keyframes pulse {
     0%, 100% { opacity: 1; }
