@@ -35,15 +35,16 @@ visible to the supervisor on Apr 15 is cut.
 **Why kept:** if forgotten, LiDAR renders at origin during demo and undermines
 the whole perception story. Cheapest + highest-impact item.
 
-### 2. Repo cleanup (~2h, tightly scoped)
+### 2. Repo cleanup (~2h, tightly scoped) ✅ DONE
 
-Quick sweep only — no package moves, no renames:
-
-- Scan for any orphan files left behind after the legacy moves
-- Delete remaining `__pycache__/` / `.pyc` dead files
-- Confirm top-level dirs (`one_click_launch_all/`, `working_diary/`,
-  `legacy/`) still have a clear role
-- **Stop at 2 hours.** If nothing obvious jumps out, move on.
+- [x] Scanned for orphan files — no new orphans found
+- [x] Deleted `__pycache__/` in plan + control (stale bytecode)
+- [x] Deleted empty `web_dashboard/vostok1/test/`
+- [x] Consolidated duplicate pkill block in launcher → single `cleanup` call
+- [x] Moved `oko_perception_fixed.py` + `buran_controller_fixed.py` →
+  `legacy/fixed_variants/`; removed entry points from setup.py; updated
+  USER_MANUAL.md tree and legacy/DEPRECATED.md
+- [x] Build verified: 7 packages clean, health check 45/45 PASS
 
 **Why kept:** first impression when the supervisor browses the repo tree. A
 tidy tree signals a maintained project.

@@ -56,9 +56,6 @@ setup(
             'simple_perception = plan.simple_perception:main',     # Simplified obstacle detection
             'gps_imu_pose = plan.gps_imu_pose:main',              # GPS+IMU pose estimation
             'pose_filter = plan.pose_filter:main',                 # Pose smoothing filter
-
-            # === Testing / debug variants ===
-            'oko_perception_fixed = plan.oko_perception_fixed:main',  # OKO with debug fixes
         ],
     },
 )

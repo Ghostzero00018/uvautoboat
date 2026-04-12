@@ -11,6 +11,7 @@ The current system uses the **modular Vostok1 architecture** (OKO + SPUTNIK + BU
 | `atlantis/` | Atlantis planner, controller, launch files, and dashboard | 2025-12-12 |
 | `robust_avoidance/` | Robust avoidance controller, launch, dashboard, and docs | 2025-12-12 |
 | `misc/` | Standalone planners, old scripts, and port allocation docs | Various |
+| `fixed_variants/` | Earlier snapshots of OKO and BURAN (oko_perception_fixed.py, buran_controller_fixed.py) | 2026-04-12 |
 
 ## Why Deprecated?
 

@@ -42,9 +42,6 @@ setup(
 
             # === Standalone utilities (not in launch file, run manually) ===
             'keyboard_teleop = control.keyboard_teleop:main',      # Manual thruster control for testing
-
-            # === Testing / debug variants ===
-            'buran_controller_fixed = control.buran_controller_fixed:main',  # BURAN with debug fixes
         ],
     },
 )

@@ -257,18 +257,9 @@ echo "Tip: If tabs close immediately, check their terminal output for missing pa
 echo "Shortcuts: skip RViz with --skip-rviz, skip dashboard with --skip-dashboard, skip camera with --skip-camera, change world with --world <name>."
 echo ""
 
-# Kill any old processes
+# Kill any old processes (reuse the cleanup function defined above)
 print_status "Cleaning up old processes..."
-pkill -9 -f "gz sim" &> /dev/null || true
-pkill -9 -f "gzserver" &> /dev/null || true
-pkill -9 -f "gzclient" &> /dev/null || true
-pkill -9 -f "rosbridge" &> /dev/null || true
-pkill -9 -f "web_video_server" &> /dev/null || true
-pkill -9 -f "vostok1.launch.yaml" &> /dev/null || true
-pkill -9 -f "sputnik_planner" &> /dev/null || true
-pkill -9 -f "buran_controller" &> /dev/null || true
-pkill -9 -f "oko_perception" &> /dev/null || true
-pkill -9 -f "http.server 8002" &> /dev/null || true
+cleanup
 sleep 4
 
 # T1: Launch Gazebo (VRX Simulation)

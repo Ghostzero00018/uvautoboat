@@ -86,7 +86,6 @@ uvautoboat/
 ├── control/                    # ROS 2 Control Package
 │   └── control/
 │       ├── buran_controller.py      # Modular controller (BURAN) — active
-│       ├── buran_controller_fixed.py # Fixed variant for testing
 │       ├── keyboard_teleop.py       # Manual control interface
 │       └── lidar_obstacle_avoidance.py  # Shared obstacle detection library
 ├── plan/                       # ROS 2 Planning Package
