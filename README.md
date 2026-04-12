@@ -10,26 +10,37 @@
 
 ---
 
-## Architecture
+## 🏗️ Architecture
 
 The system uses three distributed ROS 2 nodes (Russian space program theme):
 
 | Node | Role | Description |
 | ------ | ------ | ------------- |
-| **OKO** | Perception | 3D LiDAR obstacle detection, smoke filtering, clustering |
-| **SPUTNIK** | Planning | Waypoint generation, A* detour planning, mission management |
-| **BURAN** | Control | PID steering, obstacle avoidance, anti-stuck recovery |
+| **OKO** | Perception | 3D LiDAR obstacle detection, temporal filtering, clustering, smoke classification |
+| **SPUTNIK** | Planning | Lawnmower waypoint generation, A* detour planning, mission state machine |
+| **BURAN** | Control | PID heading control, reactive obstacle avoidance, anti-stuck recovery (needs testing) |
+
+Supporting components:
+
+| Component | Description |
+| ------ | ------------- |
+| **VOSTOK1 Dashboard** | Real-time web dashboard with map, config tuning, health check, and JSON export |
+| **Waypoint Visualizer** | RViz marker publisher for waypoint and trajectory visualization |
+| **Health Check Service** | ROS 2 node wrapping the system health check script with live streaming |
+| **Vostok1 CLI** | Terminal-based mission control (fallback when dashboard is unavailable) |
 
 ```text
 GPS/IMU ──> SPUTNIK (planner) ──> waypoints/targets ──> BURAN (controller) ──> thrusters
                  ^                                            ^
                  |                                            |
             OKO (LiDAR perception) ───────────────────────────┘
+                                                              |
+                                        VOSTOK1 Dashboard <───┘ (via rosbridge)
 ```
 
 ---
 
-## Requirements
+## 📋 Requirements
 
 | Component | Version |
 | ----------- | --------- |
@@ -40,7 +51,7 @@ GPS/IMU ──> SPUTNIK (planner) ──> waypoints/targets ──> BURAN (contr
 
 ---
 
-## Installation
+## 🔧 Installation
 
 ```bash
 # 1. Create workspace and clone
@@ -64,7 +75,7 @@ echo "source ~/seal_ws/install/setup.bash" >> ~/.bashrc
 
 ---
 
-## Quick Start
+## 🚀 Quick Start
 
 ### Option A: One-Click Launch (recommended)
 
@@ -86,7 +97,7 @@ Then open **<http://localhost:8002>** for the web dashboard.
 | T4 | `ros2 launch ~/seal_ws/src/uvautoboat/launch/vostok1.launch.yaml` | Navigation system |
 | T5 | `cd ~/seal_ws/src/uvautoboat/web_dashboard/vostok1 && python3 -m http.server 8002` | Dashboard |
 
-### Running a Mission
+### 🗺️ Running a Mission
 
 1. Open **<http://localhost:8002>**
 2. Wait for GPS Ready indicator
@@ -95,36 +106,37 @@ Then open **<http://localhost:8002>** for the web dashboard.
 5. Click **Confirm Waypoints**
 6. Click **Start Mission**
 
-Other controls: **Stop**, **Resume**, **Go Home** (return to spawn), **Reset** (clear and start over).
+Other controls: **Stop**, **Resume**, **Emergency Stop**, **Go Home** (return to spawn), **Reset** (clear and start over).
 
 ---
 
-## Health Check
+## 🩺 Health Check
 
 ```bash
 bash ~/seal_ws/src/uvautoboat/one_click_launch_all/health_check_vostok1.sh
 ```
 
-Runs 45 checks (nodes, topics, parameters, connectivity). Auto-detects IDLE/ACTIVE state.
+Runs 45 checks (nodes, topics, parameters, connectivity). Auto-detects IDLE/ACTIVE state. Also available from the dashboard Health Check panel with live-streaming output.
 
 ---
 
-## CLI Mission Control
+## 💻 CLI Mission Control
 
 ```bash
 ros2 run plan vostok1_cli generate --lanes 10 --length 50 --width 20
 ros2 run plan vostok1_cli confirm
 ros2 run plan vostok1_cli start
 ros2 run plan vostok1_cli status
-ros2 run plan vostok1_cli home      # Return to spawn
-ros2 run plan vostok1_cli reset     # Clear and reset
+ros2 run plan vostok1_cli emergency   # Emergency stop
+ros2 run plan vostok1_cli home        # Return to spawn
+ros2 run plan vostok1_cli reset       # Clear and reset
 ```
 
 Interactive mode: `ros2 run plan vostok1_cli interactive`
 
 ---
 
-## Keyboard Teleop
+## 🎮 Keyboard Teleop
 
 Manual control for testing:
 
@@ -132,11 +144,11 @@ Manual control for testing:
 ros2 run control keyboard_teleop
 ```
 
-`W`/`S` = throttle up/down, `A`/`D` = steer, `Space` = all stop, `H` = help.
+`W`/`S` = throttle up/down, `A`/`D` = steer, `Space` = all stop, `X` = emergency reverse, `H` = help.
 
 ---
 
-## Key Parameters
+## ⚙️ Key Parameters
 
 Configured in `launch/vostok1.launch.yaml` or via the web dashboard:
 
@@ -149,29 +161,30 @@ Configured in `launch/vostok1.launch.yaml` or via the web dashboard:
 | `waypoint_tolerance` | 3.5m | Arrival radius |
 | `max_avoidance_turn_deg` | 45.0 | Max obstacle avoidance turn angle |
 | `critical_distance` | 6.0m | Emergency stop distance (BURAN) |
-| `min_safe_distance` | 12.0m | Start slowing distance (BURAN) |
+| `min_safe_distance` | 12.0m | Start avoidance distance (BURAN) |
+| `oko_min_safe_distance` | 10.0m | Obstacle detection threshold (OKO) |
 
 ---
 
-## Project Structure
+## 📂 Project Structure
 
 ```text
 uvautoboat/
 ├── control/                    # BURAN controller + keyboard teleop
-├── plan/                       # OKO perception + SPUTNIK planner + CLI
+├── plan/                       # OKO perception + SPUTNIK planner + CLI + health check service
 ├── launch/                     # vostok1.launch.yaml
 ├── web_dashboard/vostok1/      # Web dashboard (HTML/JS/CSS)
-├── one_click_launch_all/       # Launch script + health check
+├── one_click_launch_all/       # Launch script + health check + VRX patch
 ├── test_environment/           # Gazebo worlds and models
 ├── wiki/                       # Wiki documentation
 ├── working_diary/              # Daily development logs
-├── legacy/                     # Deprecated code (Atlantis, robust_avoidance)
+├── legacy/                     # Deprecated code (see legacy/DEPRECATED.md)
 └── USER_MANUAL.md              # Detailed technical manual
 ```
 
 ---
 
-## Documentation
+## 📚 Documentation
 
 | Document | Description |
 | ---------- | ------------- |
@@ -179,10 +192,11 @@ uvautoboat/
 | [Dashboard Guide](web_dashboard/vostok1/README_vostok1_dashboard.md) | Dashboard setup and camera panel |
 | [Board.md](Board.md) | Development milestones |
 | [Wiki](wiki/Home.md) | Installation, system overview, common issues |
+| [DEPRECATED.md](legacy/DEPRECATED.md) | Legacy code inventory |
 
 ---
 
-## Troubleshooting
+## 🔍 Troubleshooting
 
 | Problem | Solution |
 | --------- | ---------- |
@@ -190,30 +204,54 @@ uvautoboat/
 | Spinning in circles | Reduce Kp: `ros2 param set /buran_controller_node kp 300` |
 | Dashboard disconnected | Restart rosbridge, check port 9090 |
 | No obstacles detected | Check LiDAR: `ros2 topic hz /wamv/sensors/lidars/lidar_wamv_sensor/points` |
+| LiDAR at world origin | Run `bash one_click_launch_all/patch_vrx.sh` (VRX issue #876) |
 | Build failures | Clean: `rm -rf build install log && colcon build --merge-install` |
+| Health check false FAILs | DDS discovery lag — wait 5s and re-run |
 
 ---
 
-## Contributors
+## 📊 What Works / What's In Progress
+
+| Feature | Status |
+| --------- | ---------- |
+| GPS waypoint navigation (lawnmower pattern) | ✅ Working |
+| 3D LiDAR obstacle detection (OKO) | ✅ Working |
+| PID heading control (BURAN) | ✅ Working |
+| Anti-stuck recovery (SASS) | 🧪 Needs testing |
+| A* detour planning | ✅ Working |
+| Web dashboard with live map | ✅ Working |
+| Health check (45 checks) | ✅ Working |
+| CLI mission control | 🧪 Needs testing |
+| Emergency stop (dashboard + CLI) | ✅ Working |
+| JSON log export | ✅ Working |
+| VRX LiDAR patch (issue #876) | ✅ Workaround |
+| Obstacle avoidance (detour explosion fix) | 🔧 Planned |
+| VFH steering bias | 🔧 Planned |
+| Pier/low-obstacle avoidance tuning | 🔧 Planned |
+
+---
+
+## 👥 Contributors
 
 **Current maintainers:**
 
 - [Ghostzero00018](https://github.com/Ghostzero00018)
 - [atshehu1776](https://github.com/atshehu1776)
+- [Umaralfa-coder](https://github.com/Umaralfa-coder)
 
 **Previous contributors:**
 
 - [Erk732](https://github.com/Erk732)
 - [Ghostzero00018](https://github.com/Ghostzero00018)
+- [atshehu1776](https://github.com/atshehu1776)
 - [ITSHT](https://github.com/ITSHT)
 - [YinLi-Y2Y2](https://github.com/YinLi-Y2Y2)
 - [zhiyanPiao-Y2Y2](https://github.com/zhiyanPiao-Y2Y2)
 - [guillaumeLozenguez](https://github.com/guillaumeLozenguez)
-- [atshehu1776](https://github.com/atshehu1776)
 
 ---
 
-## License
+## 📜 License
 
 Apache License 2.0 — see [LICENSE](LICENSE).
 
