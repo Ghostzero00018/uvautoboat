@@ -58,33 +58,32 @@ the whole perception story. Cheapest + highest-impact item.
 **Why kept:** first impression when the supervisor browses the repo tree. A
 tidy tree signals a maintained project.
 
-### 3. README rewrite (~½ day) ★ highest demo value
+### 3. README rewrite (~½ day) ★ highest demo value ✅ DONE
 
-The README is what the supervisor will open first. Keep it short:
-
-- Project one-liner + simple architecture sketch (SPUTNIK / BURAN / OKO /
-  VOSTOK1 dashboard — one sentence each)
-- Quickstart: one copy-pasteable launch block
-- Two or three dashboard screenshots (captured while the dashboard is already
-  open for testing — no separate session)
-- Honest "What works / what's in progress" status table
+- [x] Added emojis to all section headers
+- [x] Added Umaralfa-coder to current maintainers
+- [x] Expanded architecture with supporting components table + dashboard in diagram
+- [x] Added "What Works / What's In Progress" status table
+- [x] Added `oko_min_safe_distance` to key parameters, `emergency` to CLI section
+- [x] Added troubleshooting entries (LiDAR origin fix, DDS lag)
+- [x] Added link to `legacy/DEPRECATED.md` in documentation section
+- [x] Marked SASS anti-stuck and CLI as needs-testing
 
 **Why kept:** doubles as source material for the PPT — writing this feeds the
 slides directly, so the time isn't duplicated.
 
-### 4. Dashboard polish (~2–3h, visible wins only)
+### 4. Dashboard polish (~2–3h, visible wins only) ✅ DONE (folded into item 2)
 
-Constrain to visible-at-a-glance fixes:
+Done ahead of schedule during the audit/cleanup pass:
 
-- Config panel layout (already on pending list)
-- Button/label consistency — caps, spacing, obvious typos
-- Verify health check panel + live trajectory render cleanly at 1920×1080
-  (projector resolution) — this is what the supervisor will actually see
-- **No** new features, **no** new topics, **no** new services, **no**
-  refactors. If a fix takes more than 20 minutes, defer it.
-
-**Why kept:** the dashboard is the most visible artifact of the project. A
-small polish pass goes a long way in the demo.
+- [x] Added missing CSS badge styles for `init`, `waiting_confirm`, `driving`
+- [x] Health check UX: removed double-clear flicker, added `[DONE]` completion
+  line with elapsed time, `[SYSTEM]` lines styled blue
+- [x] Added JSON export buttons to 4 panels (Health Check, System Logs,
+  ROS2 Terminal, Mission Control)
+- [x] Renamed `oko_min_safe_distance` to prevent dashboard config collision
+- [x] Removed dead `restart_mission` flag, dead state strings from UI arrays
+- [x] Added `EMERGENCY_STOP` state badge (red pulsing)
 
 ### 5. Dry-run + any showstopper fixes (~2h, Apr 14 evening)
 
@@ -114,8 +113,8 @@ Mention these verbally in the meeting as known next steps.
 
 | Day | Repo work | Other |
 | ----- | --------- | ------- |
-| Apr 12 (Sun) | Item 1: pre-demo safety (~1h) + Item 2: repo cleanup (~2h) | PPT outline, teammate sync |
-| Apr 13 (Mon) | Item 3: README rewrite + screenshots (~½ day) | PPT slides draft |
+| Apr 12 (Sun) | ✅ Items 1–4 all completed (pre-demo safety, repo cleanup, audit, dashboard polish, README rewrite) | PPT outline, teammate sync |
+| Apr 13 (Mon) | Screenshots for README/PPT if needed | PPT slides draft |
 | Apr 14 (Tue) | Item 4: dashboard polish (~2–3h) + Item 5: dry-run (~2h) | PPT polish, rehearsal |
 | Apr 15 (Wed) | — | Meeting |
 
