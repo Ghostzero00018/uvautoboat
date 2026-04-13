@@ -251,7 +251,7 @@ check_param "/sputnik_planner_node" "max_block_time" "30.0"
 section "Parameter Check (OKO)"
 
 check_param "/oko_perception_node" "oko_min_safe_distance" "10.0"
-check_param "/oko_perception_node" "critical_distance" "5.5"
+check_param "/oko_perception_node" "oko_critical_distance" "5.5"
 check_param "/oko_perception_node" "min_height" "-1.2"
 check_param "/oko_perception_node" "max_range" "100.0"
 

@@ -1055,7 +1055,7 @@ function resetConfigToDefaults() {
 const OKO_DEFAULTS = {
     'oko-min-height': -1.2, 'oko-max-height': 1.5,
     'oko-min-range': 2.2, 'oko-max-range': 100,
-    'oko-safe-dist': 10.0, 'oko-critical-dist': 5.5,
+    'oko-safe-dist': 10.0, 'oko-critical-dist': 5.5,  // oko_critical_distance in ROS
     'oko-cluster-dist': 3.0, 'oko-min-cluster-size': 8,
     'oko-temporal-history': 3, 'oko-temporal-threshold': 2,
     'oko-water-threshold': 0.32, 'oko-hysteresis': 2.0,
@@ -2122,7 +2122,7 @@ const TUNING_PRESETS = {
             min_range: 0.8,
             max_range: 80.0,
             oko_min_safe_distance: 11.0,
-            critical_distance: 3.5,
+            oko_critical_distance: 3.5,
             cluster_distance: 1.5,
             min_cluster_size: 4,
             temporal_history_size: 3,
@@ -2160,7 +2160,7 @@ const TUNING_PRESETS = {
             min_range: 0.8,
             max_range: 80.0,
             oko_min_safe_distance: 10.0,
-            critical_distance: 2.5,
+            oko_critical_distance: 2.5,
             cluster_distance: 1.2,
             min_cluster_size: 3,
             temporal_history_size: 2,
@@ -2199,7 +2199,7 @@ const TUNING_PRESETS = {
             min_range: 0.5,
             max_range: 60.0,
             oko_min_safe_distance: 12.0,
-            critical_distance: 2.0,
+            oko_critical_distance: 2.0,
             cluster_distance: 0.5,
             min_cluster_size: 3,
             temporal_history_size: 3,
@@ -2238,7 +2238,7 @@ const TUNING_PRESETS = {
             min_range: 3.0,
             max_range: 80.0,
             oko_min_safe_distance: 15.0,
-            critical_distance: 5.0,
+            oko_critical_distance: 5.0,
             cluster_distance: 3.0,
             min_cluster_size: 6,
             temporal_history_size: 2,
@@ -2355,7 +2355,7 @@ function updateOkoInputs(params) {
     document.getElementById('oko-min-range').value = params.min_range;
     document.getElementById('oko-max-range').value = params.max_range;
     document.getElementById('oko-safe-dist').value = params.oko_min_safe_distance;
-    document.getElementById('oko-critical-dist').value = params.critical_distance;
+    document.getElementById('oko-critical-dist').value = params.oko_critical_distance;
     document.getElementById('oko-cluster-dist').value = params.cluster_distance;
     document.getElementById('oko-min-cluster-size').value = params.min_cluster_size;
     document.getElementById('oko-temporal-history').value = params.temporal_history_size;
@@ -2413,7 +2413,7 @@ function applyOkoParameters(presetParams = null) {
     const okoIdMap = {
         'oko-min-height': 'min_height', 'oko-max-height': 'max_height',
         'oko-min-range': 'min_range', 'oko-max-range': 'max_range',
-        'oko-safe-dist': 'oko_min_safe_distance', 'oko-critical-dist': 'critical_distance',
+        'oko-safe-dist': 'oko_min_safe_distance', 'oko-critical-dist': 'oko_critical_distance',
         'oko-cluster-dist': 'cluster_distance', 'oko-min-cluster-size': 'min_cluster_size',
         'oko-temporal-history': 'temporal_history_size', 'oko-temporal-threshold': 'temporal_threshold',
         'oko-water-threshold': 'water_plane_threshold', 'oko-hysteresis': 'hysteresis_distance',
@@ -2429,7 +2429,7 @@ function applyOkoParameters(presetParams = null) {
         min_range: parseFloat(document.getElementById('oko-min-range').value),
         max_range: parseFloat(document.getElementById('oko-max-range').value),
         oko_min_safe_distance: parseFloat(document.getElementById('oko-safe-dist').value),
-        critical_distance: parseFloat(document.getElementById('oko-critical-dist').value),
+        oko_critical_distance: parseFloat(document.getElementById('oko-critical-dist').value),
         cluster_distance: parseFloat(document.getElementById('oko-cluster-dist').value),
         min_cluster_size: parseInt(document.getElementById('oko-min-cluster-size').value),
         temporal_history_size: parseInt(document.getElementById('oko-temporal-history').value),

@@ -1443,6 +1443,14 @@ h2 {
     color: #fff;
 }
 
+.btn-hint {
+    font-size: 11px;
+    color: #888;
+    margin: 4px 0 0 0;
+    text-align: center;
+    font-style: italic;
+}
+
 /* Responsive tuning panel */
 @media (max-width: 1200px) {
     .tuning-panel {

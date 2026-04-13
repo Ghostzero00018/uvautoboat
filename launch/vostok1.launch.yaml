@@ -68,8 +68,8 @@ launch:
     param:
     - name: oko_min_safe_distance
       value: 10.0       # OKO detection threshold (separate from BURAN's min_safe_distance)
-    - name: critical_distance
-      value: 5.5        # Emergency stop threshold
+    - name: oko_critical_distance
+      value: 5.5        # OKO emergency stop threshold (separate from BURAN's critical_distance)
     - name: hysteresis_distance
       value: 2.0        # More slack to avoid chatter
     - name: min_height

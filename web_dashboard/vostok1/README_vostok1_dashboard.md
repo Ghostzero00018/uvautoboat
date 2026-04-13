@@ -1,626 +1,193 @@
 # Vostok1 Web Dashboard
 
-A real-time web-based monitoring dashboard for the Vostok1 autonomous boat system.
+Real-time web-based monitoring and control dashboard for the Vostok1 autonomous boat system.
 
 ## Features
 
-- **Real-time GPS tracking** with trajectory visualization on interactive map
-- **Obstacle detection monitoring** showing minimum distances and clearance zones
-- **Enhanced OKO v2.0 perception data** with urgency scores, clusters, and gaps
-- **Thruster output visualization** with live thrust bars
-- **Mission status display** including state, waypoint, and distance
-- **Simple Anti-Stuck Status** with visual indicators
-- **System logs** with color-coded severity levels
-- **Dual-mode support**: Works with both integrated Vostok1 and modular navigation
-- **Configuration panel**: Adjust mission parameters in real-time
-- **Mission control buttons**: Generate, Confirm, Start, Stop, Resume, Go Home
-- **Emergency stop with safety checks**: Stop button properly disarms and resets escape state
-- **Resume and Go Home**: Immediate response with instant status publishing
-- **Responsive design** works on desktop and mobile devices
-- **Embedded camera feed** via web_video_server (MJPEG) in the dashboard
-
-## 🎨 Visual Design
-
-The dashboard uses a clean, modern design with:
-
-- **Purple/blue gradient** accents
-- **Clean white panels** with subtle shadows
-- **Roboto font** for readability
-- **Responsive layout** for desktop and mobile
-- **Single unified theme** - consistent professional appearance
+- **Real-time GPS tracking** with trajectory visualization on interactive Leaflet map
+- **Mission control**: Generate, Confirm, Start, Stop, Resume, Emergency Stop, Go Home, Reset
+- **Three config panels**: Main Config (PID/speed/nav), OKO Perception, BURAN Controller
+- **Dirty-params filtering**: Only user-modified parameters are sent on Apply
+- **Apply buttons disabled** until first ROS config sync (prevents stale defaults)
+- **Reset Defaults** buttons for OKO and BURAN (restores launch file values)
+- **OKO presets**: Universal, Buoy Field, Pier Detect, Open Water
+- **Health check panel** with live streaming output, elapsed time, and [DONE] completion
+- **JSON export** on Health Check, System Logs, ROS2 Terminal, and Mission Control panels
+- **Emergency stop** with red pulsing badge and thrust cut
+- **Obstacle detection** with Front/Left/Right clearance, urgency scores, clusters, gaps
+- **LiDAR smoke detection** display with H/V spread metrics
+- **Anti-stuck status** with Kalman drift uncertainty indicator
+- **Embedded camera feed** via web_video_server (MJPEG)
+- **State badges** for: INIT, IDLE, WAITING_CONFIRM, WAYPOINTS_PREVIEW, READY, DRIVING, PAUSED, FINISHED, EMERGENCY_STOP, JOYSTICK
 
 ## Prerequisites
 
 1. **ROS 2 Jazzy** installed and configured
-2. **Rosbridge Suite** for WebSocket communication:
+2. **rosbridge-suite**:
 
    ```bash
-   # For ROS2 Jazzy (Ubuntu 24.04)
-   sudo apt update
    sudo apt install ros-jazzy-rosbridge-suite
-
-   # For ROS2 Humble (Ubuntu 22.04)
-   sudo apt install ros-humble-rosbridge-suite
    ```
 
-3. **web_video_server** for the camera panel (MJPEG stream on port 8080):
+3. **web_video_server** (camera panel):
 
    ```bash
-   # Jazzy (24.04)
    sudo apt install ros-jazzy-web-video-server
-
-   # Humble (22.04)
-   sudo apt install ros-humble-web-video-server
    ```
 
-4. **Vostok1 nodes** running (`vostok1.launch.yaml` recommended for modular usage) or integrated `vostok1` node.
+4. **Vostok1 nodes** running via `vostok1.launch.yaml`
 
-### Troubleshooting Port 9090
+## Quick Start
 
-If the dashboard shows "Disconnected" or can't connect to rosbridge:
-
-1. **Check if rosbridge is running:**
-
-   ```bash
-   ros2 node list | grep rosbridge
-   ```
-
-2. **Check if port 9090 is listening:**
-
-   ```bash
-   ss -tuln | grep 9090
-   ```
-
-3. **Check for firewall issues:**
-
-   ```bash
-   sudo ufw allow 9090
-   ```
-
-4. **Restart rosbridge:**
-
-   ```bash
-   ros2 launch rosbridge_server rosbridge_websocket_launch.xml delay_between_messages:=0.0
-   ```
-
-## Usage
-
-### 1. Rebuild Workspace (if code changed)
+### Option A: One-Click Launch
 
 ```bash
-cd ~/seal_ws
-colcon build --packages-select plan
-source install/setup.bash
+bash ~/seal_ws/src/uvautoboat/one_click_launch_all/launch_vostok1_complete.sh
 ```
 
-### 2. Launch VRX Gazebo Simulation
+Then open **<http://localhost:8002>**.
 
-**Terminal 1:**
+### Option B: Manual Launch (5 Terminals)
 
-```bash
-cd ~/seal_ws
-source install/setup.bash
-ros2 launch vrx_gz competition.launch.py world:=sydney_regatta_DEFAULT
-```
+| Terminal | Command                                                                                        | Purpose                       |
+| -------- | ---------------------------------------------------------------------------------------------- | ----------------------------- |
+| T1       | `ros2 launch vrx_gz competition.launch.py world:=sydney_regatta_DEFAULT`                       | Gazebo simulation             |
+| T2       | `ros2 launch rosbridge_server rosbridge_websocket_launch.xml delay_between_messages:=0.0`      | WebSocket bridge (port 9090)  |
+| T3       | `ros2 run web_video_server web_video_server`                                                   | Camera stream (port 8080)     |
+| T4       | `ros2 launch ~/seal_ws/src/uvautoboat/launch/vostok1.launch.yaml`                             | Navigation system             |
+| T5       | `cd ~/seal_ws/src/uvautoboat/web_dashboard/vostok1 && python3 -m http.server 8002`            | Dashboard (port 8002)         |
 
-Wait for Gazebo to fully load with the WAM-V boat spawned.
-
-### 3. Start Rosbridge Server
-
-**Terminal 2:**
-
-```bash
-cd ~/seal_ws
-source install/setup.bash
-ros2 launch rosbridge_server rosbridge_websocket_launch.xml delay_between_messages:=0.0
-```
-
-> **Important:** The `delay_between_messages:=0.0` parameter is required for ROS 2 Jazzy due to a parameter type bug.
-
-This starts a WebSocket server on `ws://localhost:9090`.
-
-### 4. Start web_video_server (Camera Stream)
-
-**Terminal 3:**
-
-```bash
-cd ~/seal_ws
-source install/setup.bash
-ros2 run web_video_server web_video_server  # serves MJPEG on http://<host>:8080
-```
-
-> The dashboard camera panel defaults to `/wamv/sensors/cameras/front_left_camera_sensor/image_raw`. Use the input box + “Refresh | Actualiser” to change topics if needed.
-
-### 4. Launch Navigation System
-
-**Terminal 4 — Choose ONE option:**
-
-#### Option A: Modular Navigation (Recommended)
-
-Uses OKO + SPUTNIK + BURAN distributed architecture with full configurability:
-
-```bash
-cd ~/seal_ws
-source install/setup.bash
-ros2 launch ~/seal_ws/src/uvautoboat/launch/vostok1.launch.yaml
-```
-
-> **Note:** The YAML launch file includes all OKO v2.0 enhanced perception parameters (temporal filtering, clustering, gap detection, velocity estimation).
-
-#### Option B: Integrated Vostok1
-
-Single-node implementation with all features built-in:
-
-```bash
-cd ~/seal_ws
-source install/setup.bash
-ros2 run plan vostok1
-```
-
-#### Option C: Python Launch File (Command-line args)
-
-For custom PID tuning via command-line:
-
-```bash
-ros2 launch plan vostok1_modular_navigation.launch.py kp:=500.0 ki:=30.0 kd:=150.0
-```
-
-### 5. Open Dashboard
-
-**Terminal 5:**
-
-```bash
-cd ~/seal_ws/src/uvautoboat/web_dashboard/vostok1
-python3 -m http.server 8000
-```
-
-Then open your web browser and navigate to:
-
-```text
-http://localhost:8000
-```
-
-**Important:** Do NOT open `index.html` directly as a file (`file://`). You must serve it via HTTP server for WebSocket connections to work.
-
-The dashboard will automatically connect to rosbridge on port 9090 and display real-time data.
+> **Important:** The `delay_between_messages:=0.0` parameter is required for ROS 2 Jazzy.
+> Do NOT open `index.html` directly as a file (`file://`). Serve it via HTTP for WebSocket to work.
 
 ## Dashboard Panels
 
-### Connection Status
-
-- **Green (Connected)**: Successfully connected to rosbridge
-- **Red (Disconnected)**: Connection lost, will auto-retry every 5 seconds
-
-### Mission Status
-
-- Current state (INIT, MOVING_TO_WAYPOINT, STUCK_ESCAPING, MISSION_COMPLETE)
-- Active waypoint number
-- Distance to current waypoint
-- **Mission Armed**: Boolean flag indicating if mission is armed/running
-- **Joystick Override**: Boolean flag for manual joystick control mode
-
-### GPS Position
-
-- Latitude/Longitude in decimal degrees
-- Local X/Y coordinates relative to mission origin
-- Real-time position updates
-
-### Obstacle Detection
-
-- Minimum obstacle distance from LIDAR
-- Front/Left/Right clearance indicators
-- Color-coded status: Clear (>15m), Warning (5-15m), Critical (<5m)
-- **OKO v2.0 Enhanced Data** (via `/perception/obstacle_info`):
-  - Urgency scores (0.0-1.0) for smoother control
-  - Obstacle clusters with centroids and sizes
-  - Passable gaps between obstacles
-  - Moving obstacle velocity tracking
-  - Temporal confidence indicator
-
-### Thruster Output
-
-- Left and right thruster values (-1000 to 1000)
-- Visual thrust bars with color coding:
-  - Purple gradient: Forward thrust
-  - Red gradient: Reverse thrust
-
-### Boat Trajectory
-
-- Interactive OpenStreetMap with boat position marker
-- Blue trajectory line showing last 100 GPS points
-- Auto-panning to keep boat in view
-
-### System Logs
-
-- Timestamped log entries
-- Color-coded by severity (info/warning/error)
-- Auto-scrolling with last 50 entries kept
-
-## ROS Topics Monitored
-
-### Core Topics (Always Active)
-
-| Topic | Message Type | Data |
-|-------|-------------|------|
-| `/wamv/sensors/gps/gps/fix` | `sensor_msgs/NavSatFix` | GPS latitude/longitude |
-| `/wamv/thrusters/left/thrust` | `std_msgs/Float64` | Left thruster command |
-| `/wamv/thrusters/right/thrust` | `std_msgs/Float64` | Right thruster command |
-| `/rosout` | `rcl_interfaces/Log` | System logs (filtered) |
-
-### Integrated Mode Topics (Vostok1)
-
-| Topic | Message Type | Data |
-|-------|-------------|------|
-| `/vostok1/mission_status` | `std_msgs/String` | Mission state, waypoint, distance, mission_armed, joystick_override |
-| `/vostok1/obstacle_status` | `std_msgs/String` | Obstacle distances and clearance |
-| `/vostok1/anti_stuck_status` | `std_msgs/String` | Simple anti-stuck status |
-| `/vostok1/config` | `std_msgs/String` | Current configuration values |
-| `/vostok1/set_config` | `std_msgs/String` | Configuration updates (publish) |
-
-### Modular Mode Topics (Sputnik/Oko/Buran)
-
-| Topic | Message Type | Data |
-|-------|-------------|------|
-| `/planning/mission_status` | `std_msgs/String` | Sputnik planner status, mission_armed, joystick_override |
-| `/planning/waypoints` | `nav_msgs/Path` | Generated waypoints (for RViz visualization) |
-| `/perception/obstacle_info` | `std_msgs/String` | OKO v2.0 enhanced perception (see below) |
-| `/control/status` | `std_msgs/String` | Buran controller status |
-| `/control/anti_stuck_status` | `std_msgs/String` | Buran anti-stuck status |
-| `/sputnik/config` | `std_msgs/String` | Sputnik configuration |
-| `/sputnik/set_config` | `std_msgs/String` | Configuration updates (publish) |
-| `/sputnik/mission_command` | `std_msgs/String` | Mission commands (publish) |
-
-### OKO v2.0 Enhanced Perception Data
-
-The `/perception/obstacle_info` topic now includes enhanced fields:
-
-```json
-{
-  "obstacle_detected": true,
-  "min_distance": 8.5,
-  "front_clear": 10.2,
-  "left_clear": 45.0,
-  "right_clear": 12.3,
-  "is_critical": false,
-  "front_urgency": 0.45,
-  "left_urgency": 0.0,
-  "right_urgency": 0.35,
-  "overall_urgency": 0.45,
-  "clusters": [{"x": 8.2, "y": 1.5, "size": 25, "distance": 8.5, "angle_deg": 10.3}],
-  "gaps": [{"angle_deg": -25.0, "width": 5.2, "distance": 15.0}],
-  "moving_obstacles": [{"id": "obs_0", "vx": 0.5, "vy": 0.1, "speed": 0.51}],
-  "water_plane_z": -2.8,
-  "temporal_confidence": 1.0
-}
-```
-
-| Field | Description |
-|-------|-------------|
-| `*_urgency` | Distance-weighted score (0.0=safe, 1.0=critical) |
-| `clusters` | Grouped obstacles with centroids and sizes |
-| `gaps` | Passable gaps between obstacles (>3m width) |
-| `moving_obstacles` | Tracked obstacles with velocity estimates |
-| `water_plane_z` | Estimated water surface height |
-| `temporal_confidence` | Detection confidence (scans received / history size) |
-
-## Customization
-
-### Adding Custom Topics
-
-To subscribe to additional vostok1 topics, edit `app.js`:
-
-```javascript
-// Example: Subscribe to custom obstacle topic
-const obstacleTopic = new ROSLIB.Topic({
-    ros: ros,
-    name: '/vostok1/obstacles',
-    messageType: 'your_custom_msg/ObstacleData'
-});
-
-obstacleTopic.subscribe((message) => {
-    // Update obstacle data
-    currentState.obstacles.min = message.min_distance;
-    currentState.obstacles.front = message.front_clear;
-});
-```
-
-### Changing Map Center
-
-Edit the initial map center in `app.js`:
-
-```javascript
-map = L.map('map').setView([YOUR_LAT, YOUR_LON], 16);
-```
-
-### Adjusting Update Rates
-
-Modify the update interval (default 1 second):
-
-```javascript
-setInterval(() => {
-    // Update code
-}, 1000); // milliseconds
-```
-
-## Troubleshooting
-
-### Dashboard shows "Disconnected"
-
-- Verify rosbridge is running:
-
-  ```bash
-  ros2 launch rosbridge_server rosbridge_websocket_launch.xml delay_between_messages:=0.0
-  ```
-
-- Check rosbridge is on port 9090: `ss -tlnp | grep 9090`
-- If port 9090 is in use, kill previous instance: `pkill -9 -f rosbridge`
-- Ensure you're accessing the dashboard via `http://localhost:8000`, NOT opening the file directly
-- Open browser console (F12) to see WebSocket errors
-
-### Libraries not loading (ROSLIB is not defined)
-
-- Ensure you have internet connection for CDN libraries (roslibjs, Leaflet)
-- Check browser console for failed resource loads
-- The dashboard uses CDN for roslib.js and Leaflet.js - these require internet access
-
-### No GPS data updating
-
-- Confirm vostok1 node is publishing: `ros2 topic echo /wamv/sensors/gps/gps/fix`
-- Check topic names match between vostok1 and dashboard
-
-### Map not loading
-
-- Requires internet connection for OpenStreetMap tiles
-- Check browser console for tile loading errors
-
-### Thruster bars not moving
-
-- Verify thruster topics are publishing: `ros2 topic list | grep thrust`
-- Ensure vostok1 is actively controlling thrusters
-
-## Architecture
-
-```text
-┌─────────────────────────────────────────────────────────────────────┐
-│                     Navigation Nodes                                │
-├─────────────────────────────┬───────────────────────────────────────┤
-│   Integrated Mode           │   Modular Mode (Recommended)          │
-│   ┌─────────────────┐       │   ┌─────────┐ ┌───────┐ ┌───────┐     │
-│   │   Vostok1 Node  │       │   │ Sputnik │ │  OKO  │ │ Buran │     │
-│   │   (All-in-one)  │       │   │ Planner │ │ v2.0  │ │ Ctrl  │     │
-│   └────────┬────────┘       │   └────┬────┘ └───┬───┘ └───┬───┘     │
-│            │                │        │          │         │         │
-│   /vostok1/* topics         │   /planning/*  /perception/* /control/*
-└────────────┴────────────────┴────────┴──────────┴─────────┴─────────┘
-                              │
-                      ┌───────▼───────┐
-                      │   Rosbridge   │
-                      │  WebSocket    │
-                      │  Port 9090    │
-                      └───────┬───────┘
-                              │ WS
-                      ┌───────▼───────┐
-                      │  Web Browser  │
-                      │   Dashboard   │
-                      │  (HTML/JS)    │
-                      └───────────────┘
-```
-
-## Quick Start (4 Terminals)
-
-```bash
-# T1: Gazebo simulation
-ros2 launch vrx_gz competition.launch.py world:=sydney_regatta
-
-# T2: Rosbridge WebSocket server
-ros2 launch rosbridge_server rosbridge_websocket_launch.xml delay_between_messages:=0.0
-
-# T3: web_video_server (camera stream for dashboard)
-ros2 run web_video_server web_video_server
-
-# T4: Modular navigation (recommended)
-ros2 launch ~/seal_ws/src/uvautoboat/launch/vostok1.launch.yaml
-
-# T5: Web dashboard
-cd ~/seal_ws/src/uvautoboat/web_dashboard/vostok1 && python3 -m http.server 8000
-```
-
-Then open: **<http://localhost:8000>**
-
----
-
-## 🚀 Mission Workflow Guide
-
-This section describes the typical workflow for running autonomous missions using the web dashboard.
-
-### Modular Mode Workflow (OKO + SPUTNIK + BURAN)
-
-The modular architecture uses three separate nodes for perception, planning, and control. This is the **recommended** mode for production use.
-
-#### Step 1: Launch the System (4 Terminals)
-
-```bash
-# Terminal 1: Gazebo simulation
-ros2 launch vrx_gz competition.launch.py world:=sydney_regatta
-
-# Terminal 2: Rosbridge WebSocket server
-ros2 launch rosbridge_server rosbridge_websocket_launch.xml delay_between_messages:=0.0
-
-# Terminal 3: Modular navigation stack
-ros2 launch ~/seal_ws/src/uvautoboat/launch/vostok1.launch.yaml
-
-# Terminal 4: Web dashboard server
-cd ~/seal_ws/src/uvautoboat/web_dashboard/vostok1 && python3 -m http.server 8000
-```
-
-#### Step 2: Open Dashboard & Wait for GPS
-
-1. Open **<http://localhost:8000>** in your browser
-2. Verify connection status shows **Connected** (green)
-3. Wait for GPS coordinates to appear (may take 5-10 seconds after simulation starts)
-4. The Mission Control panel will show state: **INIT**
-
-#### Step 3: Configure Mission Parameters (Optional)
-
-In the **Configuration** panel, you can adjust:
-
-- **Scan Length/Width**: Coverage area dimensions in meters
-- **Lanes**: Number of lawnmower lanes
-- **PID Gains (Kp, Ki, Kd)**: Heading control tuning
-- **Base/Max Speed**: Thruster power limits
-- **Safe Distance**: Obstacle detection threshold
-
-Click **Send Config** to apply changes.
-
-#### Step 4: Generate Waypoints
-
-1. Click **📍 Generate Waypoints** button
-2. Waypoints will appear on the map as blue dots
-3. The planned path is shown as a blue line
-4. State changes to: **WAITING_CONFIRM**
-5. Review the waypoints on the map
-
-#### Step 5: Confirm & Start Mission
-
-1. Click **✓ Confirm** to lock in the waypoints
-2. State changes to: **READY**
-3. Click **▶ Start** to begin the mission
-4. State changes to: **DRIVING**
-5. The boat will begin navigating to waypoints
-
-#### Step 6: Monitor Progress
-
-- **Current waypoint** indicator shows progress (e.g., "3/15")
-- **Distance to target** shows meters to current waypoint
-- **Obstacle status** shows clearance in each direction
-- **Trajectory** is drawn on the map as the boat moves
-- Watch the terminal for log messages
-
-#### Step 7: Mission Control During Operation
-
-| Button | Action |
-|--------|--------|
-| **⏸ Stop** | Pause mission, stop motors immediately |
-| **▶ Resume** | Continue mission from current waypoint |
-| **🏠 Go Home** | Cancel mission, navigate to spawn point |
-| **🔄 Reset** | Clear all waypoints, return to INIT |
-
-#### Step 8: Handle Blocked/Stuck Situations
-
-If the boat gets stuck:
-
-1. BURAN automatically enters **escape mode** (turn left until clear)
-2. The anti-stuck panel shows escalation level
-3. After 4 failed attempts, waypoint is automatically skipped
-4. You can manually click **⏸ Stop** then **🏠 Go Home** to return
-
-#### Step 9: Mission Complete
-
-- When all waypoints are reached, state changes to: **FINISHED**
-- Click **🏠 Go Home** to return to spawn
-- Or click **▶ Start** to run the mission again
-
----
-
-### Integrated Mode Workflow (Vostok1 Single Node)
-
-The integrated Vostok1 node combines all functionality in one process. Useful for simpler deployments.
-
-#### Step 1: Launch the System (4 Terminals)
-
-```bash
-# Terminal 1: Gazebo simulation
-ros2 launch vrx_gz competition.launch.py world:=sydney_regatta
-
-# Terminal 2: Rosbridge WebSocket server
-ros2 launch rosbridge_server rosbridge_websocket_launch.xml delay_between_messages:=0.0
-
-# Terminal 3: Integrated Vostok1 navigation
-ros2 run plan vostok1
-
-# Terminal 4: Web dashboard server
-cd ~/seal_ws/src/uvautoboat/web_dashboard/vostok1 && python3 -m http.server 8000
-```
-
-#### Step 2-9: Same as Modular Mode
-
-The workflow is identical - the dashboard automatically detects which mode is running and subscribes to the appropriate topics.
-
----
-
-### CLI Alternative (No Web Dashboard)
-
-You can also control missions via the command-line interface:
-
-```bash
-# Modular mode (default)
-ros2 run plan vostok1_cli generate --lanes 8 --length 50 --width 20
-ros2 run plan vostok1_cli confirm
-ros2 run plan vostok1_cli start
-ros2 run plan vostok1_cli status
-ros2 run plan vostok1_cli stop
-ros2 run plan vostok1_cli resume
-ros2 run plan vostok1_cli home
-ros2 run plan vostok1_cli reset
-
-# Integrated mode
-ros2 run plan vostok1_cli --mode vostok1 generate
-ros2 run plan vostok1_cli --mode vostok1 start
-
-# Interactive mode (menu-driven)
-ros2 run plan vostok1_cli interactive
-```
-
----
-
-### Troubleshooting Common Issues
-
-| Problem | Solution |
-|---------|----------|
-| Stop button doesn't work | **FIXED** - Latest version forces zero thrust even in escape mode |
-| Boat stuck in escape mode after stop | **FIXED** - Escape state now properly resets on stop/resume |
-| Go Home doesn't respond | **FIXED** - Now publishes target immediately for instant BURAN response |
-| Resume doesn't work | **FIXED** - Mission status published immediately on resume command |
-| Waypoints don't appear on map | Wait for GPS fix, check browser console for errors |
-| Mission state stuck | Try Reset button, then Generate new waypoints |
-| Modular mode waypoints not visualized in RViz | waypoint_visualizer now supports `/planning/waypoints` and `/planning/mission_status` topics |
-
----
+| Panel                      | Description                                                                      |
+| -------------------------- | -------------------------------------------------------------------------------- |
+| **Connection Status**      | WebSocket connection indicator (green/red)                                       |
+| **GPS Position**           | Latitude, longitude, local X/Y coordinates                                      |
+| **Mission Status**         | State badge, waypoint progress, distance, speed, time remaining                 |
+| **Mission Control**        | Generate, Confirm, Start, Stop, Resume, Emergency Stop, Go Home, Reset          |
+| **Obstacle Detection**     | Front/Left/Right clearance with urgency scores and status badge                 |
+| **LiDAR Smoke Detection**  | Smoke status, distance, point count, H/V spread metrics                         |
+| **Thruster Output**        | Left/Right thrust with visual bars                                              |
+| **Anti-Stuck Status**      | Escape mode, direction (LEFT), front clearance, drift vector, Kalman sigma      |
+| **Trajectory Map**         | Interactive Leaflet map with boat position, waypoints, trajectory               |
+| **Main Configuration**     | PID gains, speed, safe distance, waypoint tolerance, A* settings                |
+| **OKO Configuration**      | 17 perception params with 4 presets (Universal, Buoy Field, Pier, Open Water)   |
+| **BURAN Configuration**    | 14 control params (safety distances, avoidance, anti-stuck, slew rate)          |
+| **Health Check**           | Live streaming 45-check system diagnostic with elapsed time                     |
+| **System Logs**            | Timestamped, color-coded log entries                                            |
+| **ROS2 Terminal**          | Direct ROS2 command output                                                      |
+| **Camera Feed**            | MJPEG stream with configurable topic                                            |
+
+## Configuration System
+
+### Three Separate Apply Buttons
+
+Each section sends only its own parameters. With dirty-params filtering, only fields the user actually changed are sent:
+
+| Button           | Parameters                                          | Target Nodes    |
+| ---------------- | --------------------------------------------------- | --------------- |
+| **Apply Config** | PID, speed, lanes, waypoint tolerance, A* settings  | SPUTNIK + BURAN |
+| **Apply OKO**    | Height/range filters, clustering, temporal, smoke    | OKO             |
+| **Apply BURAN**  | Safety distances, avoidance gains, anti-stuck, slew  | BURAN           |
+
+All three publish to `/sputnik/set_config`. Each node picks out only the keys it recognizes.
+
+### Safety Features
+
+- **Apply buttons start disabled** — enabled only after first ROS config sync arrives
+- **Dirty-params filtering** — only changed fields are sent (prevents overwriting unchanged params)
+- **Reset Defaults** — restores launch file values and marks fields dirty (prevents ROS sync race)
+
+### Parameter Sync (3 places)
+
+Any parameter change must be mirrored in:
+
+1. `vostok1.launch.yaml` — the authoritative operational values
+2. `index.html` — input field default values
+3. `app.js` — readInput fallbacks, currentState.config, OKO_DEFAULTS, BURAN_DEFAULTS
+
+### Known Parameter Collisions (Resolved)
+
+OKO and BURAN share the `/sputnik/set_config` topic. Parameters with the same name would collide:
+
+| Parameter           | Resolution                               |
+| ------------------- | ---------------------------------------- |
+| `min_safe_distance` | OKO renamed to `oko_min_safe_distance`   |
+| `critical_distance` | OKO renamed to `oko_critical_distance`   |
+
+## Mission Workflow
+
+1. Open dashboard, wait for **Connected** (green) and GPS coordinates
+2. Set lanes/length/width in Route Configuration
+3. Click **Generate Waypoints** — waypoints appear on map, state -> WAITING_CONFIRM
+4. Click **Confirm Waypoints** — state -> READY
+5. Click **Start Mission** — state -> DRIVING, boat navigates
+6. Monitor: waypoint progress, obstacle clearance, trajectory on map
+
+### Controls During Mission
+
+| Button             | Action                                                          |
+| ------------------ | --------------------------------------------------------------- |
+| **Stop**           | Pause mission, zero thrust                                      |
+| **Resume**         | Continue from current waypoint                                  |
+| **Emergency Stop** | Cut thrust, latch stop (red pulsing badge). Resume to recover.  |
+| **Go Home**        | Navigate back to spawn point                                    |
+| **Reset**          | Clear waypoints, return to INIT                                 |
+
+## ROS Topics
+
+### Subscribed (Read)
+
+| Topic                          | Data                                 |
+| ------------------------------ | ------------------------------------ |
+| `/wamv/sensors/gps/gps/fix`    | GPS position                         |
+| `/planning/mission_status`     | State, waypoint, progress            |
+| `/planning/waypoints`          | Waypoint list for map                |
+| `/planning/current_target`     | Current navigation target            |
+| `/perception/obstacle_info`    | OKO obstacle detection (JSON)        |
+| `/perception/smoke_detected`   | LiDAR smoke detection (JSON)         |
+| `/control/status`              | BURAN controller status              |
+| `/control/anti_stuck_status`   | Anti-stuck escape status             |
+| `/sputnik/config`              | Current config values (syncs fields) |
+| `/wamv/thrusters/left/thrust`  | Left thruster command                |
+| `/wamv/thrusters/right/thrust` | Right thruster command               |
+
+### Published (Write)
+
+| Topic                      | Data                                           |
+| -------------------------- | ---------------------------------------------- |
+| `/sputnik/set_config`      | Parameter updates (JSON)                       |
+| `/sputnik/mission_command` | Mission commands (start, stop, generate, etc.) |
 
 ## Files
 
-- `index.html` - Main dashboard structure
-- `style_merged.css` - Unified stylesheet with clean modern design
-- `app.js` - ROS connection and data handling logic, supports both integrated and modular modes
-- `README_vostok1_dashboard.md` - This file
+| File                          | Description                                |
+| ----------------------------- | ------------------------------------------ |
+| `index.html`                  | Dashboard structure, input fields, panels  |
+| `app.js`                      | ROS connection, data handling, config logic |
+| `style_merged.css`            | Unified stylesheet                         |
+| `README_vostok1_dashboard.md` | This file                                  |
 
-## Implemented Features
+## Troubleshooting
 
-- [x] ✅ Parameter configuration panel
-- [x] ✅ Emergency stop button with safety checks
-- [x] ✅ Mission control buttons (Generate, Confirm, Start, Stop, Resume, Go Home)
-- [x] ✅ Stop/Resume/Go Home with immediate response
-- [x] ✅ Mission armed flag and joystick override status
-- [x] ✅ Dual-mode support (integrated + modular)
-- [x] ✅ waypoint_visualizer RViz integration for modular mode
-
-## Future Enhancements
-
-- [x] Add waypoint editing/planning interface
-- [ ] Display LIDAR point cloud visualization
-- [ ] Display OKO v2.0 cluster/gap visualization on map
-- [ ] Mission recording and playback
-- [ ] Multi-boat support
-- [ ] Historical data charts
+| Problem                           | Solution                                                              |
+| --------------------------------- | --------------------------------------------------------------------- |
+| Dashboard shows "Disconnected"    | Check rosbridge: `ros2 node list \| grep rosbridge`                   |
+| Port 9090 in use                  | Kill old instance: `pkill -9 -f rosbridge`                            |
+| Apply buttons stay grey           | Nodes not publishing `/sputnik/config` — check navigation is launched |
+| Reset then Apply sends old values | Fixed — Reset now marks inputs dirty to prevent ROS sync race         |
+| Camera feed not showing           | Check web_video_server: `ros2 run web_video_server web_video_server`  |
+| Map tiles not loading             | Requires internet for OpenStreetMap CDN                               |
+| ROSLIB not defined                | Requires internet for CDN (roslibjs, Leaflet)                         |
+| Parameter collision               | OKO params prefixed with `oko_` (e.g. `oko_critical_distance`)       |
 
 ## License
 
-Part of the uvautoboat project. See main repository for license details.
+Part of the uvautoboat project — Apache License 2.0.
 
-## Credits
+Built with [roslibjs](http://robotwebtools.org/), [Leaflet.js](https://leafletjs.com/), [OpenStreetMap](https://www.openstreetmap.org/).
 
-Built for the Vostok1 autonomous boat navigation system using:
-
-- [roslibjs](http://robotwebtools.org/) for ROS communication
-- [Leaflet.js](https://leafletjs.com/) for map visualization
-- [OpenStreetMap](https://www.openstreetmap.org/) for map tiles
+Last updated: 13-04-2026
