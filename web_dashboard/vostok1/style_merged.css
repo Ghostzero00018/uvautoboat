@@ -427,7 +427,7 @@ h2 {
     padding: 18px 30px;
     border: 3px solid #ff0000;
     box-shadow: 0 4px 15px rgba(255, 0, 0, 0.4);
-    animation: emergency-pulse 2s ease-in-out infinite;
+    animation: emergency-btn-glow 2s ease-in-out infinite;
 }
 
 .mission-btn.emergency:hover {
@@ -453,8 +453,8 @@ h2 {
     font-weight: 600;
 }
 
-/* Emergency stop animations */
-@keyframes emergency-pulse {
+/* Emergency stop button glow animation */
+@keyframes emergency-btn-glow {
     0%, 100% {
         box-shadow: 0 4px 15px rgba(255, 0, 0, 0.4);
     }
@@ -1403,6 +1403,46 @@ h2 {
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
+.apply-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.config-btn.apply:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.tuning-btn-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.tuning-btn-row .apply-btn {
+    flex: 1;
+}
+
+.reset-btn {
+    padding: 14px 18px;
+    font-size: 14px;
+    font-weight: 600;
+    background: linear-gradient(135deg, #495057, #343a40);
+    color: #ccc;
+    border: 1px solid #555;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+}
+
+.reset-btn:hover {
+    background: linear-gradient(135deg, #5a6268, #495057);
+    color: #fff;
+}
+
 /* Responsive tuning panel */
 @media (max-width: 1200px) {
     .tuning-panel {
@@ -1526,13 +1566,13 @@ h2 {
     gap: 4px;
 }
 
-.progress-stat-label {
+.stat-label {
     font-size: 11px;
     color: #aaa;
     text-transform: uppercase;
 }
 
-.progress-stat-value {
+.stat-value {
     font-size: 16px;
     font-weight: bold;
     color: #4ecca3;
@@ -1901,9 +1941,4 @@ h2 {
 .health-status-badge.error {
     background: #c62828;
     color: #fff;
-}
-
-@keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
 }

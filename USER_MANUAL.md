@@ -93,16 +93,10 @@ uvautoboat/
 │       ├── oko_perception.py        # 3D LIDAR perception (OKO) — active
 │       ├── sputnik_planner.py       # Waypoint planner (SPUTNIK) + A* — active
 │       ├── vostok1_cli.py           # Terminal mission control
+│       ├── health_check_service.py  # ROS 2 health check node (dashboard streaming)
 │       ├── lidar_obstacle_avoidance.py  # LIDAR processing module
 │       ├── grid_map.py              # Grid mapping for A* planning
-│       ├── waypoint_visualizer.py   # RViz visualization
-│       ├── mission_trigger.py       # Mission triggering logic
-│       ├── simple_perception.py     # Simplified perception module
-│       ├── gps_imu_pose.py          # GPS/IMU pose estimation
-│       ├── pose_filter.py           # Pose filtering utility
-│       ├── tf_broadcaster.py        # Transform broadcasting
-│       ├── tf_broadcaster_gazebo.py # Gazebo-specific TF
-│       └── tf_broadcaster_gps.py    # GPS-based TF
+│       └── waypoint_visualizer.py   # RViz visualization
 ├── launch/                     # Top-level launch files
 │   └── vostok1.launch.yaml         # Modular system configuration
 ├── web_dashboard/              # Real-time monitoring interfaces
@@ -124,13 +118,16 @@ uvautoboat/
 │   └── Common_Issues.md             # Troubleshooting guide
 ├── one_click_launch_all/       # Automated launcher scripts
 │   ├── launch_vostok1_complete.sh   # One-click full system launch
-│   └── health_check_vostok1.sh      # System health check (45 checks)
+│   ├── health_check_vostok1.sh      # System health check (45 checks)
+│   └── patch_vrx.sh                 # VRX xacro fix (publish_model_pose)
 ├── working_diary/              # Daily development logs
 ├── legacy/                     # Deprecated code (for reference only)
 │   ├── atlantis/                    # Old Atlantis planner, controller, launch, dashboard
 │   ├── robust_avoidance/            # Old robust avoidance controller and docs
 │   ├── all_in_one/                  # Old monolithic all-in-one stack
 │   ├── misc/                        # Old scripts, pollutant planner, demo launcher
+│   ├── fixed_variants/              # Old _fixed variants of OKO and BURAN
+│   ├── utilities/                   # Standalone utilities (TF, pose, perception)
 │   ├── test_worlds/                 # Custom SDF worlds (smoke, wildlife, custom)
 │   ├── environment_plugins/         # Gazebo dead-zone plugin (C++)
 │   └── DEPRECATED.md                # Full deprecation inventory
@@ -162,6 +159,7 @@ uvautoboat/
 | [Board.md](Board.md) | Development progress tracking and milestones |
 | [Vostok1 Dashboard Guide](web_dashboard/vostok1/README_vostok1_dashboard.md) | Web dashboard setup (rosbridge + web_video_server) and camera panel |
 | [Avoidance Code Explanation](legacy/robust_avoidance/docs/AVOIDANCE_CODE_EXPLANATION.md) | Technical obstacle avoidance documentation (legacy, Chinese) |
+| [DEPRECATED.md](legacy/DEPRECATED.md) | Full inventory of deprecated/legacy code |
 
 **Wiki Documentation** (see [wiki/](wiki/) folder):
 
@@ -201,6 +199,9 @@ uvautoboat/
 | **Z-Node Interpolation** | Feature that prioritizes GPS trajectory over obstacle panic when the direct path is clear |
 | **A\* Path Planning** | Grid-based pathfinding algorithm with obstacle inflation and pre-defined hazard zones |
 | **LiDAR Smoke Detection** | Real-time smoke detection with spatial density filtering (H/V spread ratio analysis) |
+| **Emergency Stop** | Latching emergency stop from dashboard or CLI — cuts thrust immediately |
+| **JSON Log Export** | Export panel contents (health check, logs, terminal, mission) as JSON files |
+| **Health Check Service** | ROS 2 node streaming 45 system checks to the dashboard with live output |
 
 ---
 
@@ -498,7 +499,7 @@ Detailed ROS 2 topic connections between the modular nodes:
 │  └──────────┘                                                                   │
 │       ▲  ▲                                                                      │
 │       │  └─ /wamv/sensors/imu/imu/data                                          │
-│       └──── /vostok1/set_config ◄────────────────────── Dashboard (runtime PID) │
+│       └──── /sputnik/set_config ◄────────────────────── Dashboard (runtime PID) │
 │                                                                                 │
 │  External Control:                                                              │
 │  ├─ /sputnik/set_config         ◄─────────── Dashboard (waypoint radius, etc.) │
@@ -731,30 +732,45 @@ sudo apt install ros-jazzy-rosbridge-suite
 | :------ | :------------ |
 | **Connection Status** | WebSocket connection indicator |
 | **GPS Position** | Latitude, longitude, local coordinates |
-| **Mission Status** | State, waypoint progress, distance |
+| **Mission Status** | State, waypoint progress, distance (with state badge) |
 | **Obstacle Detection** | Front/Left/Right clearance with status badge |
 | **Thruster Output** | Left/Right thrust with visual bars |
 | **Anti-Stuck** | Escape status, drift vector |
 | **Trajectory Map** | Interactive Leaflet map with boat position |
-| **Configuration** | Path, PID, Speed parameter controls |
-| **Terminal Output** | Live ROS log feed |
+| **Configuration** | Path, PID, Speed parameter controls (with Apply) |
+| **OKO Configuration** | Perception parameters (height, range, clustering, smoke) |
+| **BURAN Configuration** | Control parameters (safety distances, avoidance, anti-stuck) |
+| **Health Check** | Live-streaming system health check (45 checks) with elapsed time |
+| **System Logs** | Live ROS log feed |
+| **ROS2 Terminal** | Direct ROS2 command output |
+| **Mission Control** | Generate, confirm, start, stop, resume, emergency stop, go home, reset |
 
-### Configuration Panel
+### Configuration Panels
 
-Runtime parameter tuning:
+Three independent configuration sections, each with its own Apply button:
 
-| Section | Parameters | Description |
+| Section | Parameters | Target Node |
 | :-------- | :----------- | :------------ |
-| **Path** | Lanes, Length, Width | Lawnmower pattern |
-| **PID** | Kp, Ki, Kd | Heading controller gains |
-| **Speed** | Base, Max | Motion control |
+| **Main Config** | Lanes, Length, Width, PID (Kp/Ki/Kd), Speed (Base/Max) | SPUTNIK + BURAN |
+| **OKO Config** | Height range, detection range, clustering, temporal filtering, smoke detection | OKO |
+| **BURAN Config** | Safety distances, avoidance gains, anti-stuck, VFH bias, slew rate | BURAN |
 
-**Buttons:**
+**Mission Control Buttons:**
 
 | Button | Action |
 | :------- | :------- |
-| **Apply Config** | Send all parameters |
+| **Generate Waypoints** | Create lawnmower pattern from route config |
+| **Confirm Waypoints** | Confirm generated waypoints |
+| **Start Mission** | Begin autonomous navigation |
+| **Stop** | Pause mission |
+| **Resume** | Resume paused mission |
+| **Emergency Stop** | Cut thrust and latch stop (red pulsing badge) |
 | **Go Home** | Return to spawn point |
+| **Reset** | Clear waypoints and reset mission |
+
+**JSON Export:** Four panels (Health Check, System Logs, ROS2 Terminal, Mission Control) include export buttons to download panel contents as JSON files.
+
+**Presets:** The OKO configuration panel includes four presets (Default, Sensitive, Bank-Safe, Aggressive) for quick parameter tuning.
 
 ---
 
@@ -1017,6 +1033,9 @@ ros2 run plan vostok1_cli generate --lanes 10 --length 50 --width 20
 
 # All-in-one: waypoints + PID + speed in one command
 ros2 run plan vostok1_cli generate --lanes 10 --length 60 --width 25 --kp 400 --ki 20 --kd 100 --base 500 --max 800
+
+# With safety distances
+ros2 run plan vostok1_cli generate --safe-dist 12.0 --approach-dist 20.0 --approach-factor 0.5 --oko-safe-dist 10.0
 ```
 
 **Output:**
@@ -1034,6 +1053,8 @@ ros2 run plan vostok1_cli generate --lanes 10 --length 60 --width 25 --kp 400 --
 > **Note:** use `ros2 run plan vostok1_cli confirm` to confirm waypoints before starting the mission.
 >
 | Parameter | Default | Description |
+| :---------- | :-------- | :------------ |
+| `--lanes`, `-n` | 10 | Number of lawnmower lanes |
 | `--length`, `-L` | 50.0 | Length of each lane (meters) |
 | `--width`, `-w` | 20.0 | Spacing between lanes (meters) |
 | `--kp` | - | PID Proportional gain (optional) |
@@ -1041,17 +1062,22 @@ ros2 run plan vostok1_cli generate --lanes 10 --length 60 --width 25 --kp 400 --
 | `--kd` | - | PID Derivative gain (optional) |
 | `--base` | - | Base speed in N (optional) |
 | `--max` | - | Max speed in N (optional) |
+| `--safe-dist` | - | BURAN min_safe_distance (m) |
+| `--approach-dist` | - | BURAN approach_slow_distance (m) |
+| `--approach-factor` | - | BURAN approach_slow_factor (0-1) |
+| `--oko-safe-dist` | - | OKO oko_min_safe_distance (m) |
 
 ### Mission Control
 
 ```bash
-ros2 run plan vostok1_cli start     # 🚀 Start mission
-ros2 run plan vostok1_cli stop      # 🛑 Pause mission
-ros2 run plan vostok1_cli resume    # ▶️ Resume mission
-ros2 run plan vostok1_cli home      # 🏠 Return to spawn
-ros2 run plan vostok1_cli reset     # 🔄 Clear waypoints and reset
-ros2 run plan vostok1_cli confirm   # ✅ Confirm waypoints
-ros2 run plan vostok1_cli status    # 📊 Show current status
+ros2 run plan vostok1_cli start      # 🚀 Start mission
+ros2 run plan vostok1_cli stop       # 🛑 Pause mission
+ros2 run plan vostok1_cli resume     # ▶️ Resume mission
+ros2 run plan vostok1_cli emergency  # 🚨 Emergency stop (cuts thrust, latches)
+ros2 run plan vostok1_cli home       # 🏠 Return to spawn
+ros2 run plan vostok1_cli reset      # 🔄 Clear waypoints and reset
+ros2 run plan vostok1_cli confirm    # ✅ Confirm waypoints
+ros2 run plan vostok1_cli status     # 📊 Show current status
 ```
 
 ### Parameter Tuning
@@ -1079,6 +1105,7 @@ ros2 run plan vostok1_cli interactive
 | `s` | Start mission |
 | `x` | Stop/pause |
 | `r` | Resume |
+| `e` / `emergency` | 🚨 Emergency stop |
 | `home` | 🏠 Go to spawn |
 | `reset` | Reset mission |
 | `status` | Show status |
@@ -1158,7 +1185,8 @@ ros2 run plan vostok1_cli home
 
 Interrupts:
 - STOP: dashboard/CLI burst -> state=PAUSED, mission_armed=false, thrust zero; Resume enabled.
-- RESUME: from PAUSED/JOYSTICK/WAITING_CONFIRM/READY with waypoints -> state=DRIVING, mission_armed=true.
+- EMERGENCY STOP: state=EMERGENCY_STOP, mission_armed=false, thrust zero; Resume re-enables.
+- RESUME: from PAUSED/JOYSTICK/EMERGENCY_STOP/WAITING_CONFIRM/READY with waypoints -> state=DRIVING, mission_armed=true.
 - RESET: clears waypoints, state->INIT, thrust zero; must Generate/Confirm again.
 - JOYSTICK ON: state->JOYSTICK, mission_armed=false; BURAN stops, manual teleop.
 - JOYSTICK OFF: if waypoints exist -> state=PAUSED (Resume works); else INIT.
@@ -1263,6 +1291,7 @@ GPS Input → SPUTNIK Planner → Waypoints/Targets → BURAN Controller
 | **DRIVING** | Actively navigating waypoints |
 | **PAUSED** | Mission paused by user |
 | **FINISHED** | All waypoints reached |
+| **EMERGENCY_STOP** | Emergency stop activated — thrust cut, mission latched |
 | **JOYSTICK** | Manual override mode |
 
 ### Lawnmower Pattern Generation
@@ -1353,6 +1382,8 @@ Lane 3: End <────────────────────┘
 | **A* too slow** | Reduce `astar_max_expansions` or increase `astar_resolution` |
 | **Waypoints not generating** | Check GPS: ensure `/wamv/sensors/gps/gps/fix` is publishing |
 | **Mission stuck in INIT** | Run `ros2 run plan vostok1_cli generate` to create waypoints |
+| **LiDAR at world origin** | Run `bash one_click_launch_all/patch_vrx.sh` — fixes VRX `publish_model_pose` (issue #876) |
+| **Health check false FAILs** | DDS discovery lag — wait 5s after launch and re-run |
 
 ### Debug Commands
 
@@ -1414,6 +1445,7 @@ chmod +x one_click_launch_all/launch_vostok1_complete.sh
 
 | Component | Description |
 | :---------- | :------------ |
+| VRX Patch | Applies `patch_vrx.sh` to fix LiDAR model pose |
 | Gazebo Simulation | VRX competition environment |
 | rosbridge WebSocket | Dashboard communication (port 9090) |
 | web_video_server | Camera MJPEG stream (port 8080) |
@@ -1607,6 +1639,8 @@ All deprecated code has been organized into `legacy/` with subdirectories:
 | `legacy/robust_avoidance/` | Robust avoidance controller, launch config, and documentation |
 | `legacy/all_in_one/` | Old monolithic all-in-one navigation stack |
 | `legacy/misc/` | Old root scripts, pollutant planner, demo launcher |
+| `legacy/fixed_variants/` | Old `_fixed` variants of OKO perception and BURAN controller |
+| `legacy/utilities/` | Standalone utilities (TF broadcasters, pose filter, simple perception, etc.) |
 
 See `legacy/DEPRECATED.md` for a full inventory. Legacy code is preserved for reference but is not maintained.
 
@@ -1662,7 +1696,7 @@ Open an issue on [GitHub](https://github.com/Ghostzero00018/uvautoboat/issues) w
 
 Project finished by IMT NORD EUROPE DNM DMI-2026
 
-Last updated at 09.04.2026
+Last updated at 13.04.2026
 
 ---
 

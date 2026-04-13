@@ -155,7 +155,7 @@
                         <span id="smoke-location" class="value">-</span>
                     </div>
                     <div class="info-item full-width" style="font-size: 0.75em; color: #666; margin-top: 5px;">
-                        <span>Filters: Diffuse (>2.5m) + Horizontal-dominant (wider than tall)</span>
+                        <span>Filters: Diffuse (&gt;2.5m) + Horizontal-dominant (wider than tall)</span>
                     </div>
                 </div>
             </div>
@@ -340,15 +340,15 @@
                             <label style="font-weight: 600; margin-bottom: 8px; display: block; color: #495057;">A* Advanced Parameters | Paramètres Avancés A*:</label>
                             <div class="config-item">
                                 <label for="cfg-astar-resolution">Grid Resolution (m):</label>
-                                <input type="number" id="cfg-astar-resolution" min="0.5" max="10" step="0.5" value="3.0">
+                                <input type="number" id="cfg-astar-resolution" min="0.5" max="10" step="any" value="3.0">
                             </div>
                             <div class="config-item">
                                 <label for="cfg-astar-safety">Safety Margin (m):</label>
-                                <input type="number" id="cfg-astar-safety" min="1" max="30" step="1" value="12.0">
+                                <input type="number" id="cfg-astar-safety" min="1" max="30" step="any" value="12.0">
                             </div>
                             <div class="config-item">
                                 <label for="cfg-astar-max">Max Expansions:</label>
-                                <input type="number" id="cfg-astar-max" min="1000" max="50000" step="1000" value="20000">
+                                <input type="number" id="cfg-astar-max" min="1000" max="50000" step="any" value="20000">
                             </div>
                         </div>
                     </div>
@@ -482,7 +482,7 @@
                                 Kp (Proportional):
                                 <span class="info-tooltip" title="Controls heading correction strength. Higher = faster response, may overshoot | Contrôle la force de correction de cap">ℹ️</span>
                             </label>
-                            <input type="number" id="cfg-kp" min="0" max="2000" step="50" value="500" data-default="500">
+                            <input type="number" id="cfg-kp" min="0" max="2000" step="any" value="500" data-default="500">
                             <span class="value-display"></span>
                         </div>
                         <div class="config-item">
@@ -490,7 +490,7 @@
                                 Ki (Integral):
                                 <span class="info-tooltip" title="Eliminates steady-state error. Too high causes oscillation | Élimine l'erreur en régime permanent">ℹ️</span>
                             </label>
-                            <input type="number" id="cfg-ki" min="0" max="200" step="5" value="20" data-default="20">
+                            <input type="number" id="cfg-ki" min="0" max="200" step="any" value="20" data-default="20">
                             <span class="value-display"></span>
                         </div>
                         <div class="config-item">
@@ -498,7 +498,7 @@
                                 Kd (Derivative):
                                 <span class="info-tooltip" title="Dampens oscillations. Higher = smoother but slower | Amortit les oscillations">ℹ️</span>
                             </label>
-                            <input type="number" id="cfg-kd" min="0" max="500" step="10" value="150" data-default="150">
+                            <input type="number" id="cfg-kd" min="0" max="500" step="any" value="150" data-default="150">
                             <span class="value-display"></span>
                         </div>
                     </div>
@@ -509,7 +509,7 @@
                                 Base:
                                 <span class="info-tooltip" title="Normal cruising speed (thrust units) | Vitesse de croisière normale">ℹ️</span>
                             </label>
-                            <input type="number" id="cfg-base-speed" min="100" max="2000" step="50" value="400" data-default="400">
+                            <input type="number" id="cfg-base-speed" min="100" max="2000" step="any" value="400" data-default="400">
                             <span class="value-display"></span>
                         </div>
                         <div class="config-item">
@@ -517,7 +517,7 @@
                                 Max:
                                 <span class="info-tooltip" title="Maximum speed during navigation (thrust units) | Vitesse maximale">ℹ️</span>
                             </label>
-                            <input type="number" id="cfg-max-speed" min="100" max="2000" step="50" value="800" data-default="800">
+                            <input type="number" id="cfg-max-speed" min="100" max="2000" step="any" value="800" data-default="800">
                             <span class="value-display"></span>
                         </div>
                         <div class="config-item">
@@ -525,7 +525,7 @@
                                 Safe Dist. (m):
                                 <span class="info-tooltip" title="Minimum safe distance from obstacles. Boat slows down within this range | Distance minimale des obstacles">ℹ️</span>
                             </label>
-                            <input type="number" id="cfg-safe-dist" min="5" max="50" step="1" value="12" data-default="12">
+                            <input type="number" id="cfg-safe-dist" min="5" max="50" step="any" value="12" data-default="12">
                             <span class="value-display"></span>
                         </div>
                     </div>
@@ -537,7 +537,7 @@
                                 Waypoint Tolerance (m):
                                 <span class="info-tooltip" title="Distance threshold for waypoint completion. Higher = easier to reach | Seuil de distance pour compléter un point">ℹ️</span>
                             </label>
-                            <input type="number" id="cfg-waypoint-tolerance" min="1" max="10" step="0.5" value="3.5" data-default="3.5">
+                            <input type="number" id="cfg-waypoint-tolerance" min="1" max="10" step="any" value="3.5" data-default="3.5">
                             <span class="value-display"></span>
                         </div>
                         <div class="config-item">
@@ -545,7 +545,7 @@
                                 Approach Slow Dist. (m):
                                 <span class="info-tooltip" title="Start slowing down this far from waypoint for precision | Commencer à ralentir à cette distance du point">ℹ️</span>
                             </label>
-                            <input type="number" id="cfg-approach-slow-distance" min="5" max="20" step="1" value="10" data-default="10">
+                            <input type="number" id="cfg-approach-slow-distance" min="5" max="20" step="any" value="10" data-default="10">
                             <span class="value-display"></span>
                         </div>
                         <div class="config-item">
@@ -553,7 +553,7 @@
                                 Approach Slow Factor:
                                 <span class="info-tooltip" title="Speed multiplier near waypoint (0.5=50% speed, 0.7=70% speed) | Multiplicateur de vitesse près du point">ℹ️</span>
                             </label>
-                            <input type="number" id="cfg-approach-slow-factor" min="0.3" max="1.0" step="0.1" value="0.7" data-default="0.7">
+                            <input type="number" id="cfg-approach-slow-factor" min="0.3" max="1.0" step="any" value="0.7" data-default="0.7">
                             <span class="value-display"></span>
                         </div>
                     </div>
@@ -562,7 +562,7 @@
                     <button id="btn-reset-config" class="config-btn reset">
                         🔄 Reset Defaults | Réinitialiser
                     </button>
-                    <button id="btn-apply-config" class="config-btn apply">
+                    <button id="btn-apply-config" class="config-btn apply" disabled title="Waiting for ROS config sync...">
                         ✅ Apply Config | Appliquer
                     </button>
                 </div>
@@ -616,12 +616,12 @@
                                     <h4>Height Filtering | Filtrage Hauteur</h4>
                                     <div class="param-item">
                                         <label for="oko-min-height">Min Height (m):</label>
-                                        <input type="number" id="oko-min-height" step="0.1" value="-1.8">
+                                        <input type="number" id="oko-min-height" step="any" value="-1.2">
                                         <span class="param-hint">Filter low piers/buoys</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="oko-max-height">Max Height (m):</label>
-                                        <input type="number" id="oko-max-height" step="0.1" value="0.8">
+                                        <input type="number" id="oko-max-height" step="any" value="1.5">
                                         <span class="param-hint">Reject smoke</span>
                                     </div>
                                 </div>
@@ -630,12 +630,12 @@
                                     <h4>Range Filtering | Filtrage Portée</h4>
                                     <div class="param-item">
                                         <label for="oko-min-range">Min Range (m):</label>
-                                        <input type="number" id="oko-min-range" step="0.1" value="0.8">
+                                        <input type="number" id="oko-min-range" step="any" value="2.2">
                                         <span class="param-hint">Close detection</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="oko-max-range">Max Range (m):</label>
-                                        <input type="number" id="oko-max-range" step="1" value="80">
+                                        <input type="number" id="oko-max-range" step="any" value="100">
                                         <span class="param-hint">Extended detection</span>
                                     </div>
                                 </div>
@@ -644,12 +644,12 @@
                                     <h4>Detection Thresholds | Seuils Détection</h4>
                                     <div class="param-item">
                                         <label for="oko-safe-dist">Safe Distance (m):</label>
-                                        <input type="number" id="oko-safe-dist" step="0.5" value="10.0">
+                                        <input type="number" id="oko-safe-dist" step="any" value="10.0">
                                         <span class="param-hint">Start slowing</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="oko-critical-dist">Critical Distance (m):</label>
-                                        <input type="number" id="oko-critical-dist" step="0.1" value="5.5">
+                                        <input type="number" id="oko-critical-dist" step="any" value="5.5">
                                         <span class="param-hint">Emergency threshold</span>
                                     </div>
                                 </div>
@@ -662,12 +662,12 @@
                                     <h4>Clustering | Regroupement</h4>
                                     <div class="param-item">
                                         <label for="oko-cluster-dist">Cluster Distance (m):</label>
-                                        <input type="number" id="oko-cluster-dist" step="0.1" value="1.5">
+                                        <input type="number" id="oko-cluster-dist" step="any" value="3.0">
                                         <span class="param-hint">Group nearby points</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="oko-min-cluster-size">Min Cluster Size:</label>
-                                        <input type="number" id="oko-min-cluster-size" step="1" min="1" value="4">
+                                        <input type="number" id="oko-min-cluster-size" step="any" min="1" value="8">
                                         <span class="param-hint">Filter noise</span>
                                     </div>
                                 </div>
@@ -676,12 +676,12 @@
                                     <h4>Temporal Filtering | Filtrage Temporel</h4>
                                     <div class="param-item">
                                         <label for="oko-temporal-history">History Size:</label>
-                                        <input type="number" id="oko-temporal-history" step="1" min="1" max="10" value="3">
+                                        <input type="number" id="oko-temporal-history" step="any" min="1" max="10" value="3">
                                         <span class="param-hint">Scan buffer</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="oko-temporal-threshold">Threshold:</label>
-                                        <input type="number" id="oko-temporal-threshold" step="1" min="1" max="10" value="3">
+                                        <input type="number" id="oko-temporal-threshold" step="any" min="1" max="10" value="2">
                                         <span class="param-hint">Required confirmations</span>
                                     </div>
                                 </div>
@@ -690,12 +690,12 @@
                                     <h4>Water & Stability | Eau et Stabilité</h4>
                                     <div class="param-item">
                                         <label for="oko-water-threshold">Water Plane Threshold:</label>
-                                        <input type="number" id="oko-water-threshold" step="0.05" value="0.2">
+                                        <input type="number" id="oko-water-threshold" step="any" value="0.32">
                                         <span class="param-hint">Water filtering</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="oko-hysteresis">Hysteresis (m):</label>
-                                        <input type="number" id="oko-hysteresis" step="0.1" value="1.3">
+                                        <input type="number" id="oko-hysteresis" step="any" value="2.0">
                                         <span class="param-hint">Prevent oscillation</span>
                                     </div>
                                 </div>
@@ -716,12 +716,12 @@
                                     </div>
                                     <div class="param-item">
                                         <label for="oko-smoke-min-height">Smoke Min Height (m):</label>
-                                        <input type="number" id="oko-smoke-min-height" step="0.1" value="0.3">
+                                        <input type="number" id="oko-smoke-min-height" step="any" value="2.5">
                                         <span class="param-hint">Smoke floats above this (SDF: 0.5m start)</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="oko-smoke-max-height">Smoke Max Height (m):</label>
-                                        <input type="number" id="oko-smoke-max-height" step="0.5" value="10.0">
+                                        <input type="number" id="oko-smoke-max-height" step="any" value="10.0">
                                         <span class="param-hint">Extended for rising smoke (3-8m plumes)</span>
                                     </div>
                                 </div>
@@ -730,17 +730,20 @@
                                     <h4>Solid Objects (v2.1) | Objets Solides</h4>
                                     <div class="param-item">
                                         <label for="oko-solid-min-height">Solid Min Height (m):</label>
-                                        <input type="number" id="oko-solid-min-height" step="0.1" value="-2.0">
+                                        <input type="number" id="oko-solid-min-height" step="any" value="-2.0">
                                         <span class="param-hint">Solid obstacles min</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="oko-solid-max-height">Solid Max Height (m):</label>
-                                        <input type="number" id="oko-solid-max-height" step="0.1" value="0.5">
+                                        <input type="number" id="oko-solid-max-height" step="any" value="0.5">
                                         <span class="param-hint">Touch water line</span>
                                     </div>
                                 </div>
                             </div>
-                            <button id="btn-apply-oko" class="apply-btn">Apply OKO Params | Appliquer</button>
+                            <div class="tuning-btn-row">
+                                <button id="btn-reset-oko" class="reset-btn">🔄 Reset Defaults</button>
+                                <button id="btn-apply-oko" class="apply-btn" disabled title="Waiting for ROS config sync...">Apply OKO Params | Appliquer</button>
+                            </div>
                         </div>
                     </div>
 
@@ -763,17 +766,17 @@
                                     <h4>Distance Thresholds | Seuils Distance</h4>
                                     <div class="param-item">
                                         <label for="buran-critical-dist">Critical Distance (m):</label>
-                                        <input type="number" id="buran-critical-dist" step="0.1" value="6.0">
+                                        <input type="number" id="buran-critical-dist" step="any" value="6.0">
                                         <span class="param-hint">Panic/reverse</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="buran-safe-dist">Safe Distance (m):</label>
-                                        <input type="number" id="buran-safe-dist" step="0.5" value="12.0">
+                                        <input type="number" id="buran-safe-dist" step="any" value="12.0">
                                         <span class="param-hint">Start slowing</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="buran-bank-dist">Bank Slow Distance (m):</label>
-                                        <input type="number" id="buran-bank-dist" step="0.5" value="7.0">
+                                        <input type="number" id="buran-bank-dist" step="any" value="6.0">
                                         <span class="param-hint">Extra slow near banks</span>
                                     </div>
                                 </div>
@@ -782,12 +785,12 @@
                                     <h4>Speed Control | Contrôle Vitesse</h4>
                                     <div class="param-item">
                                         <label for="buran-obstacle-slow">Obstacle Slow Factor:</label>
-                                        <input type="number" id="buran-obstacle-slow" step="0.05" min="0.1" max="1.0" value="0.35">
+                                        <input type="number" id="buran-obstacle-slow" step="any" min="0.1" max="1.0" value="0.5">
                                         <span class="param-hint">Speed near obstacles</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="buran-bank-slow">Bank Slow Factor:</label>
-                                        <input type="number" id="buran-bank-slow" step="0.05" min="0.1" max="1.0" value="0.22">
+                                        <input type="number" id="buran-bank-slow" step="any" min="0.1" max="1.0" value="0.25">
                                         <span class="param-hint">Crawl near banks</span>
                                     </div>
                                 </div>
@@ -796,7 +799,7 @@
                                     <h4>Steering | Direction</h4>
                                     <div class="param-item">
                                         <label for="buran-avoid-gain">Avoid Diff Gain:</label>
-                                        <input type="number" id="buran-avoid-gain" step="5" min="10" max="100" value="18">
+                                        <input type="number" id="buran-avoid-gain" step="any" min="10" max="100" value="18">
                                         <span class="param-hint">Steering aggressiveness</span>
                                     </div>
                                     <div class="param-item">
@@ -809,7 +812,7 @@
                                     </div>
                                     <div class="param-item">
                                         <label for="buran-max-turn">Max Turn Angle (°):</label>
-                                        <input type="number" id="buran-max-turn" step="5" min="10" max="90" value="45">
+                                        <input type="number" id="buran-max-turn" step="any" min="10" max="90" value="45">
                                         <span class="param-hint">Avoidance turn limit</span>
                                     </div>
                                 </div>
@@ -822,12 +825,12 @@
                                     <h4>Stuck Detection | Détection Blocage</h4>
                                     <div class="param-item">
                                         <label for="buran-stuck-timeout">Stuck Timeout (s):</label>
-                                        <input type="number" id="buran-stuck-timeout" step="0.5" min="1" max="10" value="3.5">
+                                        <input type="number" id="buran-stuck-timeout" step="any" min="1" max="30" value="12.0">
                                         <span class="param-hint">Time before stuck detection</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="buran-stuck-threshold">Stuck Threshold (m):</label>
-                                        <input type="number" id="buran-stuck-threshold" step="0.1" value="0.9">
+                                        <input type="number" id="buran-stuck-threshold" step="any" value="1.0">
                                         <span class="param-hint">Movement threshold</span>
                                     </div>
                                 </div>
@@ -836,12 +839,12 @@
                                     <h4>Critical Obstacle | Obstacle Critique</h4>
                                     <div class="param-item">
                                         <label for="buran-reverse-timeout">Reverse Timeout (s):</label>
-                                        <input type="number" id="buran-reverse-timeout" step="0.5" value="4.0">
+                                        <input type="number" id="buran-reverse-timeout" step="any" value="4.0">
                                         <span class="param-hint">Reverse duration</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="buran-max-reverse">Max Reverse Distance (m):</label>
-                                        <input type="number" id="buran-max-reverse" step="5" value="20">
+                                        <input type="number" id="buran-max-reverse" step="any" value="25">
                                         <span class="param-hint">Max reverse</span>
                                     </div>
                                 </div>
@@ -850,17 +853,20 @@
                                     <h4>Turn Behavior | Comportement Virage</h4>
                                     <div class="param-item">
                                         <label for="buran-turn-deadband">Turn Deadband (deg):</label>
-                                        <input type="number" id="buran-turn-deadband" step="0.5" value="0.5">
+                                        <input type="number" id="buran-turn-deadband" step="any" value="0.5">
                                         <span class="param-hint">Precision threshold</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="buran-slew-rate">Slew Rate Limit (N):</label>
-                                        <input type="number" id="buran-slew-rate" step="10" value="90">
+                                        <input type="number" id="buran-slew-rate" step="any" value="80">
                                         <span class="param-hint">Max thrust change</span>
                                     </div>
                                 </div>
                             </div>
-                            <button id="btn-apply-buran" class="apply-btn">Apply BURAN Params | Appliquer</button>
+                            <div class="tuning-btn-row">
+                                <button id="btn-reset-buran" class="reset-btn">🔄 Reset Defaults</button>
+                                <button id="btn-apply-buran" class="apply-btn" disabled title="Waiting for ROS config sync...">Apply BURAN Params | Appliquer</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -884,16 +890,16 @@
                 <h2>Front Camera Feed | Flux Caméra Avant</h2>
                 <div class="camera-container">
                     <div id="camera-feed">
-                    <img id="camera-image" src="" alt="Camera feed not available" style="width: 100%; height: auto; border-radius: 4px;">
-                    <div id="camera-status" class="camera-status">Waiting for camera feed... | En attente du flux...</div>
+                        <img id="camera-image" src="data:," alt="Camera feed not available" style="width: 100%; height: auto; border-radius: 4px;">
+                        <div id="camera-status" class="camera-status">Waiting for camera feed... | En attente du flux...</div>
+                    </div>
+                </div>
+                <div class="camera-controls">
+                    <label for="camera-topic">Camera Topic:</label>
+                    <input type="text" id="camera-topic" value="/wamv/sensors/cameras/front_left_camera_sensor/image_raw" style="width: 250px; padding: 5px;">
+                    <button id="btn-refresh-camera" class="config-btn apply" style="margin-left: 10px;">Refresh | Actualiser</button>
                 </div>
             </div>
-            <div class="camera-controls">
-                <label for="camera-topic">Camera Topic:</label>
-                <input type="text" id="camera-topic" value="/wamv/sensors/cameras/front_left_camera_sensor/image_raw" style="width: 250px; padding: 5px;">
-                <button id="btn-refresh-camera" class="config-btn apply" style="margin-left: 10px;">Refresh | Actualiser</button>
-            </div>
-        </div>
 
             <!-- Terminal Panel -->
             <div class="panel terminal-panel">

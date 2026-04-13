@@ -1,5 +1,6 @@
 // Performance optimization: Debug mode flag
-const DEBUG_MODE = false;  // Set to true to enable console logging
+let DEBUG_MODE = false;  // Set to true to enable console logging (type DEBUG_MODE=true in browser console)
+let configSynced = false; // True after first config update received from ROS
 
 // ROS Connection
 let ros;
@@ -66,7 +67,7 @@ let currentState = {
         kd: 150.0,
         base_speed: 400.0,
         max_speed: 800.0,
-        min_safe_distance: 10.0
+        min_safe_distance: 12.0
     },
     world: {
         name: 'unknown',
@@ -815,8 +816,8 @@ function updateAntiStuckStatus(data) {
     // Update anti-stuck panel elements if they exist
     const stuckStatus = document.getElementById('stuck-status');
     const escapePhase = document.getElementById('escape-phase');
-    const noGoZones = document.getElementById('no-go-zones');
     const driftVector = document.getElementById('drift-vector');
+    const probeResults = document.getElementById('probe-results');
 
     if (stuckStatus) {
         const stuckText = (data.is_stuck && data.escape_mode)
@@ -837,11 +838,6 @@ function updateAntiStuckStatus(data) {
             escapePhase.className = data.escape_mode ? 'value active' : 'value';
             _prevAntiStuck.phase = phaseText;
         }
-    }
-
-    if (noGoZones && !_prevAntiStuck.noGoSet) {
-        noGoZones.textContent = 'N/A (Simple mode)';
-        _prevAntiStuck.noGoSet = true;
     }
 
     if (driftVector && data.drift_vector) {
@@ -883,10 +879,6 @@ function updateAntiStuckStatus(data) {
             driftUncertainty.style.color = uncColor;
             _prevAntiStuck.uncText = uncText;
         }
-    }
-
-    if (escapeHistory) {
-        escapeHistory.textContent = 'N/A (Simple mode)';
     }
 
     if (probeResults) {
@@ -960,14 +952,25 @@ setInterval(() => {
 function initConfigPanel() {
     if (DEBUG_MODE) console.log('Initializing config panel...');
 
-    // All config input IDs
+    // All config input IDs (main + OKO + BURAN)
     const allConfigInputs = [
         'cfg-lanes', 'cfg-scan-length', 'cfg-scan-width',
         'cfg-kp', 'cfg-ki', 'cfg-kd',
         'cfg-base-speed', 'cfg-max-speed', 'cfg-safe-dist',
         'cfg-waypoint-tolerance', 'cfg-approach-slow-distance', 'cfg-approach-slow-factor',
         'cfg-astar-resolution', 'cfg-astar-safety', 'cfg-astar-max',
-        'wp-lanes', 'wp-length', 'wp-width'
+        'wp-lanes', 'wp-length', 'wp-width',
+        // OKO inputs
+        'oko-min-height', 'oko-max-height', 'oko-min-range', 'oko-max-range',
+        'oko-safe-dist', 'oko-critical-dist', 'oko-cluster-dist', 'oko-min-cluster-size',
+        'oko-temporal-history', 'oko-temporal-threshold', 'oko-water-threshold', 'oko-hysteresis',
+        'oko-smoke-enabled', 'oko-smoke-min-height', 'oko-smoke-max-height',
+        'oko-solid-min-height', 'oko-solid-max-height',
+        // BURAN inputs
+        'buran-critical-dist', 'buran-safe-dist', 'buran-bank-dist',
+        'buran-obstacle-slow', 'buran-bank-slow', 'buran-avoid-gain',
+        'buran-use-vfh', 'buran-max-turn', 'buran-stuck-timeout', 'buran-stuck-threshold',
+        'buran-reverse-timeout', 'buran-max-reverse', 'buran-turn-deadband', 'buran-slew-rate'
     ];
 
     // Mark input as dirty when user types
@@ -1038,12 +1041,61 @@ function resetConfigToDefaults() {
         if (input && input.dataset.default) {
             input.value = input.dataset.default;
             input.classList.remove('modified');
-            dirtyInputs.delete(id);
+            // Mark dirty so ROS sync doesn't overwrite before user clicks Apply
+            dirtyInputs.add(id);
+            input.classList.add('input-dirty');
             updateValueDisplay(input);
         }
     });
 
-    addLog('Configuration reset to defaults | Configuration réinitialisée', 'info');
+    addLog('Configuration reset to defaults — click Apply to send | Cliquez Appliquer pour envoyer', 'info');
+}
+
+// OKO launch defaults (must match vostok1.launch.yaml)
+const OKO_DEFAULTS = {
+    'oko-min-height': -1.2, 'oko-max-height': 1.5,
+    'oko-min-range': 2.2, 'oko-max-range': 100,
+    'oko-safe-dist': 10.0, 'oko-critical-dist': 5.5,
+    'oko-cluster-dist': 3.0, 'oko-min-cluster-size': 8,
+    'oko-temporal-history': 3, 'oko-temporal-threshold': 2,
+    'oko-water-threshold': 0.32, 'oko-hysteresis': 2.0,
+    'oko-smoke-min-height': 2.5, 'oko-smoke-max-height': 10.0,
+    'oko-solid-min-height': -2.0, 'oko-solid-max-height': 0.5
+};
+
+// BURAN launch defaults (must match vostok1.launch.yaml)
+const BURAN_DEFAULTS = {
+    'buran-critical-dist': 6.0, 'buran-safe-dist': 12.0,
+    'buran-bank-dist': 6.0, 'buran-obstacle-slow': 0.5,
+    'buran-bank-slow': 0.25, 'buran-avoid-gain': 18,
+    'buran-max-turn': 45, 'buran-stuck-timeout': 12.0,
+    'buran-stuck-threshold': 1.0, 'buran-reverse-timeout': 4.0,
+    'buran-max-reverse': 25, 'buran-turn-deadband': 0.5,
+    'buran-slew-rate': 80
+};
+
+function resetOkoToDefaults() {
+    for (const [id, val] of Object.entries(OKO_DEFAULTS)) {
+        const el = document.getElementById(id);
+        if (el) { el.value = val; dirtyInputs.add(id); el.classList.add('input-dirty'); }
+    }
+    // Reset smoke enabled select
+    const smokeEl = document.getElementById('oko-smoke-enabled');
+    if (smokeEl) smokeEl.value = 'true';
+    addLog('OKO parameters reset to launch defaults | Paramètres OKO réinitialisés', 'info');
+    showFeedback('🔄 OKO reset to launch defaults', 'info');
+}
+
+function resetBuranToDefaults() {
+    for (const [id, val] of Object.entries(BURAN_DEFAULTS)) {
+        const el = document.getElementById(id);
+        if (el) { el.value = val; dirtyInputs.add(id); el.classList.add('input-dirty'); }
+    }
+    // Reset VFH select
+    const vfhEl = document.getElementById('buran-use-vfh');
+    if (vfhEl) vfhEl.value = 'false';
+    addLog('BURAN parameters reset to launch defaults | Paramètres BURAN réinitialisés', 'info');
+    showFeedback('🔄 BURAN reset to launch defaults', 'info');
 }
 
 // Initialize value tracking and displays
@@ -1092,18 +1144,18 @@ function updateValueDisplay(input) {
     }
 }
 
-// Clear dirty state for specified inputs
-function clearDirtyInputs(inputIds) {
-    inputIds.forEach(id => {
-        dirtyInputs.delete(id);
-        const el = document.getElementById(id);
-        if (el) el.classList.remove('input-dirty');
-    });
-}
-
 // Update config inputs from ROS
 function updateConfigFromROS(data) {
     currentState.config = { ...currentState.config, ...data };
+
+    // Enable Apply buttons after first ROS config sync
+    if (!configSynced) {
+        configSynced = true;
+        document.querySelectorAll('.apply-btn[disabled], .config-btn.apply[disabled]').forEach(btn => {
+            btn.disabled = false;
+            btn.title = '';
+        });
+    }
     
     // Only update inputs if they're not dirty (user hasn't modified them)
     const inputs = {
@@ -1210,6 +1262,30 @@ function readInput(id, fallback) {
     return Math.max(min, Math.min(max, raw));
 }
 
+// Filter a config object to only include params whose input was modified.
+// idToParam maps DOM input IDs to param names: { 'cfg-kp': 'kp', ... }
+// Returns the filtered config, or the full config if nothing was dirty (first apply / preset).
+function filterDirtyParams(fullConfig, idToParam) {
+    const dirty = {};
+    let hasDirty = false;
+    for (const [id, param] of Object.entries(idToParam)) {
+        if (dirtyInputs.has(id)) {
+            dirty[param] = fullConfig[param];
+            hasDirty = true;
+        }
+    }
+    return hasDirty ? dirty : fullConfig;
+}
+
+// Clear dirty state for a set of input IDs after a successful send
+function markClean(inputIds) {
+    inputIds.forEach(id => {
+        dirtyInputs.delete(id);
+        const el = document.getElementById(id);
+        if (el) el.classList.remove('input-dirty');
+    });
+}
+
 // Send configuration to Vostok1
 function sendConfig(pidOnly = false) {
     if (!connected || !configPublisher) {
@@ -1219,20 +1295,26 @@ function sendConfig(pidOnly = false) {
 
     let config = {};
 
+    // ID-to-param mapping for dirty filtering
+    const pidIdMap = {
+        'cfg-kp': 'kp', 'cfg-ki': 'ki', 'cfg-kd': 'kd'
+    };
+
     if (pidOnly) {
         // Only send PID parameters
-        config = {
+        const fullPid = {
             kp: readInput('cfg-kp', 500),
             ki: readInput('cfg-ki', 20),
             kd: readInput('cfg-kd', 150)
         };
+        config = filterDirtyParams(fullPid, pidIdMap);
         addLog('Sending PID config... | Envoi configuration PID...', 'info');
     } else {
         // Get selected navigation mode
         const navMode = getSelectedNavMode();
 
-        // Send all parameters
-        config = {
+        // Build full config
+        const fullConfig = {
             lanes: readInput('cfg-lanes', 8),
             scan_length: readInput('cfg-scan-length', 15.0),
             scan_width: readInput('cfg-scan-width', 30.0),
@@ -1241,7 +1323,7 @@ function sendConfig(pidOnly = false) {
             kd: readInput('cfg-kd', 150),
             base_speed: readInput('cfg-base-speed', 400),
             max_speed: readInput('cfg-max-speed', 800),
-            min_safe_distance: readInput('cfg-safe-dist', 15),
+            min_safe_distance: readInput('cfg-safe-dist', 12),
             // Waypoint approach parameters
             waypoint_tolerance: readInput('cfg-waypoint-tolerance', 3.5),
             approach_slow_distance: readInput('cfg-approach-slow-distance', 10),
@@ -1254,26 +1336,60 @@ function sendConfig(pidOnly = false) {
             astar_safety_margin: readInput('cfg-astar-safety', 12.0),
             astar_max_expansions: readInput('cfg-astar-max', 20000)
         };
-        addLog('Sending full config... | Envoi configuration complète...', 'info');
+
+        const mainIdMap = {
+            'cfg-lanes': 'lanes', 'cfg-scan-length': 'scan_length', 'cfg-scan-width': 'scan_width',
+            'cfg-kp': 'kp', 'cfg-ki': 'ki', 'cfg-kd': 'kd',
+            'cfg-base-speed': 'base_speed', 'cfg-max-speed': 'max_speed',
+            'cfg-safe-dist': 'min_safe_distance',
+            'cfg-waypoint-tolerance': 'waypoint_tolerance',
+            'cfg-approach-slow-distance': 'approach_slow_distance',
+            'cfg-approach-slow-factor': 'approach_slow_factor',
+            'cfg-astar-resolution': 'astar_resolution',
+            'cfg-astar-safety': 'astar_safety_margin',
+            'cfg-astar-max': 'astar_max_expansions'
+        };
+
+        config = filterDirtyParams(fullConfig, mainIdMap);
+
+        // Always include A* mode flags if nav mode radio was changed
+        if (navModeDirty) {
+            config.astar_enabled = fullConfig.astar_enabled;
+            config.astar_hybrid_mode = fullConfig.astar_hybrid_mode;
+            config.hazard_enabled = fullConfig.hazard_enabled;
+        }
+
+        addLog('Sending config... | Envoi configuration...', 'info');
     }
 
     const message = new ROSLIB.Message({
         data: JSON.stringify(config)
     });
-    
+
     // Publish to both vostok1 and modular (sputnik) topics
     configPublisher.publish(message);
     if (modularConfigPublisher) {
         modularConfigPublisher.publish(message);
     }
-    addLog('Config sent! | Configuration envoyée!', 'info');
-    if (DEBUG_MODE) console.log('Config sent to both vostok1 and sputnik:', config);
 
-    // Show success feedback toast
+    const sentCount = Object.keys(config).length;
+    addLog(`Config sent (${sentCount} params)! | Configuration envoyée!`, 'info');
+    if (DEBUG_MODE) console.log('Config sent:', config);
+
+    // Clear dirty state for sent inputs
     if (pidOnly) {
-        showFeedback(`✅ PID: All 3 parameters applied successfully!`, 'success');
+        markClean(Object.keys(pidIdMap));
+        showFeedback(`✅ PID: ${sentCount} parameter(s) applied`, 'success');
     } else {
-        showFeedback(`✅ Advanced Config: All 9 parameters applied successfully!`, 'success');
+        markClean([
+            'cfg-lanes', 'cfg-scan-length', 'cfg-scan-width',
+            'cfg-kp', 'cfg-ki', 'cfg-kd',
+            'cfg-base-speed', 'cfg-max-speed', 'cfg-safe-dist',
+            'cfg-waypoint-tolerance', 'cfg-approach-slow-distance', 'cfg-approach-slow-factor',
+            'cfg-astar-resolution', 'cfg-astar-safety', 'cfg-astar-max'
+        ]);
+        navModeDirty = false;
+        showFeedback(`✅ Config: ${sentCount} parameter(s) applied`, 'success');
     }
 }
 
@@ -2186,6 +2302,18 @@ function initTuningPanel() {
     document.getElementById('btn-apply-oko').addEventListener('click', () => applyOkoParameters());
     document.getElementById('btn-apply-buran').addEventListener('click', () => applyBuranParameters());
 
+    // Reset defaults buttons
+    document.getElementById('btn-reset-oko').addEventListener('click', () => {
+        if (confirm('Reset OKO parameters to launch defaults? | Réinitialiser les paramètres OKO?')) {
+            resetOkoToDefaults();
+        }
+    });
+    document.getElementById('btn-reset-buran').addEventListener('click', () => {
+        if (confirm('Reset BURAN parameters to launch defaults? | Réinitialiser les paramètres BURAN?')) {
+            resetBuranToDefaults();
+        }
+    });
+
     if (DEBUG_MODE) console.log('Tuning panel initialized');
 }
 
@@ -2281,8 +2409,21 @@ function applyOkoParameters(presetParams = null) {
         return;
     }
 
-    // Get parameters from UI or preset
-    const params = presetParams || {
+    // OKO input ID to param name mapping
+    const okoIdMap = {
+        'oko-min-height': 'min_height', 'oko-max-height': 'max_height',
+        'oko-min-range': 'min_range', 'oko-max-range': 'max_range',
+        'oko-safe-dist': 'oko_min_safe_distance', 'oko-critical-dist': 'critical_distance',
+        'oko-cluster-dist': 'cluster_distance', 'oko-min-cluster-size': 'min_cluster_size',
+        'oko-temporal-history': 'temporal_history_size', 'oko-temporal-threshold': 'temporal_threshold',
+        'oko-water-threshold': 'water_plane_threshold', 'oko-hysteresis': 'hysteresis_distance',
+        'oko-smoke-enabled': 'smoke_filter_enabled',
+        'oko-smoke-min-height': 'smoke_min_height', 'oko-smoke-max-height': 'smoke_max_height',
+        'oko-solid-min-height': 'solid_min_height', 'oko-solid-max-height': 'solid_max_height'
+    };
+
+    // Get full parameters from UI or preset
+    const fullParams = presetParams || {
         min_height: parseFloat(document.getElementById('oko-min-height').value),
         max_height: parseFloat(document.getElementById('oko-max-height').value),
         min_range: parseFloat(document.getElementById('oko-min-range').value),
@@ -2308,16 +2449,22 @@ function applyOkoParameters(presetParams = null) {
             parseFloat(document.getElementById('oko-solid-max-height').value) : 0.5
     };
 
-    // Publish to /sputnik/set_config topic (same as BURAN)
+    // Presets send all params; manual edits send only changed ones
+    const params = presetParams ? fullParams : filterDirtyParams(fullParams, okoIdMap);
+
+    // Publish to /sputnik/set_config topic
     const message = new ROSLIB.Message({
         data: JSON.stringify(params)
     });
 
     configPublisher.publish(message);
 
-    const totalParams = Object.keys(params).length;
-    addLog(`✅ OKO: ${totalParams} parameters sent via config topic`, 'info');
-    showFeedback(`✅ OKO: All ${totalParams} parameters applied successfully!`, 'success');
+    // Clear dirty state for OKO inputs
+    markClean(Object.keys(okoIdMap));
+
+    const sentCount = Object.keys(params).length;
+    addLog(`✅ OKO: ${sentCount} parameter(s) sent via config topic`, 'info');
+    showFeedback(`✅ OKO: ${sentCount} parameter(s) applied`, 'success');
     if (DEBUG_MODE) console.log('OKO config sent to /sputnik/set_config:', params);
 }
 
@@ -2329,8 +2476,19 @@ function applyBuranParameters(presetParams = null) {
         return;
     }
 
-    // Get parameters from UI or preset
-    const params = presetParams || {
+    // BURAN input ID to param name mapping
+    const buranIdMap = {
+        'buran-critical-dist': 'critical_distance', 'buran-safe-dist': 'min_safe_distance',
+        'buran-bank-dist': 'bank_slow_distance', 'buran-obstacle-slow': 'obstacle_slow_factor',
+        'buran-bank-slow': 'bank_slow_factor', 'buran-avoid-gain': 'avoid_diff_gain',
+        'buran-use-vfh': 'use_vfh_bias', 'buran-max-turn': 'max_avoidance_turn_deg',
+        'buran-stuck-timeout': 'stuck_timeout', 'buran-stuck-threshold': 'stuck_threshold',
+        'buran-reverse-timeout': 'reverse_timeout', 'buran-max-reverse': 'max_reverse_distance',
+        'buran-turn-deadband': 'turn_deadband_deg', 'buran-slew-rate': 'slew_rate_limit'
+    };
+
+    // Get full parameters from UI or preset
+    const fullParams = presetParams || {
         critical_distance: parseFloat(document.getElementById('buran-critical-dist').value),
         min_safe_distance: parseFloat(document.getElementById('buran-safe-dist').value),
         bank_slow_distance: parseFloat(document.getElementById('buran-bank-dist').value),
@@ -2347,16 +2505,22 @@ function applyBuranParameters(presetParams = null) {
         slew_rate_limit: parseFloat(document.getElementById('buran-slew-rate').value)
     };
 
-    // Publish to /sputnik/set_config topic (same as basic config)
+    // Presets send all params; manual edits send only changed ones
+    const params = presetParams ? fullParams : filterDirtyParams(fullParams, buranIdMap);
+
+    // Publish to /sputnik/set_config topic
     const message = new ROSLIB.Message({
         data: JSON.stringify(params)
     });
 
     configPublisher.publish(message);
 
-    const totalParams = Object.keys(params).length;
-    addLog(`✅ BURAN: ${totalParams} parameters sent via config topic`, 'info');
-    showFeedback(`✅ BURAN: All ${totalParams} parameters applied successfully!`, 'success');
+    // Clear dirty state for BURAN inputs
+    markClean(Object.keys(buranIdMap));
+
+    const sentCount = Object.keys(params).length;
+    addLog(`✅ BURAN: ${sentCount} parameter(s) sent via config topic`, 'info');
+    showFeedback(`✅ BURAN: ${sentCount} parameter(s) applied`, 'success');
     if (DEBUG_MODE) console.log('BURAN config sent to /sputnik/set_config:', params);
 }
 
@@ -2434,69 +2598,6 @@ function showFeedback(message, type = 'info') {
             }
         }, 300);
     }, duration);
-}
-
-// Set ROS2 parameter via rosbridge service call
-function setROS2Parameter(nodeName, paramName, paramValue, callback) {
-    // Create service client for set_parameters
-    const setParamsService = new ROSLIB.Service({
-        ros: ros,
-        name: `${nodeName}/set_parameters`,
-        serviceType: 'rcl_interfaces/srv/SetParameters'
-    });
-
-    // Determine parameter type
-    let paramType;
-    let value;
-
-    if (typeof paramValue === 'boolean') {
-        paramType = 1; // PARAMETER_BOOL
-        value = { bool_value: paramValue };
-    } else if (Number.isInteger(paramValue)) {
-        paramType = 2; // PARAMETER_INTEGER
-        value = { integer_value: paramValue };
-    } else if (typeof paramValue === 'number') {
-        paramType = 3; // PARAMETER_DOUBLE
-        value = { double_value: paramValue };
-    } else if (typeof paramValue === 'string') {
-        paramType = 4; // PARAMETER_STRING
-        value = { string_value: paramValue };
-    } else {
-        console.error(`Unknown parameter type for ${paramName}:`, typeof paramValue);
-        if (callback) callback(false);
-        return;
-    }
-
-    // Create request
-    const request = new ROSLIB.ServiceRequest({
-        parameters: [{
-            name: paramName,
-            value: {
-                type: paramType,
-                ...value
-            }
-        }]
-    });
-
-    // Call service
-    setParamsService.callService(request, (response) => {
-        if (response && response.results && response.results.length > 0) {
-            const result = response.results[0];
-            if (result.successful) {
-                if (DEBUG_MODE) console.log(`✅ Set ${nodeName}/${paramName} = ${paramValue}`);
-                if (callback) callback(true);
-            } else {
-                console.error(`❌ Failed to set ${nodeName}/${paramName}: ${result.reason}`);
-                if (callback) callback(false);
-            }
-        } else {
-            console.error(`❌ No response from ${nodeName}/set_parameters`);
-            if (callback) callback(false);
-        }
-    }, (error) => {
-        console.error(`❌ Service call failed for ${nodeName}/${paramName}:`, error);
-        if (callback) callback(false);
-    });
 }
 
 // Hook into existing page load initialization

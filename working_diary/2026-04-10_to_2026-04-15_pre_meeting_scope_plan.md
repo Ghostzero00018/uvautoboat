@@ -107,6 +107,36 @@ Done ahead of schedule during the audit/cleanup pass:
 - `request_replan()` AttributeError fix in BURAN:662
 - Any logic changes in core nodes
 
+- **Dashboard ↔ Launch file parameter sync** — 17 mismatched defaults were
+  fixed on Apr 13 (HTML input defaults vs `vostok1.launch.yaml`). Any future
+  parameter change in the launch file must be mirrored in three places:
+  (1) `vostok1.launch.yaml`, (2) `index.html` input defaults,
+  (3) `app.js` readInput fallbacks / currentState.config. A systematic
+  cross-check should be done whenever parameters are added or tuned.
+
+### Parameter sync safety notes (Apr 13)
+
+Parameters live in three places: ROS2 node Python defaults, launch YAML, and
+dashboard (HTML defaults + JS fallbacks). How mismatches behave:
+
+- **Node default ≠ Launch file** — safe. Launch file always overrides at startup.
+  Node default only matters if running without the launch file.
+- **Launch file ≠ Dashboard HTML** — safe *now*. Apply buttons are disabled until
+  first ROS config sync arrives, preventing the dashboard from overwriting correct
+  launch values with stale HTML defaults. Dirty-params filtering also means only
+  user-modified fields are sent (unless no field was touched, in which case all are
+  sent as a fallback — hence the HTML defaults must still match).
+- **Dashboard sends unknown param** — safe. Nodes only process keys they recognize
+  (`if 'param' in config`).
+- **Node expects param dashboard never sends** — safe. Node keeps its launch value.
+
+Fixes applied Apr 13:
+- 17 HTML default mismatches corrected to match launch YAML
+- `readInput` JS fallback for `min_safe_distance` corrected (15 → 12)
+- `currentState.config.min_safe_distance` corrected (10 → 12)
+- Apply buttons start `disabled` in HTML, enabled by first `/sputnik/config` message
+- OKO and BURAN panels now have Reset Defaults buttons (values from launch YAML)
+
 Mention these verbally in the meeting as known next steps.
 
 ## Daily Split (Revised)
