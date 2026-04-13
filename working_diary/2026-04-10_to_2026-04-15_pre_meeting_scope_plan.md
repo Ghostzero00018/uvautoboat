@@ -23,7 +23,7 @@ visible to the supervisor on Apr 15 is cut.
   `false`. The local edit from the VRX investigation session is gone. VRX LiDAR
   will visualize at world origin again until re-applied.
 
-## Trimmed Scope — 5 Items
+## Trimmed Scope — 6 Items
 
 ### 1. Pre-demo safety (~1h) — do first, non-negotiable ✅ DONE
 
@@ -167,10 +167,8 @@ prevent the 1-second ROS sync from overwriting before Apply is clicked.
 
 ## Risk Notes
 
-- VRX xacro regression is still the single highest-impact item. Do it first,
-  same day as writing this plan.
-- The README and PPT overlap — write the README first, reuse its structure
-  and screenshots in the slides. Do not let them drift apart.
-- If anything slips, cut in this order: **item 4 (polish) → item 5 (dry-run
-  shrinks to a quick sanity launch) → item 2 (repo cleanup) → item 3 (README
-  becomes a minimal stub)**. Item 1 is non-negotiable.
+- ~~VRX xacro regression~~ — ✅ Fixed (Item 1, `patch_vrx.sh` persists it).
+- The README and PPT overlap — reuse README structure and screenshots in the slides.
+- Items 1–5 all completed. Only item 6 (dry-run) remains for Apr 14.
+- Apr 14 dry-run is the final gate before the meeting. Keep it short — fix
+  only crashes, broken buttons, blank panels. Nothing cosmetic.
