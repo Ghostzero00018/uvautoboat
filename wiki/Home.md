@@ -21,10 +21,9 @@ Welcome to the **AutoBoat Wiki**! This documentation provides comprehensive guid
 ### 🏗️ Architecture
 
 - **[System Overview](System_Overview)** — High-level architecture and design philosophy
-- **[Vostok1 Architecture](Vostok1-Architecture)** — Integrated single-node system
-- **[Modular Architecture](Modular-Architecture)** — OKO-SPUTNIK-BURAN distributed system
-- **[Atlantis Architecture](Atlantis-Architecture)** — Control group approach
-- **[ROS 2 Topic Flow](ROS2-Topic-Flow)** — Inter-node communication diagram
+- **[Modular Architecture](System_Overview)** — OKO-SPUTNIK-BURAN distributed system (active)
+
+> **Note:** Vostok1 integrated and Atlantis architectures have been deprecated and moved to `legacy/`.
 
 ### 📖 User Guides
 
@@ -44,7 +43,7 @@ Welcome to the **AutoBoat Wiki**! This documentation provides comprehensive guid
 
 ### 🛠️ Advanced Features
 
-- **[Simple Anti-Stuck System](SASS)** — Simple recovery maneuvers (deprecated wiki, see README)
+- **[Simple Anti-Stuck System (SASS)](SASS)** — Turn left until clear recovery
 - **[A* Path Planning](Astar-Path-Planning)** — Grid-based obstacle avoidance
 - **[Waypoint Skip Strategy](Waypoint-Skip-Strategy)** — Handling blocked waypoints
 - **[Obstacle Avoidance Loop](Obstacle-Avoidance-Loop)** — Continuous perception-control cycle
@@ -78,7 +77,7 @@ Welcome to the **AutoBoat Wiki**! This documentation provides comprehensive guid
 | Phase 1 | Architecture & MVP | ✅ DONE |
 | Phase 2 | Obstacle Avoidance | ✅ DONE |
 | Phase 3 | Coverage & Search | ⏸️ Planned |
-| Phase 4 | Integration & Testing | 🔄 80% |
+| Phase 4 | Integration & Testing | 🔄 90% |
 
 See [Board.md](https://github.com/Ghostzero00018/uvautoboat/blob/main/Board.md) for detailed milestones.
 
@@ -90,7 +89,7 @@ See [Board.md](https://github.com/Ghostzero00018/uvautoboat/blob/main/Board.md) 
 **Institution**: [IMT Nord Europe](https://imt-nord-europe.fr/) — Industry 4.0 Students & Faculty
 **License**: Apache 2.0
 
-**Last Updated**: December 2025
+**Last Updated**: 13-04-2026
 
 ---
 

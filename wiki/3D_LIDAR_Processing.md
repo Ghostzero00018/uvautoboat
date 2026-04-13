@@ -338,8 +338,8 @@ OKO publishes obstacle information to `/perception/obstacle_info` as JSON:
 
 | Parameter | Default | Description |
 |:----------|:--------|:------------|
-| `min_safe_distance` | 12.0 | Safe clearance distance (m) |
-| `critical_distance` | 4.0 | Critical stop distance (m) |
+| `oko_min_safe_distance` | 10.0 | Safe clearance distance (m) |
+| `oko_critical_distance` | 5.5 | Critical stop distance (m) |
 | `min_height` | -15.0 | Minimum Z to keep (m) |
 | `max_height` | 10.0 | Maximum Z to keep (m) |
 | `min_range` | 5.0 | Minimum detection range (m) |

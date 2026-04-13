@@ -8,8 +8,8 @@
 |---|---|
 | **Project** | AutoBoat Navigation System |
 | **Repository** | [Ghostzero00018/uvautoboat](https://github.com/Ghostzero00018/uvautoboat) |
-| **Last Updated** | 11/12/2025 |
-| **Status** | 🟢 Vostok1 Production Ready (A* path planning + one-click launcher + wiki docs) |
+| **Last Updated** | 13-04-2026 |
+| **Status** | 🟢 Vostok1 Production Ready (A* path planning + one-click launcher + wiki docs + dashboard config system) |
 
 ---
 
@@ -34,7 +34,7 @@
 
 ## Phase 1: Architecture & MVP ✅
 
-**Completed**: 27/11/2025
+**Completed**: 27-11-2025
 
 | Task | Status |
 |------|:------:|
@@ -49,7 +49,7 @@
 
 ## Phase 2: Autonomous Navigation ✅
 
-**Completed**: 28/11/2025
+**Completed**: 28-11-2025
 
 ### Vostok1 Navigation System
 
@@ -101,6 +101,12 @@
 | A* path planning (hybrid + runtime) | ✅ |
 | One-click launcher script | ✅ |
 | LiDAR smoke detection (spatial density filtering) | ✅ |
+| Emergency stop (dashboard + CLI + nodes) | ✅ |
+| JSON log export (4 panels) | ✅ |
+| Health check service (ROS 2 node + dashboard streaming) | ✅ |
+| Dashboard config system (dirty-params, sync, reset defaults) | ✅ |
+| Parameter collision resolution (oko_ prefix) | ✅ |
+| VRX LiDAR patch script | ✅ |
 
 ### Pending ⬜
 
@@ -136,6 +142,14 @@
 | Boat circling around buoys | Added waypoint skip strategy (45s timeout) |
 | Missing numpy dependency | Added python3-numpy to package.xml |
 | Invalid setup.py entries | Removed non-existent apollo11, atlantis |
+| OKO/BURAN param collision (min_safe_distance) | Renamed OKO's to `oko_min_safe_distance` |
+| OKO/BURAN param collision (critical_distance) | Renamed OKO's to `oko_critical_distance` |
+| Dashboard sending all params on Apply | Added dirty-params filtering (only changed fields sent) |
+| Dashboard stale HTML defaults | Synced 17 HTML defaults to match launch YAML |
+| VRX LiDAR at world origin | `patch_vrx.sh` fixes `publish_model_pose` (issue #876) |
+| Dead code in setup.py / nodes | Removed `_fixed` variants, unused utilities, dead states |
+| Missing `std_srvs` dependency | Added to plan/package.xml |
+| Dead `restart_mission` / `panic_stop` code | Removed from BURAN, dashboard, CLI |
 
 ### Active 🔄
 
@@ -151,18 +165,23 @@
 
 | Date | Milestone | Status |
 |------|-----------|:------:|
-| 25/11/2025 | Project Kickoff | ✅ |
-| 26/11/2025 | Basic Navigation | ✅ |
-| 27/11/2025 | End-to-End Pipeline | ✅ |
-| 28/11/2025 | Vostok1 Navigation Complete | ✅ |
-| 01/12/2025 | Simple Anti-Stuck + Mission CLI | ✅ |
-| 03/12/2025 | Waypoint Skip + Runtime Config | ✅ |
-| 03/12/2025 | Go Home Optimization (detour insertion) | ✅ |
-| 03/12/2025 | README Consolidation + Cleanup | ✅ |
-| 08/12/2025 | A* Path Planning (Hybrid + Runtime modes) | ✅ |
-| 09/12/2025 | One-Click Launcher Script | ✅ |
-| 11/12/2025 | Wiki Documentation + README Update | ✅ |
-| 14/12/2025 | LiDAR Smoke Detection (Spatial Density Filtering) | ✅ |
+| 25-11-2025 | Project Kickoff | ✅ |
+| 26-11-2025 | Basic Navigation | ✅ |
+| 27-11-2025 | End-to-End Pipeline | ✅ |
+| 28-11-2025 | Vostok1 Navigation Complete | ✅ |
+| 01-12-2025 | Simple Anti-Stuck + Mission CLI | ✅ |
+| 03-12-2025 | Waypoint Skip + Runtime Config | ✅ |
+| 03-12-2025 | Go Home Optimization (detour insertion) | ✅ |
+| 03-12-2025 | README Consolidation + Cleanup | ✅ |
+| 08-12-2025 | A* Path Planning (Hybrid + Runtime modes) | ✅ |
+| 09-12-2025 | One-Click Launcher Script | ✅ |
+| 11-12-2025 | Wiki Documentation + README Update | ✅ |
+| 14-12-2025 | LiDAR Smoke Detection (Spatial Density Filtering) | ✅ |
+| 03-04-2026 | Code review + repo cleanup rounds | ✅ |
+| 08-04-2026 | Obstacle avoidance partial fixes + dashboard cleanup | ✅ |
+| 12-04-2026 | Pre-meeting sprint: VRX patch, repo audit, README rewrite, dashboard polish | ✅ |
+| 13-04-2026 | Dashboard config system: dirty-params, param sync, reset defaults, collision fixes | ✅ |
+| 13-04-2026 | USER_MANUAL + dashboard README rewrite | ✅ |
 | TBD | Coverage Planning | ⏸️ |
 
 ---
@@ -192,6 +211,11 @@
 | **A* Path Planning** | ✅ Done | Hybrid mode (pre-plan) + Runtime mode (detours) in SPUTNIK |
 | **One-Click Launcher** | ✅ Done | `launch_vostok1_complete.sh` for full system startup |
 | **Wiki Documentation** | ✅ Done | Comprehensive wiki pages in `wiki/` folder |
+| **Emergency Stop** | ✅ Done | Latching stop from dashboard/CLI, EMERGENCY_STOP state |
+| **Dashboard Config System** | ✅ Done | 3 Apply panels, dirty-params, reset defaults, disabled until sync |
+| **Param Collision Fix** | ✅ Done | OKO params prefixed `oko_` to avoid BURAN collision |
+| **VRX LiDAR Patch** | ✅ Done | `patch_vrx.sh` auto-fixes `publish_model_pose` |
+| **Repo Cleanup** | ✅ Done | Dead code, legacy moves, package.xml audit, setup.py cleanup |
 
 ### A* Path Planning (Implemented)
 
@@ -230,7 +254,7 @@ Current position ──>└─────────────────�
 
 ## 📜 Acknowledgments
 
-**Document Version**: 8.0 | **Last Updated**: 14/12/2025
+**Document Version**: 9.0 | **Last Updated**: 13-04-2026
 
 **Maintained By**: AutoBoat Development Team
 

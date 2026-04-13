@@ -36,7 +36,7 @@ ros2 topic echo /wamv/sensors/gps/gps/fix --once
 
 ```bash
 # For Vostok1
-ros2 param set /vostok1_node kp 300.0
+ros2 param set /buran_controller_node kp 300.0
 
 # For Modular (BURAN)
 ros2 param set /buran_controller kp 300.0
@@ -45,7 +45,7 @@ ros2 param set /buran_controller kp 300.0
 **Alternative**: Increase derivative gain for damping
 
 ```bash
-ros2 param set /vostok1_node kd 150.0
+ros2 param set /buran_controller_node kd 150.0
 ```
 
 ---
@@ -59,7 +59,7 @@ ros2 param set /vostok1_node kd 150.0
 **Solution**: Increase derivative gain
 
 ```bash
-ros2 param set /vostok1_node kd 150.0
+ros2 param set /buran_controller_node kd 150.0
 ```
 
 ---
@@ -79,7 +79,7 @@ ros2 param set /vostok1_node kd 150.0
 2. Reduce integral gain if overshooting:
 
    ```bash
-   ros2 param set /vostok1_node ki 10.0
+   ros2 param set /buran_controller_node ki 10.0
    ```
 
 ---
@@ -219,7 +219,7 @@ ros2 topic echo /perception/obstacle_info
 1. Increase safe distance:
 
    ```yaml
-   min_safe_distance: 15.0  # Increase from 12.0
+   min_safe_distance: 15.0  # BURAN avoidance trigger (increase from 12.0)
    ```
 
 2. Reduce obstacle slow factor:
@@ -300,7 +300,7 @@ netstat -tuln | grep 9090
 3. **Check ROS topics publishing**:
 
    ```bash
-   ros2 topic hz /vostok1/mission_status
+   ros2 topic hz /planning/mission_status
    ```
 
 ---
@@ -583,7 +583,7 @@ Useful commands for diagnosing issues:
 
 ```bash
 ros2 node list
-ros2 node info /vostok1_node
+ros2 node info /buran_controller_node
 ```
 
 ### Check Topics
@@ -597,8 +597,8 @@ ros2 topic echo /perception/obstacle_info
 ### Check Parameters
 
 ```bash
-ros2 param list /vostok1_node
-ros2 param get /vostok1_node kp
+ros2 param list /buran_controller_node
+ros2 param get /buran_controller_node kp
 ```
 
 ### Check Transforms

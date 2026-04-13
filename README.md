@@ -161,6 +161,7 @@ Configured in `launch/vostok1.launch.yaml` or via the web dashboard:
 | `waypoint_tolerance` | 3.5m | Arrival radius |
 | `max_avoidance_turn_deg` | 45.0 | Max obstacle avoidance turn angle |
 | `critical_distance` | 6.0m | Emergency stop distance (BURAN) |
+| `oko_critical_distance` | 5.5m | Emergency stop distance (OKO) |
 | `min_safe_distance` | 12.0m | Start avoidance distance (BURAN) |
 | `oko_min_safe_distance` | 10.0m | Obstacle detection threshold (OKO) |
 

@@ -644,7 +644,7 @@ ros2 launch ~/seal_ws/src/uvautoboat/launch/vostok1.launch.yaml
 | Node | Parameter | Default | Description |
 | :----- | :---------- | :-------- | :------------ |
 | **OKO** | `oko_min_safe_distance` | 10.0 | Obstacle safe distance (m) |
-| | `critical_distance` | 5.5 | Critical obstacle distance (m) |
+| | `oko_critical_distance` | 5.5 | Critical obstacle distance (m) |
 | | `min_height` | -1.2 | Min Z to detect (low piers) |
 | | `max_height` | 1.5 | Max Z to detect (navigation hazards) |
 | | `min_range` | 2.2 | Ignore obstacles closer (boat hull) |
@@ -1696,7 +1696,7 @@ Open an issue on [GitHub](https://github.com/Ghostzero00018/uvautoboat/issues) w
 
 Project finished by IMT NORD EUROPE DNM DMI-2026
 
-Last updated at 13.04.2026
+Last updated at 13-04-2026
 
 ---
 

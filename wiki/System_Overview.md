@@ -23,42 +23,21 @@ Built on **ROS 2 Jazzy** and **Gazebo Harmonic**, the framework provides a robus
 
 ---
 
-## Navigation Systems Comparison
+## Active Navigation System
 
-AutoBoat provides three navigation architectures to suit different needs:
+The **Modular (OKO-SPUTNIK-BURAN)** distributed architecture is the active system:
 
-| Aspect | Vostok1 (Integrated) | Modular (TNO) | Atlantis (Control Group) |
-|:-------|:---------------------|:--------------|:-------------------------|
-| **Approach** | Self-contained node | Distributed nodes | Integrated controller |
-| **LIDAR** | 3D PointCloud2 | 3D PointCloud2 | 3D PointCloud2 |
-| **Detection** | Full 3D volume | Full 3D volume | 3D Section Analysis |
-| **Control** | PID heading | PID (configurable) | PID heading |
-| **Monitoring** | Terminal + Web | Terminal (bilingual) | Web Dashboard |
-| **Anti-Stuck** | Simple (turn left) | Simple (turn left) | Adaptive Escape (Work in progress) |
-| **Best For** | Production use | Custom tuning | Robust Path Validation |
+| Node | Role | Description |
+|:-----|:-----|:------------|
+| **OKO** | Perception | 3D LiDAR obstacle detection, temporal filtering, clustering, smoke classification |
+| **SPUTNIK** | Planning | Lawnmower waypoint generation, A* detour planning, mission state machine |
+| **BURAN** | Control | PID heading control, reactive obstacle avoidance, simple anti-stuck recovery |
 
-### Vostok1 (Recommended)
+- Highly **configurable via YAML** (`vostok1.launch.yaml`)
+- Three separate dashboard config panels (Main, OKO, BURAN)
+- Runtime parameter tuning with dirty-params filtering
 
-- **Single-node** integrated system
-- All functionality in one executable
-- Simplest to deploy and use
-- Ideal for **production missions**
-
-### Modular (TNO)
-
-- **Distributed architecture** with three nodes:
-  - **OKO**: Perception (3D LIDAR)
-  - **SPUTNIK**: Planning (waypoints)
-  - **BURAN**: Control (PID + Simple anti-stuck)
-- Highly **configurable via YAML**
-- Ideal for **research and tuning**
-
-### Atlantis
-
-- Control group's approach
-- Zero-latency obstacle reaction
-- Embedded LIDAR processing in controller
-- Ideal for **path validation research**
+> **Note:** The integrated Vostok1 and Atlantis systems have been deprecated and moved to `legacy/`. See `legacy/DEPRECATED.md` for details.
 
 ---
 

@@ -1,12 +1,12 @@
-# Smart Anti-Stuck System (SASS)
+# Simple Anti-Stuck System (SASS)
 
-Intelligent recovery system that frees the boat when it becomes trapped or immobilized by obstacles, currents, or navigation errors.
+Recovery system that frees the boat when it becomes trapped or immobilized by obstacles, currents, or navigation errors.
 
 ---
 
 ## Overview
 
-The **Smart Anti-Stuck System (SASS)** is an advanced recovery mechanism implemented in both Vostok1 and Modular (BURAN) architectures. When the boat detects it's stuck (minimal movement despite thrust), SASS executes a multi-phase escape maneuver while learning from the experience.
+The **Simple Anti-Stuck System (SASS)** is a straightforward recovery mechanism implemented in the BURAN controller. When the boat detects it's stuck (minimal movement despite thrust), SASS executes a simple escape: **turn left until the path is clear**, then resume navigation.
 
 ---
 
@@ -14,12 +14,11 @@ The **Smart Anti-Stuck System (SASS)** is an advanced recovery mechanism impleme
 
 | Feature | Description |
 |:--------|:------------|
-| **Adaptive Escape** | 10-20s duration based on severity |
-| **Multi-Direction Probe** | Scans L/R/Back before choosing escape direction |
-| **No-Go Zones** | Remembers stuck locations (max 20, 8m radius) |
+| **Simple Escape** | Turn left continuously until front clearance > safe distance |
+| **Stuck Detection** | Monitors position movement over configurable timeout |
+| **Skip During Avoidance** | Won't trigger stuck detection while actively avoiding obstacles |
 | **Kalman Drift Compensation** | Estimates current/wind with uncertainty |
-| **Detour Insertion** | Auto-adds waypoints around obstacles |
-| **Learning Memory** | Records successful escapes for future reference |
+| **Mission-Aware** | Automatically resets when mission stops |
 
 ---
 
@@ -29,121 +28,39 @@ SASS triggers when the boat is **stuck**:
 
 | Condition | Value |
 |:----------|:------|
-| **Time without progress** | > 3.0 seconds (default `stuck_timeout`) |
-| **Movement threshold** | < 0.5 meters (default `stuck_threshold`) |
-| **Thrust applied** | Yes (not idle) |
+| **Time without progress** | > 12.0 seconds (default `stuck_timeout`) |
+| **Movement threshold** | < 1.0 meters (default `stuck_threshold`) |
+| **Not during avoidance** | Only triggers when path should be clear |
 
 **Example Log:**
 
 ```text
-🚨 BLOQUÉ! | STUCK! - No progress for 3.5s
-🔧 SASS PHASE 0: PROBE - Scanning best escape direction...
+🚨 BLOQUÉ! | STUCK! - No progress for 12.5s
 ```
 
 ---
 
-## Escape Sequence (4 Phases)
+## Escape Strategy
 
-SASS executes a carefully designed sequence:
-
-### Phase 0: PROBE (0-2s)
-
-#### Multi-direction scanning to find best escape route
-
-| Direction | Check |
-|:----------|:------|
-| **LEFT** | Front-left clearance |
-| **RIGHT** | Front-right clearance |
-| **BACK** | Rear clearance |
-
-The system chooses the direction with **maximum clearance**.
+SASS uses a simple, reliable approach — **turn left until clear**:
 
 ```text
-🔧 SASS PHASE 0: PROBE
-   LEFT: 12.5m | RIGHT: 8.3m | BACK: 15.0m
-   → Best direction: BACK
-```
+1. Stuck Detection:
+   - Track boat position every second
+   - If movement < stuck_threshold (1.0m) for stuck_timeout (12s)
+   - AND path is clear (not during obstacle avoidance)
+   - Trigger escape mode
 
-### Phase 1: REVERSE (2s-~6s)
+2. Simple Escape:
+   - Apply differential thrust: Left=-450, Right=+450
+   - Turn left continuously
+   - Check front_clear distance every iteration
+   - Exit when front_clear > min_safe_distance
 
-#### Back away from obstacle
-
-- **Thrust**: Both thrusters in reverse
-- **Power**: -400 to -500 N (configurable)
-- **Duration**: ~4 seconds
-
-```text
-🔧 SASS PHASE 1: REVERSE - Backing away...
-```
-
-### Phase 2: TURN (~6s-~10s)
-
-#### Rotate toward best escape direction
-
-- **Left turn**: Left=-500, Right=+500
-- **Right turn**: Left=+500, Right=-500
-- **Duration**: ~4 seconds
-
-```text
-🔧 SASS PHASE 2: TURN - Rotating toward clearest path...
-```
-
-### Phase 3: FORWARD (~10s-~12s)
-
-#### Test forward movement with drift compensation
-
-- **Thrust**: Forward with Kalman-filtered drift correction
-- **Monitoring**: Checks if movement resumes
-- **Duration**: ~2 seconds
-
-```text
-🔧 SASS PHASE 3: FORWARD - Testing escape...
-✅ SASS SUCCESS: Escaped! Adding no-go zone at (23.4, 12.1)
-```
-
----
-
-## Adaptive Duration Calculation
-
-SASS adjusts escape duration based on **severity**:
-
-```text
-Base Duration: 10 seconds
-
-+ 4s if obstacle < critical_distance (5m)
-+ 2s if obstacle < safe_distance (15m)
-+ 2s per consecutive stuck attempt
-
-Maximum: 20 seconds
-```
-
-**Example:**
-
-- **First stuck attempt**, obstacle at 8m → 10s + 2s = **12s total**
-- **Second attempt**, obstacle at 4m → 10s + 4s + 2s + 2s = **18s total**
-- **Third attempt**, obstacle at 3m → **20s** (capped at maximum)
-
----
-
-## No-Go Zones
-
-After each successful escape, SASS **remembers** the stuck location:
-
-| Parameter | Default | Description |
-|:----------|:--------|:------------|
-| **Radius** | 8.0m | Avoidance radius |
-| **Maximum zones** | 20 | Memory limit (oldest removed first) |
-| **Persistence** | Mission duration | Cleared on reset |
-
-**Visualization in Dashboard:**
-
-- 🔴 Red circles on trajectory map
-- Boat avoids returning to these areas
-
-**Log Output:**
-
-```text
-✅ SASS SUCCESS: Adding no-go zone #3 at (45.2, -12.8) [radius: 8.0m]
+3. Resume Navigation:
+   - Reset PID integral error
+   - Clear stuck state
+   - Continue to current waypoint
 ```
 
 ---
@@ -187,33 +104,15 @@ Uncertainty: 0.03 (🟢 confident)
 
 ---
 
-## Detour Insertion
+## Interaction with Waypoint Skip
 
-When SASS fails **3 times** at the same waypoint, it requests a **detour**:
+When SASS alone cannot free the boat, the waypoint skip strategy takes over:
 
-### Detour Request
-
-```json
-{
-  "type": "stuck_detour",
-  "x": 45.2,
-  "y": -12.8
-}
-```
-
-The planner (SPUTNIK) calculates a detour waypoint:
-
-- **Distance**: 12m from current position (configurable)
-- **Direction**: Perpendicular to obstacle (90° from blocked direction)
-
-### Detour Behavior
-
-| Attempt | Action |
-|:--------|:-------|
-| **1st stuck** | Execute SASS Phase 0-3 |
-| **2nd stuck** | Extended SASS + add no-go zone |
-| **3rd stuck** | Request detour waypoint |
-| **4th+ stuck** | Skip waypoint (normal mode) or insert another detour (go home mode) |
+| Situation | Action |
+|:----------|:-------|
+| Stuck detected | SASS: turn left until clear |
+| Still blocked after 45s | SPUTNIK skips to next waypoint |
+| Go Home mode blocked 15s | SPUTNIK inserts detour waypoint |
 
 ---
 
@@ -223,11 +122,11 @@ The planner (SPUTNIK) calculates a detour waypoint:
 
 | Parameter | Default | Description |
 |:----------|:--------|:------------|
-| `stuck_timeout` | 3.0 | Seconds without progress to trigger SASS |
-| `stuck_threshold` | 0.5 | Minimum movement (meters) to not be stuck |
-| `no_go_zone_radius` | 8.0 | Avoidance radius around stuck locations |
-| `detour_distance` | 12.0 | Distance for detour waypoints |
-| `critical_distance` | 5.0 | Obstacle distance for severity calculation |
+| `stuck_timeout` | 12.0 | Seconds without progress to trigger SASS |
+| `stuck_threshold` | 1.0 | Minimum movement (meters) to not be stuck |
+| `drift_compensation_gain` | 0.3 | Kalman drift correction strength |
+| `kalman_process_noise` | 0.01 | Drift estimation process noise |
+| `kalman_measurement_noise` | 0.5 | Drift estimation measurement noise |
 
 ### Runtime Tuning (via CLI)
 
@@ -245,7 +144,7 @@ Two complementary strategies for handling blocked waypoints:
 
 | Strategy | Trigger | Action |
 |:---------|:--------|:-------|
-| **SASS** | Boat physically stuck (no movement) | Multi-phase escape maneuver |
+| **SASS** | Boat physically stuck (no movement) | Turn left until clear |
 | **Waypoint Skip** | Obstacle blocking for 45s | Skip to next waypoint |
 
 **Typical Flow:**
@@ -312,8 +211,6 @@ The dashboard shows:
 ### ROS 2 Topic
 
 ```bash
-ros2 topic echo /vostok1/anti_stuck_status
-# OR for modular:
 ros2 topic echo /control/anti_stuck_status
 ```
 
@@ -355,10 +252,8 @@ ros2 param set /buran_controller stuck_threshold 1.0
 
 **Solution**: Severity calculation should automatically extend duration, but you can manually increase:
 
-- Check if `critical_distance` is appropriate for your obstacles
+- Check if `oko_critical_distance` / `min_safe_distance` are appropriate for your obstacles
 - Verify drift compensation is working (check Kalman uncertainty)
-
-### Too Many No-Go Zones
 
 **Cause**: Boat getting stuck repeatedly in obstacle-dense areas
 

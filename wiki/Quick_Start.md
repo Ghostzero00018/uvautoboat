@@ -20,17 +20,13 @@ ros2 launch vrx_gz competition.launch.py world:=sydney_regatta
 
 Choose one of the following navigation systems:
 
-#### Option A: Vostok1 (Recommended)
-
-```bash
-ros2 run plan vostok1
-```
-
-#### Option B: Modular System
+#### Modular System (Recommended)
 
 ```bash
 ros2 launch ~/seal_ws/src/uvautoboat/launch/vostok1.launch.yaml
 ```
+
+> **Note:** The integrated `ros2 run plan vostok1` is deprecated. Use the modular launch above.
 
 ---
 
@@ -78,9 +74,6 @@ ros2 run web_video_server web_video_server
 ### Terminal 4: Navigation System
 
 ```bash
-# Choose one:
-ros2 run plan vostok1
-# OR
 ros2 launch ~/seal_ws/src/uvautoboat/launch/vostok1.launch.yaml
 ```
 
@@ -88,7 +81,7 @@ ros2 launch ~/seal_ws/src/uvautoboat/launch/vostok1.launch.yaml
 
 ```bash
 cd ~/seal_ws/src/uvautoboat/web_dashboard/vostok1
-python3 -m http.server 8000
+python3 -m http.server 8002
 ```
 
 ### Open Dashboard
@@ -96,18 +89,17 @@ python3 -m http.server 8000
 Open your browser and navigate to:
 
 ```bash
-http://localhost:8000
+http://localhost:8002
 ```
 
 ---
 
-## One-Click Launch (Experimental)
+## One-Click Launch
 
 Use the convenience script to launch everything at once:
 
 ```bash
-cd ~/seal_ws/src/uvautoboat/one_click_launch_all
-./launch_vostok1_complete.sh
+bash ~/seal_ws/src/uvautoboat/one_click_launch_all/launch_vostok1_complete.sh
 ```
 
 This script opens multiple terminals automatically.
