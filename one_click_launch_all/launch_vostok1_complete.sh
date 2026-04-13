@@ -28,7 +28,7 @@
 #                        → plan/plan/oko_perception.py
 #                        → plan/plan/sputnik_planner.py
 #                        → control/control/buran_controller.py
-#                        → passes test_environment/${WORLD}.sdf to SPUTNIK for pollutant scanning
+#                        → launches waypoint_visualizer + health_check_service
 #   T4  Video Server   ros2 run web_video_server web_video_server                   :8080
 #   T5  RViz           ros2 launch vrx_gazebo rviz.launch.py                        (optional)
 #   T6  Dashboard      python3 -m http.server 8002                                  :8002
