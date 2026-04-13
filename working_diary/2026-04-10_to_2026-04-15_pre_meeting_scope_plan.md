@@ -23,7 +23,7 @@ visible to the supervisor on Apr 15 is cut.
   `false`. The local edit from the VRX investigation session is gone. VRX LiDAR
   will visualize at world origin again until re-applied.
 
-## Trimmed Scope — 6 Items
+## Trimmed Scope — 7 Items
 
 ### 1. Pre-demo safety (~1h) — do first, non-negotiable ✅ DONE
 
@@ -110,13 +110,40 @@ Emerged from testing — discovered param broadcast issues and stale defaults:
 - [x] **`WIKI_SUMMARY.md`** moved to `legacy/misc/` (historical Dec 2025 doc)
 - [x] Health check verified: **45/45 PASS, 0 WARN** after all changes
 
-### 6. Dry-run + any showstopper fixes (~2h, Apr 14 evening)
+### 6. Teammate onboarding fix + health check audit (Apr 13 evening) ✅ DONE (unplanned)
+
+Triggered by teammate's dashboard issues on his own laptop:
+
+- [x] **USER_MANUAL**: Full "Environment Setup (~/.bashrc)" section — copy-paste
+  bashrc block, verify commands, "Do NOT add" warnings for unnecessary GZ exports,
+  ROS_DOMAIN_ID team guidance
+- [x] **USER_MANUAL**: 6-step "Dashboard Connection Diagnostics" troubleshooting
+  (ss, ROS_DOMAIN_ID, topic list, browser console, firewall)
+- [x] **README**: Installation step updated with complete bashrc block
+- [x] **wiki/Installation_Guide**: Rewrote Step 7 (bashrc setup), removed stale
+  Gazebo Classic advice
+- [x] **wiki/Common_Issues**: Rewrote "Dashboard Not Connecting" with diagnostic flow
+- [x] **Dashboard README**: Added internet prerequisite, expanded troubleshooting
+- [x] **app.js**: `ws://localhost:9090` → dynamic `window.location.hostname`
+  (matches camera stream pattern, enables remote access)
+- [x] **.gitignore**: Removed `COLCON_IGNORE` entry so `legacy/COLCON_IGNORE` is
+  tracked by git (teammate was building legacy environment_plugins as 8th package)
+- [x] **Health check audit**: DDS priming 1.5s→3s, state detection timeout 3s→8s,
+  fallback ACTIVE→IDLE, publisher retry on fail, EMERGENCY_STOP in active states,
+  optional nodes WARN→INFO, added health_check_service node check, runtime estimate
+  updated
+- [x] Health check verified: **46/46 PASS, 0 WARN** after all changes
+
+### 7. Dry-run + any showstopper fixes (~2h, Apr 14 evening)
 
 - Full launch → generate waypoints → start mission → stop → health check
 - Fix **only** showstoppers (crashes, broken buttons, blank panels)
 - Nothing cosmetic, nothing "while I'm in there"
 
 **Why kept:** catches the worst surprises before the live demo.
+
+> **Note:** Item numbering shifted — dry-run was originally item 6, now item 7
+> after teammate onboarding fix was inserted.
 
 ## Still Cut
 
@@ -145,6 +172,8 @@ The following were not in the original plan but emerged from testing and auditin
 - **Full dashboard audit** — HTML/CSS/JS stale code removal, default sync, input fixes
 - **Wiki deep scan** — 8 files updated (ports, deprecated systems, param names, SASS)
 - **Board.md, USER_MANUAL, dashboard README** — all brought up to date
+- **Teammate onboarding fix** — bashrc guide, dashboard diagnostics, dynamic WebSocket
+  URL, COLCON_IGNORE tracked by git, health check audit (46/46 PASS)
 
 ### Parameter sync rule (for future reference)
 
@@ -161,14 +190,14 @@ prevent the 1-second ROS sync from overwriting before Apply is clicked.
 | Day | Repo work | Other |
 | ----- | --------- | ------- |
 | Apr 12 (Sun) | ✅ Items 1–4 all completed (pre-demo safety, repo cleanup, audit, dashboard polish, README rewrite) | PPT outline, teammate sync |
-| Apr 13 (Mon) | ✅ Item 5: dashboard config system, full audit, param collision fixes, wiki deep scan, docs update | PPT slides draft |
-| Apr 14 (Tue) | Item 6: dry-run (~2h) | PPT polish, rehearsal |
+| Apr 13 (Mon) | ✅ Items 5–6: dashboard config system, full audit, param collision fixes, wiki deep scan, docs update, teammate onboarding fix, health check audit | PPT slides draft |
+| Apr 14 (Tue) | Item 7: dry-run (~2h) | PPT polish, rehearsal |
 | Apr 15 (Wed) | — | Meeting |
 
 ## Risk Notes
 
 - ~~VRX xacro regression~~ — ✅ Fixed (Item 1, `patch_vrx.sh` persists it).
 - The README and PPT overlap — reuse README structure and screenshots in the slides.
-- Items 1–5 all completed. Only item 6 (dry-run) remains for Apr 14.
+- Items 1–6 all completed. Only item 7 (dry-run) remains for Apr 14.
 - Apr 14 dry-run is the final gate before the meeting. Keep it short — fix
   only crashes, broken buttons, blank panels. Nothing cosmetic.
