@@ -254,9 +254,11 @@ function addGridOverlay() {
 
 // Connect to ROS via rosbridge
 function connectToROS() {
-    if (DEBUG_MODE) console.log('Attempting to connect to ws://localhost:9090...');
+    const rosHost = window.location.hostname || 'localhost';
+    const rosUrl = `ws://${rosHost}:9090`;
+    if (DEBUG_MODE) console.log(`Attempting to connect to ${rosUrl}...`);
     ros = new ROSLIB.Ros({
-        url: 'ws://localhost:9090'
+        url: rosUrl
     });
 
     ros.on('connection', () => {

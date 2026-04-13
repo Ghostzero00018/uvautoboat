@@ -116,12 +116,36 @@ colcon build --merge-install
 source ~/seal_ws/install/setup.bash
 ```
 
-### Step 7: Add to ~/.bashrc (Recommended)
+### Step 7: Set Up ~/.bashrc
 
-For automatic sourcing in new terminals:
+Add the following block to the **end** of `~/.bashrc` so every new terminal is
+ready. Adjust the workspace path if yours differs from `~/seal_ws`:
 
 ```bash
-echo "source ~/seal_ws/install/setup.bash" >> ~/.bashrc
+# --- ROS 2 / AutoBoat environment ---
+source /opt/ros/jazzy/setup.bash
+source ~/seal_ws/install/setup.bash
+export GZ_SIM_RESOURCE_PATH="$HOME/seal_ws/src/uvautoboat/test_environment:${GZ_SIM_RESOURCE_PATH}"
+# export ROS_DOMAIN_ID=56   # Uncomment and pick a team-wide value (0-232)
+```
+
+Then apply it:
+
+```bash
+source ~/.bashrc
+```
+
+> **Do NOT add** `export GZ_VERSION=harmonic`, `export SDF_PATH=...`,
+> `export GZ_SIM_SYSTEM_PLUGIN_PATH=...`, or `export GAZEBO_MODEL_PATH=...`.
+> These are unnecessary for this project and can cause Gazebo model/plugin
+> resolution failures.
+
+**Verify:**
+
+```bash
+echo $ROS_DISTRO              # → jazzy
+echo $AMENT_PREFIX_PATH       # → .../seal_ws/install/...
+echo $GZ_SIM_RESOURCE_PATH    # → .../test_environment:...
 ```
 
 ---
@@ -182,10 +206,12 @@ rosdep install --from-paths src --ignore-src -r -y
 
 ### Gazebo Plugin Errors
 
-Make sure Gazebo environment variables are set:
+Verify your Gazebo resource path includes the project's test_environment:
 
 ```bash
-source /usr/share/gazebo/setup.sh
+echo $GZ_SIM_RESOURCE_PATH
+# Should contain: .../uvautoboat/test_environment
+# If not, check your ~/.bashrc (see Step 7 above)
 ```
 
 ### Python Package Issues

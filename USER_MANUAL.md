@@ -371,9 +371,67 @@ colcon build --merge-install
 # 7. Source environment
 source ~/seal_ws/install/setup.bash
 
-# 8. (Recommended) Add to ~/.bashrc for auto-sourcing
-echo "source ~/seal_ws/install/setup.bash" >> ~/.bashrc
+# 8. (Recommended) Set up ~/.bashrc — see next section
 ```
+
+### Environment Setup (~/.bashrc)
+
+After building the workspace, add the following lines to `~/.bashrc` so every new
+terminal is ready to use. Copy-paste the block below — adjust only the workspace
+path if yours differs from `~/seal_ws`:
+
+```bash
+# --- ROS 2 / AutoBoat environment (add to the END of ~/.bashrc) ---
+
+# 1. Source ROS 2 Jazzy base
+source /opt/ros/jazzy/setup.bash
+
+# 2. Source workspace overlay (must come AFTER the base)
+source ~/seal_ws/install/setup.bash
+
+# 3. Custom Gazebo worlds — allows "world:=sydney_regatta_DEFAULT" etc.
+export GZ_SIM_RESOURCE_PATH="$HOME/seal_ws/src/uvautoboat/test_environment:${GZ_SIM_RESOURCE_PATH}"
+
+# 4. (Optional) ROS Domain ID — isolates your ROS traffic from others on
+#    the same network. All teammates must use the SAME value, or omit this
+#    line entirely (defaults to 0). Pick any number between 0 and 232.
+# export ROS_DOMAIN_ID=56
+```
+
+After editing, apply the changes:
+
+```bash
+source ~/.bashrc
+# Or simply open a new terminal — new shells load ~/.bashrc automatically.
+```
+
+**Verify your environment:**
+
+```bash
+# All four should print a non-empty path or value:
+echo $ROS_DISTRO              # → jazzy
+echo $AMENT_PREFIX_PATH       # → .../seal_ws/install/...
+echo $GZ_SIM_RESOURCE_PATH    # → .../test_environment:...
+echo $ROS_DOMAIN_ID           # → (your chosen ID, or empty if not set)
+```
+
+> **Do NOT add** the following lines — they are unnecessary for this project and
+> can cause Gazebo model/plugin resolution failures:
+>
+> ```bash
+> # These are NOT needed — do not add them:
+> export GZ_VERSION=harmonic          # VRX Jazzy already knows the Gazebo version
+> export GZ_SIM_SYSTEM_PLUGIN_PATH=…  # Only needed for custom C++ plugins
+> export SDF_PATH=…                   # Can redirect Gazebo away from correct models
+> export GAZEBO_MODEL_PATH=…          # Gazebo Garden/Classic variable, not Harmonic
+> ```
+>
+> **Team note on ROS_DOMAIN_ID:** If multiple teammates run simulations on the
+> same local network (e.g. same Wi-Fi), all ROS 2 DDS traffic is visible to
+> everyone on domain 0 by default. Set the same `ROS_DOMAIN_ID` across all
+> terminals on **one** machine, and use a **different** value from other
+> teammates to avoid cross-talk. The launch script inherits whatever value is in
+> your bashrc — it does not set its own.
 
 ---
 
@@ -1374,7 +1432,7 @@ Lane 3: End <────────────────────┘
 | :-------- | :--------- |
 | **Boat not moving** | Check GPS: `ros2 topic echo /wamv/sensors/gps/gps/fix --once` |
 | **Spinning in circles** | Reduce PID: `ros2 param set /buran_controller_node kp 300` |
-| **Dashboard disconnected** | Restart rosbridge, check port 9090 |
+| **Dashboard disconnected** | See "Dashboard Connection Diagnostics" below |
 | **No obstacles detected** | Check LIDAR: `ros2 topic hz /wamv/sensors/lidars/lidar_wamv/points` |
 | **Critical at spawn** | Increase `min_range` to 5.0 in launch file |
 | **Build failures** | Clean: `rm -rf build install log && colcon build` |
@@ -1384,6 +1442,68 @@ Lane 3: End <────────────────────┘
 | **Mission stuck in INIT** | Run `ros2 run plan vostok1_cli generate` to create waypoints |
 | **LiDAR at world origin** | Run `bash one_click_launch_all/patch_vrx.sh` — fixes VRX `publish_model_pose` (issue #876) |
 | **Health check false FAILs** | DDS discovery lag — wait 5s after launch and re-run |
+
+### Dashboard Connection Diagnostics
+
+If the dashboard shows "Disconnected" or only renders half the page, run through
+these checks in order:
+
+**Step 1 — Is rosbridge actually listening?**
+
+```bash
+ss -tuln | grep 9090
+# Expected: a line showing LISTEN on port 9090
+# If empty → rosbridge is not running. Check the rosbridge terminal tab for errors.
+```
+
+**Step 2 — Is ROS_DOMAIN_ID consistent?**
+
+```bash
+echo $ROS_DOMAIN_ID
+# Run this in EVERY terminal tab (Gazebo, rosbridge, navigation, dashboard).
+# All must show the same value (or all be empty).
+# Mismatch = rosbridge cannot see the ROS topics → dashboard stays disconnected.
+```
+
+**Step 3 — Can rosbridge see the ROS topics?**
+
+```bash
+ros2 topic list | grep planning
+# Expected: /planning/mission_status (among others)
+# If empty → ROS nodes and rosbridge are on different domains, or nodes crashed.
+```
+
+**Step 4 — Is the dashboard HTTP server running?**
+
+```bash
+ss -tuln | grep 8002
+# Expected: a line showing LISTEN on port 8002
+# If empty → the Python HTTP server is not running.
+```
+
+### Step 5 — Check browser console (F12 → Console tab)
+
+| Error | Meaning |
+| :---- | :------ |
+| `Failed to load resource: roslib.min.js` | No internet — CDN dependency cannot load |
+| `Failed to load resource: leaflet.js` | No internet — map library cannot load |
+| `WebSocket connection to 'ws://localhost:9090' failed` | rosbridge not running or port blocked |
+| `ReferenceError: ROSLIB is not defined` | roslib.js failed to load (internet required) |
+
+> **Internet required:** The dashboard loads `roslib.js` and `leaflet.js` from
+> CDNs (cdn.jsdelivr.net, unpkg.com). Without internet access, the page will
+> partially render and the ROS connection will never initialize.
+
+### Step 6 — Check firewall (if all above pass but still disconnected)
+
+```bash
+# Check if ufw is active and blocking ports
+sudo ufw status
+# If active, allow the required ports:
+sudo ufw allow 9090/tcp   # rosbridge WebSocket
+sudo ufw allow 8002/tcp   # dashboard HTTP server
+sudo ufw allow 8080/tcp   # web_video_server (camera)
+```
 
 ### Debug Commands
 

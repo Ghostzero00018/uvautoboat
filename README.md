@@ -69,8 +69,15 @@ sudo apt install ros-jazzy-rosbridge-suite ros-jazzy-web-video-server
 colcon build --merge-install
 source ~/seal_ws/install/setup.bash
 
-# 4. (Recommended) Auto-source on new terminals
-echo "source ~/seal_ws/install/setup.bash" >> ~/.bashrc
+# 4. Set up ~/.bashrc (add these lines to the end)
+#    See USER_MANUAL.md > "Environment Setup" for full details
+cat >> ~/.bashrc << 'EOF'
+source /opt/ros/jazzy/setup.bash
+source ~/seal_ws/install/setup.bash
+export GZ_SIM_RESOURCE_PATH="$HOME/seal_ws/src/uvautoboat/test_environment:${GZ_SIM_RESOURCE_PATH}"
+# export ROS_DOMAIN_ID=56  # Uncomment — all teammates must use the same value
+EOF
+source ~/.bashrc
 ```
 
 ---

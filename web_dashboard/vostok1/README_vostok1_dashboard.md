@@ -35,7 +35,8 @@ Real-time web-based monitoring and control dashboard for the Vostok1 autonomous 
    sudo apt install ros-jazzy-web-video-server
    ```
 
-4. **Vostok1 nodes** running via `vostok1.launch.yaml`
+4. **Internet access** — the dashboard loads `roslib.js` and `leaflet.js` from CDNs
+5. **Vostok1 nodes** running via `vostok1.launch.yaml`
 
 ## Quick Start
 
@@ -175,14 +176,45 @@ OKO and BURAN share the `/sputnik/set_config` topic. Parameters with the same na
 
 | Problem                           | Solution                                                              |
 | --------------------------------- | --------------------------------------------------------------------- |
-| Dashboard shows "Disconnected"    | Check rosbridge: `ros2 node list \| grep rosbridge`                   |
+| Dashboard shows "Disconnected"    | See diagnostic steps below                                            |
 | Port 9090 in use                  | Kill old instance: `pkill -9 -f rosbridge`                            |
 | Apply buttons stay grey           | Nodes not publishing `/sputnik/config` — check navigation is launched |
 | Reset then Apply sends old values | Fixed — Reset now marks inputs dirty to prevent ROS sync race         |
 | Camera feed not showing           | Check web_video_server: `ros2 run web_video_server web_video_server`  |
 | Map tiles not loading             | Requires internet for OpenStreetMap CDN                               |
-| ROSLIB not defined                | Requires internet for CDN (roslibjs, Leaflet)                         |
+| ROSLIB not defined (console)      | Requires internet for CDN (roslibjs, Leaflet)                         |
+| Half the page missing             | CDN failed — check internet; see browser console (F12)                |
 | Parameter collision               | OKO params prefixed with `oko_` (e.g. `oko_critical_distance`)       |
+
+### Dashboard "Disconnected" Diagnostics
+
+Run these checks in order:
+
+```bash
+# 1. Is rosbridge listening?
+ss -tuln | grep 9090
+# Should show LISTEN. If empty → rosbridge not running.
+
+# 2. Is ROS_DOMAIN_ID the same in every terminal?
+echo $ROS_DOMAIN_ID
+# Must match in ALL terminals. Mismatch = rosbridge can't see ROS topics.
+
+# 3. Can rosbridge see the ROS topics?
+ros2 topic list | grep planning
+# Should show /planning/mission_status. If empty → domain mismatch or nodes crashed.
+
+# 4. Is the dashboard HTTP server running?
+ss -tuln | grep 8002
+# Should show LISTEN.
+
+# 5. Check browser console (F12 → Console) for:
+#    - "Failed to load resource: roslib.min.js" → no internet
+#    - "WebSocket connection failed" → rosbridge not running or port blocked
+
+# 6. Firewall?
+sudo ufw status
+# If active: sudo ufw allow 9090/tcp && sudo ufw allow 8002/tcp && sudo ufw allow 8080/tcp
+```
 
 ## License
 

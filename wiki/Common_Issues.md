@@ -240,29 +240,58 @@ ros2 topic echo /perception/obstacle_info
 
 ### Dashboard Not Connecting
 
-**Symptoms**: "Disconnected" status in dashboard
+**Symptoms**: "Disconnected" status in dashboard, or page only half renders
 
-**Diagnosis**:
+**Run through these checks in order:**
+
+**1. Is rosbridge listening?**
 
 ```bash
-# Check if rosbridge is running
-ros2 node list | grep rosbridge
-
-# Check port 9090
-netstat -tuln | grep 9090
+ss -tuln | grep 9090
+# Should show LISTEN on port 9090. If empty → rosbridge not running.
 ```
 
-**Solutions**:
+**2. Is ROS_DOMAIN_ID the same in every terminal?**
 
-1. **Start rosbridge**:
+```bash
+echo $ROS_DOMAIN_ID
+# Run in EVERY terminal tab. All must match (or all be empty/unset).
+# Mismatch = rosbridge can't see ROS topics → dashboard stays disconnected.
+```
 
-   ```bash
-   ros2 launch rosbridge_server rosbridge_websocket_launch.xml delay_between_messages:=0.0
-   ```
+**3. Can rosbridge see ROS topics?**
 
-2. **Check WebSocket URL**: Should be `ws://localhost:9090`
-3. **Check browser console** (F12): Look for WebSocket errors
-4. **Firewall blocking**: Allow port 9090
+```bash
+ros2 topic list | grep planning
+# Should show /planning/mission_status. If empty → domain mismatch or nodes crashed.
+```
+
+**4. Start rosbridge** (if not running):
+
+```bash
+ros2 launch rosbridge_server rosbridge_websocket_launch.xml delay_between_messages:=0.0
+```
+
+**5. Check browser console** (F12 → Console tab):
+
+| Error | Meaning |
+|:------|:--------|
+| `Failed to load resource: roslib.min.js` | No internet — CDN dependency cannot load |
+| `Failed to load resource: leaflet.js` | No internet — map library cannot load |
+| `WebSocket connection to 'ws://localhost:9090' failed` | rosbridge not running or port blocked |
+
+> **Internet required:** The dashboard loads `roslib.js` and `leaflet.js` from
+> CDNs. Without internet, the page partially renders and ROS connection never initializes.
+
+**6. Firewall blocking?**
+
+```bash
+sudo ufw status
+# If active:
+sudo ufw allow 9090/tcp
+sudo ufw allow 8002/tcp
+sudo ufw allow 8080/tcp
+```
 
 ---
 

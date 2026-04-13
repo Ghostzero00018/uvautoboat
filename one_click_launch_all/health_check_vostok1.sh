@@ -15,8 +15,8 @@
 #
 # Usage:
 #   cd <workspace>/src/uvautoboat/one_click_launch_all
-#   bash health_check_vostok1.sh          # Full check (~10s)
-#   bash health_check_vostok1.sh --quick  # Nodes + topics only
+#   bash health_check_vostok1.sh          # Full check (~30-60s)
+#   bash health_check_vostok1.sh --quick  # Nodes + topics only (~5s)
 # ============================================================================
 
 # Colors
@@ -40,10 +40,11 @@ section() { echo -e "\n${BLUE}========== $1 ==========${NC}"; }
 
 # Prime DDS discovery — the first ros2 node/topic list call after process
 # startup often returns incomplete results due to discovery lag. Throw away
-# one call, wait briefly, then capture a stable snapshot.
+# one call, wait briefly, then capture a stable snapshot. The 3s wait covers
+# the case where the health check is run immediately after starting a mission.
 ros2 node list >/dev/null 2>&1
 ros2 topic list >/dev/null 2>&1
-sleep 1.5
+sleep 3
 
 # ============================================================================
 # 1. NODE CHECK
@@ -74,13 +75,20 @@ for node in "${EXPECTED_NODES[@]}"; do
     fi
 done
 
-# Optional nodes (not a failure if missing)
+# Health check service node (needed for dashboard health check panel)
+if echo "$RUNNING_NODES" | grep -q "^/health_check_service$"; then
+    pass "/health_check_service"
+else
+    warn "/health_check_service — not running (dashboard health check panel won't work)"
+fi
+
+# Optional nodes (informational only — not counted as WARN)
 OPTIONAL_NODES=("/rviz2" "/waypoint_visualizer_node")
 for node in "${OPTIONAL_NODES[@]}"; do
     if echo "$RUNNING_NODES" | grep -q "^${node}$"; then
         pass "$node (optional)"
     else
-        warn "$node — not running (optional)"
+        info "$node — not running (optional)"
     fi
 done
 
@@ -95,20 +103,21 @@ RUNNING_TOPICS=$(ros2 topic list 2>/dev/null)
 # Topics persist after first publish, so topic existence alone is not reliable
 BOAT_STATE="IDLE"
 if echo "$RUNNING_TOPICS" | grep -q "^/planning/mission_status$"; then
-    # Read one message (3s timeout), strip ANSI codes, extract state from JSON
-    MISSION_MSG=$(timeout 3 ros2 topic echo /planning/mission_status --once 2>&1 | sed 's/\x1b\[[0-9;]*m//g')
+    # Read one message (8s timeout), strip ANSI codes, extract state from JSON.
+    # The planner may publish infrequently when idle, so 8s avoids false timeouts.
+    MISSION_MSG=$(timeout 8 ros2 topic echo /planning/mission_status --once 2>&1 | sed 's/\x1b\[[0-9;]*m//g')
     PLANNER_STATE=$(echo "$MISSION_MSG" | grep -oP '"state":\s*"\K[^"]+')
     if [ -n "$PLANNER_STATE" ]; then
         # INIT/IDLE/FINISHED/JOYSTICK = not actively navigating
-        ACTIVE_STATES="DRIVING RUNNING PAUSED READY WAYPOINTS_PREVIEW WAITING_CONFIRM"
+        ACTIVE_STATES="DRIVING RUNNING PAUSED READY WAYPOINTS_PREVIEW WAITING_CONFIRM EMERGENCY_STOP"
         if echo "$ACTIVE_STATES" | grep -qw "$PLANNER_STATE"; then
             BOAT_STATE="ACTIVE"
         fi
         info "Detected state: ${BOAT_STATE} (planner: ${PLANNER_STATE})"
     else
-        # Topic exists but couldn't read — assume active (safe default)
-        BOAT_STATE="ACTIVE"
-        info "Detected state: ${BOAT_STATE} (topic exists, could not read state)"
+        # Topic exists but couldn't read state — default to IDLE (conservative).
+        # Mission-only checks will show as INFO instead of false FAIL.
+        info "Detected state: ${BOAT_STATE} (topic exists, could not read state — defaulting to IDLE)"
     fi
 else
     info "Detected state: ${BOAT_STATE} (mission_status topic not found)"
@@ -182,12 +191,19 @@ check_publisher() {
     local topic=$1
     local label=$2
     local mission_only=${3:-false}  # "true" = only expected during active mission
-    local tinfo
-    tinfo=$(ros2 topic info "$topic" 2>/dev/null)
-    local pub_count
-    pub_count=$(echo "$tinfo" | grep -oP 'Publisher count: \K\d+')
-    local sub_count
-    sub_count=$(echo "$tinfo" | grep -oP 'Subscription count: \K\d+')
+    local tinfo pub_count sub_count
+
+    # Try up to 2 times (retry once after 2s if first attempt fails — covers DDS lag)
+    for attempt in 1 2; do
+        tinfo=$(ros2 topic info "$topic" 2>/dev/null)
+        pub_count=$(echo "$tinfo" | grep -oP 'Publisher count: \K\d+')
+        sub_count=$(echo "$tinfo" | grep -oP 'Subscription count: \K\d+')
+        if [ -n "$pub_count" ] && [ "$pub_count" -ge 1 ]; then
+            break
+        fi
+        [ "$attempt" -eq 1 ] && sleep 2
+    done
+
     if [ -z "$pub_count" ]; then
         if [ "$mission_only" == "true" ] && [ "$BOAT_STATE" == "IDLE" ]; then
             info "$label — not yet active (normal in IDLE state)"

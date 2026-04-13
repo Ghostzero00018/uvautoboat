@@ -18,7 +18,6 @@ log/
 build_isolated/
 devel_isolated/
 devel/
-COLCON_IGNORE
 
 # ROS 2 Bag Recordings
 *.bag
