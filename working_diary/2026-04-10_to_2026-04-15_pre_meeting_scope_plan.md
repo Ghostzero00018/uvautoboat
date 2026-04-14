@@ -134,11 +134,17 @@ Triggered by teammate's dashboard issues on his own laptop:
   updated
 - [x] Health check verified: **46/46 PASS, 0 WARN** after all changes
 
-### 7. Dry-run + any showstopper fixes (~2h, Apr 14 evening)
+### 7. Dry-run + any showstopper fixes (Apr 14) ✅ DONE
 
-- Full launch → generate waypoints → start mission → stop → health check
-- Fix **only** showstoppers (crashes, broken buttons, blank panels)
-- Nothing cosmetic, nothing "while I'm in there"
+Happened alongside the ROS 2 Jazzy `apt update` + rebuild on Apr 14:
+
+- [x] Full launch (Gazebo + dashboard + rosbridge + web video + RViz) — clean
+- [x] Mission start → boat drove normally, no regression post-upgrade
+- [x] Health check: **46/46 PASS, 0 WARN** in ACTIVE state (DRIVING)
+- [x] Gazebo/rosbridge/web-video/RViz startup logs reviewed — only known-benign
+  warnings (QT QML binding loops, libEGL NVIDIA hybrid-GPU noise, Ogre2
+  visibility mask, KDL root-link inertia, dartsim mesh limitation)
+- No showstoppers found, no fixes needed
 
 **Why kept:** catches the worst surprises before the live demo.
 
@@ -191,13 +197,13 @@ prevent the 1-second ROS sync from overwriting before Apply is clicked.
 | ----- | --------- | ------- |
 | Apr 12 (Sun) | ✅ Items 1–4 all completed (pre-demo safety, repo cleanup, audit, dashboard polish, README rewrite) | PPT outline, teammate sync |
 | Apr 13 (Mon) | ✅ Items 5–6: dashboard config system, full audit, param collision fixes, wiki deep scan, docs update, teammate onboarding fix, health check audit | PPT slides draft |
-| Apr 14 (Tue) | Item 7: dry-run (~2h) | PPT polish, rehearsal |
+| Apr 14 (Tue) | ✅ Item 7: dry-run after ROS 2 Jazzy apt upgrade + rebuild — 46/46 PASS, no regression | PPT polish, rehearsal |
 | Apr 15 (Wed) | — | Meeting |
 
 ## Risk Notes
 
 - ~~VRX xacro regression~~ — ✅ Fixed (Item 1, `patch_vrx.sh` persists it).
 - The README and PPT overlap — reuse README structure and screenshots in the slides.
-- Items 1–6 all completed. Only item 7 (dry-run) remains for Apr 14.
-- Apr 14 dry-run is the final gate before the meeting. Keep it short — fix
-  only crashes, broken buttons, blank panels. Nothing cosmetic.
+- ✅ All 7 items complete. Repo work done ahead of the Apr 15 meeting.
+- Jazzy apt upgrade on Apr 14 was absorbed cleanly — no code changes needed,
+  health check still 46/46 PASS.
