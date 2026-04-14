@@ -181,6 +181,51 @@ The following were not in the original plan but emerged from testing and auditin
 - **Teammate onboarding fix** — bashrc guide, dashboard diagnostics, dynamic WebSocket
   URL, COLCON_IGNORE tracked by git, health check audit (46/46 PASS)
 
+## Completed Beyond Original Scope (Apr 14)
+
+In addition to the planned dry-run (Item 7), a comprehensive PPT polish pass was
+completed on Apr 14, going well beyond the planned "PPT polish, rehearsal":
+
+- **PPT fact-check against repo code (16 technical claims verified)** — PID values,
+  50ms control loop, 30k LiDAR points/scan, obstacle thresholds (<8m / >30s / >45s),
+  differential thrust formula, A* enabled by default, reverse behavior
+  (0.2s burst / 0.4s pause). Corrections applied:
+  - Kalman filter: verified as **2D linear KF with random walk model** (NOT EKF);
+    state is `[drift_x, drift_y]` for water/wind drift compensation, not heading
+  - "SASS Recovery" → "Anti-Stuck Recovery" (SASS removed from active code)
+  - "Pose Estimation (GPS/IMU)" → "GPS/IMU Processing (embedded)" — no separate
+    pose node in current architecture
+  - "4-level obstacle handling" → "3-level" (detour → A* reroute → skip)
+  - Removed stale claim about `gps_imu_pose.py` being active (it's legacy)
+- **PPT structural improvements across all 14 visible slides:**
+  - Slide 1: Supervisor label added; Dr. Shehu as current, Dr. Lozenguez as former
+    supervisor (footnote); school names added; VRX expanded
+  - Slide 3: removed VS Code from tech stack (dev tool, not runtime); expanded
+    "USV" abbreviation; added "Contribution" line
+  - Slide 4: simplified complex block diagram to horizontal pipeline arrow
+    (Sensors → OKO → SPUTNIK → BURAN → Thrust); removed duplicate tech stack
+  - Slide 5: added WAM-V sensor equipment description
+  - Slide 11: fixed "Positioning" line — removed inaccurate "combined at 10 Hz"
+  - Slides 13 & 15: rewrote in functional language for non-ROS audience; fixed
+    "scan" terminology overload ("scanning path" → "coverage path"); unified
+    Kalman filter description across slides
+  - Slide 17: replaced "MJPEG" jargon with "live camera feed"; specified
+    obstacle parameters; added bidirectional Data Flow arrow
+  - Slide 20: added Future Work item — CA pollution simulation + Digital Twin
+- **Bilingual presentation script created** (`PPT/assets/presentation_script.md`):
+  - Full English + Chinese speaker notes for all 14 slides
+  - Comprehensive glossary (27 terms: USV, WAM-V, VRX, ROS 2, nodes, topics,
+    ROSBridge, DDS, WebSocket, GPS, IMU, quaternion, yaw, LiDAR, point cloud,
+    ENU, PID, Kalman filter, A*, clustering, temporal filtering, differential
+    thrust, waypoint, lawnmower, boustrophedon, MJPEG, mission states, project
+    naming) with plain-language explanations
+  - Delivery tips (5 recommendations)
+  - Markdownlint warnings fixed (MD028 blockquote spacing, MD025 single-H1)
+- **Repo maintenance (PPT-related):**
+  - Fixed all MD060 markdownlint warnings in README.md (table pipe formatting)
+  - Created new hybrid SVG logo (`logo_autoboat_v2.svg`) — vector outer ring +
+    embedded moorhen PNG center, updated README.md and wiki/Home.md references
+
 ### Parameter sync rule (for future reference)
 
 Any parameter change must be mirrored in three places:
@@ -197,7 +242,7 @@ prevent the 1-second ROS sync from overwriting before Apply is clicked.
 | ----- | --------- | ------- |
 | Apr 12 (Sun) | ✅ Items 1–4 all completed (pre-demo safety, repo cleanup, audit, dashboard polish, README rewrite) | PPT outline, teammate sync |
 | Apr 13 (Mon) | ✅ Items 5–6: dashboard config system, full audit, param collision fixes, wiki deep scan, docs update, teammate onboarding fix, health check audit | PPT slides draft |
-| Apr 14 (Tue) | ✅ Item 7: dry-run after ROS 2 Jazzy apt upgrade + rebuild — 46/46 PASS, no regression | PPT polish, rehearsal |
+| Apr 14 (Tue) | ✅ Item 7: dry-run after ROS 2 Jazzy apt upgrade + rebuild — 46/46 PASS, no regression | ✅ PPT polish (expanded): 16-item fact-check vs code, 14 slides restructured, bilingual script + glossary, logo SVG, README markdownlint fixes |
 | Apr 15 (Wed) | — | Meeting |
 
 ## Risk Notes
