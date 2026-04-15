@@ -226,6 +226,88 @@ completed on Apr 14, going well beyond the planned "PPT polish, rehearsal":
   - Created new hybrid SVG logo (`logo_autoboat_v2.svg`) — vector outer ring +
     embedded moorhen PNG center, updated README.md and wiki/Home.md references
 
+## Completed Beyond Original Scope (Apr 15)
+
+The scope plan had Apr 15 as "Meeting day — no repo work". In practice,
+significant final-polish work happened in the hours before the meeting,
+plus a substantial reverse-backfill of repo documentation from the
+presentation script:
+
+- **PPT script expansion for likely supervisor follow-ups:**
+  - Kalman filter: expanded glossary entry from 2 sentences to a full
+    treatment — history (Kalman 1960), recursive predict/update equations
+    with all matrices (x, F, H, Q, R, P, K), why-not-EKF rationale
+  - VFH: expanded from brief mention to full 3-step algorithm
+    (polar histogram → threshold → pick best gap) + VFH/VFH+/VFH\* variants
+    + why-disabled-by-default design rationale
+  - Quaternion: expanded with ROS convention `(x,y,z,w)`, REP-103
+    right-handed frame, gimbal-lock explanation, yaw extraction formula
+    `atan2(2(wz+xy), 1−2(y²+z²))`, Tait-Bryan yaw/pitch/roll breakdown
+- **Additional fact-checks against code (2 items):**
+  - **VFH state**: verified `use_vfh_bias: false` is the YAML default
+    (BURAN ignores VFH); dashboard has a toggle + 4 tuning presets that
+    enable it if the operator clicks one; clean worlds use 3-sector
+    avoidance, VFH is for cluttered scenarios (buoy fields, piers)
+  - **Navigation modes**: verified the YAML runtime default is
+    `astar_enabled: true, astar_hybrid_mode: false` → "Runtime A\*" mode
+    (reactive detours after 45 s blockage). The dashboard HTML briefly
+    shows "Simple Lawnmower" checked on load but syncs to "Runtime A\*"
+    within ~1 s from ROS config. "Hybrid Mode" is a separate option
+    (pre-planned routes, only useful with prior hazard map).
+- **PPT slide reorder:** swapped Slide 4 (System Architecture) and
+  Slide 5 (Simulation Environment) per user request — new flow is
+  Overview → Simulation (where it runs) → Architecture (how it's
+  designed) → Decision Flow → details. Script speaker notes updated
+  with new transition phrasing.
+- **Smoke references removed** from PPT + script: the demo world is
+  `sydney_regatta_DEFAULT` (no smoke sources), so smoke filtering is
+  in code but irrelevant to the demo. Replaced with "water reflections,
+  the boat itself, and noise" wording; deleted smoke-filter glossary
+  entry entirely per user direction.
+- **Script repetition audit (Slides 3-8):** tightened overlapping
+  content — Slide 5 now focuses purely on architecture rationale
+  (removed duplicated sensor-list from Slide 4), Slide 6 becomes a
+  question-framing preview (defers module details to Slides 7-8),
+  Slide 8 references Kalman filter from Slide 5 instead of repeating.
+  Eliminates 3 instances of "said twice in 30 seconds" feedback.
+- **Markdownlint cleanup in script:** fixed MD036 (emphasis-as-heading
+  on 3+ lines), MD037 (spaces in emphasis around `A*`), MD040
+  (unlabelled code blocks on Kalman/VFH equations — added `text`).
+- **Reverse-backfill of repo documentation from script (new scope!):**
+  - New `wiki/Glossary.md` (440 lines) — extracted all 30+ technical
+    terms from the script as a self-contained English reference, organised
+    into 9 categories (Robotics/Vehicles, Simulation, Robotics Software,
+    Sensors, Algorithms/Math, Planning, Dashboard, Perception Details,
+    Project Names)
+  - New `wiki/Design_Rationale.md` (228 lines) — single "WHY" document
+    consolidating architecture decisions (modular pipeline, no pose node,
+    ROSBridge choice), algorithm choices (why linear KF not EKF, why
+    VFH off by default, why 3 sectors, why 3-level obstacle fallback),
+    full parameter-threshold rationale table (12m/8m/30s/45s/14m/3m/
+    Q=0.01/R=0.5 etc.), navigation modes trade-offs, and academic
+    references (Kalman 1960, Borenstein & Koren 1991 VFH/VFH+/VFH*,
+    A\* 1968, REP-103, ODbL, BSD-2-Clause)
+  - Enhanced `wiki/System_Overview.md` — rewrote "Design Philosophy"
+    section with concrete rationale + new "Simplicity over sophistication"
+    trade-off table; added cross-references to Glossary and Design_Rationale
+  - Enhanced `wiki/3D_LIDAR_Processing.md` — added "VFH (Vector Field
+    Histogram) — Optional Advanced Avoidance" section with 3-step algorithm
+    + why-disabled; added "Threshold Rationale" table explaining each
+    pipeline parameter value
+  - Enhanced `wiki/SASS.md` — added "Design Evolution" section
+    documenting legacy v2.x multi-phase escape → current simple
+    "turn toward clearer side" simplification
+  - Updated `wiki/Home.md` and `wiki/README_WIKI.md` — added Glossary
+    and Design_Rationale to navigation + page listing
+  - Zero Python/YAML changes per user constraint — all improvement
+    happened in markdown
+
+  **Value:** the presentation script had accumulated weeks of
+  fact-checked rationale and terminology. Previously this lived only in
+  a one-off presentation document. Now it's permanent, discoverable repo
+  documentation — new contributors can find "why 2D linear KF not EKF"
+  and "why VFH disabled" without digging through working diaries.
+
 ### Parameter sync rule (for future reference)
 
 Any parameter change must be mirrored in three places:
@@ -243,7 +325,7 @@ prevent the 1-second ROS sync from overwriting before Apply is clicked.
 | Apr 12 (Sun) | ✅ Items 1–4 all completed (pre-demo safety, repo cleanup, audit, dashboard polish, README rewrite) | PPT outline, teammate sync |
 | Apr 13 (Mon) | ✅ Items 5–6: dashboard config system, full audit, param collision fixes, wiki deep scan, docs update, teammate onboarding fix, health check audit | PPT slides draft |
 | Apr 14 (Tue) | ✅ Item 7: dry-run after ROS 2 Jazzy apt upgrade + rebuild — 46/46 PASS, no regression | ✅ PPT polish (expanded): 16-item fact-check vs code, 14 slides restructured, bilingual script + glossary, logo SVG, README markdownlint fixes |
-| Apr 15 (Wed) | — | Meeting |
+| Apr 15 (Wed) | ✅ Reverse-backfill of wiki docs from script (2 new + 3 enhanced pages); script expansion (Kalman/VFH/quaternion deep dives); slide 4/5 reorder; smoke removal; repetition cleanup; 2 extra fact-checks (VFH state, nav modes) | Meeting |
 
 ## Risk Notes
 
@@ -252,3 +334,65 @@ prevent the 1-second ROS sync from overwriting before Apply is clicked.
 - ✅ All 7 items complete. Repo work done ahead of the Apr 15 meeting.
 - Jazzy apt upgrade on Apr 14 was absorbed cleanly — no code changes needed,
   health check still 46/46 PASS.
+- ✅ Apr 15 final polish + wiki backfill went well beyond original plan.
+  Net result: the work invested in the presentation script became permanent
+  repo documentation, with full design-rationale coverage that was previously
+  absent.
+
+## Post-Meeting Status (Apr 15)
+
+- ✅ **Supervisor meeting delivered.** PPT presented, demos (dashboard
+  overview + full mission video) played, Q&A handled with the oral
+  follow-ups prepared in `PPT/assets/presentation_script.md`.
+
+## Open Issues Identified — Next Iteration
+
+The following items are **not blockers** but should be addressed in the
+next development cycle:
+
+### 1. Non-standard ROS node names (OKO / SPUTNIK / BURAN)
+
+The current navigation nodes use Russian space-program code-names
+(Vostok1 = system name; OKO = perception; SPUTNIK = planning; BURAN =
+control). While memorable within the team and in the PPT narrative,
+these names **do not follow ROS community conventions**:
+
+- ROS community practice is **functional lowercase_snake_case** names
+  that describe what the node does, not branded/thematic names.
+  Examples from widely-used ROS projects:
+  `perception_node`, `obstacle_detector`, `waypoint_planner`,
+  `heading_controller`, `nav2_controller`, `localization_node`.
+- **Discoverability cost:** a new contributor searching the repo or the
+  community for "perception node" or "path planner" finds nothing; they
+  must first learn the project's internal naming scheme.
+- **Onboarding cost:** `ros2 node list` output shows
+  `oko_perception_node`, `sputnik_planner_node`, `buran_controller_node`
+  which requires a mental translation layer before the system makes sense
+  to outsiders.
+
+**Proposed rename (for next iteration, not urgent):**
+
+| Current | Proposed | Rationale |
+|:--------|:---------|:----------|
+| OKO / `oko_perception_node` | `lidar_perception_node` or `perception_node` | Describes the function directly |
+| SPUTNIK / `sputnik_planner_node` | `waypoint_planner_node` or `mission_planner_node` | Makes the role self-explanatory |
+| BURAN / `buran_controller_node` | `heading_controller_node` or `usv_controller_node` | Clear what it controls |
+
+**Caveats / migration cost:**
+
+- The names OKO / SPUTNIK / BURAN are deeply embedded: Python class
+  names, module filenames, YAML parameters (`oko_min_safe_distance`,
+  `oko_critical_distance`), topic names (`/perception/*` already
+  functional, good), dashboard config keys, docstrings, wiki
+  (Glossary.md's Project Names section), README diagrams, and the
+  presentation script.
+- A rename is therefore **not a find-and-replace** — it needs a proper
+  deprecation cycle: keep old names as aliases for one release, emit
+  deprecation warnings, then remove.
+- The glossary entry "Project Names" in `wiki/Glossary.md` can stay as
+  a historical note even after rename (similar to how legacy systems
+  are preserved under `legacy/`).
+
+**Priority:** Medium. The current names work; the rename is a quality
+improvement for long-term maintainability and community friendliness.
+Schedule after any higher-value feature work.
