@@ -8,7 +8,7 @@
 |---|---|
 | **Project** | AutoBoat Navigation System |
 | **Repository** | [Ghostzero00018/uvautoboat](https://github.com/Ghostzero00018/uvautoboat) |
-| **Last Updated** | 14-04-2026 |
+| **Last Updated** | 15-04-2026 |
 | **Status** | 🟢 Vostok1 Production Ready (A* path planning + one-click launcher + wiki docs + dashboard config system) |
 
 ---
@@ -182,8 +182,10 @@
 | 12-04-2026 | Pre-meeting sprint: VRX patch, repo audit, README rewrite, dashboard polish | ✅ |
 | 13-04-2026 | Dashboard config system: dirty-params, param sync, reset defaults, collision fixes | ✅ |
 | 13-04-2026 | USER_MANUAL + dashboard README rewrite | ✅ |
+| 15-04-2026 | PPT fact-check (16 items), bilingual presentation script, logo SVG | ✅ |
+| 15-04-2026 | Supervisor meeting delivered; wiki backfill (Glossary + Design_Rationale); Node Naming Refactor Plan | ✅ |
 | 13-04-2026 | Teammate onboarding fix: bashrc guide, dashboard diagnostics, dynamic WebSocket URL, COLCON_IGNORE tracked, health check audit (46/46) | ✅ |
-| 14-04-2026 | Pre-meeting dry-run after ROS 2 Jazzy apt upgrade — no regression, 46/46 PASS | ✅ |
+| 15-04-2026 | Pre-meeting dry-run after ROS 2 Jazzy apt upgrade — no regression, 46/46 PASS | ✅ |
 | TBD | Coverage Planning | ⏸️ |
 
 ---
@@ -251,12 +253,13 @@ Current position ──>└─────────────────�
 | **ROS 2 Parameter Migration** | ✅ Done | Parameters now configurable via `vostok1.launch.yaml` |
 | **Multi-Terminal Launch** | ✅ Done | `one_click_launch_all/launch_vostok1_complete.sh` available |
 | **Debugging Required** | 🔄 In Progress | Complex planning and obstacle detection still need debugging |
+| **Node Naming Refactor** | 📋 Planned | Rename OKO/SPUTNIK/BURAN → functional names (lidar_perception/waypoint_planner/heading_controller). See [wiki/Node_Naming_Refactor_Plan](wiki/Node_Naming_Refactor_Plan.md) |
 
 ---
 
 ## 📜 Acknowledgments
 
-**Document Version**: 9.1 | **Last Updated**: 14-04-2026
+**Document Version**: 9.2 | **Last Updated**: 15-04-2026
 
 **Maintained By**: AutoBoat Development Team
 

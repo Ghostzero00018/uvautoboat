@@ -200,6 +200,8 @@ uvautoboat/
 | [Dashboard Guide](web_dashboard/vostok1/README_vostok1_dashboard.md) | Dashboard setup and camera panel |
 | [Board.md](Board.md) | Development milestones |
 | [Wiki](wiki/Home.md) | Installation, system overview, common issues |
+| [Glossary](wiki/Glossary.md) | Plain-language definitions of every technical term |
+| [Design Rationale](wiki/Design_Rationale.md) | Why these architecture, algorithm, and parameter choices were made |
 | [DEPRECATED.md](legacy/DEPRECATED.md) | Legacy code inventory |
 
 ---

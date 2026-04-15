@@ -139,7 +139,7 @@ All aliases, shim files, and dual-publish removed. Only new names work.
 
 ### PR 1 — Python internals (Phase A, ~2-3 hours)
 
-**Step 1: File renames with shims**
+#### Step 1: File renames with shims
 
 ```bash
 cd plan/plan/
@@ -162,7 +162,7 @@ warnings.warn(
 from plan.lidar_perception import *  # noqa: F401,F403
 ```
 
-**Step 2: Class renames with aliases**
+#### Step 2: Class renames with aliases
 
 In `lidar_perception.py`:
 
@@ -176,7 +176,7 @@ OkoPerception = LidarPerception
 
 Same pattern for `WaypointPlanner` / `SputnikPlanner` and `HeadingController` / `BuranController`.
 
-**Step 3: Internal variable/comment cleanup**
+#### Step 3: Internal variable/comment cleanup
 
 Use IDE rename-symbol to update all internal references (docstrings, comments, variable names) within each file. No functional interface changes.
 
@@ -184,7 +184,7 @@ Use IDE rename-symbol to update all internal references (docstrings, comments, v
 
 ### PR 2 — ROS interface aliases (Phase B, ~4-6 hours)
 
-**Step 4: Dual entry points in setup.py**
+#### Step 4: Dual entry points in setup.py
 
 ```python
 # plan/setup.py
@@ -198,7 +198,7 @@ Use IDE rename-symbol to update all internal references (docstrings, comments, v
 'buran_controller = control.heading_controller:main',  # DEPRECATED v3.0
 ```
 
-**Step 5: Parameter aliases**
+#### Step 5: Parameter aliases
 
 In `lidar_perception.py` (formerly `oko_perception.py`), add:
 
@@ -221,7 +221,7 @@ self.min_safe_distance = float(new_val)
 
 Same for `oko_critical_distance` → `perception_critical_distance`.
 
-**Step 6: Topic dual-publish/subscribe**
+#### Step 6: Topic dual-publish/subscribe
 
 In `waypoint_planner.py` (formerly `sputnik_planner.py`):
 
@@ -241,11 +241,11 @@ Where `_deprecated_*_callback` wraps the real callback with a one-time deprecati
 
 Update subscribers in `lidar_perception.py`, `heading_controller.py`, and `vostok1_cli.py` to use new topic names.
 
-**Step 7: Deprecation log on node startup**
+#### Step 7: Deprecation log on node startup
 
 Each renamed node logs a warning on startup:
 
-```
+```text
 [WARN] Node 'oko_perception_node' will be renamed to 'lidar_perception_node' in v3.1.
        Update any scripts using this node name.
 ```
@@ -256,7 +256,7 @@ The actual `Node.__init__('oko_perception_node')` name stays unchanged in v3.0 �
 
 ### PR 3 — Launch & shell scripts (Phase C, ~1-2 hours)
 
-**Step 8: YAML launch file**
+#### Step 8: YAML launch file
 
 Update `launch/vostok1.launch.yaml`:
 
@@ -265,7 +265,7 @@ Update `launch/vostok1.launch.yaml`:
 - Update all comments replacing OKO/SPUTNIK/BURAN with new names
 - Keep `name: oko_perception_node` unchanged (node name changes in v3.1)
 
-**Step 9: Shell scripts**
+#### Step 9: Shell scripts
 
 Update `launch_vostok1_complete.sh` and `health_check_vostok1.sh`:
 
@@ -277,11 +277,11 @@ Update `launch_vostok1_complete.sh` and `health_check_vostok1.sh`:
 
 ### PR 4 — Dashboard (Phase D, ~4-6 hours, highest risk)
 
-**Step 10: HTML IDs**
+#### Step 10: HTML IDs
 
 In `web_dashboard/vostok1/index.html`, rename all branded IDs:
 
-```
+```text
 oko-min-height       → perception-min-height
 oko-max-height       → perception-max-height
 oko-safe-dist        → perception-safe-dist
@@ -296,7 +296,7 @@ btn-reset-oko        → btn-reset-perception
 btn-reset-buran      → btn-reset-controller
 ```
 
-**Step 11: JavaScript**
+#### Step 11: JavaScript
 
 In `web_dashboard/vostok1/app.js`:
 
@@ -321,7 +321,7 @@ if (localStorage.getItem('oko_config')) {
 
 ### PR 5 — Documentation (Phase E, ~2-3 hours)
 
-**Step 12: All active markdown files**
+#### Step 12: All active markdown files
 
 Update ALL 15 active markdown files listed in the Impact Surface table above. For each:
 
@@ -334,7 +334,7 @@ Update ALL 15 active markdown files listed in the Impact Surface table above. Fo
 - Replace `/sputnik/config` → `/planning/config`, `/sputnik/set_config` → `/planning/set_config`, `/sputnik/mission_command` → `/planning/mission_command`
 - Replace `oko_min_safe_distance` → `perception_min_safe_distance`, `oko_critical_distance` → `perception_critical_distance`
 
-**Special handling for `wiki/Glossary.md` "Project Names" section:**
+#### Special handling for `wiki/Glossary.md` "Project Names" section
 
 Rename from "Project Names" to "Legacy Module Code-Names (pre-v3.0)" and add a note:
 
