@@ -2,6 +2,11 @@
 
 Deep dive into the OKO perception system — 3D LIDAR point cloud processing for obstacle detection.
 
+> 💡 **Related pages:**
+>
+> - For **term definitions** (point cloud, clustering, temporal filtering, VFH, etc.), see **[Glossary](Glossary)**.
+> - For **why these thresholds and algorithm choices** were made, see **[Design_Rationale](Design_Rationale#parameter-thresholds-explained)**.
+
 ---
 
 ## Overview
@@ -440,9 +445,70 @@ rviz2
 
 ---
 
+## VFH (Vector Field Histogram) — Optional Advanced Avoidance
+
+In addition to the 3-sector Front/Left/Right summary, OKO also implements a **Vector Field Histogram (VFH)** algorithm that produces a finer-grained obstacle analysis. This output is made available to BURAN via the `use_vfh_bias` parameter — when enabled, BURAN biases its steering command toward VFH's "best gap" direction. **In the default YAML config, `use_vfh_bias` is `false`** and the system uses the simpler 3-sector method.
+
+### What VFH is
+
+VFH is a classical reactive obstacle-avoidance algorithm invented by Johann Borenstein and Yoram Koren at the University of Michigan in 1991. The name captures two ideas:
+
+1. Obstacles are treated as a repulsive **vector field** pushing the robot away.
+2. This field is summarised as a **polar histogram** — a 1D graph indexed by heading angle.
+
+### The algorithm in three steps
+
+1. **Build a polar histogram around the robot.** Divide the 360° space around the boat into angular bins (e.g., 5° each = 72 bins). For each bin, sum the "obstacle density" — LiDAR points that fall in that direction, weighted by how close they are (closer obstacles contribute more). X-axis = heading angle, Y-axis = obstacle density.
+
+2. **Threshold to find openings.** Compare each bin to a threshold. Bins below the threshold are "traversable". Contiguous traversable bins form a **candidate gap** (opening) with a centre angle and an angular width.
+
+3. **Pick the best gap.** From all candidate gaps, choose the one that balances two criteria: (a) wide enough to fit the boat safely, (b) closest to the current target direction so the boat does not veer off course. The centre of that gap becomes the new steering heading.
+
+### Why VFH is disabled by default
+
+In clean worlds like `sydney_regatta_DEFAULT` there are few obstacles, so the simpler 3-sector avoidance is not only sufficient but actually **more stable** — it has fewer parameters to tune and does not oscillate when the best-gap jumps between two similar openings frame-to-frame.
+
+VFH shines in **cluttered worlds** (buoy fields, piers, anchored boat fleets) where the *structure* of the whole obstacle field matters. That is why 3 out of 4 dashboard tuning presets that enable VFH are named for cluttered scenarios (`Buoy Field`, `Pier`, `Universal`).
+
+### Limitations
+
+VFH is a **local, reactive** method — it reacts to what it sees *now*, with no memory and no global planning. It can get stuck in local minima (dead-end corridors where the widest gap leads back the way the robot came). That is why VFH is paired with SPUTNIK's global lawnmower + A\* rerouting — VFH handles "how to squeeze through obstacles locally", SPUTNIK handles "where to go overall".
+
+### Variants
+
+- **VFH (1991)** — the original algorithm above
+- **VFH+ (1998)** — adds kinematic constraints (turning radius)
+- **VFH\* (2000)** — combines VFH with A\*-style lookahead for more global planning
+
+This project implements a basic VFH.
+
+---
+
+## Threshold Rationale
+
+All numeric thresholds in the pipeline are tuned empirically for VRX scenarios. This table explains **why** each parameter has its current value:
+
+| Parameter | Value | Why this value |
+|:----------|:------|:----------------|
+| **Range filter** lower bound | 2.2 m | Below this, returns are from the boat's own hull (pontoons/deck). Filtering them out prevents "permanent obstacles in front of the boat". |
+| **Range filter** upper bound | 100 m | Beyond this, returns are too distant to act on in a 20 Hz control loop; dropping them reduces noise. |
+| **Height filter** lower bound | −1.2 m | Captures low piers and floating debris while excluding deep underwater returns. |
+| **Height filter** upper bound | 1.5 m | Focused on actual navigation hazards; points higher than this (birds, high overhangs) are not threats to the hull. |
+| **Water plane threshold** | 0.32 m | Tolerance for the dynamic 5th-percentile water-plane Z estimate. Points within this tolerance are dropped. Chosen to reject small ripples without dropping low-floating debris. |
+| **Cluster distance** | 3.0 m | Max distance between points in the same cluster. Matches the typical spacing of points returned from a single obstacle at moderate range — a finer value splits real obstacles, a coarser one merges distinct obstacles. |
+| **Minimum cluster size** | 8 points | Rejects solitary points (sensor noise) while accepting small real obstacles like buoys. |
+| **Temporal history** | 3 scans | Rolling buffer of recent scans. |
+| **Temporal threshold** | 2 scans | An obstacle must appear in 2 of the last 3 scans before it is confirmed. At 10 Hz LiDAR rate, this adds ~200 ms of confirmation latency — a worthwhile trade for rejecting single-frame ghosts. |
+| **Sector clearance percentile** | 10th | For each sector, clearance is the 10th percentile of point distances in that direction. Lower than the median but above the absolute minimum — resistant to a single outlier point (which would collapse clearance to near-zero) while still capturing the "closest credible threat". |
+
+For the **trade-off analysis** behind each choice, see **[Design_Rationale: Parameter Thresholds Explained](Design_Rationale#parameter-thresholds-explained)**.
+
+---
+
 ## Related Pages
 
-- **[Obstacle Avoidance Loop](Obstacle-Avoidance-Loop)** — How OKO integrates with control
-- **[System Overview](System_Overview)** — High-level architecture
-- **[Configuration & Tuning](Configuration-and-Tuning)** — Parameter reference
-- **[Modular Architecture](Modular-Architecture)** — OKO's role in the system
+- **[Glossary](Glossary)** — Definitions of every term used above
+- **[Design_Rationale](Design_Rationale)** — Why these algorithm and parameter choices were made
+- **[System_Overview](System_Overview)** — High-level architecture
+- **[SASS](SASS)** — Anti-stuck recovery system
+- **[Common_Issues](Common_Issues)** — Troubleshooting guide

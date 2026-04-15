@@ -2,6 +2,11 @@
 
 High-level architecture and design philosophy of the AutoBoat autonomous navigation system.
 
+> 💡 **Related pages:**
+>
+> - For **term definitions** (USV, VRX, VFH, Kalman filter, ENU, etc.), see **[Glossary](Glossary)**.
+> - For **why these choices were made** (trade-offs, parameter rationale, algorithm justifications), see **[Design_Rationale](Design_Rationale)**.
+
 ---
 
 ## Abstract
@@ -178,34 +183,51 @@ The **Modular (OKO-SPUTNIK-BURAN)** distributed architecture is the active syste
 
 ---
 
-## Design Philosophy
+## Design Philosophy — Why This Architecture?
 
-### Modularity
+The guiding principles below shape every design choice in Vostok1. For the full trade-off analysis behind each choice, see **[Design_Rationale](Design_Rationale)**.
 
-- Clear separation of perception, planning, and control
-- Reusable components
-- Multiple architecture options
+### Modularity — independent nodes over a monolithic binary
 
-### Robustness
+- **Clear separation of perception, planning, and control** — OKO, SPUTNIK, and BURAN each run as an independent ROS 2 node, communicating only through topic messages.
+- **Failure isolation** — if the perception node crashes, the planner and controller keep running on their last-known obstacle data. A monolithic program would take down everything together.
+- **Debuggability** — inter-module messages are plain-text JSON, inspectable live with `ros2 topic echo`, so problems can be pinpointed to the exact pipeline stage.
+- **Upgrade independence** — swapping out perception (e.g., cluster-based → neural network) does not require touching the controller.
+- **Parallel development** — contributors can work on OKO, SPUTNIK, or BURAN simultaneously without merge conflicts.
 
-- Temporal filtering reduces false detections
-- Simple anti-stuck system ensures recovery from stuck states
-- Waypoint skip prevents mission failures
-- Kalman filtering for state estimation
+**Cost:** ~1–2 ms inter-process messaging overhead, negligible for a 50 ms control loop.
 
-### Flexibility
+### Robustness — graceful degradation over perfection
 
-- Runtime parameter tuning
-- Multiple control interfaces (CLI, dashboard, manual)
-- Configurable via YAML launch files
-- Support for custom waypoint patterns
+- **Temporal filtering** — an obstacle must appear in 2 of the last 3 LiDAR scans before it is trusted, rejecting transient noise.
+- **Multi-level obstacle fallback** — reactive avoidance → auto detour → A\* reroute → skip waypoint. Each level is cheap; expensive replanning only runs when the simpler options fail.
+- **Anti-stuck recovery** — if the boat makes no progress for 12 s and the path looks clear, BURAN turns toward the clearer side until it escapes; see **[SASS](SASS)** for details.
+- **Kalman-filtered drift compensation** — BURAN runs a 2D linear Kalman filter to track water-current and wind drift and steer "upstream" to compensate.
 
-### Real-Time Performance
+### Flexibility — configuration over hardcoding
 
-- Optimized point cloud processing
-- Efficient sector-based detection
-- Continuous perception-control loop
-- Sub-100ms control cycle
+- **Runtime parameter tuning** — the dashboard's Tuning panel sends changed parameters via `/sputnik/set_config` without restarting nodes.
+- **Multiple control interfaces** — web dashboard, terminal CLI (`vostok1_cli`), keyboard teleop, and joystick for manual override.
+- **YAML-first configuration** — `vostok1.launch.yaml` is the single source of truth for active parameter values.
+- **Three navigation modes** — Simple Lawnmower, Runtime A\* (default), and Hybrid Mode — chosen by radio buttons on the dashboard.
+
+### Real-Time Performance — "fast enough" not "as fast as possible"
+
+- **20 Hz (50 ms) control loop** — faster than the LiDAR rate (10 Hz), so control can respond to fresh obstacle data within one cycle.
+- **Sector-based summarisation** — OKO reduces ~30,000 LiDAR points per scan to three sector summaries (Front/Left/Right distance + urgency), letting the controller make decisions in constant time regardless of raw cloud size.
+- **Soft real-time** — not hard-real-time (no kernel scheduling guarantees), but empirically consistent enough for a slow-moving boat.
+
+### Simplicity over sophistication (when adequate)
+
+Several places in the project deliberately use simpler methods over more sophisticated alternatives:
+
+| Where | Simple method (in use) | Sophisticated alternative (not used) | Why |
+|:------|:-----------------------|:-------------------------------------|:----|
+| Drift estimation | 2D linear Kalman filter | Extended Kalman Filter (EKF) | Drift is a slow, linear process — linear KF is provably optimal here, at a fraction of the compute cost |
+| Obstacle direction | 3-sector summary (F/L/R) | Full polar histogram (VFH) | 3 sectors are more stable in sparse environments; VFH is enabled only for cluttered scenarios via dashboard presets |
+| Pose fusion | Inline GPS→local in each node | Dedicated pose node | Removing the shared pose node eliminates a single point of failure and reduces inter-node dependencies |
+
+These choices are documented with full rationale in **[Design_Rationale](Design_Rationale)**.
 
 ---
 
@@ -228,9 +250,9 @@ uvautoboat/
 
 Learn more about specific components:
 
-- **[Vostok1 Architecture](Vostok1-Architecture)** — Integrated system details
-- **[Modular Architecture](Modular-Architecture)** — OKO-SPUTNIK-BURAN design
-- **[ROS 2 Topic Flow](ROS2-Topic-Flow)** — Communication patterns
+- **[Glossary](Glossary)** — Plain-language definitions of every technical term
+- **[Design_Rationale](Design_Rationale)** — Full "why" behind architecture, algorithm, and parameter choices
 - **[3D LIDAR Processing](3D_LIDAR_Processing)** — OKO perception deep-dive
-- **[Simple Anti-Stuck](SASS)** — Simple anti-stuck recovery system (deprecated wiki, see README)
-- **[A* Path Planning](Astar-Path-Planning)** — Grid-based pathfinding
+- **[SASS](SASS)** — Simple Anti-Stuck recovery system
+- **[Common_Issues](Common_Issues)** — Troubleshooting guide
+- **[Quick_Start](Quick_Start)** — Get your first mission running in 5 minutes

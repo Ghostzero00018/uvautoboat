@@ -14,8 +14,10 @@ The following pages have been created and are ready for upload:
 | **Installation_Guide.md** | Complete setup instructions | ✅ Ready |
 | **Quick_Start.md** | 5-minute getting started guide | ✅ Ready |
 | **System_Overview.md** | Architecture and design philosophy | ✅ Ready |
-| **SASS.md** | Simple anti-stuck recovery system (deprecated) | ✅ Ready |
-| **3D_LIDAR_Processing.md** | OKO perception system explained | ✅ Ready |
+| **Glossary.md** | Plain-language definitions of every technical term | ✅ Ready |
+| **Design_Rationale.md** | Why each architecture/algorithm/parameter choice was made | ✅ Ready |
+| **SASS.md** | Simple Anti-Stuck recovery system (active) | ✅ Ready |
+| **3D_LIDAR_Processing.md** | OKO perception system explained (includes VFH and threshold rationale) | ✅ Ready |
 | **Common_Issues.md** | Troubleshooting guide | ✅ Ready |
 | **UPLOAD_INSTRUCTIONS.md** | How to upload these pages | ✅ Ready |
 

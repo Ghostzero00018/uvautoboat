@@ -2,6 +2,26 @@
 
 Recovery system that frees the boat when it becomes trapped or immobilized by obstacles, currents, or navigation errors.
 
+> 💡 **Related pages:**
+>
+> - For **term definitions** (Kalman filter, differential thrust, etc.), see **[Glossary](Glossary)**.
+> - For **why these parameter values** (12 s timeout, 1 m threshold) were chosen, see **[Design_Rationale](Design_Rationale#timing-thresholds)**.
+
+---
+
+## Design Evolution
+
+The anti-stuck recovery has evolved through several iterations:
+
+| Version | Behaviour | Status |
+|:--------|:----------|:-------|
+| Legacy SASS v2.x (see `legacy/fixed_variants/buran_controller_fixed.py`) | Multi-phase escape: PROBE → REVERSE → TURN → FORWARD, with Kalman-filtered drift compensation during each phase | Moved to `legacy/` |
+| Current "Simple Anti-Stuck" | **Turn toward the clearer side** (Left or Right based on `left_clear` vs `right_clear` sector distances) until front is clear; request waypoint skip after 3 consecutive failures | **Active in production** |
+
+**Why the simplification?** The multi-phase v2 logic had several subtle failure modes: phase transitions could get stuck, the "PROBE" phase often wasted time, and tuning the per-phase parameters was fragile. The current single-phase design is both easier to reason about and more reliable — it just picks whichever side has more room and keeps turning until the path opens up, with a skip-waypoint fallback if the boat is genuinely stuck.
+
+> **Note on wording:** older code comments and some log messages still say "turn left until clear" — this was the original behaviour before the direction-selection fix. The actual current behaviour is "turn toward the clearer side", based on sector clearance comparison in `execute_smart_escape()`.
+
 ---
 
 ## Overview
@@ -267,7 +287,8 @@ ros2 param set /buran_controller stuck_threshold 1.0
 
 ## Related Pages
 
-- **[Obstacle Avoidance Loop](Obstacle-Avoidance-Loop)** — How continuous obstacle detection works
-- **[Waypoint Skip Strategy](Waypoint-Skip-Strategy)** — Complementary recovery mechanism
-- **[Kalman Filtering](Kalman-Filtering)** — State estimation theory
-- **[Configuration & Tuning](Configuration-and-Tuning)** — Parameter reference
+- **[Glossary](Glossary)** — Definitions of Kalman filter, differential thrust, and other terms used above
+- **[Design_Rationale](Design_Rationale)** — Why 12 s timeout, 1 m threshold, and "turn toward clearer side" were chosen
+- **[System_Overview](System_Overview)** — High-level architecture
+- **[3D_LIDAR_Processing](3D_LIDAR_Processing)** — OKO perception that provides the `left_clear`/`right_clear` data SASS uses
+- **[Common_Issues](Common_Issues)** — Troubleshooting guide

@@ -21,7 +21,8 @@ Welcome to the **AutoBoat Wiki**! This documentation provides comprehensive guid
 ### 🏗️ Architecture
 
 - **[System Overview](System_Overview)** — High-level architecture and design philosophy
-- **[Modular Architecture](System_Overview)** — OKO-SPUTNIK-BURAN distributed system (active)
+- **[Design Rationale](Design_Rationale)** — Why these architecture, algorithm, and parameter choices were made
+- **[Glossary](Glossary)** — Plain-language definitions of every technical term
 
 > **Note:** Vostok1 integrated and Atlantis architectures have been deprecated and moved to `legacy/`.
 
