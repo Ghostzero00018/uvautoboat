@@ -39,8 +39,15 @@ The current node names (`oko_perception_node`, `sputnik_planner_node`, `buran_co
 | **ROS topic** | `/sputnik/mission_command` | `/planning/mission_command` | Dual-subscribe during v3.0 |
 | **Parameter** | `oko_min_safe_distance` | `perception_min_safe_distance` | Accept both during v3.0 |
 | **Parameter** | `oko_critical_distance` | `perception_critical_distance` | Accept both during v3.0 |
-| **CLI tool** | `vostok1_cli` | *keep as-is* | Tool name, not a ROS node — low renaming pressure |
-| **System name** | `Vostok1` | *keep as project codename* | Used in `vostok1.launch.yaml` and docs as a system brand — acceptable |
+| **CLI tool file** | `vostok1_cli.py` | `autoboat_cli.py` | `git mv` |
+| **CLI entry point** | `vostok1_cli` | `autoboat_cli` | Add both in setup.py during v3.0 |
+| **CLI node name** | `vostok1_cli` | `autoboat_cli` | Change in v3.1 |
+| **System name** | `Vostok1` | `AutoBoat` | Aligns with repo name `uvautoboat` |
+| **Launch file** | `vostok1.launch.yaml` | `autoboat.launch.yaml` | `git mv` in `launch/` |
+| **Launch script** | `launch_vostok1_complete.sh` | `launch_autoboat_complete.sh` | `git mv` in `one_click_launch_all/` |
+| **Health check** | `health_check_vostok1.sh` | `health_check_autoboat.sh` | `git mv` in `one_click_launch_all/` |
+| **Dashboard dir** | `web_dashboard/vostok1/` | `web_dashboard/autoboat/` | `git mv` whole directory |
+| **Dashboard README** | `README_vostok1_dashboard.md` | `README_autoboat_dashboard.md` | Inside dashboard dir |
 
 ### Collision check (verified)
 
@@ -50,6 +57,10 @@ All proposed new names have been verified against the entire active codebase:
 - `waypoint_planner` — zero matches (safe)
 - `heading_controller` — zero matches (safe)
 - `perception_min_safe_distance` — zero matches (safe)
+- `autoboat_cli` — zero matches (safe)
+- `autoboat.launch.yaml` — zero matches (safe)
+- `launch_autoboat_complete.sh` — zero matches (safe)
+- `web_dashboard/autoboat/` — zero matches (safe)
 - `/planning/config` — does not currently exist as a topic (safe; 5 existing `/planning/*` topics, no conflict)
 
 ---
@@ -78,11 +89,16 @@ No cross-package Python imports exist between `plan/` and `control/` — they co
 - `plan/setup.py`: 3 branded entries (`oko_perception`, `sputnik_planner`, `vostok1_cli`)
 - `control/setup.py`: 1 branded entry (`buran_controller`)
 
-### Launch & shell scripts (~80 references)
+### Launch & shell scripts (~80 references + 3 file renames)
 
-- `launch/vostok1.launch.yaml` — node configs, exec names, parameter sections (~50 refs)
-- `one_click_launch_all/launch_vostok1_complete.sh` — `pkill` process names, comments, labels (~40 refs)
-- `one_click_launch_all/health_check_vostok1.sh` — node name checks, parameter checks (~30 refs)
+- `launch/vostok1.launch.yaml` → `launch/autoboat.launch.yaml` — node configs, exec names, parameter sections (~50 refs)
+- `one_click_launch_all/launch_vostok1_complete.sh` → `launch_autoboat_complete.sh` — `pkill` process names, comments, labels (~40 refs)
+- `one_click_launch_all/health_check_vostok1.sh` → `health_check_autoboat.sh` — node name checks, parameter checks (~30 refs)
+
+### Dashboard directory rename
+
+- `web_dashboard/vostok1/` → `web_dashboard/autoboat/` — entire directory `git mv`
+- `README_vostok1_dashboard.md` → `README_autoboat_dashboard.md` inside the directory
 
 ### Web dashboard (~200+ references)
 
@@ -348,14 +364,14 @@ Rename from "Project Names" to "Legacy Module Code-Names (pre-v3.0)" and add a n
 
 After v3.0 has been in use for at least one release cycle:
 
-1. **Remove shim files** (`plan/plan/oko_perception.py`, etc.)
-2. **Remove class aliases** (`OkoPerception = LidarPerception`)
-3. **Remove deprecated entry points** from setup.py
+1. **Remove shim files** (`plan/plan/oko_perception.py`, `plan/plan/sputnik_planner.py`, `control/control/buran_controller.py`, `plan/plan/vostok1_cli.py`)
+2. **Remove class aliases** (`OkoPerception = LidarPerception`, etc.)
+3. **Remove deprecated entry points** from setup.py (`oko_perception`, `sputnik_planner`, `buran_controller`, `vostok1_cli`)
 4. **Remove deprecated topic dual-publish** — only publish to `/planning/*`
 5. **Remove deprecated parameter aliases** — only accept `perception_*`
-6. **Change node names** in `Node.__init__()` — `oko_perception_node` → `lidar_perception_node`
+6. **Change node names** in `Node.__init__()` — `oko_perception_node` → `lidar_perception_node`, `sputnik_planner_node` → `waypoint_planner_node`, `buran_controller_node` → `heading_controller_node`, `vostok1_cli` → `autoboat_cli`
 7. **Update health check** node name checks
-8. **Update shell script** `pkill` targets if they reference old process names
+8. **Update shell script** `pkill` targets to reference new process names only
 
 ---
 
@@ -386,8 +402,8 @@ After v3.0 has been in use for at least one release cycle:
 
 | Decision | Rationale |
 |:---------|:----------|
-| Keep `vostok1_cli` name | CLI tool name, not a ROS node. Low community-convention pressure. Users already have muscle memory. |
-| Keep `Vostok1` as system brand | Used in `vostok1.launch.yaml` and as a recognizable project identity. Acceptable as a product name. |
+| Rename `vostok1_cli` → `autoboat_cli` | Consistency: if all other modules get functional names, the CLI should follow. `autoboat` matches the repo name `uvautoboat`. Old entry point kept as deprecated alias in v3.0. |
+| Rename `Vostok1` → `AutoBoat` | Aligns system branding with the repo name. Affects launch file (`autoboat.launch.yaml`), shell scripts (`launch_autoboat_complete.sh`, `health_check_autoboat.sh`), and the dashboard directory (`web_dashboard/autoboat/`). `Vostok1` retained only in the Glossary as a historical note. |
 | Use `perception_*` for renamed OKO parameters (not `lidar_*`) | Avoids coupling the parameter name to the specific sensor type. If we later add camera perception, `perception_min_safe_distance` still makes sense; `lidar_min_safe_distance` would not. |
 | Rename documentation fully (not just "mention new names primarily") | Half-renamed docs are worse than fully old or fully new. Grep for "oko_perception_node" should return zero outside of the Glossary historical note. |
 | Two-release deprecation cycle | Atomic rename of 500+ references risks broken intermediate states. The alias period lets external users migrate gracefully. |
