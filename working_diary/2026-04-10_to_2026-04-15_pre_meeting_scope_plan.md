@@ -239,7 +239,7 @@ presentation script:
     with all matrices (x, F, H, Q, R, P, K), why-not-EKF rationale
   - VFH: expanded from brief mention to full 3-step algorithm
     (polar histogram → threshold → pick best gap) + VFH/VFH+/VFH\* variants
-    + why-disabled-by-default design rationale
+    - why-disabled-by-default design rationale
   - Quaternion: expanded with ROS convention `(x,y,z,w)`, REP-103
     right-handed frame, gimbal-lock explanation, yaw extraction formula
     `atan2(2(wz+xy), 1−2(y²+z²))`, Tait-Bryan yaw/pitch/roll breakdown
@@ -292,7 +292,7 @@ presentation script:
     trade-off table; added cross-references to Glossary and Design_Rationale
   - Enhanced `wiki/3D_LIDAR_Processing.md` — added "VFH (Vector Field
     Histogram) — Optional Advanced Avoidance" section with 3-step algorithm
-    + why-disabled; added "Threshold Rationale" table explaining each
+    - why-disabled; added "Threshold Rationale" table explaining each
     pipeline parameter value
   - Enhanced `wiki/SASS.md` — added "Design Evolution" section
     documenting legacy v2.x multi-phase escape → current simple
@@ -370,29 +370,27 @@ these names **do not follow ROS community conventions**:
   which requires a mental translation layer before the system makes sense
   to outsiders.
 
-**Proposed rename (for next iteration, not urgent):**
+**Proposed rename (decided, full plan in `wiki/Node_Naming_Refactor_Plan.md`):**
 
-| Current | Proposed | Rationale |
-|:--------|:---------|:----------|
-| OKO / `oko_perception_node` | `lidar_perception_node` or `perception_node` | Describes the function directly |
-| SPUTNIK / `sputnik_planner_node` | `waypoint_planner_node` or `mission_planner_node` | Makes the role self-explanatory |
-| BURAN / `buran_controller_node` | `heading_controller_node` or `usv_controller_node` | Clear what it controls |
+| Current | New | Scope |
+|:--------|:----|:------|
+| OKO / `oko_perception_node` | `lidar_perception_node` | Python file + class + node + entry point |
+| SPUTNIK / `sputnik_planner_node` | `waypoint_planner_node` | Python file + class + node + entry point |
+| BURAN / `buran_controller_node` | `heading_controller_node` | Python file + class + node + entry point |
+| `vostok1_cli` | `autoboat_cli` | Python file + entry point + node |
+| `Vostok1` (system name) | `AutoBoat` | Launch file, shell scripts, dashboard dir, docs |
+| `vostok1.launch.yaml` | `autoboat.launch.yaml` | File rename |
+| `launch_vostok1_complete.sh` | `launch_autoboat_complete.sh` | File rename |
+| `health_check_vostok1.sh` | `health_check_autoboat.sh` | File rename |
+| `web_dashboard/vostok1/` | `web_dashboard/autoboat/` | Directory rename |
+| `/sputnik/*` topics | `/planning/*` | 3 topic renames |
+| `oko_min_safe_distance` | `perception_min_safe_distance` | Parameter rename |
 
-**Caveats / migration cost:**
+**Migration strategy:** two-release deprecation cycle (v3.0 new+old
+coexist with warnings; v3.1 old removed). Full 12-step plan with 5 PRs
+documented in `wiki/Node_Naming_Refactor_Plan.md`. Impact: ~550+ refs
+across 15 markdown files, 3 Python files, 2 shell scripts, and 200+
+dashboard refs.
 
-- The names OKO / SPUTNIK / BURAN are deeply embedded: Python class
-  names, module filenames, YAML parameters (`oko_min_safe_distance`,
-  `oko_critical_distance`), topic names (`/perception/*` already
-  functional, good), dashboard config keys, docstrings, wiki
-  (Glossary.md's Project Names section), README diagrams, and the
-  presentation script.
-- A rename is therefore **not a find-and-replace** — it needs a proper
-  deprecation cycle: keep old names as aliases for one release, emit
-  deprecation warnings, then remove.
-- The glossary entry "Project Names" in `wiki/Glossary.md` can stay as
-  a historical note even after rename (similar to how legacy systems
-  are preserved under `legacy/`).
-
-**Priority:** Medium. The current names work; the rename is a quality
-improvement for long-term maintainability and community friendliness.
-Schedule after any higher-value feature work.
+**Priority:** Medium. Not a blocker; quality improvement for long-term
+maintainability and community discoverability.
