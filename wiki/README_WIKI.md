@@ -19,6 +19,7 @@ The following pages have been created and are ready for upload:
 | **SASS.md** | Simple Anti-Stuck recovery system (active) | ✅ Ready |
 | **3D_LIDAR_Processing.md** | OKO perception system explained (includes VFH and threshold rationale) | ✅ Ready |
 | **Common_Issues.md** | Troubleshooting guide | ✅ Ready |
+| **Node_Naming_Refactor_Plan.md** | Planned rename of OKO/SPUTNIK/BURAN → functional names | ✅ Ready |
 | **UPLOAD_INSTRUCTIONS.md** | How to upload these pages | ✅ Ready |
 
 ---

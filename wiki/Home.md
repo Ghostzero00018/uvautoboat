@@ -23,6 +23,7 @@ Welcome to the **AutoBoat Wiki**! This documentation provides comprehensive guid
 - **[System Overview](System_Overview)** — High-level architecture and design philosophy
 - **[Design Rationale](Design_Rationale)** — Why these architecture, algorithm, and parameter choices were made
 - **[Glossary](Glossary)** — Plain-language definitions of every technical term
+- **[Node Naming Refactor Plan](Node_Naming_Refactor_Plan)** — Planned rename: OKO/SPUTNIK/BURAN → functional names
 
 > **Note:** Vostok1 integrated and Atlantis architectures have been deprecated and moved to `legacy/`.
 
