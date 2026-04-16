@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================================
-# Vostok1 System Health Check
+# AutoBoat System Health Check
 # ============================================================================
 # Run this from another terminal while the simulation is running.
 # It checks nodes, topics, publisher counts, parameter values, and port connectivity.
@@ -8,15 +8,15 @@
 #   IDLE    — nodes should be up, but mission topics may not exist yet
 #   ACTIVE  — all topics and publishers should be present
 #
-# Module naming convention (Russian space program theme):
-#   OKO     = Perception  — "eye": LiDAR obstacle detection
-#   SPUTNIK = Planning    — "satellite": waypoint generation & mission management
-#   BURAN   = Control     — "snowstorm/shuttle": PID steering & obstacle avoidance
+# Module naming convention (functional names):
+#   Perception  — LiDAR obstacle detection
+#   Planner     — waypoint generation & mission management
+#   Controller  — PID steering & obstacle avoidance
 #
 # Usage:
 #   cd <workspace>/src/uvautoboat/one_click_launch_all
-#   bash health_check_vostok1.sh          # Full check (~30-60s)
-#   bash health_check_vostok1.sh --quick  # Nodes + topics only (~5s)
+#   bash health_check_autoboat.sh          # Full check (~30-60s)
+#   bash health_check_autoboat.sh --quick  # Nodes + topics only (~5s)
 # ============================================================================
 
 # Colors
@@ -52,9 +52,9 @@ sleep 3
 section "Node Check"
 
 EXPECTED_NODES=(
-    "/oko_perception_node"
-    "/sputnik_planner_node"
-    "/buran_controller_node"
+    "/lidar_perception_node"
+    "/waypoint_planner_node"
+    "/heading_controller_node"
     "/rosbridge_websocket"
     "/web_video_server"
 )
@@ -146,7 +146,7 @@ MISSION_TOPICS=(
     "/planning/mission_status"
     "/planning/waypoints"
     "/control/status"
-    "/sputnik/config"
+    "/planning/config"
 )
 
 for topic in "${ALWAYS_TOPICS[@]}"; do
@@ -220,14 +220,14 @@ check_publisher() {
 check_publisher "/wamv/sensors/gps/gps/fix" "GPS"
 check_publisher "/wamv/sensors/imu/imu/data" "IMU"
 check_publisher "/wamv/sensors/lidars/lidar_wamv_sensor/points" "LiDAR"
-check_publisher "/perception/obstacle_info" "OKO obstacle info" "true"
-check_publisher "/planning/mission_status" "SPUTNIK mission status" "true"
-check_publisher "/control/status" "BURAN control status" "true"
+check_publisher "/perception/obstacle_info" "Perception obstacle info" "true"
+check_publisher "/planning/mission_status" "Planner mission status" "true"
+check_publisher "/control/status" "Controller control status" "true"
 
 # ============================================================================
 # 5. PARAMETER CHECK
 # ============================================================================
-section "Parameter Check (BURAN)"
+section "Parameter Check (Controller)"
 
 check_param() {
     local node=$1
@@ -247,29 +247,29 @@ check_param() {
     fi
 }
 
-check_param "/buran_controller_node" "kp" "500.0"
-check_param "/buran_controller_node" "kd" "150.0"
-check_param "/buran_controller_node" "base_speed" "400.0"
-check_param "/buran_controller_node" "obstacle_slow_factor" "0.5"
-check_param "/buran_controller_node" "turn_deadband_deg" "0.5"
-check_param "/buran_controller_node" "critical_distance" "6.0"
-check_param "/buran_controller_node" "min_safe_distance" "12.0"
-check_param "/buran_controller_node" "max_avoidance_turn_deg" "45.0"
+check_param "/heading_controller_node" "kp" "500.0"
+check_param "/heading_controller_node" "kd" "150.0"
+check_param "/heading_controller_node" "base_speed" "400.0"
+check_param "/heading_controller_node" "obstacle_slow_factor" "0.5"
+check_param "/heading_controller_node" "turn_deadband_deg" "0.5"
+check_param "/heading_controller_node" "critical_distance" "6.0"
+check_param "/heading_controller_node" "min_safe_distance" "12.0"
+check_param "/heading_controller_node" "max_avoidance_turn_deg" "45.0"
 
-section "Parameter Check (SPUTNIK)"
+section "Parameter Check (Planner)"
 
-check_param "/sputnik_planner_node" "scan_length" "15.0"
-check_param "/sputnik_planner_node" "scan_width" "30.0"
-check_param "/sputnik_planner_node" "lanes" "10"
-check_param "/sputnik_planner_node" "waypoint_tolerance" "3.5"
-check_param "/sputnik_planner_node" "max_block_time" "30.0"
+check_param "/waypoint_planner_node" "scan_length" "15.0"
+check_param "/waypoint_planner_node" "scan_width" "30.0"
+check_param "/waypoint_planner_node" "lanes" "10"
+check_param "/waypoint_planner_node" "waypoint_tolerance" "3.5"
+check_param "/waypoint_planner_node" "max_block_time" "30.0"
 
-section "Parameter Check (OKO)"
+section "Parameter Check (Perception)"
 
-check_param "/oko_perception_node" "oko_min_safe_distance" "10.0"
-check_param "/oko_perception_node" "oko_critical_distance" "5.5"
-check_param "/oko_perception_node" "min_height" "-1.2"
-check_param "/oko_perception_node" "max_range" "100.0"
+check_param "/lidar_perception_node" "perception_min_safe_distance" "10.0"
+check_param "/lidar_perception_node" "perception_critical_distance" "5.5"
+check_param "/lidar_perception_node" "min_height" "-1.2"
+check_param "/lidar_perception_node" "max_range" "100.0"
 
 # ============================================================================
 # 6. SERVICE / CONNECTIVITY CHECK

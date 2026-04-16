@@ -21,7 +21,7 @@ setup(
     maintainer_email='yinpuchen0@gmail.com',
     author='ghostzero',
     author_email='yinpuchen0@gmail.com',
-    description='Control package for VRX WAM-V with BURAN controller v2.1 featuring simple anti-stuck system, Kalman drift compensation, and adaptive waypoint approach.',
+    description='Control package for VRX WAM-V with heading controller v2.1 featuring simple anti-stuck system, Kalman drift compensation, and adaptive waypoint approach.',
     license='Apache-2.0',
     keywords=['ROS2', 'VRX', 'thruster control', 'PID', 'obstacle avoidance', 'anti-stuck', 'drift compensation'],
     tests_require=['pytest'],
@@ -37,8 +37,8 @@ setup(
     ],
     entry_points={
         'console_scripts': [
-            # === Core Vostok1 node (launched by vostok1.launch.yaml) ===
-            'buran_controller = control.buran_controller:main',
+            # === Core AutoBoat node (launched by autoboat.launch.yaml) ===
+            'heading_controller = control.heading_controller:main',
 
             # === Standalone utilities (not in launch file, run manually) ===
             'keyboard_teleop = control.keyboard_teleop:main',      # Manual thruster control for testing

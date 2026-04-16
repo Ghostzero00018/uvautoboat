@@ -2,11 +2,11 @@
 """
 Waypoint Visualizer for RViz - Modular Architecture
 
-Subscribes to Sputnik planner's mission status and waypoints topics,
+Subscribes to the waypoint planner's mission status and waypoints topics,
 and publishes visualization markers for waypoints, current target,
 boat path, and no-go zones.
 
-Run this alongside the modular Sputnik planner to see waypoints in RViz.
+Run this alongside the modular waypoint planner to see waypoints in RViz.
 """
 
 import rclpy
@@ -21,7 +21,7 @@ import math
 
 class WaypointVisualizer(Node):
     def __init__(self):
-        super().__init__('waypoint_visualizer')
+        super().__init__('waypoint_visualizer_node')
         
         # Publishers
         self.marker_pub = self.create_publisher(MarkerArray, '/waypoint_markers', 10)
@@ -85,7 +85,7 @@ class WaypointVisualizer(Node):
             self.path_points.pop(0)
             
     def mission_status_callback_modular(self, msg):
-        """Parse mission status from Sputnik (modular mode)"""
+        """Parse mission status from waypoint planner (modular mode)"""
         try:
             data = json.loads(msg.data)
             if 'current_waypoint' in data:
@@ -94,7 +94,7 @@ class WaypointVisualizer(Node):
             pass
 
     def waypoints_callback_modular(self, msg):
-        """Receive waypoint list from Sputnik planner - handles both formats"""
+        """Receive waypoint list from waypoint planner - handles both formats"""
         try:
             data = json.loads(msg.data)
             if 'waypoints' in data:

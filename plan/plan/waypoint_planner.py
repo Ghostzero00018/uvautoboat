@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Sputnik Planner - GPS Waypoint Navigation Planning
+Waypoint Planner - GPS Waypoint Navigation Planning
 
-Module: SPUTNIK (Planning)  —  named after the first satellite, guiding the path
+Module: Waypoint Planner (formerly SPUTNIK)
 Role:   Generates waypoints, manages mission state, and publishes navigation targets.
-See also: OKO (Perception) and BURAN (Control)
+See also: LiDAR Perception (Perception) and Heading Controller (Control)
 
-Part of the modular Vostok1 architecture.
+Part of the modular AutoBoat architecture.
 Generates lawnmower pattern waypoints, publishes navigation path.
 
 Features:
@@ -164,13 +164,13 @@ class AStarSolver:
         return None
 
 
-class SputnikPlanner(Node):
+class WaypointPlanner(Node):
     """
-    SPUTNIK - Trajectory planning system
+    Waypoint Planner - Trajectory planning system
     (Named after the first artificial satellite)
     """
     def __init__(self):
-        super().__init__('sputnik_planner_node')
+        super().__init__('waypoint_planner_node')
 
         # --- PARAMETERS ---
         self.declare_parameter('scan_length', 15.0)
@@ -244,7 +244,7 @@ class SputnikPlanner(Node):
         # Waypoint skip tracking (for obstacles blocking waypoint)
         self.waypoint_start_time = None  # When we started trying to reach current waypoint
         self.obstacle_detected = False
-        self.obstacle_clusters = []  # Latest OKO clusters for A* detours
+        self.obstacle_clusters = []  # Latest perception clusters for A* detours
         self.front_clear = float('inf')
         self.left_clear = float('inf')
         self.right_clear = float('inf')
@@ -280,7 +280,7 @@ class SputnikPlanner(Node):
         # Mission command subscriber for CLI/dashboard control
         self.create_subscription(
             String,
-            '/sputnik/mission_command',
+            '/planning/mission_command',
             self.mission_command_callback,
             10
         )
@@ -288,7 +288,7 @@ class SputnikPlanner(Node):
         # Config subscriber for runtime parameter changes
         self.create_subscription(
             String,
-            '/sputnik/set_config',
+            '/planning/set_config',
             self.config_callback,
             10
         )
@@ -301,7 +301,7 @@ class SputnikPlanner(Node):
             10
         )
         
-        # Detour request from BURAN controller
+        # Detour request from heading controller
         self.create_subscription(
             String,
             '/planning/detour_request',
@@ -309,7 +309,7 @@ class SputnikPlanner(Node):
             10
         )
 
-        # Replan request from BURAN controller (when path is blocked)
+        # Replan request from heading controller (when path is blocked)
         self.create_subscription(
             String,
             '/control/replan_request',
@@ -317,7 +317,7 @@ class SputnikPlanner(Node):
             10
         )
 
-        # Skip waypoint request from BURAN controller (after multiple stuck attempts)
+        # Skip waypoint request from heading controller (after multiple stuck attempts)
         self.create_subscription(
             String,
             '/planning/skip_waypoint',
@@ -329,7 +329,7 @@ class SputnikPlanner(Node):
         self.pub_waypoints = self.create_publisher(String, '/planning/waypoints', 10)
         self.pub_current_target = self.create_publisher(String, '/planning/current_target', 10)
         self.pub_mission_status = self.create_publisher(String, '/planning/mission_status', 10)
-        self.pub_config = self.create_publisher(String, '/sputnik/config', 10)
+        self.pub_config = self.create_publisher(String, '/planning/config', 10)
         self.pub_pollutants = self.create_publisher(String, '/perception/pollutant_sources', 10)
 
         # Control loop at 10Hz
@@ -342,7 +342,7 @@ class SputnikPlanner(Node):
         self.create_timer(0.2, self.publish_mission_status_timer)
 
         self.get_logger().info("=" * 50)
-        self.get_logger().info("SPUTNIK v2.2 - Trajectory Planning System")
+        self.get_logger().info("Waypoint Planner v2.2 - Trajectory Planning System")
         self.get_logger().info("=" * 50)
         self.get_logger().info(f"Zone de balayage | Scan Area: {self.scan_length}m × {self.scan_width * self.lanes}m")
         self.get_logger().info(f"Lanes: {self.lanes}, Width: {self.scan_width}m")
@@ -358,7 +358,7 @@ class SputnikPlanner(Node):
         else:
             self.get_logger().info("A* Detours: Disabled")
         self.get_logger().info("Waiting for GPS signal...")
-        self.get_logger().info("Commands: ros2 run plan vostok1_cli --help")
+        self.get_logger().info("Commands: ros2 run plan autoboat_cli --help")
         self.get_logger().info("=" * 50)
 
         # Scan for pollutant sources (smoke generators) and publish
@@ -374,7 +374,7 @@ class SputnikPlanner(Node):
         if self.start_gps is None:
             self.start_gps = (msg.latitude, msg.longitude)
             self.get_logger().info(f"Base Point: {self.start_gps[0]:.6f}, {self.start_gps[1]:.6f}")
-            self.get_logger().info("GPS acquired - run 'ros2 run plan vostok1_cli generate' to create waypoints")
+            self.get_logger().info("GPS acquired - run 'ros2 run plan autoboat_cli generate' to create waypoints")
             
     def mission_command_callback(self, msg):
         """Handle mission commands from CLI/dashboard"""
@@ -415,7 +415,7 @@ class SputnikPlanner(Node):
                     self.detour_waypoint_inserted = False
                     self.detour_count = 0
                     self.get_logger().info("🚀 MISSION STARTED!")
-                    # Force immediate publishes so BURAN responds instantly
+                    # Force immediate publishes so controller responds instantly
                     self.publish_mission_status_timer()
                     self._publish_current_target_immediate()
                 else:
@@ -434,7 +434,7 @@ class SputnikPlanner(Node):
                 self.mission_armed = False
                 self.get_logger().info(f"🛑 MISSION STOPPED (was {prev_state} → now PAUSED)")
                 self.publish_mission_status_timer()
-                self.get_logger().info("📡 Publishing PAUSED state - BURAN should stop immediately")
+                self.get_logger().info("📡 Publishing PAUSED state - controller should stop immediately")
                 
             elif command == 'resume_mission':
                 resumable_states = {"PAUSED", "JOYSTICK", "EMERGENCY_STOP", "WAITING_CONFIRM", "READY"}
@@ -446,9 +446,9 @@ class SputnikPlanner(Node):
                     self.detour_waypoint_inserted = False
                     self.detour_count = 0
                     self.get_logger().info(f"▶️ MISSION RESUMED from {self.state}")
-                    # Force immediate status publish so BURAN resets and starts
+                    # Force immediate status publish so controller resets and starts
                     self.publish_mission_status_timer()
-                    # Force immediate target publish so BURAN has target right away
+                    # Force immediate target publish so controller has target right away
                     self._publish_current_target_immediate()
                 else:
                     self.get_logger().warn(f"Cannot resume - state={self.state}, waypoints={len(self.waypoints)}")
@@ -505,9 +505,9 @@ class SputnikPlanner(Node):
                     self.current_wp_index = 0
                     
                     # CRITICAL FIX: If already DRIVING, need to force state transition
-                    # to reset BURAN's escape state. Set to READY first, then DRIVING.
+                    # to reset controller's escape state. Set to READY first, then DRIVING.
                     if self.state == "DRIVING":
-                        # Temporarily transition through READY to reset BURAN controller
+                        # Temporarily transition through READY to reset heading controller
                         self.state = "READY"
                         self.mission_armed = False
                         self.publish_mission_status_timer()  # Publish READY state
@@ -527,9 +527,9 @@ class SputnikPlanner(Node):
                     self.get_logger().info(f"   Position locale: ({home_x:.1f}m, {home_y:.1f}m)")
                     # Publish updated waypoints
                     self.publish_waypoints()
-                    # Force immediate status publish so BURAN resets escape state
+                    # Force immediate status publish so controller resets escape state
                     self.publish_mission_status_timer()
-                    # Force immediate target publish so BURAN has target right away
+                    # Force immediate target publish so controller has target right away
                     self._publish_current_target_immediate()
                 else:
                     self.get_logger().warn("Cannot go home - no spawn point recorded")
@@ -556,7 +556,7 @@ class SputnikPlanner(Node):
             pass
     
     def detour_request_callback(self, msg):
-        """Handle detour waypoint request from BURAN controller"""
+        """Handle detour waypoint request from heading controller"""
         try:
             data = json.loads(msg.data)
             # Support both 'x'/'y' and 'detour_x'/'detour_y' keys
@@ -573,13 +573,13 @@ class SputnikPlanner(Node):
             self.get_logger().warn(f"Detour request error: {e}")
 
     def replan_request_callback(self, msg):
-        """Handle replan request from BURAN controller when path is blocked"""
+        """Handle replan request from heading controller when path is blocked"""
         try:
             data = json.loads(msg.data)
             reason = data.get('reason', 'unknown')
 
             if self.state == "DRIVING" and self.astar_enabled:
-                self.get_logger().warn(f"🔄 Replan requested by BURAN: {reason}")
+                self.get_logger().warn(f"🔄 Replan requested by controller: {reason}")
                 # Trigger A* replan on next planning cycle
                 # This will be handled by the A* detour logic in planning_loop
                 self.get_logger().info("A* detour planning will attempt alternative route")
@@ -589,7 +589,7 @@ class SputnikPlanner(Node):
             self.get_logger().warn(f"Replan request error: {e}")
 
     def skip_waypoint_callback(self, msg):
-        """Handle skip waypoint request from BURAN controller after multiple stuck attempts"""
+        """Handle skip waypoint request from heading controller after multiple stuck attempts"""
         try:
             data = json.loads(msg.data)
             reason = data.get('reason', 'stuck_multiple_times')
@@ -597,7 +597,7 @@ class SputnikPlanner(Node):
             if self.state == "DRIVING" and self.current_wp_index < len(self.waypoints):
                 current_wp = self.waypoints[self.current_wp_index]
                 self.get_logger().warn(
-                    f"⏭️ BURAN requested skip waypoint {self.current_wp_index + 1}/{len(self.waypoints)} "
+                    f"⏭️ Controller requested skip waypoint {self.current_wp_index + 1}/{len(self.waypoints)} "
                     f"at ({current_wp[0]:.1f}, {current_wp[1]:.1f}) - reason: {reason}"
                 )
                 # Advance to next waypoint
@@ -769,7 +769,7 @@ class SputnikPlanner(Node):
                 xmax + inflate, ymax + inflate
             ))
 
-        # Use obstacle clusters if available (from OKO), otherwise empty
+        # Use obstacle clusters if available (from perception), otherwise empty
         obstacles = self.obstacle_clusters if hasattr(self, 'obstacle_clusters') and self.obstacle_clusters else []
 
         # Plan from start to first waypoint
@@ -818,7 +818,7 @@ class SputnikPlanner(Node):
         return hybrid_path
 
     def planning_loop(self):
-        """Main planning loop with Vostok1-style logging"""
+        """Main planning loop with AutoBoat-style logging"""
         if self.state != "DRIVING" or self.current_gps is None:
             return
 
@@ -898,7 +898,7 @@ class SputnikPlanner(Node):
         self.publish_mission_status(curr_x, curr_y)
 
     def log_navigation_status(self, curr_x, curr_y, target_x, target_y, dist):
-        """Log navigation status in Vostok1 bilingual style"""
+        """Log navigation status in AutoBoat bilingual style"""
         wp_progress = f"{self.current_wp_index + 1}/{len(self.waypoints)}"
         heading = math.degrees(math.atan2(target_y - curr_y, target_x - curr_x))
         
@@ -1068,7 +1068,7 @@ class SputnikPlanner(Node):
         else:
             heading = 0.0
 
-        # Choose clearer side based on OKO data
+        # Choose clearer side based on perception data
         if self.left_clear >= self.right_clear:
             detour_angle = heading + math.pi / 2  # Left
         else:
@@ -1190,7 +1190,7 @@ class SputnikPlanner(Node):
         return filtered
 
     def finish_mission(self, final_x, final_y):
-        """Complete mission with Vostok1-style summary"""
+        """Complete mission with AutoBoat-style summary"""
         elapsed = 0.0
         if self.mission_start_time:
             elapsed = (self.get_clock().now() - self.mission_start_time).nanoseconds / 1e9
@@ -1296,7 +1296,7 @@ class SputnikPlanner(Node):
         self.publish_mission_status(curr_x, curr_y)
 
     def _publish_current_target_immediate(self):
-        """Immediately publish current target (called on resume/go_home for instant BURAN response)"""
+        """Immediately publish current target (called on resume/go_home for instant controller response)"""
         if self.current_gps is None:
             self.get_logger().warn("⚠️ Cannot publish target: GPS not available")
             return
@@ -1571,7 +1571,7 @@ class SputnikPlanner(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = SputnikPlanner()
+    node = WaypointPlanner()
     
     try:
         rclpy.spin(node)

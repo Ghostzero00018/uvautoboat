@@ -25,7 +25,7 @@ setup(
     maintainer_email='yinpuchen0@gmail.com',
     author='ghostzero',
     author_email='yinpuchen0@gmail.com',
-    description='Planning and perception package for VRX autonomous navigation with A* detour planning, OKO perception v2.1, and SPUTNIK planner v2.2.',
+    description='Planning and perception package for VRX autonomous navigation with A* detour planning, LiDAR perception v2.1, and waypoint planner v2.2.',
     license='Apache-2.0',
     keywords=['ROS2', 'VRX', 'autonomous navigation', 'path planning', 'obstacle detection', 'LiDAR', 'A*'],
     tests_require=['pytest'],
@@ -41,11 +41,11 @@ setup(
     ],
     entry_points={
         'console_scripts': [
-            # === Core Vostok1 nodes (launched by vostok1.launch.yaml) ===
-            'sputnik_planner = plan.sputnik_planner:main',
-            'oko_perception = plan.oko_perception:main',
+            # === Core AutoBoat nodes (launched by autoboat.launch.yaml) ===
+            'waypoint_planner = plan.waypoint_planner:main',
+            'lidar_perception = plan.lidar_perception:main',
             'waypoint_visualizer = plan.waypoint_visualizer:main',
-            'vostok1_cli = plan.vostok1_cli:main',
+            'autoboat_cli = plan.autoboat_cli:main',
             'health_check_service = plan.health_check_service:main',
         ],
     },

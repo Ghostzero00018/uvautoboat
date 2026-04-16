@@ -1,16 +1,16 @@
-# Vostok1 Web Dashboard
+# AutoBoat Web Dashboard
 
-Real-time web-based monitoring and control dashboard for the Vostok1 autonomous boat system.
+Real-time web-based monitoring and control dashboard for the AutoBoat autonomous boat system.
 
 ## Features
 
 - **Real-time GPS tracking** with trajectory visualization on interactive Leaflet map
 - **Mission control**: Generate, Confirm, Start, Stop, Resume, Emergency Stop, Go Home, Reset
-- **Three config panels**: Main Config (PID/speed/nav), OKO Perception, BURAN Controller
+- **Three config panels**: Main Config (PID/speed/nav), LiDAR Perception, Heading Controller
 - **Dirty-params filtering**: Only user-modified parameters are sent on Apply
 - **Apply buttons disabled** until first ROS config sync (prevents stale defaults)
-- **Reset Defaults** buttons for OKO and BURAN (restores launch file values)
-- **OKO presets**: Universal, Buoy Field, Pier Detect, Open Water
+- **Reset Defaults** buttons for Perception and Controller (restores launch file values)
+- **Perception presets**: Universal, Buoy Field, Pier Detect, Open Water
 - **Health check panel** with live streaming output, elapsed time, and [DONE] completion
 - **JSON export** on Health Check, System Logs, ROS2 Terminal, and Mission Control panels
 - **Emergency stop** with red pulsing badge and thrust cut
@@ -36,7 +36,7 @@ Real-time web-based monitoring and control dashboard for the Vostok1 autonomous 
    ```
 
 4. **Internet access** — the dashboard loads **roslibjs v1** and **Leaflet.js** from CDNs (`cdn.jsdelivr.net`, `unpkg.com`)
-5. **Vostok1 nodes** running via `vostok1.launch.yaml`
+5. **AutoBoat nodes** running via `autoboat.launch.yaml`
 
 > **Not ros2-web-bridge.** A separate project ([ros2-web-bridge](https://github.com/RobotWebTools/ros2-web-bridge)) offered a Node.js-based alternative but was **archived in November 2025** (last targeted ROS 2 Dashing, 2019). This dashboard uses `rosbridge_suite`, the actively maintained official ROS package.
 
@@ -45,7 +45,7 @@ Real-time web-based monitoring and control dashboard for the Vostok1 autonomous 
 ### Option A: One-Click Launch
 
 ```bash
-bash ~/seal_ws/src/uvautoboat/one_click_launch_all/launch_vostok1_complete.sh
+bash ~/seal_ws/src/uvautoboat/one_click_launch_all/launch_autoboat_complete.sh
 ```
 
 Then open **<http://localhost:8002>**.
@@ -57,8 +57,8 @@ Then open **<http://localhost:8002>**.
 | T1       | `ros2 launch vrx_gz competition.launch.py world:=sydney_regatta_DEFAULT`                       | Gazebo simulation             |
 | T2       | `ros2 launch rosbridge_server rosbridge_websocket_launch.xml delay_between_messages:=0.0`      | WebSocket bridge (port 9090)  |
 | T3       | `ros2 run web_video_server web_video_server`                                                   | Camera stream (port 8080)     |
-| T4       | `ros2 launch ~/seal_ws/src/uvautoboat/launch/vostok1.launch.yaml`                             | Navigation system             |
-| T5       | `cd ~/seal_ws/src/uvautoboat/web_dashboard/vostok1 && python3 -m http.server 8002`            | Dashboard (port 8002)         |
+| T4       | `ros2 launch ~/seal_ws/src/uvautoboat/launch/autoboat.launch.yaml`                             | Navigation system             |
+| T5       | `cd ~/seal_ws/src/uvautoboat/web_dashboard/autoboat && python3 -m http.server 8002`            | Dashboard (port 8002)         |
 
 > **Important:** The `delay_between_messages:=0.0` parameter is required for ROS 2 Jazzy.
 > Do NOT open `index.html` directly as a file (`file://`). Serve it via HTTP for WebSocket to work.
@@ -77,8 +77,8 @@ Then open **<http://localhost:8002>**.
 | **Anti-Stuck Status**      | Escape mode, direction (LEFT), front clearance, drift vector, Kalman sigma      |
 | **Trajectory Map**         | Interactive Leaflet map with boat position, waypoints, trajectory               |
 | **Main Configuration**     | PID gains, speed, safe distance, waypoint tolerance, A* settings                |
-| **OKO Configuration**      | 17 perception params with 4 presets (Universal, Buoy Field, Pier, Open Water)   |
-| **BURAN Configuration**    | 14 control params (safety distances, avoidance, anti-stuck, slew rate)          |
+| **Perception Configuration**      | 17 perception params with 4 presets (Universal, Buoy Field, Pier, Open Water)   |
+| **Controller Configuration**    | 14 control params (safety distances, avoidance, anti-stuck, slew rate)          |
 | **Health Check**           | Live streaming 45-check system diagnostic with elapsed time                     |
 | **System Logs**            | Timestamped, color-coded log entries                                            |
 | **ROS2 Terminal**          | Direct ROS2 command output                                                      |
@@ -92,11 +92,11 @@ Each section sends only its own parameters. With dirty-params filtering, only fi
 
 | Button           | Parameters                                          | Target Nodes    |
 | ---------------- | --------------------------------------------------- | --------------- |
-| **Apply Config** | PID, speed, lanes, waypoint tolerance, A* settings  | SPUTNIK + BURAN |
-| **Apply OKO**    | Height/range filters, clustering, temporal, smoke    | OKO             |
-| **Apply BURAN**  | Safety distances, avoidance gains, anti-stuck, slew  | BURAN           |
+| **Apply Config** | PID, speed, lanes, waypoint tolerance, A* settings  | Planner + Controller |
+| **Apply Perception** | Height/range filters, clustering, temporal, smoke | Perception           |
+| **Apply Controller** | Safety distances, avoidance gains, anti-stuck, slew | Controller         |
 
-All three publish to `/sputnik/set_config`. Each node picks out only the keys it recognizes.
+All three publish to `/planning/set_config`. Each node picks out only the keys it recognizes.
 
 ### Safety Features
 
@@ -108,18 +108,18 @@ All three publish to `/sputnik/set_config`. Each node picks out only the keys it
 
 Any parameter change must be mirrored in:
 
-1. `vostok1.launch.yaml` — the authoritative operational values
+1. `autoboat.launch.yaml` — the authoritative operational values
 2. `index.html` — input field default values
-3. `app.js` — readInput fallbacks, currentState.config, OKO_DEFAULTS, BURAN_DEFAULTS
+3. `app.js` — readInput fallbacks, currentState.config, PERCEPTION_DEFAULTS, CONTROLLER_DEFAULTS
 
 ### Known Parameter Collisions (Resolved)
 
-OKO and BURAN share the `/sputnik/set_config` topic. Parameters with the same name would collide:
+Perception and Controller share the `/planning/set_config` topic. Parameters with the same name would collide:
 
 | Parameter           | Resolution                               |
 | ------------------- | ---------------------------------------- |
-| `min_safe_distance` | OKO renamed to `oko_min_safe_distance`   |
-| `critical_distance` | OKO renamed to `oko_critical_distance`   |
+| `min_safe_distance` | Perception renamed to `perception_min_safe_distance`   |
+| `critical_distance` | Perception renamed to `perception_critical_distance`   |
 
 ## Mission Workflow
 
@@ -150,11 +150,11 @@ OKO and BURAN share the `/sputnik/set_config` topic. Parameters with the same na
 | `/planning/mission_status`     | State, waypoint, progress            |
 | `/planning/waypoints`          | Waypoint list for map                |
 | `/planning/current_target`     | Current navigation target            |
-| `/perception/obstacle_info`    | OKO obstacle detection (JSON)        |
+| `/perception/obstacle_info`    | LiDAR obstacle detection (JSON)      |
 | `/perception/smoke_detected`   | LiDAR smoke detection (JSON)         |
-| `/control/status`              | BURAN controller status              |
+| `/control/status`              | Heading controller status            |
 | `/control/anti_stuck_status`   | Anti-stuck escape status             |
-| `/sputnik/config`              | Current config values (syncs fields) |
+| `/planning/config`              | Current config values (syncs fields) |
 | `/wamv/thrusters/left/thrust`  | Left thruster command                |
 | `/wamv/thrusters/right/thrust` | Right thruster command               |
 
@@ -162,8 +162,8 @@ OKO and BURAN share the `/sputnik/set_config` topic. Parameters with the same na
 
 | Topic                      | Data                                           |
 | -------------------------- | ---------------------------------------------- |
-| `/sputnik/set_config`      | Parameter updates (JSON)                       |
-| `/sputnik/mission_command` | Mission commands (start, stop, generate, etc.) |
+| `/planning/set_config`      | Parameter updates (JSON)                       |
+| `/planning/mission_command` | Mission commands (start, stop, generate, etc.) |
 
 ## Files
 
@@ -172,7 +172,7 @@ OKO and BURAN share the `/sputnik/set_config` topic. Parameters with the same na
 | `index.html`                  | Dashboard structure, input fields, panels  |
 | `app.js`                      | ROS connection, data handling, config logic |
 | `style_merged.css`            | Unified stylesheet                         |
-| `README_vostok1_dashboard.md` | This file                                  |
+| `README_autoboat_dashboard.md` | This file                                  |
 
 ## Troubleshooting
 
@@ -180,13 +180,13 @@ OKO and BURAN share the `/sputnik/set_config` topic. Parameters with the same na
 | --------------------------------- | --------------------------------------------------------------------- |
 | Dashboard shows "Disconnected"    | See diagnostic steps below                                            |
 | Port 9090 in use                  | Kill old instance: `pkill -9 -f rosbridge`                            |
-| Apply buttons stay grey           | Nodes not publishing `/sputnik/config` — check navigation is launched |
+| Apply buttons stay grey           | Nodes not publishing `/planning/config` — check navigation is launched |
 | Reset then Apply sends old values | Fixed — Reset now marks inputs dirty to prevent ROS sync race         |
 | Camera feed not showing           | Check web_video_server: `ros2 run web_video_server web_video_server`  |
 | Map tiles not loading             | Requires internet for OpenStreetMap CDN                               |
 | ROSLIB not defined (console)      | Requires internet for CDN (roslibjs, Leaflet)                         |
 | Half the page missing             | CDN failed — check internet; see browser console (F12)                |
-| Parameter collision               | OKO params prefixed with `oko_` (e.g. `oko_critical_distance`)       |
+| Parameter collision               | Perception params prefixed with `perception_` (e.g. `perception_critical_distance`) |
 
 ### Dashboard "Disconnected" Diagnostics
 

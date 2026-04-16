@@ -19,9 +19,9 @@ let gridEventHandlerRegistered = false;  // Prevent duplicate grid event handler
 
 // Configuration publisher
 let configPublisher = null;
-let modularConfigPublisher = null;  // For sputnik planner
+let modularConfigPublisher = null;  // For waypoint planner
 let missionCommandPublisher = null;  // Mission command publisher
-let modularMissionCommandPublisher = null;  // For sputnik planner
+let modularMissionCommandPublisher = null;  // For waypoint planner
 
 // Track which config inputs have been modified by user (prevents ROS from overwriting)
 let dirtyInputs = new Set();
@@ -50,7 +50,7 @@ let missionState = {
     startLon: null
 };
 
-const WAYPOINT_STORAGE_KEY = 'vostok1_cached_waypoints';
+const WAYPOINT_STORAGE_KEY = 'autoboat_cached_waypoints';
 
 // Data storage
 let currentState = {
@@ -411,20 +411,20 @@ function subscribeToTopics() {
     });
 
     // Modular controller anti-stuck status
-    const buranAntiStuckTopic = new ROSLIB.Topic({
+    const controllerAntiStuckTopic = new ROSLIB.Topic({
         ros: ros,
         name: '/control/anti_stuck_status',
         messageType: 'std_msgs/String'
     });
     
-    buranAntiStuckTopic.subscribe((message) => {
+    controllerAntiStuckTopic.subscribe((message) => {
         const data = JSON.parse(message.data);
-        if (DEBUG_MODE) console.log('Buran anti-stuck status:', data);
+        if (DEBUG_MODE) console.log('Controller anti-stuck status:', data);
         updateAntiStuckStatus(data);
     });
 
     // ==================== MODULAR NAVIGATION SUPPORT ====================
-    // Modular current target from sputnik_planner (for distance info)
+    // Modular current target from waypoint_planner (for distance info)
     const modularTargetTopic = new ROSLIB.Topic({
         ros: ros,
         name: '/planning/current_target',
@@ -438,7 +438,7 @@ function subscribeToTopics() {
         // This topic is kept for other current_target data if needed in the future
     });
     
-    // Modular waypoints from sputnik_planner
+    // Modular waypoints from waypoint_planner
     const modularWaypointsTopic = new ROSLIB.Topic({
         ros: ros,
         name: '/planning/waypoints',
@@ -463,7 +463,7 @@ function subscribeToTopics() {
         }
     });
     
-    // Modular obstacle status from oko_perception
+    // Modular obstacle status from lidar_perception
     const modularObstacleTopic = new ROSLIB.Topic({
         ros: ros,
         name: '/perception/obstacle_info',
@@ -473,29 +473,29 @@ function subscribeToTopics() {
     modularObstacleTopic.subscribe((message) => {
         const data = JSON.parse(message.data);
         if (DEBUG_MODE) console.log('Modular obstacle status:', data);
-        // Convert modular format to vostok1 format with OKO v2.0/v2.1 enhancements
-        // OKO v2.0: front_clear, left_clear, right_clear ARE the distances in meters
+        // Convert modular format to autoboat format with LiDAR v2.0/v2.1 enhancements
+        // LiDAR v2.0: front_clear, left_clear, right_clear ARE the distances in meters
         const CLEAR_THRESHOLD = 10.0;  // Distance threshold for "clear" status
         updateObstacleStatus({
             min_distance: data.min_distance,
-            // OKO v2.0: Use distance values for both boolean and numeric display
+            // LiDAR v2.0: Use distance values for both boolean and numeric display
             front_clear: data.front_clear > CLEAR_THRESHOLD,
             left_clear: data.left_clear > CLEAR_THRESHOLD,
             right_clear: data.right_clear > CLEAR_THRESHOLD,
-            front_distance: data.front_clear,  // OKO v2.0: front_clear IS the distance
-            left_distance: data.left_clear,    // OKO v2.0: left_clear IS the distance
-            right_distance: data.right_clear,  // OKO v2.0: right_clear IS the distance
+            front_distance: data.front_clear,  // LiDAR v2.0: front_clear IS the distance
+            left_distance: data.left_clear,    // LiDAR v2.0: left_clear IS the distance
+            right_distance: data.right_clear,  // LiDAR v2.0: right_clear IS the distance
             status: data.force_avoid_active ? '🔴 FORCE AVOID | Évitement forcé' :
                     data.is_critical ? '🚨 CRITICAL | Critique' :
                     data.obstacle_detected ? '⚠️ OBSTACLE | Détecté' :
                     '✅ CLEAR | Dégagé',
-            // OKO v2.0 enhanced fields
+            // LiDAR v2.0 enhanced fields
             urgency: data.urgency || 0.0,
             obstacle_count: data.obstacle_count || 0,
             best_gap: data.best_gap || null,
             clusters: data.clusters || [],
-            moving_obstacles: data.moving_obstacles || [],  // OKO v2.0: array of {id, vx, vy, speed}
-            // OKO v2.1 enhanced fields
+            moving_obstacles: data.moving_obstacles || [],  // LiDAR v2.0: array of {id, vx, vy, speed}
+            // LiDAR v2.1 enhanced fields
             vfh_gap: data.vfh_gap || null,           // VFH best direction
             polar_bias: data.polar_bias || 0.0,      // Steering bias [-1, 1]
             force_avoid_active: data.force_avoid_active || false,
@@ -503,7 +503,7 @@ function subscribeToTopics() {
         });
     });
     
-    // Modular controller status from buran_controller
+    // Modular controller status from heading_controller
     const modularControlTopic = new ROSLIB.Topic({
         ros: ros,
         name: '/control/status',
@@ -538,39 +538,39 @@ function subscribeToTopics() {
     });
 
     if (DEBUG_MODE) console.log('Subscribed to all topics (integrated + modular)');
-    addLog('Subscribed to topics (Vostok1 + Modular)', 'info');
+    addLog('Subscribed to topics (AutoBoat + Modular)', 'info');
     
     // Enable mission control UI when connected (before config received)
     updateMissionControlUI({ state: 'IDLE', gps_ready: true });
     
-    // Create publisher for configuration updates (Sputnik modular mode only)
+    // Create publisher for configuration updates (Planner modular mode only)
     configPublisher = new ROSLIB.Topic({
         ros: ros,
-        name: '/sputnik/set_config',
+        name: '/planning/set_config',
         messageType: 'std_msgs/String'
     });
 
     // Backward compatibility alias
     modularConfigPublisher = configPublisher;
     
-    // Subscribe to current config (Sputnik modular mode only)
+    // Subscribe to current config (Planner modular mode only)
     const modularConfigTopic = new ROSLIB.Topic({
         ros: ros,
-        name: '/sputnik/config',
+        name: '/planning/config',
         messageType: 'std_msgs/String'
     });
     
     modularConfigTopic.subscribe((message) => {
         const data = JSON.parse(message.data);
-        if (DEBUG_MODE) console.log('Config received (sputnik):', data);
+        if (DEBUG_MODE) console.log('Config received (planner):', data);
         updateConfigFromROS(data);
         updateWorldFromConfig(data);
     });
     
-    // Create mission command publisher (Sputnik modular mode only)
+    // Create mission command publisher (Planner modular mode only)
     missionCommandPublisher = new ROSLIB.Topic({
         ros: ros,
-        name: '/sputnik/mission_command',
+        name: '/planning/mission_command',
         messageType: 'std_msgs/String'
     });
 
@@ -585,12 +585,12 @@ function subscribeToTopics() {
     });
     
     rosoutTopic.subscribe((message) => {
-        // Filter for vostok1 and modular node messages
+        // Filter for autoboat and modular node messages
         if (message.name && (
-            message.name.includes('vostok1') ||
-            message.name.includes('sputnik') ||
-            message.name.includes('oko') ||
-            message.name.includes('buran')
+            message.name.includes('autoboat') ||
+            message.name.includes('waypoint_planner') ||
+            message.name.includes('lidar_perception') ||
+            message.name.includes('heading_controller')
         )) {
             addTerminalLine(message);
         }
@@ -748,7 +748,7 @@ function updateObstacleStatus(data) {
         _prevObstacle.right = rightText;
     }
 
-    // OKO v2.0: Update urgency display if element exists
+    // LiDAR v2.0: Update urgency display if element exists
     const urgencyEl = document.getElementById('urgency');
     if (urgencyEl && data.urgency !== undefined) {
         const urgencyPct = (data.urgency * 100).toFixed(0);
@@ -764,14 +764,14 @@ function updateObstacleStatus(data) {
         }
     }
 
-    // OKO v2.0: Update obstacle count if element exists
+    // LiDAR v2.0: Update obstacle count if element exists
     const countEl = document.getElementById('obstacle-count');
     if (countEl && data.obstacle_count !== undefined && _prevObstacle.count !== data.obstacle_count) {
         countEl.textContent = data.obstacle_count;
         _prevObstacle.count = data.obstacle_count;
     }
 
-    // OKO v2.0: Update best gap if element exists
+    // LiDAR v2.0: Update best gap if element exists
     const gapEl = document.getElementById('best-gap');
     if (gapEl && data.best_gap) {
         const gapText = `${data.best_gap.direction.toFixed(0)}° (${data.best_gap.width.toFixed(0)}°)`;
@@ -923,12 +923,12 @@ function addLog(message, type = 'info') {
     }
 }
 
-// GPS origin — set from first GPS fix, matching how sputnik stores start_gps
+// GPS origin — set from first GPS fix, matching how waypoint_planner stores start_gps
 let gpsOrigin = null;
 
 // Convert GPS to local coordinates (simplified)
 function gpsToLocal(lat, lon) {
-    // Use first GPS fix as origin, same as sputnik_planner
+    // Use first GPS fix as origin, same as waypoint_planner
     if (!gpsOrigin) {
         if (lat !== 0 && lon !== 0) {
             gpsOrigin = { lat: lat, lon: lon };
@@ -954,7 +954,7 @@ setInterval(() => {
 function initConfigPanel() {
     if (DEBUG_MODE) console.log('Initializing config panel...');
 
-    // All config input IDs (main + OKO + BURAN)
+    // All config input IDs (main + Perception + Controller)
     const allConfigInputs = [
         'cfg-lanes', 'cfg-scan-length', 'cfg-scan-width',
         'cfg-kp', 'cfg-ki', 'cfg-kd',
@@ -962,17 +962,17 @@ function initConfigPanel() {
         'cfg-waypoint-tolerance', 'cfg-approach-slow-distance', 'cfg-approach-slow-factor',
         'cfg-astar-resolution', 'cfg-astar-safety', 'cfg-astar-max',
         'wp-lanes', 'wp-length', 'wp-width',
-        // OKO inputs
-        'oko-min-height', 'oko-max-height', 'oko-min-range', 'oko-max-range',
-        'oko-safe-dist', 'oko-critical-dist', 'oko-cluster-dist', 'oko-min-cluster-size',
-        'oko-temporal-history', 'oko-temporal-threshold', 'oko-water-threshold', 'oko-hysteresis',
-        'oko-smoke-enabled', 'oko-smoke-min-height', 'oko-smoke-max-height',
-        'oko-solid-min-height', 'oko-solid-max-height',
-        // BURAN inputs
-        'buran-critical-dist', 'buran-safe-dist', 'buran-bank-dist',
-        'buran-obstacle-slow', 'buran-bank-slow', 'buran-avoid-gain',
-        'buran-use-vfh', 'buran-max-turn', 'buran-stuck-timeout', 'buran-stuck-threshold',
-        'buran-reverse-timeout', 'buran-max-reverse', 'buran-turn-deadband', 'buran-slew-rate'
+        // Perception inputs
+        'perception-min-height', 'perception-max-height', 'perception-min-range', 'perception-max-range',
+        'perception-safe-dist', 'perception-critical-dist', 'perception-cluster-dist', 'perception-min-cluster-size',
+        'perception-temporal-history', 'perception-temporal-threshold', 'perception-water-threshold', 'perception-hysteresis',
+        'perception-smoke-enabled', 'perception-smoke-min-height', 'perception-smoke-max-height',
+        'perception-solid-min-height', 'perception-solid-max-height',
+        // Controller inputs
+        'controller-critical-dist', 'controller-safe-dist', 'controller-bank-dist',
+        'controller-obstacle-slow', 'controller-bank-slow', 'controller-avoid-gain',
+        'controller-use-vfh', 'controller-max-turn', 'controller-stuck-timeout', 'controller-stuck-threshold',
+        'controller-reverse-timeout', 'controller-max-reverse', 'controller-turn-deadband', 'controller-slew-rate'
     ];
 
     // Mark input as dirty when user types
@@ -1053,51 +1053,51 @@ function resetConfigToDefaults() {
     addLog('Configuration reset to defaults — click Apply to send | Cliquez Appliquer pour envoyer', 'info');
 }
 
-// OKO launch defaults (must match vostok1.launch.yaml)
-const OKO_DEFAULTS = {
-    'oko-min-height': -1.2, 'oko-max-height': 1.5,
-    'oko-min-range': 2.2, 'oko-max-range': 100,
-    'oko-safe-dist': 10.0, 'oko-critical-dist': 5.5,  // oko_critical_distance in ROS
-    'oko-cluster-dist': 3.0, 'oko-min-cluster-size': 8,
-    'oko-temporal-history': 3, 'oko-temporal-threshold': 2,
-    'oko-water-threshold': 0.32, 'oko-hysteresis': 2.0,
-    'oko-smoke-min-height': 2.5, 'oko-smoke-max-height': 10.0,
-    'oko-solid-min-height': -2.0, 'oko-solid-max-height': 0.5
+// Perception launch defaults (must match autoboat.launch.yaml)
+const PERCEPTION_DEFAULTS = {
+    'perception-min-height': -1.2, 'perception-max-height': 1.5,
+    'perception-min-range': 2.2, 'perception-max-range': 100,
+    'perception-safe-dist': 10.0, 'perception-critical-dist': 5.5,  // perception_critical_distance in ROS
+    'perception-cluster-dist': 3.0, 'perception-min-cluster-size': 8,
+    'perception-temporal-history': 3, 'perception-temporal-threshold': 2,
+    'perception-water-threshold': 0.32, 'perception-hysteresis': 2.0,
+    'perception-smoke-min-height': 2.5, 'perception-smoke-max-height': 10.0,
+    'perception-solid-min-height': -2.0, 'perception-solid-max-height': 0.5
 };
 
-// BURAN launch defaults (must match vostok1.launch.yaml)
-const BURAN_DEFAULTS = {
-    'buran-critical-dist': 6.0, 'buran-safe-dist': 12.0,
-    'buran-bank-dist': 6.0, 'buran-obstacle-slow': 0.5,
-    'buran-bank-slow': 0.25, 'buran-avoid-gain': 18,
-    'buran-max-turn': 45, 'buran-stuck-timeout': 12.0,
-    'buran-stuck-threshold': 1.0, 'buran-reverse-timeout': 4.0,
-    'buran-max-reverse': 25, 'buran-turn-deadband': 0.5,
-    'buran-slew-rate': 80
+// Controller launch defaults (must match autoboat.launch.yaml)
+const CONTROLLER_DEFAULTS = {
+    'controller-critical-dist': 6.0, 'controller-safe-dist': 12.0,
+    'controller-bank-dist': 6.0, 'controller-obstacle-slow': 0.5,
+    'controller-bank-slow': 0.25, 'controller-avoid-gain': 18,
+    'controller-max-turn': 45, 'controller-stuck-timeout': 12.0,
+    'controller-stuck-threshold': 1.0, 'controller-reverse-timeout': 4.0,
+    'controller-max-reverse': 25, 'controller-turn-deadband': 0.5,
+    'controller-slew-rate': 80
 };
 
-function resetOkoToDefaults() {
-    for (const [id, val] of Object.entries(OKO_DEFAULTS)) {
+function resetPerceptionToDefaults() {
+    for (const [id, val] of Object.entries(PERCEPTION_DEFAULTS)) {
         const el = document.getElementById(id);
         if (el) { el.value = val; dirtyInputs.add(id); el.classList.add('input-dirty'); }
     }
     // Reset smoke enabled select
-    const smokeEl = document.getElementById('oko-smoke-enabled');
+    const smokeEl = document.getElementById('perception-smoke-enabled');
     if (smokeEl) smokeEl.value = 'true';
-    addLog('OKO parameters reset to launch defaults | Paramètres OKO réinitialisés', 'info');
-    showFeedback('🔄 OKO reset to launch defaults', 'info');
+    addLog('Perception parameters reset to launch defaults | Paramètres Perception réinitialisés', 'info');
+    showFeedback('🔄 Perception reset to launch defaults', 'info');
 }
 
-function resetBuranToDefaults() {
-    for (const [id, val] of Object.entries(BURAN_DEFAULTS)) {
+function resetControllerToDefaults() {
+    for (const [id, val] of Object.entries(CONTROLLER_DEFAULTS)) {
         const el = document.getElementById(id);
         if (el) { el.value = val; dirtyInputs.add(id); el.classList.add('input-dirty'); }
     }
     // Reset VFH select
-    const vfhEl = document.getElementById('buran-use-vfh');
+    const vfhEl = document.getElementById('controller-use-vfh');
     if (vfhEl) vfhEl.value = 'false';
-    addLog('BURAN parameters reset to launch defaults | Paramètres BURAN réinitialisés', 'info');
-    showFeedback('🔄 BURAN reset to launch defaults', 'info');
+    addLog('Controller parameters reset to launch defaults | Paramètres Controller réinitialisés', 'info');
+    showFeedback('🔄 Controller reset to launch defaults', 'info');
 }
 
 // Initialize value tracking and displays
@@ -1288,7 +1288,7 @@ function markClean(inputIds) {
     });
 }
 
-// Send configuration to Vostok1
+// Send configuration to AutoBoat
 function sendConfig(pidOnly = false) {
     if (!connected || !configPublisher) {
         addLog('Not connected to ROS', 'error');
@@ -1368,7 +1368,7 @@ function sendConfig(pidOnly = false) {
         data: JSON.stringify(config)
     });
 
-    // Publish to both vostok1 and modular (sputnik) topics
+    // Publish to planning topics
     configPublisher.publish(message);
     if (modularConfigPublisher) {
         modularConfigPublisher.publish(message);
@@ -1626,7 +1626,7 @@ function generateWaypoints() {
         lanes: lanes,
         scan_length: length,
         scan_width: width,
-        // Carry A* settings to Sputnik with waypoint generation
+        // Carry A* settings to Planner with waypoint generation
         astar_enabled: navMode !== 'simple',
         astar_hybrid_mode: navMode === 'hybrid',
         hazard_enabled: navMode === 'hybrid',
@@ -1640,7 +1640,7 @@ function generateWaypoints() {
     });
     configPublisher.publish(configMsg);
 
-    // Wait for sputnik to process config before generating waypoints
+    // Wait for planner to process config before generating waypoints
     // 500ms is conservative for local rosbridge; covers slow config parsing
     setTimeout(() => {
         sendMissionCommand('generate_waypoints');
@@ -1655,18 +1655,18 @@ function generateWaypoints() {
     addLog(`Generating ${totalWaypoints} waypoints: ${length}m × ${lanes} lanes`, 'info');
 }
 
-// Send mission command to Sputnik (modular mode)
+// Send mission command to Planner (modular mode)
 function sendMissionCommand(command) {
     if (!connected) {
         addLog('Not connected to ROS', 'error');
         return;
     }
 
-    // Create publisher if not exists (Sputnik only)
+    // Create publisher if not exists (Planner only)
     if (!missionCommandPublisher) {
         missionCommandPublisher = new ROSLIB.Topic({
             ros: ros,
-            name: '/sputnik/mission_command',
+            name: '/planning/mission_command',
             messageType: 'std_msgs/String'
         });
     }
@@ -1675,10 +1675,10 @@ function sendMissionCommand(command) {
         data: JSON.stringify({ command: command })
     });
 
-    // Publish to Sputnik modular planner only
+    // Publish to modular planner only
     missionCommandPublisher.publish(msg);
     addLog(`Mission command: ${command}`, 'info');
-    if (DEBUG_MODE) console.log('Mission command sent to sputnik:', command);
+    if (DEBUG_MODE) console.log('Mission command sent to planner:', command);
 }
 
 // Emergency Stop - Immediately halt the boat
@@ -1896,7 +1896,7 @@ function displayWaypointsOnMap(waypoints, fitToWaypoints = false) {
     clearWaypointPreview();
     
     // Convert local coordinates to GPS
-    // Handle both formats: [{x, y}] from vostok1 or [[x, y]] from sputnik
+    // Handle both formats: [{x, y}] or [[x, y]] from planner
     const waypointLatLngs = waypoints.map((wp, idx) => {
         const x = Array.isArray(wp) ? wp[0] : wp.x;
         const y = Array.isArray(wp) ? wp[1] : wp.y;
@@ -2118,13 +2118,13 @@ function updateSmokeDetection(data) {
 const TUNING_PRESETS = {
     universal: {
         name: "Universal",
-        oko: {
+        perception: {
             min_height: -1.8,
             max_height: 0.8,
             min_range: 0.8,
             max_range: 80.0,
-            oko_min_safe_distance: 11.0,
-            oko_critical_distance: 3.5,
+            perception_min_safe_distance: 11.0,
+            perception_critical_distance: 3.5,
             cluster_distance: 1.5,
             min_cluster_size: 4,
             temporal_history_size: 3,
@@ -2137,7 +2137,7 @@ const TUNING_PRESETS = {
             solid_min_height: -2.0,
             solid_max_height: 0.5
         },
-        buran: {
+        controller: {
             critical_distance: 3.5,
             min_safe_distance: 11.0,
             bank_slow_distance: 7.0,
@@ -2156,13 +2156,13 @@ const TUNING_PRESETS = {
     },
     buoyField: {
         name: "Buoy Field",
-        oko: {
+        perception: {
             min_height: -1.8,
             max_height: 0.8,
             min_range: 0.8,
             max_range: 80.0,
-            oko_min_safe_distance: 10.0,
-            oko_critical_distance: 2.5,
+            perception_min_safe_distance: 10.0,
+            perception_critical_distance: 2.5,
             cluster_distance: 1.2,
             min_cluster_size: 3,
             temporal_history_size: 2,
@@ -2176,7 +2176,7 @@ const TUNING_PRESETS = {
             solid_min_height: -2.0,
             solid_max_height: 0.6
         },
-        buran: {
+        controller: {
             critical_distance: 3.0,
             min_safe_distance: 10.0,
             bank_slow_distance: 6.0,
@@ -2195,13 +2195,13 @@ const TUNING_PRESETS = {
     },
     pier: {
         name: "Pier Detect",
-        oko: {
+        perception: {
             min_height: -1.6,
             max_height: 1.0,
             min_range: 0.5,
             max_range: 60.0,
-            oko_min_safe_distance: 12.0,
-            oko_critical_distance: 2.0,
+            perception_min_safe_distance: 12.0,
+            perception_critical_distance: 2.0,
             cluster_distance: 0.5,
             min_cluster_size: 3,
             temporal_history_size: 3,
@@ -2215,7 +2215,7 @@ const TUNING_PRESETS = {
             solid_min_height: -2.0,
             solid_max_height: 0.8
         },
-        buran: {
+        controller: {
             critical_distance: 2.5,
             min_safe_distance: 12.0,
             bank_slow_distance: 8.0,
@@ -2234,13 +2234,13 @@ const TUNING_PRESETS = {
     },
     openWater: {
         name: "Open Water",
-        oko: {
+        perception: {
             min_height: -0.2,
             max_height: 3.0,
             min_range: 3.0,
             max_range: 80.0,
-            oko_min_safe_distance: 15.0,
-            oko_critical_distance: 5.0,
+            perception_min_safe_distance: 15.0,
+            perception_critical_distance: 5.0,
             cluster_distance: 3.0,
             min_cluster_size: 6,
             temporal_history_size: 2,
@@ -2254,7 +2254,7 @@ const TUNING_PRESETS = {
             solid_min_height: -2.0,
             solid_max_height: 0.5
         },
-        buran: {
+        controller: {
             critical_distance: 5.0,
             min_safe_distance: 15.0,
             bank_slow_distance: 8.0,
@@ -2301,18 +2301,18 @@ function initTuningPanel() {
     document.getElementById('btn-preset-open-water').addEventListener('click', () => applyPreset('openWater'));
 
     // Apply buttons
-    document.getElementById('btn-apply-oko').addEventListener('click', () => applyOkoParameters());
-    document.getElementById('btn-apply-buran').addEventListener('click', () => applyBuranParameters());
+    document.getElementById('btn-apply-perception').addEventListener('click', () => applyPerceptionParameters());
+    document.getElementById('btn-apply-controller').addEventListener('click', () => applyControllerParameters());
 
     // Reset defaults buttons
-    document.getElementById('btn-reset-oko').addEventListener('click', () => {
-        if (confirm('Reset OKO parameters to launch defaults? | Réinitialiser les paramètres OKO?')) {
-            resetOkoToDefaults();
+    document.getElementById('btn-reset-perception').addEventListener('click', () => {
+        if (confirm('Reset Perception parameters to launch defaults? | Réinitialiser les paramètres Perception?')) {
+            resetPerceptionToDefaults();
         }
     });
-    document.getElementById('btn-reset-buran').addEventListener('click', () => {
-        if (confirm('Reset BURAN parameters to launch defaults? | Réinitialiser les paramètres BURAN?')) {
-            resetBuranToDefaults();
+    document.getElementById('btn-reset-controller').addEventListener('click', () => {
+        if (confirm('Reset Controller parameters to launch defaults? | Réinitialiser les paramètres Controller?')) {
+            resetControllerToDefaults();
         }
     });
 
@@ -2332,12 +2332,12 @@ function applyPreset(presetName) {
     statusEl.style.color = '#f39c12';
 
     // Update UI inputs
-    updateOkoInputs(preset.oko);
-    updateBuranInputs(preset.buran);
+    updatePerceptionInputs(preset.perception);
+    updateControllerInputs(preset.controller);
 
     // Apply parameters to ROS
-    applyOkoParameters(preset.oko);
-    applyBuranParameters(preset.buran);
+    applyPerceptionParameters(preset.perception);
+    applyControllerParameters(preset.controller);
 
     setTimeout(() => {
         statusEl.textContent = `✅ ${preset.name} preset applied!`;
@@ -2350,180 +2350,180 @@ function applyPreset(presetName) {
     addLog(`Applied ${preset.name} preset`, 'info');
 }
 
-// Update OKO input fields from preset
-function updateOkoInputs(params) {
-    document.getElementById('oko-min-height').value = params.min_height;
-    document.getElementById('oko-max-height').value = params.max_height;
-    document.getElementById('oko-min-range').value = params.min_range;
-    document.getElementById('oko-max-range').value = params.max_range;
-    document.getElementById('oko-safe-dist').value = params.oko_min_safe_distance;
-    document.getElementById('oko-critical-dist').value = params.oko_critical_distance;
-    document.getElementById('oko-cluster-dist').value = params.cluster_distance;
-    document.getElementById('oko-min-cluster-size').value = params.min_cluster_size;
-    document.getElementById('oko-temporal-history').value = params.temporal_history_size;
-    document.getElementById('oko-temporal-threshold').value = params.temporal_threshold;
-    document.getElementById('oko-water-threshold').value = params.water_plane_threshold;
-    document.getElementById('oko-hysteresis').value = params.hysteresis_distance;
+// Update Perception input fields from preset
+function updatePerceptionInputs(params) {
+    document.getElementById('perception-min-height').value = params.min_height;
+    document.getElementById('perception-max-height').value = params.max_height;
+    document.getElementById('perception-min-range').value = params.min_range;
+    document.getElementById('perception-max-range').value = params.max_range;
+    document.getElementById('perception-safe-dist').value = params.perception_min_safe_distance;
+    document.getElementById('perception-critical-dist').value = params.perception_critical_distance;
+    document.getElementById('perception-cluster-dist').value = params.cluster_distance;
+    document.getElementById('perception-min-cluster-size').value = params.min_cluster_size;
+    document.getElementById('perception-temporal-history').value = params.temporal_history_size;
+    document.getElementById('perception-temporal-threshold').value = params.temporal_threshold;
+    document.getElementById('perception-water-threshold').value = params.water_plane_threshold;
+    document.getElementById('perception-hysteresis').value = params.hysteresis_distance;
 
     // Smoke detection parameters (v2.1)
     if (params.smoke_filter_enabled !== undefined) {
-        document.getElementById('oko-smoke-enabled').value = params.smoke_filter_enabled.toString();
+        document.getElementById('perception-smoke-enabled').value = params.smoke_filter_enabled.toString();
     }
     if (params.smoke_min_height !== undefined) {
-        document.getElementById('oko-smoke-min-height').value = params.smoke_min_height;
+        document.getElementById('perception-smoke-min-height').value = params.smoke_min_height;
     }
     if (params.smoke_max_height !== undefined) {
-        document.getElementById('oko-smoke-max-height').value = params.smoke_max_height;
+        document.getElementById('perception-smoke-max-height').value = params.smoke_max_height;
     }
     if (params.solid_min_height !== undefined) {
-        document.getElementById('oko-solid-min-height').value = params.solid_min_height;
+        document.getElementById('perception-solid-min-height').value = params.solid_min_height;
     }
     if (params.solid_max_height !== undefined) {
-        document.getElementById('oko-solid-max-height').value = params.solid_max_height;
+        document.getElementById('perception-solid-max-height').value = params.solid_max_height;
     }
 }
 
-// Update BURAN input fields from preset
-function updateBuranInputs(params) {
-    document.getElementById('buran-critical-dist').value = params.critical_distance;
-    document.getElementById('buran-safe-dist').value = params.min_safe_distance;
-    document.getElementById('buran-bank-dist').value = params.bank_slow_distance;
-    document.getElementById('buran-obstacle-slow').value = params.obstacle_slow_factor;
-    document.getElementById('buran-bank-slow').value = params.bank_slow_factor;
-    document.getElementById('buran-avoid-gain').value = params.avoid_diff_gain;
-    document.getElementById('buran-use-vfh').value = params.use_vfh_bias.toString();
+// Update Controller input fields from preset
+function updateControllerInputs(params) {
+    document.getElementById('controller-critical-dist').value = params.critical_distance;
+    document.getElementById('controller-safe-dist').value = params.min_safe_distance;
+    document.getElementById('controller-bank-dist').value = params.bank_slow_distance;
+    document.getElementById('controller-obstacle-slow').value = params.obstacle_slow_factor;
+    document.getElementById('controller-bank-slow').value = params.bank_slow_factor;
+    document.getElementById('controller-avoid-gain').value = params.avoid_diff_gain;
+    document.getElementById('controller-use-vfh').value = params.use_vfh_bias.toString();
     if (params.max_avoidance_turn_deg !== undefined) {
-        document.getElementById('buran-max-turn').value = params.max_avoidance_turn_deg;
+        document.getElementById('controller-max-turn').value = params.max_avoidance_turn_deg;
     }
-    document.getElementById('buran-stuck-timeout').value = params.stuck_timeout;
-    document.getElementById('buran-stuck-threshold').value = params.stuck_threshold;
-    document.getElementById('buran-reverse-timeout').value = params.reverse_timeout;
-    document.getElementById('buran-max-reverse').value = params.max_reverse_distance;
-    document.getElementById('buran-turn-deadband').value = params.turn_deadband_deg;
-    document.getElementById('buran-slew-rate').value = params.slew_rate_limit;
+    document.getElementById('controller-stuck-timeout').value = params.stuck_timeout;
+    document.getElementById('controller-stuck-threshold').value = params.stuck_threshold;
+    document.getElementById('controller-reverse-timeout').value = params.reverse_timeout;
+    document.getElementById('controller-max-reverse').value = params.max_reverse_distance;
+    document.getElementById('controller-turn-deadband').value = params.turn_deadband_deg;
+    document.getElementById('controller-slew-rate').value = params.slew_rate_limit;
 }
 
-// Apply OKO perception parameters via config topic
-function applyOkoParameters(presetParams = null) {
+// Apply LiDAR perception parameters via config topic
+function applyPerceptionParameters(presetParams = null) {
     if (!connected || !configPublisher) {
         addLog('Not connected to ROS', 'error');
         showFeedback('❌ Not connected to ROS', 'error');
         return;
     }
 
-    // OKO input ID to param name mapping
-    const okoIdMap = {
-        'oko-min-height': 'min_height', 'oko-max-height': 'max_height',
-        'oko-min-range': 'min_range', 'oko-max-range': 'max_range',
-        'oko-safe-dist': 'oko_min_safe_distance', 'oko-critical-dist': 'oko_critical_distance',
-        'oko-cluster-dist': 'cluster_distance', 'oko-min-cluster-size': 'min_cluster_size',
-        'oko-temporal-history': 'temporal_history_size', 'oko-temporal-threshold': 'temporal_threshold',
-        'oko-water-threshold': 'water_plane_threshold', 'oko-hysteresis': 'hysteresis_distance',
-        'oko-smoke-enabled': 'smoke_filter_enabled',
-        'oko-smoke-min-height': 'smoke_min_height', 'oko-smoke-max-height': 'smoke_max_height',
-        'oko-solid-min-height': 'solid_min_height', 'oko-solid-max-height': 'solid_max_height'
+    // Perception input ID to param name mapping
+    const perceptionIdMap = {
+        'perception-min-height': 'min_height', 'perception-max-height': 'max_height',
+        'perception-min-range': 'min_range', 'perception-max-range': 'max_range',
+        'perception-safe-dist': 'perception_min_safe_distance', 'perception-critical-dist': 'perception_critical_distance',
+        'perception-cluster-dist': 'cluster_distance', 'perception-min-cluster-size': 'min_cluster_size',
+        'perception-temporal-history': 'temporal_history_size', 'perception-temporal-threshold': 'temporal_threshold',
+        'perception-water-threshold': 'water_plane_threshold', 'perception-hysteresis': 'hysteresis_distance',
+        'perception-smoke-enabled': 'smoke_filter_enabled',
+        'perception-smoke-min-height': 'smoke_min_height', 'perception-smoke-max-height': 'smoke_max_height',
+        'perception-solid-min-height': 'solid_min_height', 'perception-solid-max-height': 'solid_max_height'
     };
 
     // Get full parameters from UI or preset
     const fullParams = presetParams || {
-        min_height: parseFloat(document.getElementById('oko-min-height').value),
-        max_height: parseFloat(document.getElementById('oko-max-height').value),
-        min_range: parseFloat(document.getElementById('oko-min-range').value),
-        max_range: parseFloat(document.getElementById('oko-max-range').value),
-        oko_min_safe_distance: parseFloat(document.getElementById('oko-safe-dist').value),
-        oko_critical_distance: parseFloat(document.getElementById('oko-critical-dist').value),
-        cluster_distance: parseFloat(document.getElementById('oko-cluster-dist').value),
-        min_cluster_size: parseInt(document.getElementById('oko-min-cluster-size').value),
-        temporal_history_size: parseInt(document.getElementById('oko-temporal-history').value),
-        temporal_threshold: parseInt(document.getElementById('oko-temporal-threshold').value),
-        water_plane_threshold: parseFloat(document.getElementById('oko-water-threshold').value),
-        hysteresis_distance: parseFloat(document.getElementById('oko-hysteresis').value),
+        min_height: parseFloat(document.getElementById('perception-min-height').value),
+        max_height: parseFloat(document.getElementById('perception-max-height').value),
+        min_range: parseFloat(document.getElementById('perception-min-range').value),
+        max_range: parseFloat(document.getElementById('perception-max-range').value),
+        perception_min_safe_distance: parseFloat(document.getElementById('perception-safe-dist').value),
+        perception_critical_distance: parseFloat(document.getElementById('perception-critical-dist').value),
+        cluster_distance: parseFloat(document.getElementById('perception-cluster-dist').value),
+        min_cluster_size: parseInt(document.getElementById('perception-min-cluster-size').value),
+        temporal_history_size: parseInt(document.getElementById('perception-temporal-history').value),
+        temporal_threshold: parseInt(document.getElementById('perception-temporal-threshold').value),
+        water_plane_threshold: parseFloat(document.getElementById('perception-water-threshold').value),
+        hysteresis_distance: parseFloat(document.getElementById('perception-hysteresis').value),
         // Smoke detection parameters (v2.1)
-        smoke_filter_enabled: document.getElementById('oko-smoke-enabled') ?
-            (document.getElementById('oko-smoke-enabled').value === 'true') : true,
-        smoke_min_height: document.getElementById('oko-smoke-min-height') ?
-            parseFloat(document.getElementById('oko-smoke-min-height').value) : 0.3,
-        smoke_max_height: document.getElementById('oko-smoke-max-height') ?
-            parseFloat(document.getElementById('oko-smoke-max-height').value) : 10.0,
-        solid_min_height: document.getElementById('oko-solid-min-height') ?
-            parseFloat(document.getElementById('oko-solid-min-height').value) : -2.0,
-        solid_max_height: document.getElementById('oko-solid-max-height') ?
-            parseFloat(document.getElementById('oko-solid-max-height').value) : 0.5
+        smoke_filter_enabled: document.getElementById('perception-smoke-enabled') ?
+            (document.getElementById('perception-smoke-enabled').value === 'true') : true,
+        smoke_min_height: document.getElementById('perception-smoke-min-height') ?
+            parseFloat(document.getElementById('perception-smoke-min-height').value) : 0.3,
+        smoke_max_height: document.getElementById('perception-smoke-max-height') ?
+            parseFloat(document.getElementById('perception-smoke-max-height').value) : 10.0,
+        solid_min_height: document.getElementById('perception-solid-min-height') ?
+            parseFloat(document.getElementById('perception-solid-min-height').value) : -2.0,
+        solid_max_height: document.getElementById('perception-solid-max-height') ?
+            parseFloat(document.getElementById('perception-solid-max-height').value) : 0.5
     };
 
     // Presets send all params; manual edits send only changed ones
-    const params = presetParams ? fullParams : filterDirtyParams(fullParams, okoIdMap);
+    const params = presetParams ? fullParams : filterDirtyParams(fullParams, perceptionIdMap);
 
-    // Publish to /sputnik/set_config topic
+    // Publish to /planning/set_config topic
     const message = new ROSLIB.Message({
         data: JSON.stringify(params)
     });
 
     configPublisher.publish(message);
 
-    // Clear dirty state for OKO inputs
-    markClean(Object.keys(okoIdMap));
+    // Clear dirty state for Perception inputs
+    markClean(Object.keys(perceptionIdMap));
 
     const sentCount = Object.keys(params).length;
-    addLog(`✅ OKO: ${sentCount} parameter(s) sent via config topic`, 'info');
-    showFeedback(`✅ OKO: ${sentCount} parameter(s) applied`, 'success');
-    if (DEBUG_MODE) console.log('OKO config sent to /sputnik/set_config:', params);
+    addLog(`✅ Perception: ${sentCount} parameter(s) sent via config topic`, 'info');
+    showFeedback(`✅ Perception: ${sentCount} parameter(s) applied`, 'success');
+    if (DEBUG_MODE) console.log('Perception config sent to /planning/set_config:', params);
 }
 
-// Apply BURAN controller parameters via config topic
-function applyBuranParameters(presetParams = null) {
+// Apply Heading Controller parameters via config topic
+function applyControllerParameters(presetParams = null) {
     if (!connected || !configPublisher) {
         addLog('Not connected to ROS', 'error');
         showFeedback('❌ Not connected to ROS', 'error');
         return;
     }
 
-    // BURAN input ID to param name mapping
-    const buranIdMap = {
-        'buran-critical-dist': 'critical_distance', 'buran-safe-dist': 'min_safe_distance',
-        'buran-bank-dist': 'bank_slow_distance', 'buran-obstacle-slow': 'obstacle_slow_factor',
-        'buran-bank-slow': 'bank_slow_factor', 'buran-avoid-gain': 'avoid_diff_gain',
-        'buran-use-vfh': 'use_vfh_bias', 'buran-max-turn': 'max_avoidance_turn_deg',
-        'buran-stuck-timeout': 'stuck_timeout', 'buran-stuck-threshold': 'stuck_threshold',
-        'buran-reverse-timeout': 'reverse_timeout', 'buran-max-reverse': 'max_reverse_distance',
-        'buran-turn-deadband': 'turn_deadband_deg', 'buran-slew-rate': 'slew_rate_limit'
+    // Controller input ID to param name mapping
+    const controllerIdMap = {
+        'controller-critical-dist': 'critical_distance', 'controller-safe-dist': 'min_safe_distance',
+        'controller-bank-dist': 'bank_slow_distance', 'controller-obstacle-slow': 'obstacle_slow_factor',
+        'controller-bank-slow': 'bank_slow_factor', 'controller-avoid-gain': 'avoid_diff_gain',
+        'controller-use-vfh': 'use_vfh_bias', 'controller-max-turn': 'max_avoidance_turn_deg',
+        'controller-stuck-timeout': 'stuck_timeout', 'controller-stuck-threshold': 'stuck_threshold',
+        'controller-reverse-timeout': 'reverse_timeout', 'controller-max-reverse': 'max_reverse_distance',
+        'controller-turn-deadband': 'turn_deadband_deg', 'controller-slew-rate': 'slew_rate_limit'
     };
 
     // Get full parameters from UI or preset
     const fullParams = presetParams || {
-        critical_distance: parseFloat(document.getElementById('buran-critical-dist').value),
-        min_safe_distance: parseFloat(document.getElementById('buran-safe-dist').value),
-        bank_slow_distance: parseFloat(document.getElementById('buran-bank-dist').value),
-        obstacle_slow_factor: parseFloat(document.getElementById('buran-obstacle-slow').value),
-        bank_slow_factor: parseFloat(document.getElementById('buran-bank-slow').value),
-        avoid_diff_gain: parseFloat(document.getElementById('buran-avoid-gain').value),
-        use_vfh_bias: document.getElementById('buran-use-vfh').value === 'true',
-        max_avoidance_turn_deg: parseFloat(document.getElementById('buran-max-turn').value),
-        stuck_timeout: parseFloat(document.getElementById('buran-stuck-timeout').value),
-        stuck_threshold: parseFloat(document.getElementById('buran-stuck-threshold').value),
-        reverse_timeout: parseFloat(document.getElementById('buran-reverse-timeout').value),
-        max_reverse_distance: parseFloat(document.getElementById('buran-max-reverse').value),
-        turn_deadband_deg: parseFloat(document.getElementById('buran-turn-deadband').value),
-        slew_rate_limit: parseFloat(document.getElementById('buran-slew-rate').value)
+        critical_distance: parseFloat(document.getElementById('controller-critical-dist').value),
+        min_safe_distance: parseFloat(document.getElementById('controller-safe-dist').value),
+        bank_slow_distance: parseFloat(document.getElementById('controller-bank-dist').value),
+        obstacle_slow_factor: parseFloat(document.getElementById('controller-obstacle-slow').value),
+        bank_slow_factor: parseFloat(document.getElementById('controller-bank-slow').value),
+        avoid_diff_gain: parseFloat(document.getElementById('controller-avoid-gain').value),
+        use_vfh_bias: document.getElementById('controller-use-vfh').value === 'true',
+        max_avoidance_turn_deg: parseFloat(document.getElementById('controller-max-turn').value),
+        stuck_timeout: parseFloat(document.getElementById('controller-stuck-timeout').value),
+        stuck_threshold: parseFloat(document.getElementById('controller-stuck-threshold').value),
+        reverse_timeout: parseFloat(document.getElementById('controller-reverse-timeout').value),
+        max_reverse_distance: parseFloat(document.getElementById('controller-max-reverse').value),
+        turn_deadband_deg: parseFloat(document.getElementById('controller-turn-deadband').value),
+        slew_rate_limit: parseFloat(document.getElementById('controller-slew-rate').value)
     };
 
     // Presets send all params; manual edits send only changed ones
-    const params = presetParams ? fullParams : filterDirtyParams(fullParams, buranIdMap);
+    const params = presetParams ? fullParams : filterDirtyParams(fullParams, controllerIdMap);
 
-    // Publish to /sputnik/set_config topic
+    // Publish to /planning/set_config topic
     const message = new ROSLIB.Message({
         data: JSON.stringify(params)
     });
 
     configPublisher.publish(message);
 
-    // Clear dirty state for BURAN inputs
-    markClean(Object.keys(buranIdMap));
+    // Clear dirty state for Controller inputs
+    markClean(Object.keys(controllerIdMap));
 
     const sentCount = Object.keys(params).length;
-    addLog(`✅ BURAN: ${sentCount} parameter(s) sent via config topic`, 'info');
-    showFeedback(`✅ BURAN: ${sentCount} parameter(s) applied`, 'success');
-    if (DEBUG_MODE) console.log('BURAN config sent to /sputnik/set_config:', params);
+    addLog(`✅ Controller: ${sentCount} parameter(s) sent via config topic`, 'info');
+    showFeedback(`✅ Controller: ${sentCount} parameter(s) applied`, 'success');
+    if (DEBUG_MODE) console.log('Controller config sent to /planning/set_config:', params);
 }
 
 // Show visual feedback toast notification
@@ -2805,7 +2805,7 @@ async function validateWaypoints(waypoints) {
     const avgSpeed = currentState.config.base_speed ? currentState.config.base_speed / 200 : 2.5; // m/s
     validation.estimates.duration = totalDistance / avgSpeed;
 
-    // Check obstacles (if OKO has reported any clusters)
+    // Check obstacles (if perception has reported any clusters)
     if (currentState.obstacles && currentState.obstacles.clusters) {
         // Simplified check - in real implementation would check actual cluster positions
         const obstacleCount = currentState.obstacles.obstacle_count || 0;
@@ -3246,28 +3246,28 @@ function exportPanel(panelName) {
     switch (panelName) {
         case 'system':
             data = collectSystemSnapshot();
-            filename = `vostok1_system_${ts}.json`;
+            filename = `autoboat_system_${ts}.json`;
             break;
         case 'health':
             data = {
                 exported_at: new Date().toISOString(),
                 lines: collectTerminalLines('health-check-output')
             };
-            filename = `vostok1_health_check_${ts}.json`;
+            filename = `autoboat_health_check_${ts}.json`;
             break;
         case 'logs':
             data = {
                 exported_at: new Date().toISOString(),
                 lines: collectTerminalLines('logs')
             };
-            filename = `vostok1_logs_${ts}.json`;
+            filename = `autoboat_logs_${ts}.json`;
             break;
         case 'terminal':
             data = {
                 exported_at: new Date().toISOString(),
                 lines: collectTerminalLines('terminal-output')
             };
-            filename = `vostok1_terminal_${ts}.json`;
+            filename = `autoboat_terminal_${ts}.json`;
             break;
         default:
             return;

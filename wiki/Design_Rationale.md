@@ -9,31 +9,31 @@ For **how to use the system**, see **[Quick_Start](Quick_Start)** and **[System_
 
 ## Architecture Decisions
 
-### Why modular OKO–SPUTNIK–BURAN pipeline instead of monolithic?
+### Why modular Perception–Planner–Controller pipeline instead of monolithic?
 
-The Vostok1 navigation system is built as a **pipeline of three modules** — `Perception → Planning → Control` — each running as an **independent ROS 2 node**:
+The AutoBoat navigation system is built as a **pipeline of three modules** — `Perception → Planning → Control` — each running as an **independent ROS 2 node**:
 
 | Module | Role | Question it answers |
 |:-------|:-----|:--------------------|
-| **OKO** | Perception | "What do I see?" |
-| **SPUTNIK** | Planning | "Where do I go?" |
-| **BURAN** | Control | "How do I get there?" |
+| **Perception** (formerly OKO) | Perception | "What do I see?" |
+| **Planner** (formerly SPUTNIK) | Planning | "Where do I go?" |
+| **Controller** (formerly BURAN) | Control | "How do I get there?" |
 
 #### Why separate processes, not one integrated program?
 
 1. **Failure isolation.** If the perception node crashes (e.g., LiDAR driver segfault), the planner and controller keep running on their last-known obstacle data. A monolithic program would take down everything together.
 2. **Debuggability.** ROS topic messages between modules are plain-text JSON that can be inspected live with `ros2 topic echo`. When something goes wrong, we can pinpoint which stage of the pipeline has bad data rather than stepping through a massive single program.
 3. **Upgrade independence.** Swapping out the perception algorithm (e.g., replacing cluster-based detection with a neural network) does not require touching the controller. Interfaces between modules are defined by ROS message types.
-4. **Parallel development.** Different contributors can work on OKO, SPUTNIK, or BURAN simultaneously without merge conflicts.
+4. **Parallel development.** Different contributors can work on Perception, Planner, or Controller simultaneously without merge conflicts.
 
 **The cost** is latency — each inter-process message adds ~1–2 ms of overhead compared to a direct function call. For a 20 Hz (50 ms) control loop this cost is negligible.
 
 ### Why no dedicated pose-estimation node in the current architecture?
 
-The legacy codebase had a `gps_imu_pose` node that fused GPS + IMU at 10 Hz into a unified `PoseStamped` message, which every other node subscribed to. When the system was modularized into Vostok1, this node was **intentionally removed** — each planner and controller now does its own GPS-to-local conversion inline:
+The legacy codebase had a `gps_imu_pose` node that fused GPS + IMU at 10 Hz into a unified `PoseStamped` message, which every other node subscribed to. When the system was modularized into AutoBoat, this node was **intentionally removed** — each planner and controller now does its own GPS-to-local conversion inline:
 
-- SPUTNIK does its own `latlon_to_meters` inside the planner (for waypoint generation)
-- BURAN does its own quaternion → yaw extraction inside the controller (for heading control)
+- The Planner does its own `latlon_to_meters` inside the planner (for waypoint generation)
+- The Controller does its own quaternion → yaw extraction inside the controller (for heading control)
 
 **Why?** Reducing inter-node dependencies. A shared "pose" node becomes a single point of failure — if it lags or crashes, every downstream node stalls. Doing the simple arithmetic inline in each consumer is more robust for the current scope.
 
@@ -59,7 +59,7 @@ The dashboard is browser-based, connecting to ROS 2 via ROSBridge (WebSocket + J
 
 ### Why a 2D linear Kalman filter, not an EKF?
 
-BURAN runs a 2D linear Kalman filter (state = `[drift_x, drift_y]`) to compensate for water-current and wind drift. A natural question: would an Extended Kalman Filter (EKF) do a better job?
+The Controller runs a 2D linear Kalman filter (state = `[drift_x, drift_y]`) to compensate for water-current and wind drift. A natural question: would an Extended Kalman Filter (EKF) do a better job?
 
 **The answer is no** — EKF would be over-engineering for this specific task:
 
@@ -79,7 +79,7 @@ See **[Glossary: 2D linear Kalman filter](Glossary#2d-linear-kalman-filter-as-us
 
 ### Why is VFH (Vector Field Histogram) disabled by default?
 
-OKO implements a VFH-style polar histogram and publishes a `best_gap` direction. BURAN has a toggle `use_vfh_bias` that, when enabled, biases steering toward the best gap. In the production YAML the toggle is **`false`**.
+The Perception node implements a VFH-style polar histogram and publishes a `best_gap` direction. The Controller has a toggle `use_vfh_bias` that, when enabled, biases steering toward the best gap. In the production YAML the toggle is **`false`**.
 
 **Why off by default?** Two reasons:
 
@@ -88,17 +88,17 @@ OKO implements a VFH-style polar histogram and publishes a `best_gap` direction.
 
 **When to enable it:** the dashboard's 4 tuning presets are named for scenarios where VFH shines — `Buoy Field`, `Pier`, `Open Water`, and `Universal`. Three of these four turn VFH on. Clicking a preset (as the operator) flips the toggle; otherwise it stays off.
 
-**Limitations of VFH in any case:** it is a purely local, reactive method with no memory and no global planning. It can get trapped in local minima (dead-end corridors). That is why VFH is paired with SPUTNIK's global lawnmower + A\* rerouting — VFH handles "how to squeeze through obstacles locally", SPUTNIK handles "where to go overall".
+**Limitations of VFH in any case:** it is a purely local, reactive method with no memory and no global planning. It can get trapped in local minima (dead-end corridors). That is why VFH is paired with the Planner's global lawnmower + A\* rerouting — VFH handles "how to squeeze through obstacles locally", the Planner handles "where to go overall".
 
 See **[Glossary: VFH](Glossary#vfh-vector-field-histogram)** for the 3-step algorithm breakdown.
 
 ### Why 3 sectors (Front / Left / Right) and not finer-grained?
 
-OKO aggregates LiDAR returns into just three directional sectors. An obvious alternative would be 8 sectors, 16 sectors, or even per-bin VFH output.
+The Perception node aggregates LiDAR returns into just three directional sectors. An obvious alternative would be 8 sectors, 16 sectors, or even per-bin VFH output.
 
 #### The three-sector design wins for the current mission profile because
 
-1. **The controller only chooses `left` or `right`.** BURAN's avoidance logic is ultimately a binary decision — "which side has more room?" A 3-sector representation (Front for threat detection + Left/Right for avoidance direction) maps cleanly onto that decision.
+1. **The controller only chooses `left` or `right`.** The Controller's avoidance logic is ultimately a binary decision — "which side has more room?" A 3-sector representation (Front for threat detection + Left/Right for avoidance direction) maps cleanly onto that decision.
 2. **Fewer parameters to tune.** Each sector has distance thresholds and urgency mappings. More sectors multiply the tuning surface.
 3. **More stable output.** Obstacle positions vary frame-to-frame due to LiDAR noise; aggregating into wide sectors averages out this noise. Fine-grained bins would flicker.
 4. **Human-legible on the dashboard.** Three progress bars (Front/Left/Right clearance, with urgency colouring) fit naturally on screen; 16 bars would be overwhelming.
@@ -111,9 +111,9 @@ When a waypoint is blocked, the system escalates through three levels rather tha
 
 | Level | Trigger | Action | Time cost |
 |:------|:--------|:-------|:----------|
-| **Reactive avoidance** | Front clearance < 12 m | BURAN steers toward clearer side; SPUTNIK may insert an opportunistic side-detour waypoint when < 8 m | 0 (immediate) |
-| **Auto detour** | Blocked for > 30 s | SPUTNIK inserts a lateral detour waypoint (14 m offset from the blocked path) | ~30 s wait |
-| **A\* reroute or skip** | Blocked for > 45 s | SPUTNIK tries A\* grid planning; if no path is found, skips the waypoint entirely | ~45 s wait + A\* compute (capped at 20,000 node expansions) |
+| **Reactive avoidance** | Front clearance < 12 m | The Controller steers toward clearer side; the Planner may insert an opportunistic side-detour waypoint when < 8 m | 0 (immediate) |
+| **Auto detour** | Blocked for > 30 s | The Planner inserts a lateral detour waypoint (14 m offset from the blocked path) | ~30 s wait |
+| **A\* reroute or skip** | Blocked for > 45 s | The Planner tries A\* grid planning; if no path is found, skips the waypoint entirely | ~45 s wait + A\* compute (capped at 20,000 node expansions) |
 
 **Why escalation instead of always using A\*?**
 
@@ -127,16 +127,16 @@ The numbers 12 m / 8 m / 30 s / 45 s were found empirically by running the boat 
 
 ## Parameter Thresholds Explained
 
-This section explains **why each key parameter has the value it does**. All values are the YAML defaults (from `launch/vostok1.launch.yaml`).
+This section explains **why each key parameter has the value it does**. All values are the YAML defaults (from `launch/autoboat.launch.yaml`).
 
 ### Obstacle detection & avoidance
 
 | Parameter | Value | Rationale |
 |:----------|:------|:----------|
-| `oko_min_safe_distance` | 10 m | OKO considers obstacles beyond this distance "safe" (urgency = 0). 10 m is ~4× boat length — enough to plan around at typical cruise speed. |
-| `oko_critical_distance` | 5.5 m | Below this, urgency saturates at 1.0. ~2× boat length — point at which reactive avoidance must override any planning. |
-| `min_safe_distance` (BURAN) | 12 m | BURAN triggers reactive steering below this. Chosen slightly larger than OKO's 10 m to add a safety buffer — if OKO says "urgency 0.2", BURAN is already steering. |
-| `critical_distance` (BURAN) | 6 m | BURAN triggers micro-reverse below this. Slightly larger than OKO's 5.5 m critical for the same buffer reason. |
+| `perception_min_safe_distance` | 10 m | The Perception node considers obstacles beyond this distance "safe" (urgency = 0). 10 m is ~4× boat length — enough to plan around at typical cruise speed. |
+| `perception_critical_distance` | 5.5 m | Below this, urgency saturates at 1.0. ~2× boat length — point at which reactive avoidance must override any planning. |
+| `min_safe_distance` (Controller) | 12 m | The Controller triggers reactive steering below this. Chosen slightly larger than Perception's 10 m to add a safety buffer — if Perception says "urgency 0.2", the Controller is already steering. |
+| `critical_distance` (Controller) | 6 m | The Controller triggers micro-reverse below this. Slightly larger than Perception's 5.5 m critical for the same buffer reason. |
 
 ### Timing thresholds
 
@@ -159,7 +159,7 @@ This section explains **why each key parameter has the value it does**. All valu
 | Parameter | Value | Rationale |
 |:----------|:------|:----------|
 | `astar_resolution` | 3 m | Grid cell size. 3 m is ~1× boat length — fine enough to find paths through gaps the boat can actually fit through, coarse enough to keep the search tractable. |
-| `astar_safety_margin` | 12 m | Obstacle inflation radius. Roughly `min_safe_distance` — so A\* never produces a path that BURAN would then react against. |
+| `astar_safety_margin` | 12 m | Obstacle inflation radius. Roughly `min_safe_distance` — so A\* never produces a path that the Controller would then react against. |
 | `astar_max_expansions` | 20,000 | Node expansion cap. At 3 m resolution this covers ~180,000 m² of search space before timing out — more than enough for any realistic detour. |
 
 ### Kalman filter
@@ -226,5 +226,5 @@ The algorithms in this project are built on well-established prior work:
 
 - **[Glossary](Glossary)** — Definitions of every technical term
 - **[System_Overview](System_Overview)** — High-level architecture
-- **[3D_LIDAR_Processing](3D_LIDAR_Processing)** — OKO pipeline deep-dive
+- **[3D_LIDAR_Processing](3D_LIDAR_Processing)** — LiDAR Perception pipeline deep-dive
 - **[SASS](SASS)** — Anti-stuck recovery system

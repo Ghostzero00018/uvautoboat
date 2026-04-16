@@ -142,7 +142,7 @@ wiki/
 ├── Quick_Start.md             # 5-minute quick start
 ├── System_Overview.md         # Architecture overview
 ├── SASS.md                    # Simple Anti-Stuck (deprecated)
-├── 3D_LIDAR_Processing.md     # OKO perception
+├── 3D_LIDAR_Processing.md     # LiDAR Perception
 ├── Common_Issues.md           # Troubleshooting
 └── [Additional pages...]      # Future additions
 ```
@@ -159,7 +159,7 @@ Based on the wiki home navigation, you may want to create these pages later:
 
 ### Architecture
 
-- [ ] `Vostok1-Architecture.md`
+- [ ] `AutoBoat-Architecture.md`
 - [ ] `Modular-Architecture.md`
 - [ ] `Atlantis-Architecture.md`
 - [ ] `ROS2-Topic-Flow.md`
@@ -272,7 +272,7 @@ Use language identifiers:
 
 ```markdown
 ```bash
-ros2 run plan vostok1
+ros2 run plan autoboat
 \`\`\`
 ```
 

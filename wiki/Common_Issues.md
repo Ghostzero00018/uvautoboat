@@ -20,9 +20,9 @@ ros2 topic echo /wamv/sensors/gps/gps/fix --once
 **Solutions**:
 
 1. **GPS not initialized**: Wait 5-10 seconds after Gazebo launches
-2. **Mission not started**: Run `ros2 run plan vostok1_cli start`
-3. **Waypoints not generated**: Run `ros2 run plan vostok1_cli generate`
-4. **Node not running**: Check `ros2 node list | grep vostok`
+2. **Mission not started**: Run `ros2 run plan autoboat_cli start`
+3. **Waypoints not generated**: Run `ros2 run plan autoboat_cli generate`
+4. **Node not running**: Check `ros2 node list | grep autoboat`
 
 ---
 
@@ -35,17 +35,17 @@ ros2 topic echo /wamv/sensors/gps/gps/fix --once
 **Solution**: Reduce PID proportional gain
 
 ```bash
-# For Vostok1
-ros2 param set /buran_controller_node kp 300.0
+# For AutoBoat
+ros2 param set /heading_controller_node kp 300.0
 
-# For Modular (BURAN)
-ros2 param set /buran_controller kp 300.0
+# For Modular (Controller)
+ros2 param set /heading_controller kp 300.0
 ```
 
 **Alternative**: Increase derivative gain for damping
 
 ```bash
-ros2 param set /buran_controller_node kd 150.0
+ros2 param set /heading_controller_node kd 150.0
 ```
 
 ---
@@ -59,7 +59,7 @@ ros2 param set /buran_controller_node kd 150.0
 **Solution**: Increase derivative gain
 
 ```bash
-ros2 param set /buran_controller_node kd 150.0
+ros2 param set /heading_controller_node kd 150.0
 ```
 
 ---
@@ -79,7 +79,7 @@ ros2 param set /buran_controller_node kd 150.0
 2. Reduce integral gain if overshooting:
 
    ```bash
-   ros2 param set /buran_controller_node ki 10.0
+   ros2 param set /heading_controller_node ki 10.0
    ```
 
 ---
@@ -93,7 +93,7 @@ ros2 param set /buran_controller_node kd 150.0
 **Solution**: Increase minimum detection range
 
 ```yaml
-# In vostok1.launch.yaml
+# In autoboat.launch.yaml
 - name: min_range
   value: 7.0  # Increase from default 5.0
 ```
@@ -119,13 +119,13 @@ gz service -s /world/sydney_regatta/set_pose \
 1. Increase timeout:
 
    ```bash
-   ros2 param set /buran_controller stuck_timeout 5.0
+   ros2 param set /heading_controller stuck_timeout 5.0
    ```
 
 2. Increase movement threshold:
 
    ```bash
-   ros2 param set /buran_controller stuck_threshold 1.0
+   ros2 param set /heading_controller stuck_threshold 1.0
    ```
 
 ---
@@ -139,7 +139,7 @@ gz service -s /world/sydney_regatta/set_pose \
 **Solution**: Increase timeout
 
 ```yaml
-# In vostok1.launch.yaml
+# In autoboat.launch.yaml
 - name: waypoint_skip_timeout
   value: 60.0  # Increase from default 45.0
 ```
@@ -219,7 +219,7 @@ ros2 topic echo /perception/obstacle_info
 1. Increase safe distance:
 
    ```yaml
-   min_safe_distance: 15.0  # BURAN avoidance trigger (increase from 12.0)
+   min_safe_distance: 15.0  # Controller avoidance trigger (increase from 12.0)
    ```
 
 2. Reduce obstacle slow factor:
@@ -494,21 +494,21 @@ sudo ufw allow 8080/tcp
 1. Reduce safety margin:
 
    ```bash
-   ros2 topic pub /sputnik/set_config std_msgs/String \
+   ros2 topic pub /planning/set_config std_msgs/String \
      "data: '{\"astar_safety_margin\": 8.0}'" --once
    ```
 
 2. Decrease grid resolution (more precise):
 
    ```bash
-   ros2 topic pub /sputnik/set_config std_msgs/String \
+   ros2 topic pub /planning/set_config std_msgs/String \
      "data: '{\"astar_resolution\": 2.0}'" --once
    ```
 
 3. Increase max expansions:
 
    ```bash
-   ros2 topic pub /sputnik/set_config std_msgs/String \
+   ros2 topic pub /planning/set_config std_msgs/String \
      "data: '{\"astar_max_expansions\": 50000}'" --once
    ```
 
@@ -537,7 +537,7 @@ sudo ufw allow 8080/tcp
 3. Disable hybrid mode (only use runtime A*):
 
    ```bash
-   ros2 topic pub /sputnik/set_config std_msgs/String \
+   ros2 topic pub /planning/set_config std_msgs/String \
      "data: '{\"astar_hybrid_mode\": false}'" --once
    ```
 
@@ -569,7 +569,7 @@ sudo ufw allow 8080/tcp
 
 ```bash
 # Check node logs
-ros2 run plan vostok1 --ros-args --log-level debug
+ros2 run plan autoboat --ros-args --log-level debug
 ```
 
 **Solutions**:
@@ -596,7 +596,7 @@ ros2 run plan vostok1 --ros-args --log-level debug
 pkill -9 -f "gz sim" && pkill -9 -f "gzserver" && pkill -9 -f "gzclient"
 
 # Kill ROS nodes
-pkill -9 -f vostok1 && pkill -9 -f rosbridge
+pkill -9 -f autoboat && pkill -9 -f rosbridge
 
 # Kill everything (last resort)
 pkill -9 -f ros && pkill -9 -f gz && pkill -9 -f gazebo
@@ -612,7 +612,7 @@ Useful commands for diagnosing issues:
 
 ```bash
 ros2 node list
-ros2 node info /buran_controller_node
+ros2 node info /heading_controller_node
 ```
 
 ### Check Topics
@@ -626,8 +626,8 @@ ros2 topic echo /perception/obstacle_info
 ### Check Parameters
 
 ```bash
-ros2 param list /buran_controller_node
-ros2 param get /buran_controller_node kp
+ros2 param list /heading_controller_node
+ros2 param get /heading_controller_node kp
 ```
 
 ### Check Transforms
@@ -654,7 +654,7 @@ If your problem isn't listed here:
 2. **Enable debug logging**:
 
    ```bash
-   ros2 run plan vostok1 --ros-args --log-level debug
+   ros2 run plan autoboat --ros-args --log-level debug
    ```
 
 3. **Report issue**: [GitHub Issues](https://github.com/Ghostzero00018/uvautoboat/issues)

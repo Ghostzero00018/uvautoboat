@@ -17,9 +17,9 @@ The following pages have been created and are ready for upload:
 | **Glossary.md** | Plain-language definitions of every technical term | ✅ Ready |
 | **Design_Rationale.md** | Why each architecture/algorithm/parameter choice was made | ✅ Ready |
 | **SASS.md** | Simple Anti-Stuck recovery system (active) | ✅ Ready |
-| **3D_LIDAR_Processing.md** | OKO perception system explained (includes VFH and threshold rationale) | ✅ Ready |
+| **3D_LIDAR_Processing.md** | LiDAR Perception system explained (includes VFH and threshold rationale) | ✅ Ready |
 | **Common_Issues.md** | Troubleshooting guide | ✅ Ready |
-| **Node_Naming_Refactor_Plan.md** | Planned rename of OKO/SPUTNIK/BURAN → functional names | ✅ Ready |
+| **Node_Naming_Refactor_Plan.md** | Completed rename of OKO/SPUTNIK/BURAN → functional names | ✅ Ready |
 | **UPLOAD_INSTRUCTIONS.md** | How to upload these pages | ✅ Ready |
 
 ---
@@ -56,8 +56,8 @@ These pages are referenced in the wiki but not yet created:
 
 ### Priority 2 (Architecture)
 
-- [ ] `Vostok1-Architecture.md` — Integrated system
-- [ ] `Modular-Architecture.md` — OKO-SPUTNIK-BURAN
+- [ ] `AutoBoat-Architecture.md` — Integrated system
+- [ ] `Modular-Architecture.md` — Perception-Planner-Controller
 - [ ] `Atlantis-Architecture.md` — Control group approach
 - [ ] `ROS2-Topic-Flow.md` — Topic communication diagrams
 
@@ -102,7 +102,7 @@ Wiki content was extracted and reorganized from:
 - `MISSION_CONTROL_GUIDE.md`
 - `LAUNCH_YAML_GUIDE.md`
 - `CODE_REVIEW.md`
-- `web_dashboard/vostok1/README_vostok1_dashboard.md`
+- `web_dashboard/autoboat/README_autoboat_dashboard.md`
 
 ---
 

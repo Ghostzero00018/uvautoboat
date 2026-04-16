@@ -1,6 +1,6 @@
-# 3D LIDAR Processing (OKO v2.0)
+# 3D LIDAR Processing (LiDAR Perception v2.0)
 
-Deep dive into the OKO perception system — 3D LIDAR point cloud processing for obstacle detection.
+Deep dive into the **Perception** (formerly OKO) system — 3D LIDAR point cloud processing for obstacle detection.
 
 > 💡 **Related pages:**
 >
@@ -11,7 +11,7 @@ Deep dive into the OKO perception system — 3D LIDAR point cloud processing for
 
 ## Overview
 
-**OKO** (Russian: "eye") is the perception subsystem that processes 3D LIDAR data to detect obstacles in real-time. It uses advanced filtering techniques to provide reliable obstacle information to the navigation system.
+The **LiDAR Perception** node (formerly OKO, Russian: "eye") is the perception subsystem that processes 3D LIDAR data to detect obstacles in real-time. It uses advanced filtering techniques to provide reliable obstacle information to the navigation system.
 
 ---
 
@@ -30,7 +30,7 @@ Deep dive into the OKO perception system — 3D LIDAR point cloud processing for
 
 ## Processing Pipeline
 
-OKO v2.0 uses an 8-step processing pipeline:
+The Perception node v2.0 uses an 8-step processing pipeline:
 
 ```text
 ┌─────────────────────────────────────────────────────────┐
@@ -145,7 +145,7 @@ The front sector width adjusts based on target heading error:
 
 #### Minimum Distance Calculation
 
-For each sector, OKO finds the **closest point**:
+For each sector, the Perception node finds the **closest point**:
 
 ```python
 front_clear = min(distance_to_point for point in front_sector)
@@ -307,7 +307,7 @@ else:
 
 ## Output Message Format
 
-OKO publishes obstacle information to `/perception/obstacle_info` as JSON:
+The Perception node publishes obstacle information to `/perception/obstacle_info` as JSON:
 
 ```json
 {
@@ -339,12 +339,12 @@ OKO publishes obstacle information to `/perception/obstacle_info` as JSON:
 
 ## Configuration Parameters
 
-### In `vostok1.launch.yaml` (OKO node)
+### In `autoboat.launch.yaml` (Perception node)
 
 | Parameter | Default | Description |
 |:----------|:--------|:------------|
-| `oko_min_safe_distance` | 10.0 | Safe clearance distance (m) |
-| `oko_critical_distance` | 5.5 | Critical stop distance (m) |
+| `perception_min_safe_distance` | 10.0 | Safe clearance distance (m) |
+| `perception_critical_distance` | 5.5 | Critical stop distance (m) |
 | `min_height` | -15.0 | Minimum Z to keep (m) |
 | `max_height` | 10.0 | Maximum Z to keep (m) |
 | `min_range` | 5.0 | Minimum detection range (m) |
@@ -404,7 +404,7 @@ min_range: 7.0  # Ignore nearby dock
 
 ---
 
-## Monitoring OKO
+## Monitoring Perception
 
 ### Check LIDAR Data
 
@@ -447,7 +447,7 @@ rviz2
 
 ## VFH (Vector Field Histogram) — Optional Advanced Avoidance
 
-In addition to the 3-sector Front/Left/Right summary, OKO also implements a **Vector Field Histogram (VFH)** algorithm that produces a finer-grained obstacle analysis. This output is made available to BURAN via the `use_vfh_bias` parameter — when enabled, BURAN biases its steering command toward VFH's "best gap" direction. **In the default YAML config, `use_vfh_bias` is `false`** and the system uses the simpler 3-sector method.
+In addition to the 3-sector Front/Left/Right summary, the Perception node also implements a **Vector Field Histogram (VFH)** algorithm that produces a finer-grained obstacle analysis. This output is made available to the Controller via the `use_vfh_bias` parameter — when enabled, the Controller biases its steering command toward VFH's "best gap" direction. **In the default YAML config, `use_vfh_bias` is `false`** and the system uses the simpler 3-sector method.
 
 ### What VFH is
 
@@ -472,7 +472,7 @@ VFH shines in **cluttered worlds** (buoy fields, piers, anchored boat fleets) wh
 
 ### Limitations
 
-VFH is a **local, reactive** method — it reacts to what it sees *now*, with no memory and no global planning. It can get stuck in local minima (dead-end corridors where the widest gap leads back the way the robot came). That is why VFH is paired with SPUTNIK's global lawnmower + A\* rerouting — VFH handles "how to squeeze through obstacles locally", SPUTNIK handles "where to go overall".
+VFH is a **local, reactive** method — it reacts to what it sees *now*, with no memory and no global planning. It can get stuck in local minima (dead-end corridors where the widest gap leads back the way the robot came). That is why VFH is paired with the Planner's global lawnmower + A\* rerouting — VFH handles "how to squeeze through obstacles locally", the Planner handles "where to go overall".
 
 ### Variants
 

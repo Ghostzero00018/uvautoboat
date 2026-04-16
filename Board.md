@@ -9,7 +9,7 @@
 | **Project** | AutoBoat Navigation System |
 | **Repository** | [Ghostzero00018/uvautoboat](https://github.com/Ghostzero00018/uvautoboat) |
 | **Last Updated** | 15-04-2026 |
-| **Status** | 🟢 Vostok1 Production Ready (A* path planning + one-click launcher + wiki docs + dashboard config system) |
+| **Status** | 🟢 AutoBoat Production Ready (A* path planning + one-click launcher + wiki docs + dashboard config system) |
 
 ---
 
@@ -26,9 +26,9 @@
 
 | System | Architecture | Sensors | Features |
 |--------|--------------|---------|----------|
-| **Vostok1 Modular** | Distributed (OKO + SPUTNIK + BURAN) | 3D PointCloud | A* path planning, LiDAR smoke detection, simple anti-stuck, runtime config, web dashboard + camera, waypoint persistence |
+| **AutoBoat Modular** | Distributed (Perception + Planner + Controller) | 3D PointCloud | A* path planning, LiDAR smoke detection, simple anti-stuck, runtime config, web dashboard + camera, waypoint persistence |
 
-> **Note:** The integrated Vostok1 has been deprecated and moved to `legacy/`. Use the modular system.
+> **Note:** The integrated AutoBoat monolith has been deprecated and moved to `legacy/`. Use the modular system.
 
 ---
 
@@ -51,10 +51,10 @@
 
 **Completed**: 28-11-2025
 
-### Vostok1 Navigation System
+### AutoBoat Navigation System
 
 - Integrated perception + planning + control
-- Modular variant: OKO + SPUTNIK + BURAN distributed architecture
+- Modular variant: Perception + Planner + Controller distributed architecture
 - 3D PointCloud processing (height/distance filtering)
 - Simple Anti-Stuck System
   - Turn left until clear
@@ -65,7 +65,7 @@
   - Obstacle blocking skip after 45s timeout
 - Runtime PID/speed configuration
 - Real-time web dashboard
-- Terminal Mission CLI (vostok1_cli)
+- Terminal Mission CLI (`autoboat_cli`)
 
 ---
 
@@ -105,7 +105,7 @@
 | JSON log export (4 panels) | ✅ |
 | Health check service (ROS 2 node + dashboard streaming) | ✅ |
 | Dashboard config system (dirty-params, sync, reset defaults) | ✅ |
-| Parameter collision resolution (oko_ prefix) | ✅ |
+| Parameter collision resolution (`perception_` prefix) | ✅ |
 | VRX LiDAR patch script | ✅ |
 
 ### Pending ⬜
@@ -138,18 +138,18 @@
 | Sparse checkout blocking | \`git sparse-checkout disable\` |
 | Markdown lint errors | Added \`.markdownlint.json\` |
 | Spawn dock obstacle detection | Increased min_range from 0.5m → 5.0m |
-| Runtime config not updating | Added config_callback to buran_controller |
+| Runtime config not updating | Added config_callback to heading_controller |
 | Boat circling around buoys | Added waypoint skip strategy (45s timeout) |
 | Missing numpy dependency | Added python3-numpy to package.xml |
 | Invalid setup.py entries | Removed non-existent apollo11, atlantis |
-| OKO/BURAN param collision (min_safe_distance) | Renamed OKO's to `oko_min_safe_distance` |
-| OKO/BURAN param collision (critical_distance) | Renamed OKO's to `oko_critical_distance` |
+| Perception/Controller param collision (min_safe_distance) | Renamed Perception's to `perception_min_safe_distance` |
+| Perception/Controller param collision (critical_distance) | Renamed Perception's to `perception_critical_distance` |
 | Dashboard sending all params on Apply | Added dirty-params filtering (only changed fields sent) |
 | Dashboard stale HTML defaults | Synced 17 HTML defaults to match launch YAML |
 | VRX LiDAR at world origin | `patch_vrx.sh` fixes `publish_model_pose` (issue #876) |
 | Dead code in setup.py / nodes | Removed `_fixed` variants, unused utilities, dead states |
 | Missing `std_srvs` dependency | Added to plan/package.xml |
-| Dead `restart_mission` / `panic_stop` code | Removed from BURAN, dashboard, CLI |
+| Dead `restart_mission` / `panic_stop` code | Removed from Controller, dashboard, CLI |
 
 ### Active 🔄
 
@@ -168,7 +168,7 @@
 | 25-11-2025 | Project Kickoff | ✅ |
 | 26-11-2025 | Basic Navigation | ✅ |
 | 27-11-2025 | End-to-End Pipeline | ✅ |
-| 28-11-2025 | Vostok1 Navigation Complete | ✅ |
+| 28-11-2025 | AutoBoat Navigation Complete | ✅ |
 | 01-12-2025 | Simple Anti-Stuck + Mission CLI | ✅ |
 | 03-12-2025 | Waypoint Skip + Runtime Config | ✅ |
 | 03-12-2025 | Go Home Optimization (detour insertion) | ✅ |
@@ -212,21 +212,21 @@
 
 | Feature | Status | Description |
 |---------|:------:|-------------|
-| **A* Path Planning** | ✅ Done | Hybrid mode (pre-plan) + Runtime mode (detours) in SPUTNIK |
-| **One-Click Launcher** | ✅ Done | `launch_vostok1_complete.sh` for full system startup |
+| **A* Path Planning** | ✅ Done | Hybrid mode (pre-plan) + Runtime mode (detours) in Waypoint Planner |
+| **One-Click Launcher** | ✅ Done | `launch_autoboat_complete.sh` for full system startup |
 | **Wiki Documentation** | ✅ Done | Comprehensive wiki pages in `wiki/` folder |
 | **Emergency Stop** | ✅ Done | Latching stop from dashboard/CLI, EMERGENCY_STOP state |
 | **Dashboard Config System** | ✅ Done | 3 Apply panels, dirty-params, reset defaults, disabled until sync |
-| **Param Collision Fix** | ✅ Done | OKO params prefixed `oko_` to avoid BURAN collision |
+| **Param Collision Fix** | ✅ Done | Perception params prefixed `perception_` to avoid Controller collision |
 | **VRX LiDAR Patch** | ✅ Done | `patch_vrx.sh` auto-fixes `publish_model_pose` |
 | **Repo Cleanup** | ✅ Done | Dead code, legacy moves, package.xml audit, setup.py cleanup |
 
 ### A* Path Planning (Implemented)
 
 ```text
-/oko/obstacles ────>┌─────────────────────┐
+/perception/obstacles ────>┌─────────────────────┐
                     │  AStarSolver        │
-Hazard boxes ──────>│  (in SPUTNIK)       │────> Detour waypoints inserted into /planning/waypoints
+Hazard boxes ──────>│  (in Planner)       │────> Detour waypoints inserted into /planning/waypoints
                     │                     │
 Current position ──>└─────────────────────┘
 ```
@@ -250,10 +250,10 @@ Current position ──>└─────────────────�
 
 | Issue | Status | Description |
 |:------|:------:|:------------|
-| **ROS 2 Parameter Migration** | ✅ Done | Parameters now configurable via `vostok1.launch.yaml` |
-| **Multi-Terminal Launch** | ✅ Done | `one_click_launch_all/launch_vostok1_complete.sh` available |
+| **ROS 2 Parameter Migration** | ✅ Done | Parameters now configurable via `autoboat.launch.yaml` |
+| **Multi-Terminal Launch** | ✅ Done | `one_click_launch_all/launch_autoboat_complete.sh` available |
 | **Debugging Required** | 🔄 In Progress | Complex planning and obstacle detection still need debugging |
-| **Node Naming Refactor** | 📋 Planned | Rename OKO/SPUTNIK/BURAN → functional names (lidar_perception/waypoint_planner/heading_controller). See [wiki/Node_Naming_Refactor_Plan](wiki/Node_Naming_Refactor_Plan.md) |
+| **Node Naming Refactor** | 🔄 In Progress | Rename OKO/SPUTNIK/BURAN → functional names (lidar_perception/waypoint_planner/heading_controller). See [wiki/Node_Naming_Refactor_Plan](wiki/Node_Naming_Refactor_Plan.md) |
 
 ---
 

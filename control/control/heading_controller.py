@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """
-Buran Controller - Motion Control System
+Heading Controller - Motion Control System
 
-Module: BURAN (Control)  —  named after the Soviet space shuttle, executing the maneuvers
+Module: Heading Controller (formerly BURAN)
 Role:   PID heading control, thruster output, and obstacle avoidance maneuvers.
-See also: OKO (Perception) and SPUTNIK (Planning)
+See also: LiDAR Perception (Perception) and Waypoint Planner (Planning)
 
-Part of the modular Vostok1 architecture.
+Part of the modular AutoBoat architecture.
 Subscribes to planner targets and perception data, outputs thruster commands.
 
 Features:
 - PID heading control with anti-windup
 - Simple anti-stuck system (turn left until clear)
 - Kalman-filtered drift compensation
-- OKO v2.1 VFH/polar histogram obstacle avoidance integration
+- LiDAR Perception v2.1 VFH/polar histogram obstacle avoidance integration
 
 Topics:
     Subscribes:
@@ -137,13 +137,13 @@ class KalmanDriftEstimator:
         return (float(np.sqrt(self.P[0, 0])), float(np.sqrt(self.P[1, 1])))
 
 
-class BuranController(Node):
+class HeadingController(Node):
     """
-    BURAN - Boat controller with PID navigation
+    Heading Controller - Boat controller with PID navigation
     Enhanced with simple anti-stuck system and Kalman drift compensation
     """
     def __init__(self):
-        super().__init__('buran_controller_node')
+        super().__init__('heading_controller_node')
 
         # --- PID PARAMETERS ---
         self.declare_parameter('kp', 500.0)
@@ -234,11 +234,11 @@ class BuranController(Node):
         self.left_clear = float('inf')
         self.right_clear = float('inf')
         self.is_critical = False
-        # OKO v2.0 enhanced state
+        # Perception v2.0 enhanced state
         self.urgency = 0.0  # Distance-weighted urgency (0.0-1.0)
         self.best_gap = None  # Best navigation gap direction
         self.obstacle_count = 0  # Number of detected clusters
-        # OKO v2.1 VFH/polar state (for differential steering)
+        # Perception v2.1 VFH/polar state (for differential steering)
         self.vfh_gap = None  # VFH best direction gap info
         self.polar_bias = 0.0  # Polar histogram bias [-1, 1]
         self.force_avoid_active = False  # Global avoidance mode flag
@@ -309,7 +309,7 @@ class BuranController(Node):
         # High-priority mission commands (STOP/RESUME) - modular architecture
         self.create_subscription(
             String,
-            '/sputnik/mission_command',
+            '/planning/mission_command',
             self.mission_command_callback,
             10
         )
@@ -317,7 +317,7 @@ class BuranController(Node):
         # Subscribe to runtime config updates (PID, speed) - modular architecture
         self.create_subscription(
             String,
-            '/sputnik/set_config',
+            '/planning/set_config',
             self.config_callback,
             10
         )
@@ -341,8 +341,8 @@ class BuranController(Node):
         self.create_timer(0.5, self.publish_anti_stuck_status)
 
         self.get_logger().info("=" * 50)
-        self.get_logger().info("BURAN - Systeme de Controle de Mouvement")
-        self.get_logger().info("Buran Controller - PID Heading Control")
+        self.get_logger().info("Heading Controller - Motion Control System")
+        self.get_logger().info("Heading Controller - PID Heading Control")
         self.get_logger().info("+ Simple Anti-Stuck (turn left until clear)")
         self.get_logger().info(f"PID Gains: Kp={self.kp}, Ki={self.ki}, Kd={self.kd}")
         self.get_logger().info(f"Speed: {self.base_speed} (max: {self.max_speed})")
@@ -373,21 +373,21 @@ class BuranController(Node):
             self.get_logger().warn(f"Invalid target message: {e}")
 
     def obstacle_callback(self, msg):
-        """Receive obstacle information from perception (OKO v2.0 compatible)"""
+        """Receive obstacle information from perception (v2.0 compatible)"""
         try:
             data = json.loads(msg.data)
             self.obstacle_detected = data.get('obstacle_detected', False)
             self.min_obstacle_distance = data.get('min_distance', float('inf'))
-            # OKO v2.0: front_clear, left_clear, right_clear are distances in meters
+            # Perception v2.0: front_clear, left_clear, right_clear are distances in meters
             self.front_clear = data.get('front_clear', float('inf'))
             self.left_clear = data.get('left_clear', float('inf'))
             self.right_clear = data.get('right_clear', float('inf'))
             self.is_critical = data.get('is_critical', False)
-            # OKO v2.0 enhanced fields (backward compatible)
+            # Perception v2.0 enhanced fields (backward compatible)
             self.urgency = data.get('urgency', 0.0)
             self.best_gap = data.get('best_gap', None)
             self.obstacle_count = data.get('obstacle_count', 0)
-            # OKO v2.1 VFH/polar fields (for fine-tuned steering)
+            # Perception v2.1 VFH/polar fields (for fine-tuned steering)
             self.vfh_gap = data.get('vfh_gap', None)
             self.polar_bias = data.get('polar_bias', 0.0)
             self.force_avoid_active = data.get('force_avoid_active', False)
@@ -665,7 +665,7 @@ class BuranController(Node):
                 if self.urgency > 0.5 and self.front_clear < self.min_safe_distance:
                     self.request_replan(reason="path_blocked")
 
-            # OKO v2.0: Use best_gap for smarter navigation if available
+            # Perception v2.0: Use best_gap for smarter navigation if available
             if self.best_gap and self.best_gap.get('width', 0) > 20:
                 # Navigate towards the best gap direction
                 gap_direction_deg = self.best_gap.get('direction', 0)
@@ -744,7 +744,7 @@ class BuranController(Node):
             # Maintain minimum speed for control authority (prevent drifting/circling)
             speed = max(speed, 250.0)  # Minimum 250N to maintain steering control
 
-        # Obstacle-based slowdown using OKO v2.0 urgency for smoother control
+        # Obstacle-based slowdown using perception v2.0 urgency for smoother control
         if self.obstacle_detected:
             # Urgency-based smooth slowdown: higher urgency = more slowdown
             # urgency=0.0 -> full speed, urgency=1.0 -> obstacle_slow_factor
@@ -859,7 +859,7 @@ class BuranController(Node):
         self.send_thrust(0.0, 0.0)
 
     def publish_status(self, mode):
-        """Publish controller status with OKO v2.0 enhanced info"""
+        """Publish controller status with perception v2.0 enhanced info"""
         msg = String()
         msg.data = json.dumps({
             'mode': mode,
@@ -869,7 +869,7 @@ class BuranController(Node):
             'obstacle_distance': round(float(self.min_obstacle_distance), 2),
             'current_yaw': round(math.degrees(self.current_yaw), 1),
             'integral_error': round(float(self.integral_error), 4),
-            # OKO v2.0 enhanced fields
+            # Perception v2.0 enhanced fields
             'urgency': round(float(self.urgency), 2),
             'obstacle_count': int(self.obstacle_count),
             'is_critical': bool(self.is_critical)
@@ -1056,7 +1056,7 @@ class BuranController(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = BuranController()
+    node = HeadingController()
     
     try:
         rclpy.spin(node)

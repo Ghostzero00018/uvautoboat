@@ -12,30 +12,30 @@
 
 ## 🏗️ Architecture
 
-The system uses three distributed ROS 2 nodes (Russian space program theme):
+The system uses three distributed ROS 2 nodes:
 
 | Node | Role | Description |
 | ------ | ------ | ------------- |
-| **OKO** | Perception | 3D LiDAR obstacle detection, temporal filtering, clustering, smoke classification |
-| **SPUTNIK** | Planning | Lawnmower waypoint generation, A* detour planning, mission state machine |
-| **BURAN** | Control | PID heading control, reactive obstacle avoidance, anti-stuck recovery (needs testing) |
+| **Perception** (OKO) | Perception | 3D LiDAR obstacle detection, temporal filtering, clustering, smoke classification |
+| **Planner** (SPUTNIK) | Planning | Lawnmower waypoint generation, A* detour planning, mission state machine |
+| **Controller** (BURAN) | Control | PID heading control, reactive obstacle avoidance, anti-stuck recovery (needs testing) |
 
 Supporting components:
 
 | Component | Description |
 | ------ | ------------- |
-| **VOSTOK1 Dashboard** | Real-time web dashboard with map, config tuning, health check, and JSON export |
+| **AutoBoat Dashboard** | Real-time web dashboard with map, config tuning, health check, and JSON export |
 | **Waypoint Visualizer** | RViz marker publisher for waypoint and trajectory visualization |
 | **Health Check Service** | ROS 2 node wrapping the system health check script with live streaming |
-| **Vostok1 CLI** | Terminal-based mission control (fallback when dashboard is unavailable) |
+| **AutoBoat CLI** | Terminal-based mission control (fallback when dashboard is unavailable) |
 
 ```text
-GPS/IMU ──> SPUTNIK (planner) ──> waypoints/targets ──> BURAN (controller) ──> thrusters
+GPS/IMU ──> Planner ──> waypoints/targets ──> Controller ──> thrusters
                  ^                                            ^
                  |                                            |
-            OKO (LiDAR perception) ───────────────────────────┘
+            Perception (LiDAR) ───────────────────────────────┘
                                                               |
-                                        VOSTOK1 Dashboard <───┘ (via rosbridge)
+                                        AutoBoat Dashboard <──┘ (via rosbridge)
 ```
 
 ---
@@ -89,7 +89,7 @@ source ~/.bashrc
 Launches everything (Gazebo + navigation + dashboard) in one command:
 
 ```bash
-bash ~/seal_ws/src/uvautoboat/one_click_launch_all/launch_vostok1_complete.sh
+bash ~/seal_ws/src/uvautoboat/one_click_launch_all/launch_autoboat_complete.sh
 ```
 
 Then open **<http://localhost:8002>** for the web dashboard.
@@ -101,8 +101,8 @@ Then open **<http://localhost:8002>** for the web dashboard.
 | T1 | `ros2 launch vrx_gz competition.launch.py world:=sydney_regatta_DEFAULT` | Gazebo simulation |
 | T2 | `ros2 launch rosbridge_server rosbridge_websocket_launch.xml delay_between_messages:=0.0` | WebSocket bridge |
 | T3 | `ros2 run web_video_server web_video_server` | Camera stream (port 8080) |
-| T4 | `ros2 launch ~/seal_ws/src/uvautoboat/launch/vostok1.launch.yaml` | Navigation system |
-| T5 | `cd ~/seal_ws/src/uvautoboat/web_dashboard/vostok1 && python3 -m http.server 8002` | Dashboard |
+| T4 | `ros2 launch ~/seal_ws/src/uvautoboat/launch/autoboat.launch.yaml` | Navigation system |
+| T5 | `cd ~/seal_ws/src/uvautoboat/web_dashboard/autoboat && python3 -m http.server 8002` | Dashboard |
 
 ### 🗺️ Running a Mission
 
@@ -120,7 +120,7 @@ Other controls: **Stop**, **Resume**, **Emergency Stop**, **Go Home** (return to
 ## 🩺 Health Check
 
 ```bash
-bash ~/seal_ws/src/uvautoboat/one_click_launch_all/health_check_vostok1.sh
+bash ~/seal_ws/src/uvautoboat/one_click_launch_all/health_check_autoboat.sh
 ```
 
 Runs 45 checks (nodes, topics, parameters, connectivity). Auto-detects IDLE/ACTIVE state. Also available from the dashboard Health Check panel with live-streaming output.
@@ -130,16 +130,16 @@ Runs 45 checks (nodes, topics, parameters, connectivity). Auto-detects IDLE/ACTI
 ## 💻 CLI Mission Control
 
 ```bash
-ros2 run plan vostok1_cli generate --lanes 10 --length 50 --width 20
-ros2 run plan vostok1_cli confirm
-ros2 run plan vostok1_cli start
-ros2 run plan vostok1_cli status
-ros2 run plan vostok1_cli emergency   # Emergency stop
-ros2 run plan vostok1_cli home        # Return to spawn
-ros2 run plan vostok1_cli reset       # Clear and reset
+ros2 run plan autoboat_cli generate --lanes 10 --length 50 --width 20
+ros2 run plan autoboat_cli confirm
+ros2 run plan autoboat_cli start
+ros2 run plan autoboat_cli status
+ros2 run plan autoboat_cli emergency   # Emergency stop
+ros2 run plan autoboat_cli home        # Return to spawn
+ros2 run plan autoboat_cli reset       # Clear and reset
 ```
 
-Interactive mode: `ros2 run plan vostok1_cli interactive`
+Interactive mode: `ros2 run plan autoboat_cli interactive`
 
 ---
 
@@ -157,7 +157,7 @@ ros2 run control keyboard_teleop
 
 ## ⚙️ Key Parameters
 
-Configured in `launch/vostok1.launch.yaml` or via the web dashboard:
+Configured in `launch/autoboat.launch.yaml` or via the web dashboard:
 
 | Parameter | Default | Description |
 | ----------- | --------- | ------------- |
@@ -167,10 +167,10 @@ Configured in `launch/vostok1.launch.yaml` or via the web dashboard:
 | `lanes` | 10 | Number of coverage lanes |
 | `waypoint_tolerance` | 3.5m | Arrival radius |
 | `max_avoidance_turn_deg` | 45.0 | Max obstacle avoidance turn angle |
-| `critical_distance` | 6.0m | Emergency stop distance (BURAN) |
-| `oko_critical_distance` | 5.5m | Emergency stop distance (OKO) |
-| `min_safe_distance` | 12.0m | Start avoidance distance (BURAN) |
-| `oko_min_safe_distance` | 10.0m | Obstacle detection threshold (OKO) |
+| `critical_distance` | 6.0m | Emergency stop distance (Controller) |
+| `perception_critical_distance` | 5.5m | Emergency stop distance (Perception) |
+| `min_safe_distance` | 12.0m | Start avoidance distance (Controller) |
+| `perception_min_safe_distance` | 10.0m | Obstacle detection threshold (Perception) |
 
 ---
 
@@ -178,10 +178,10 @@ Configured in `launch/vostok1.launch.yaml` or via the web dashboard:
 
 ```text
 uvautoboat/
-├── control/                    # BURAN controller + keyboard teleop
-├── plan/                       # OKO perception + SPUTNIK planner + CLI + health check service
-├── launch/                     # vostok1.launch.yaml
-├── web_dashboard/vostok1/      # Web dashboard (HTML/JS/CSS)
+├── control/                    # Heading controller + keyboard teleop
+├── plan/                       # LiDAR perception + waypoint planner + CLI + health check service
+├── launch/                     # autoboat.launch.yaml
+├── web_dashboard/autoboat/      # Web dashboard (HTML/JS/CSS)
 ├── one_click_launch_all/       # Launch script + health check + VRX patch
 ├── test_environment/           # Gazebo worlds and models
 ├── wiki/                       # Wiki documentation
@@ -197,7 +197,7 @@ uvautoboat/
 | Document | Description |
 | ---------- | ------------- |
 | [USER_MANUAL.md](USER_MANUAL.md) | Full technical manual (architecture, algorithms, troubleshooting) |
-| [Dashboard Guide](web_dashboard/vostok1/README_vostok1_dashboard.md) | Dashboard setup and camera panel |
+| [Dashboard Guide](web_dashboard/autoboat/README_autoboat_dashboard.md) | Dashboard setup and camera panel |
 | [Board.md](Board.md) | Development milestones |
 | [Wiki](wiki/Home.md) | Installation, system overview, common issues |
 | [Glossary](wiki/Glossary.md) | Plain-language definitions of every technical term |
@@ -211,7 +211,7 @@ uvautoboat/
 | Problem | Solution |
 | --------- | ---------- |
 | Boat not moving | Check GPS: `ros2 topic echo /wamv/sensors/gps/gps/fix --once` |
-| Spinning in circles | Reduce Kp: `ros2 param set /buran_controller_node kp 300` |
+| Spinning in circles | Reduce Kp: `ros2 param set /heading_controller_node kp 300` |
 | Dashboard disconnected | Restart rosbridge, check port 9090 |
 | No obstacles detected | Check LiDAR: `ros2 topic hz /wamv/sensors/lidars/lidar_wamv_sensor/points` |
 | LiDAR at world origin | Run `bash one_click_launch_all/patch_vrx.sh` (VRX issue #876) |
@@ -225,8 +225,8 @@ uvautoboat/
 | Feature | Status |
 | --------- | ---------- |
 | GPS waypoint navigation (lawnmower pattern) | ✅ Working |
-| 3D LiDAR obstacle detection (OKO) | ✅ Working |
-| PID heading control (BURAN) | ✅ Working |
+| 3D LiDAR obstacle detection (Perception) | ✅ Working |
+| PID heading control (Controller) | ✅ Working |
 | Anti-stuck recovery (SASS) | 🧪 Needs testing |
 | A* detour planning | ✅ Working |
 | Web dashboard with live map | ✅ Working |

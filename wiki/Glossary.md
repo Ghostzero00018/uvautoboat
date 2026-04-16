@@ -90,7 +90,7 @@ The Python build system used by this project's packages (declared in `package.xm
 
 ### Launch File (YAML vs Python)
 
-A file that describes how to start a set of ROS nodes together with their parameters. ROS 2 supports two formats: `.launch.yaml` (declarative, easier to read) and `.launch.py` (programmatic, more flexible). This project uses `vostok1.launch.yaml` as the main launch configuration.
+A file that describes how to start a set of ROS nodes together with their parameters. ROS 2 supports two formats: `.launch.yaml` (declarative, easier to read) and `.launch.py` (programmatic, more flexible). This project uses `autoboat.launch.yaml` as the main launch configuration.
 
 ### Health Check Service
 
@@ -114,7 +114,7 @@ In robotics, "real-time" usually means "responds fast enough to control actions 
 
 ### CLI (Command Line Interface)
 
-The project includes a `vostok1_cli` tool for controlling the mission from a terminal instead of the web dashboard — useful for testing, scripting, or headless operation.
+The project includes a `autoboat_cli` tool for controlling the mission from a terminal instead of the web dashboard — useful for testing, scripting, or headless operation.
 
 ---
 
@@ -180,7 +180,7 @@ A collection of 3D points, each with X, Y, Z coordinates, representing the surfa
 
 A local coordinate system centred at a reference point, with X pointing East, Y pointing North, and Z pointing Up. Used to convert GPS latitude/longitude into metres — because "5.2 metres east" is easier to work with than "lat 33.83601, lon 151.06972".
 
-In this project there is no dedicated "ENU node" — the conversion is done inline inside SPUTNIK and BURAN using the formula:
+In this project there is no dedicated "ENU node" — the conversion is done inline inside the Planner and Controller using the formula:
 
 ```text
 Δx_East  = delta_lon × R × cos(lat0)
@@ -241,7 +241,7 @@ Neither source is perfect. The Kalman filter tracks *how uncertain* each one is 
 
 ### 2D Linear Kalman Filter (as used in this project)
 
-The specific Kalman filter variant implemented in BURAN to compensate for water-current and wind drift. Unpacking every word:
+The specific Kalman filter variant implemented in the Heading Controller to compensate for water-current and wind drift. Unpacking every word:
 
 **"2D"** — The state has **2 dimensions**:
 
@@ -264,7 +264,7 @@ Because both F and H are linear (and actually identity), this project does **NOT
 - `kalman_process_noise: 0.01` — how fast drift is allowed to change between steps (small = smooth, large = responsive)
 - `kalman_measurement_noise: 0.5` — how much we distrust the displacement-based drift measurement
 
-**How drift is measured:** at each time step, BURAN computes the positional displacement vector `(Δx, Δy)` over the last interval, subtracts the displacement expected from the commanded thrust and heading, and treats the residual `(dx, dy) / dt` as a noisy measurement of the current drift velocity. This is fed into the Kalman update.
+**How drift is measured:** at each time step, the Controller computes the positional displacement vector `(Δx, Δy)` over the last interval, subtracts the displacement expected from the commanded thrust and heading, and treats the residual `(dx, dy) / dt` as a noisy measurement of the current drift velocity. This is fed into the Kalman update.
 
 **How drift is used:** the filtered drift vector is subtracted from the target heading calculation, so the boat aims slightly "upstream" to compensate for being pushed sideways.
 
@@ -323,7 +323,7 @@ An alternative route around an obstacle. In this system, if the boat cannot reac
 
 ### Water Plane Removal
 
-Removes LiDAR returns from the water surface itself. OKO estimates the dynamic water-plane Z using the 5th percentile of all Z values, then drops any point within a tolerance (default `water_plane_threshold: 0.32` m) of that plane. This prevents treating waves/ripples as obstacles.
+Removes LiDAR returns from the water surface itself. The Perception node estimates the dynamic water-plane Z using the 5th percentile of all Z values, then drops any point within a tolerance (default `water_plane_threshold: 0.32` m) of that plane. This prevents treating waves/ripples as obstacles.
 
 ### Boat Self-Filter
 
@@ -335,7 +335,7 @@ A "sticky" detection threshold: once an obstacle is confirmed, the exit threshol
 
 ### Sector Analysis (Front / Left / Right)
 
-OKO divides the 360° scan into three directional sectors around the boat. For each sector it computes:
+The Perception node divides the 360° scan into three directional sectors around the boat. For each sector it computes:
 
 - (a) the minimum obstacle distance
 - (b) the clearance distance (10th percentile of returns)
@@ -347,15 +347,15 @@ The controller uses these three sector summaries instead of processing thousands
 
 A number 0–1 reflecting how dangerous an obstacle is:
 
-- **0** = safe distance (≥ `oko_min_safe_distance`, default 10 m)
-- **1** = critical distance (≤ `oko_critical_distance`, default 5.5 m)
+- **0** = safe distance (≥ `perception_min_safe_distance`, default 10 m)
+- **1** = critical distance (≤ `perception_critical_distance`, default 5.5 m)
 - Linear interpolation in between
 
 The dashboard visualizes this as a progress-bar-style urgency meter.
 
 ### Best Gap (VFH Output)
 
-OKO scans for the widest clear "gap" between obstacle clusters and reports its centre angle and width. This is the **output** of the VFH algorithm — the direction the boat *could* steer toward if gap-following is active. In the standard demo VFH is kept off; the best-gap data is still published (for visualization/debugging) but BURAN ignores it and uses simpler sector-based avoidance instead.
+The Perception node scans for the widest clear "gap" between obstacle clusters and reports its centre angle and width. This is the **output** of the VFH algorithm — the direction the boat *could* steer toward if gap-following is active. In the standard demo VFH is kept off; the best-gap data is still published (for visualization/debugging) but the Controller ignores it and uses simpler sector-based avoidance instead.
 
 ### VFH (Vector Field Histogram)
 
@@ -377,11 +377,11 @@ An **obstacle-avoidance algorithm** invented by Johann Borenstein and Yoram Kore
 - **VFH+ (1998)** — adds kinematic constraints (respects vehicle turning radius)
 - **VFH\* (2000)** — combines VFH with A\*-style lookahead for more global planning
 
-**In this project:** OKO implements a basic VFH-style polar histogram over the LiDAR returns and publishes the best-gap direction in `/perception/obstacle_info`. BURAN has a toggle `use_vfh_bias` that, when enabled, biases the steering command toward that best-gap direction instead of relying purely on the Front/Left/Right sector summary.
+**In this project:** The Perception node implements a basic VFH-style polar histogram over the LiDAR returns and publishes the best-gap direction in `/perception/obstacle_info`. The Controller has a toggle `use_vfh_bias` that, when enabled, biases the steering command toward that best-gap direction instead of relying purely on the Front/Left/Right sector summary.
 
 **Why it is disabled by default:** in clean worlds like `sydney_regatta_DEFAULT` there are few obstacles, so the simpler 3-sector avoidance is not only sufficient but actually more stable — it has fewer parameters to tune and does not oscillate when the best-gap jumps between two similar openings. VFH shines in cluttered worlds (buoy fields, piers); that is why 3 out of 4 dashboard presets that enable VFH are named for cluttered scenarios.
 
-**Limitations:** VFH is a **local, reactive** method — it reacts to what it sees *now*, with no memory and no global planning. It can get stuck in local minima (dead-end corridors where the widest gap leads the robot back the way it came). That is why VFH is paired with SPUTNIK's global lawnmower path and A\* rerouting — VFH handles "how to squeeze through obstacles locally", SPUTNIK handles "where to go overall".
+**Limitations:** VFH is a **local, reactive** method — it reacts to what it sees *now*, with no memory and no global planning. It can get stuck in local minima (dead-end corridors where the widest gap leads the robot back the way it came). That is why VFH is paired with the Planner's global lawnmower path and A\* rerouting — VFH handles "how to squeeze through obstacles locally", the Planner handles "where to go overall".
 
 See **[Design_Rationale](Design_Rationale)** for more on the VFH vs. sector-based trade-off.
 
@@ -391,7 +391,7 @@ See **[Design_Rationale](Design_Rationale)** for more on the VFH vs. sector-base
 
 ### Mission States
 
-The phases a mission goes through (from `sputnik_planner.py`):
+The phases a mission goes through (from `waypoint_planner.py`):
 
 | State | Meaning |
 |:------|:--------|
@@ -410,7 +410,7 @@ A simple web server that serves the dashboard's HTML/CSS/JavaScript files to the
 
 ### Navigation Modes (dashboard radio options)
 
-The dashboard lets the operator choose between 3 planning strategies, controlled by two SPUTNIK parameters (`astar_enabled` and `astar_hybrid_mode`):
+The dashboard lets the operator choose between 3 planning strategies, controlled by two Planner parameters (`astar_enabled` and `astar_hybrid_mode`):
 
 - **Simple Lawnmower** — `astar_enabled: false`, `astar_hybrid_mode: false`. Pure zigzag coverage, no A\* involvement. If blocked, the mission falls back to skipping waypoints only.
 - **Runtime A\*** — `astar_enabled: true`, `astar_hybrid_mode: false`. Lawnmower path by default; A\* is called **reactively** only when a waypoint stays blocked for 45+ seconds. **This is the YAML default and the mode used in demos.**
@@ -420,14 +420,16 @@ The HTML initially shows "Simple Lawnmower" as checked on page load, but the das
 
 ---
 
-## Project Names
+## Legacy Module Code-Names (pre-v3.0)
 
-The current modular navigation system and its modules use Russian space-program names as a team naming convention — there is no deep meaning beyond making the modules memorable.
+> As of v3.0, modules use functional names: `lidar_perception` (formerly OKO), `waypoint_planner` (formerly SPUTNIK), `heading_controller` (formerly BURAN). The Russian space-program names below are retained as historical context.
 
-- **Vostok1** — the current modular navigation system (Vostok = "East" in Russian, also the name of the first human spaceflight).
-- **OKO** — the perception module (OKO = "eye" in Russian).
-- **SPUTNIK** — the planning module (Sputnik = "satellite" or "companion" in Russian, name of the first artificial satellite).
-- **BURAN** — the control module (Buran = "blizzard" in Russian, also the Soviet space shuttle).
+The original modular navigation system and its modules used Russian space-program names as a team naming convention — there is no deep meaning beyond making the modules memorable.
+
+- **Vostok1** (now **AutoBoat**) — the modular navigation system (Vostok = "East" in Russian, also the name of the first human spaceflight).
+- **OKO** (now **lidar_perception**) — the perception module (OKO = "eye" in Russian).
+- **SPUTNIK** (now **waypoint_planner**) — the planning module (Sputnik = "satellite" or "companion" in Russian, name of the first artificial satellite).
+- **BURAN** (now **heading_controller**) — the control module (Buran = "blizzard" in Russian, also the Soviet space shuttle).
 
 ---
 
@@ -435,6 +437,6 @@ The current modular navigation system and its modules use Russian space-program 
 
 - **[Design_Rationale](Design_Rationale)** — Why design choices were made (trade-offs and justifications)
 - **[System_Overview](System_Overview)** — High-level architecture
-- **[3D_LIDAR_Processing](3D_LIDAR_Processing)** — OKO perception pipeline in depth
+- **[3D_LIDAR_Processing](3D_LIDAR_Processing)** — LiDAR Perception pipeline in depth
 - **[SASS](SASS)** — Anti-stuck recovery system
 - **[Common_Issues](Common_Issues)** — Troubleshooting guide

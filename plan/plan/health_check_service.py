@@ -9,7 +9,7 @@ from std_msgs.msg import String
 from std_srvs.srv import Trigger
 
 SCRIPT_PATH = os.path.expanduser(
-    '~/seal_ws/src/uvautoboat/one_click_launch_all/health_check_vostok1.sh'
+    '~/seal_ws/src/uvautoboat/one_click_launch_all/health_check_autoboat.sh'
 )
 ANSI_ESCAPE = re.compile(r'\x1b\[[0-9;]*m')
 

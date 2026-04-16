@@ -1,49 +1,49 @@
 #!/bin/bash
 
 # ============================================================================
-# PROJET-17 — Vostok1 Complete One-Click Launch Script
+# PROJET-17 — AutoBoat Complete One-Click Launch Script
 # ============================================================================
 #
 # ℹ️  DASHBOARD PORT: This dashboard runs on PORT 8002
-#     Vostok1 dashboard: http://localhost:8002
+#     AutoBoat dashboard: http://localhost:8002
 #
-# Module naming convention (Russian space program theme):
-#   OKO     = Perception  — "eye": LiDAR obstacle detection
-#   SPUTNIK = Planning    — "satellite": waypoint generation & mission management
-#   BURAN   = Control     — "snowstorm/shuttle": PID steering & obstacle avoidance
+# Module naming convention (functional names):
+#   Perception  — LiDAR obstacle detection
+#   Planner     — waypoint generation & mission management
+#   Controller  — PID steering & obstacle avoidance
 #
-# This script launches the complete Vostok1 autonomous navigation system:
+# This script launches the complete AutoBoat autonomous navigation system:
 #   - VRX Gazebo Simulation (Sydney Regatta World)
 #   - ROS Bridge (WebSocket bridge for web dashboard)
-#   - OKO Perception (3D LIDAR obstacle detection)
-#   - SPUTNIK Planner (GPS waypoint planning)
-#   - BURAN Controller (PID control with obstacle avoidance)
+#   - LiDAR Perception (3D LIDAR obstacle detection)
+#   - Waypoint Planner (GPS waypoint planning)
+#   - Heading Controller (PID control with obstacle avoidance)
 #   - Web Video Server (camera stream for dashboard)
 #   - Web Dashboard (real-time monitoring interface)
 #
 # Launch sequence and files called:
 #   T1  Gazebo         ros2 launch vrx_gz competition.launch.py world:=$WORLD
 #   T2  ROS Bridge     ros2 launch rosbridge_server rosbridge_websocket_launch.xml  :9090
-#   T3  Nav Stack      ros2 launch launch/vostok1.launch.yaml                       (OKO+SPUTNIK+BURAN)
-#                        → plan/plan/oko_perception.py
-#                        → plan/plan/sputnik_planner.py
-#                        → control/control/buran_controller.py
+#   T3  Nav Stack      ros2 launch launch/autoboat.launch.yaml                      (Perception+Planner+Controller)
+#                        → plan/plan/lidar_perception.py
+#                        → plan/plan/waypoint_planner.py
+#                        → control/control/heading_controller.py
 #                        → launches waypoint_visualizer + health_check_service
 #   T4  Video Server   ros2 run web_video_server web_video_server                   :8080
 #   T5  RViz           ros2 launch vrx_gazebo rviz.launch.py                        (optional)
 #   T6  Dashboard      python3 -m http.server 8002                                  :8002
-#                        → serves web_dashboard/vostok1/ (index.html, app.js, style_merged.css)
+#                        → serves web_dashboard/autoboat/ (index.html, app.js, style_merged.css)
 #
 # ----------------------------------------------------------------------------
 # Author: IMT Nord Europe UVAutoBoat Team
 #
 # Usage:
 #   cd <workspace>/src/uvautoboat/one_click_launch_all
-#   bash launch_vostok1_complete.sh [OPTIONS]
+#   bash launch_autoboat_complete.sh [OPTIONS]
 #
 # Options:
 #   --world <world_name>       Gazebo world (default: sydney_regatta_DEFAULT)
-#   For example: bash launch_vostok1_complete.sh --world sydney_regatta_DEFAULT
+#   For example: bash launch_autoboat_complete.sh --world sydney_regatta_DEFAULT
 #
 #   --skip-rviz                Skip RViz launch (default: launch RViz)
 #   --skip-dashboard           Skip web dashboard (default: launch dashboard)
@@ -59,7 +59,7 @@
 #   - web_video_server: sudo apt install ros-jazzy-web-video-server (Install if not already)
 #   - GNOME Terminal installed (required for multi-tab launch)
 #
-# 3d lidar macro used in the Vostok1 URDF model:
+# 3d lidar macro used in the AutoBoat URDF model:
 # ----------------------------------------------------------------------------
 # <xacro:macro name="wamv_3d_lidar" params="name
 #                                            x:=0.7 y:=0 z:=1.8
@@ -89,20 +89,20 @@ die() { echo -e "${RED}$*${NC}"; exit 1; }
 # On a shared machine or multi-session setup, this may kill processes belonging
 # to other users or unrelated workflows. Safe for single-user dev environments.
 cleanup() {
-    echo -e "${YELLOW}Stopping all Vostok1 components...${NC}"
+    echo -e "${YELLOW}Stopping all AutoBoat components...${NC}"
     pkill -9 -f "gz sim" || true
     pkill -9 -f "gzserver" || true
     pkill -9 -f "gzclient" || true
     pkill -9 -f "rosbridge_websocket" || true
     pkill -9 -f "web_video_server" || true
-    pkill -9 -f "vostok1.launch.yaml" || true
-    pkill -9 -f "plan/vostok1" || true
-    pkill -9 -f "sputnik_planner" || true
-    pkill -9 -f "buran_controller" || true
-    pkill -9 -f "oko_perception" || true
+    pkill -9 -f "autoboat.launch.yaml" || true
+    pkill -9 -f "plan/autoboat" || true
+    pkill -9 -f "waypoint_planner" || true
+    pkill -9 -f "heading_controller" || true
+    pkill -9 -f "lidar_perception" || true
     pkill -9 -f "http.server 8002" || true
     pkill -9 -f "rviz" || true
-    pkill -9 -f "web_dashboard/vostok1" || true
+    pkill -9 -f "web_dashboard/autoboat" || true
     # Close gnome-terminal tabs we opened (if still running)
     for pid in $GAZEBO_PID $ROSBRIDGE_PID $NAV_PID $CAMERA_PID $RVIZ_PID $DASHBOARD_PID; do
         if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
@@ -146,9 +146,9 @@ while [[ $# -gt 0 ]]; do
             ;;
         --help)
             cat << 'EOF'
-PROJET-17 Vostok1 Complete Launch Script
+PROJET-17 AutoBoat Complete Launch Script
 
-Usage: ./launch_vostok1_complete.sh [OPTIONS]
+Usage: ./launch_autoboat_complete.sh [OPTIONS]
 
 Options:
   --world <world_name>       Gazebo world (default: sydney_regatta_DEFAULT)
@@ -159,7 +159,7 @@ Options:
   --help                     Show this help message
 
 Example:
-  ./launch_vostok1_complete.sh --world sydney_regatta_DEFAULT --skip-rviz
+  ./launch_autoboat_complete.sh --world sydney_regatta_DEFAULT --skip-rviz
 
 Worlds available:
   - sydney_regatta_DEFAULT (default, clean environment)
@@ -245,7 +245,7 @@ if ! ros2 pkg prefix vrx_gz &> /dev/null 2>&1; then
     print_warning "VRX package not found in ROS 2 path. Gazebo launch may fail."
 fi
 
-print_header "Launching Vostok1 Complete System"
+print_header "Launching AutoBoat Complete System"
 echo "World: $WORLD"
 echo "RViz: $([ "$LAUNCH_RVIZ" = true ] && echo 'Yes' || echo 'No')"
 echo "Dashboard: $([ "$LAUNCH_DASHBOARD" = true ] && echo 'Yes' || echo 'No')"
@@ -289,13 +289,13 @@ sleep 8  # Wait for rosbridge to initialize
 print_status "ROS Bridge launched (PID: $ROSBRIDGE_PID)"
 recheck "$ROSBRIDGE_PID" "ROS Bridge"
 
-# T3: Launch Navigation Stack (OKO-SPUTNIK-BURAN)
-print_status "Launching Navigation Stack (OKO-SPUTNIK-BURAN)..."
+# T3: Launch Navigation Stack (Perception-Planner-Controller)
+print_status "Launching Navigation Stack (Perception-Planner-Controller)..."
 gnome-terminal --wait --tab --title="navigation" -- bash -i -c "
 source \"$INSTALL_DIR/setup.bash\"
-echo 'Starting Vostok1 Modular Navigation System...'
-echo 'Components: OKO (perception) | SPUTNIK (planner) | BURAN (control)'
-ros2 launch \"$WS_ROOT/src/uvautoboat/launch/vostok1.launch.yaml\"
+echo 'Starting AutoBoat Modular Navigation System...'
+echo 'Components: Perception | Planner | Controller'
+ros2 launch \"$WS_ROOT/src/uvautoboat/launch/autoboat.launch.yaml\"
 " &
 NAV_PID=$!
 sleep 8  # Wait for navigation stack to initialize
@@ -339,7 +339,7 @@ fi
 if [ "$LAUNCH_DASHBOARD" = true ]; then
     print_status "Launching Web Dashboard (http://localhost:8002)..."
 gnome-terminal --wait --tab --title="dashboard" -- bash -i -c "
-cd \"$WS_ROOT/src/uvautoboat/web_dashboard/vostok1\"
+cd \"$WS_ROOT/src/uvautoboat/web_dashboard/autoboat\"
 echo 'Starting Web Dashboard HTTP server...'
 echo 'Dashboard available at: http://localhost:8002'
 echo 'Note: Wait for GPS to initialize (~10-30s) before opening dashboard'
@@ -367,7 +367,7 @@ if [ "$OPEN_BROWSER" = true ] && [ "$LAUNCH_DASHBOARD" = true ]; then
     fi
 fi
 
-print_header "Vostok1 System Launched Successfully!"
+print_header "AutoBoat System Launched Successfully!"
 echo ""
 echo -e "${GREEN}System Status:${NC}"
 echo "  Gazebo:          http://localhost:11345 (Gazebo GUI)"
@@ -383,8 +383,8 @@ echo -e "${YELLOW}Quick Tips:${NC}"
 echo "  - GPS takes 10-30s to initialize (be patient!)"
 echo "  - Check terminal tabs for error messages"
 echo "  - Use web dashboard to control and monitor the boat"
-echo "  - Run 'ros2 run plan vostok1_cli generate' to create waypoints (if the web dashboard is not used)"
-echo "  - Run 'ros2 run plan vostok1_cli start' to begin mission (if the web dashboard is not used)"
+echo "  - Run 'ros2 run plan autoboat_cli generate' to create waypoints (if the web dashboard is not used)"
+echo "  - Run 'ros2 run plan autoboat_cli start' to begin mission (if the web dashboard is not used)"
 echo ""
 echo -e "${BLUE}Useful Commands:${NC}"
 echo "  Monitor GPS:        ros2 topic echo /wamv/sensors/gps/gps/fix"

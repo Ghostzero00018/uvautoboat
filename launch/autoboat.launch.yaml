@@ -1,16 +1,16 @@
 # ============================================================================
-# PROJET-17 — Vostok1 Modular Navigation System
+# PROJET-17 — AutoBoat Modular Navigation System
 # ============================================================================
 #
-# Module naming convention (Russian space program theme):
-#   OKO     = Perception  — "eye": LiDAR obstacle detection
-#   SPUTNIK = Planning    — "satellite": waypoint generation & mission management
-#   BURAN   = Control     — "snowstorm/shuttle": PID steering & obstacle avoidance
+# Module naming convention (functional names):
+#   Perception — LiDAR obstacle detection
+#   Planner    — waypoint generation & mission management
+#   Controller — PID steering & obstacle avoidance
 #
-# Launches the modular Vostok1-based navigation system:
-#   - oko_perception (OKO) - 3D LIDAR obstacle detection
-#   - sputnik_planner (SPUTNIK) - GPS waypoint planning
-#   - buran_controller (BURAN) - PID control with obstacle avoidance
+# Launches the modular AutoBoat navigation system:
+#   - lidar_perception (Perception) - 3D LIDAR obstacle detection
+#   - waypoint_planner (Planner) - GPS waypoint planning
+#   - heading_controller (Controller) - PID control with obstacle avoidance
 #
 # Prerequisites:
 #   # Kill any old Gazebo processes (Optional but recommended)
@@ -27,8 +27,8 @@
 #   T2: Rosbridge (for web dashboard): ros2 launch rosbridge_server rosbridge_websocket_launch.xml delay_between_messages:=0.0
 #       Wait 2–3s for rosbridge to initialize.
 #
-#   T3: Navigation stack (this file): ros2 launch ~/seal_ws/src/uvautoboat/launch/vostok1.launch.yaml
-#       Wait ~5s for OKO/SPUTNIK/BURAN to initialize.
+#   T3: Navigation stack (this file): ros2 launch ~/seal_ws/src/uvautoboat/launch/autoboat.launch.yaml
+#       Wait ~5s for Perception/Planner/Controller to initialize.
 #
 #   T4: Web video server (camera stream for dashboard):
 #       Install once if missing: sudo apt install ros-${ROS_DISTRO}-web-video-server
@@ -36,7 +36,7 @@
 #
 #   T5: RViz (optional visualization): ros2 launch vrx_gz rviz.launch.py
 #
-#   T6: Web dashboard: cd ~/seal_ws/src/uvautoboat/web_dashboard/vostok1 && python3 -m http.server 8002
+#   T6: Web dashboard: cd ~/seal_ws/src/uvautoboat/web_dashboard/autoboat && python3 -m http.server 8002
 #       Browser: open http://localhost:8002 (wait for GPS to publish first fix)
 #
 # NOTE: GPS can take 10–30s to initialize in VRX. If the dashboard shows "waiting for GPS",
@@ -52,7 +52,7 @@
 launch:
 
 # ============================================================================
-# OKO - Perception Node (3D LIDAR Processing)
+# LiDAR Perception Node (3D LIDAR Processing)
 # Tuned for lake bank and harbour detection
 # Height reference: LiDAR mounted ~2-3m above water
 #   - Water surface:     Z ≈ -3m (below LiDAR)
@@ -62,14 +62,14 @@ launch:
 # ============================================================================
 - node:
     pkg: plan
-    exec: oko_perception
-    name: oko_perception_node
+    exec: lidar_perception
+    name: lidar_perception_node
     output: screen
     param:
-    - name: oko_min_safe_distance
-      value: 10.0       # OKO detection threshold (separate from BURAN's min_safe_distance)
-    - name: oko_critical_distance
-      value: 5.5        # OKO emergency stop threshold (separate from BURAN's critical_distance)
+    - name: perception_min_safe_distance
+      value: 10.0       # Perception detection threshold (separate from Controller's min_safe_distance)
+    - name: perception_critical_distance
+      value: 5.5        # Perception emergency stop threshold (separate from Controller's critical_distance)
     - name: hysteresis_distance
       value: 2.0        # More slack to avoid chatter
     - name: min_height
@@ -82,7 +82,7 @@ launch:
       value: 100.0      # Extended range for early detection (LiDAR max: 130m)
     - name: sample_rate
       value: 1          # Process ALL points (30k points/scan optimal for detection)
-    # Enhanced OKO v2.0 parameters (tuned for faster response)
+    # Enhanced Perception v2.0 parameters (tuned for faster response)
     - name: temporal_history_size
       value: 3          # Reduced: faster response
     - name: temporal_threshold
@@ -115,12 +115,12 @@ launch:
       value: 30.0       # Detect smoke within 30m range
 
 # ============================================================================
-# SPUTNIK - Planner Node (GPS Waypoint Navigation)
+# Waypoint Planner Node (GPS Waypoint Navigation)
 # ============================================================================
 - node:
     pkg: plan
-    exec: sputnik_planner
-    name: sputnik_planner_node
+    exec: waypoint_planner
+    name: waypoint_planner_node
     output: screen
     param:
     - name: world_name
@@ -163,12 +163,12 @@ launch:
     # Note: pollutant_scan_enabled removed (default false; smoke worlds moved to legacy)
 
 # ============================================================================
-# BURAN - Controller Node (PID Control with Obstacle Avoidance)
+# Heading Controller Node (PID Control with Obstacle Avoidance)
 # ============================================================================
 - node:
     pkg: control
-    exec: buran_controller
-    name: buran_controller_node
+    exec: heading_controller
+    name: heading_controller_node
     output: screen
     param:
     # PID Gains
@@ -220,7 +220,7 @@ launch:
       value: 6.0           # Start slowing when this close to obstacles (m)
     - name: bank_slow_factor
       value: 0.25          # Speed multiplier when near banks
-    # BURAN v2.1 Enhanced Control
+    # Controller v2.1 Enhanced Control
     - name: avoid_diff_gain
       value: 18.0         # Very mild differential steering
     - name: use_vfh_bias
@@ -241,7 +241,7 @@ launch:
 
 # ============================================================================
 # Health Check Service - exposes /health_check/run (std_srvs/Trigger)
-# Wraps one_click_launch_all/health_check_vostok1.sh so the web dashboard
+# Wraps one_click_launch_all/health_check_autoboat.sh so the web dashboard
 # can run diagnostics on demand via rosbridge.
 # ============================================================================
 - node:

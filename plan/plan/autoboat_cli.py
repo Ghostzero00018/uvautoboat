@@ -1,76 +1,76 @@
 #!/usr/bin/env python3
 """
-Mission CLI - Terminal-based mission control for Vostok1 / Sputnik
+Mission CLI - Terminal-based mission control for AutoBoat
 
 Use this when the web dashboard is unavailable.
 
 MODES:
-    --mode modular   (default) Use modular Sputnik planner + Buran controller
-    --mode vostok1   (deprecated) Legacy integrated Vostok1 navigation
+    --mode modular   (default) Use modular Waypoint Planner + Heading Controller
+    --mode vostok1   (deprecated) Legacy integrated navigation
 
-Usage (Modular - Sputnik Planner - Default):
+Usage (Modular - Waypoint Planner - Default):
     # Generate waypoints with default parameters
-    ros2 run plan vostok1_cli generate
+    ros2 run plan autoboat_cli generate
     
     # Generate waypoints with custom parameters
-    ros2 run plan vostok1_cli generate --lanes 8 --length 50 --width 20
+    ros2 run plan autoboat_cli generate --lanes 8 --length 50 --width 20
     
     # Start mission
-    ros2 run plan vostok1_cli start
+    ros2 run plan autoboat_cli start
     
     # Stop mission
-    ros2 run plan vostok1_cli stop
+    ros2 run plan autoboat_cli stop
     
     # Resume mission
-    ros2 run plan vostok1_cli resume
+    ros2 run plan autoboat_cli resume
     
     # Reset mission (clear waypoints)
-    ros2 run plan vostok1_cli reset
+    ros2 run plan autoboat_cli reset
     
     # Go home (return to spawn)
-    ros2 run plan vostok1_cli home
+    ros2 run plan autoboat_cli home
     
     # Confirm waypoints
-    ros2 run plan vostok1_cli confirm
+    ros2 run plan autoboat_cli confirm
     
     # Set PID parameters
-    ros2 run plan vostok1_cli pid --kp 400 --ki 20 --kd 100
+    ros2 run plan autoboat_cli pid --kp 400 --ki 20 --kd 100
 
     # Set speed
-    ros2 run plan vostok1_cli speed --base 500 --max 800
+    ros2 run plan autoboat_cli speed --base 500 --max 800
 
     # Generate with custom parameters (PID, speed, and turn angle)
-    ros2 run plan vostok1_cli generate --kp 500 --ki 20 --kd 150 --base 400 --max 800 --max-turn 20
+    ros2 run plan autoboat_cli generate --kp 500 --ki 20 --kd 150 --base 400 --max 800 --max-turn 20
 
     # Generate with anti-stuck parameters (for navigation tuning)
-    ros2 run plan vostok1_cli generate --stuck-timeout 12.0 --stuck-threshold 1.0
+    ros2 run plan autoboat_cli generate --stuck-timeout 12.0 --stuck-threshold 1.0
 
-    # Generate with OKO parameters (for low pier detection)
-    ros2 run plan vostok1_cli generate --min-height -1.2
+    # Generate with perception parameters (for low pier detection)
+    ros2 run plan autoboat_cli generate --min-height -1.2
 
     # Full custom configuration (all parameters)
-    ros2 run plan vostok1_cli generate --kp 500 --base 400 --max 800 --max-turn 20 --stuck-timeout 12.0 --stuck-threshold 1.0 --min-height -1.2
+    ros2 run plan autoboat_cli generate --kp 500 --base 400 --max 800 --max-turn 20 --stuck-timeout 12.0 --stuck-threshold 1.0 --min-height -1.2
 
     # Show current status
-    ros2 run plan vostok1_cli status
+    ros2 run plan autoboat_cli status
     
     # Interactive mode
-    ros2 run plan vostok1_cli interactive
+    ros2 run plan autoboat_cli interactive
 
-Usage (Integrated - Vostok1):
+Usage (Integrated - Legacy):
     # Generate waypoints
-    ros2 run plan vostok1_cli --mode vostok1 generate --lanes 8 --length 15 --width 5
+    ros2 run plan autoboat_cli --mode vostok1 generate --lanes 8 --length 15 --width 5
     
     # Start mission
-    ros2 run plan vostok1_cli --mode vostok1 start
+    ros2 run plan autoboat_cli --mode vostok1 start
     
     # Stop / Resume / Reset
-    ros2 run plan vostok1_cli --mode vostok1 stop
-    ros2 run plan vostok1_cli --mode vostok1 resume
-    ros2 run plan vostok1_cli --mode vostok1 reset
+    ros2 run plan autoboat_cli --mode vostok1 stop
+    ros2 run plan autoboat_cli --mode vostok1 resume
+    ros2 run plan autoboat_cli --mode vostok1 reset
     
     # Interactive mode
-    ros2 run plan vostok1_cli --mode vostok1 interactive
+    ros2 run plan autoboat_cli --mode vostok1 interactive
 """
 
 import rclpy
@@ -83,24 +83,24 @@ import time
 from pathlib import Path
 from typing import Optional, Tuple
 
-# Derive repo root from this file's location: plan/plan/vostok1_cli.py -> repo root
+# Derive repo root from this file's location: plan/plan/autoboat_cli.py -> repo root
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_LAUNCH_FILE = _REPO_ROOT / 'launch' / 'vostok1.launch.yaml'
+_LAUNCH_FILE = _REPO_ROOT / 'launch' / 'autoboat.launch.yaml'
 
 
 class MissionCLI(Node):
-    def __init__(self, mode='vostok1'):
-        super().__init__('vostok1_cli')
+    def __init__(self, mode='modular'):
+        super().__init__('autoboat_cli')
         
         self.mode = mode
         
         # Set topic prefixes based on mode
-        if mode == 'modular' or mode == 'sputnik':
-            config_topic = '/sputnik/set_config'
-            command_topic = '/sputnik/mission_command'
+        if mode == 'modular':
+            config_topic = '/planning/set_config'
+            command_topic = '/planning/mission_command'
             status_topic = '/planning/mission_status'
-            config_status_topic = '/sputnik/config'
-            self.get_logger().info("Mode: MODULAR (Sputnik Planner)")
+            config_status_topic = '/planning/config'
+            self.get_logger().info("Mode: MODULAR (Waypoint Planner)")
         else:
             config_topic = '/vostok1/set_config'
             command_topic = '/vostok1/mission_command'
@@ -115,7 +115,7 @@ class MissionCLI(Node):
         # Subscribers for status
         self.mission_status = None
         self.config_status = None
-        self.buran_status = None
+        self.controller_status = None
         
         self.create_subscription(
             String,
@@ -131,12 +131,12 @@ class MissionCLI(Node):
             10
         )
         
-        # Also subscribe to BURAN/control status (modular mode)
-        if mode == 'modular' or mode == 'sputnik':
+        # Also subscribe to controller status (modular mode)
+        if mode == 'modular':
             self.create_subscription(
                 String,
                 '/control/status',
-                self.buran_status_callback,
+                self.controller_status_callback,
                 10
             )
         
@@ -165,7 +165,7 @@ class MissionCLI(Node):
         if self.mission_status:
             state = self.mission_status.get('state', None)
             count = int(self.mission_status.get('total_waypoints', 0) or 0)
-            # Sputnik exposes current_waypoint instead of waypoint index
+            # Planner exposes current_waypoint instead of waypoint index
             if count == 0 and 'current_waypoint' in self.mission_status:
                 count = int(self.mission_status.get('current_waypoint') or 0)
         if self.config_status:
@@ -242,9 +242,9 @@ class MissionCLI(Node):
         except Exception:
             pass
 
-    def buran_status_callback(self, msg):
+    def controller_status_callback(self, msg):
         try:
-            self.buran_status = json.loads(msg.data)
+            self.controller_status = json.loads(msg.data)
         except Exception:
             pass
     
@@ -258,10 +258,10 @@ class MissionCLI(Node):
                 print("✅ Navigation system ready!")
                 return True
         print("⚠️ Navigation system not responding. Is it running?")
-        if self.mode == 'modular' or self.mode == 'sputnik':
+        if self.mode == 'modular':
             print(f"   Start with: ros2 launch {_LAUNCH_FILE}")
         else:
-            print("   Start with: ros2 run plan vostok1")
+            print("   Start with: ros2 run plan autoboat")
         return False
     
     def send_command(self, command):
@@ -281,7 +281,7 @@ class MissionCLI(Node):
     def generate_waypoints(self, lanes=8, length=50.0, width=20.0,
                             kp=None, ki=None, kd=None, base_speed=None, max_speed=None, max_turn=None,
                             stuck_timeout=None, stuck_threshold=None,
-                            min_height=None, safe_dist=None, oko_safe_dist=None, approach_dist=None, approach_factor=None,
+                            min_height=None, safe_dist=None, perception_safe_dist=None, approach_dist=None, approach_factor=None,
                             hazard=False, hazard_boxes=None, hazard_origin_x=None, hazard_origin_y=None,
                             astar=False, astar_hybrid=False, astar_resolution=None, astar_safety=None, astar_max=None):
         """Generate waypoints with specified parameters and optional PID/speed/turn/hazard/A* config"""
@@ -289,14 +289,14 @@ class MissionCLI(Node):
         if not self.wait_for_ready():
             return False
             
-        # Waypoint config (for SPUTNIK)
+        # Waypoint config (for planner)
         config = {
             'lanes': lanes,
             'scan_length': length,
             'scan_width': width
         }
         
-        # Add PID/speed/turn if specified (for BURAN - it also listens to /sputnik/set_config)
+        # Add PID/speed/turn if specified (controller also listens to /planning/set_config)
         if kp is not None:
             config['kp'] = kp
         if ki is not None:
@@ -310,22 +310,22 @@ class MissionCLI(Node):
         if max_turn is not None:
             config['max_avoidance_turn_deg'] = max_turn
 
-        # Simple anti-stuck parameters (for BURAN)
+        # Simple anti-stuck parameters (for controller)
         if stuck_timeout is not None:
             config['stuck_timeout'] = stuck_timeout
         if stuck_threshold is not None:
             config['stuck_threshold'] = stuck_threshold
 
-        # OKO parameters
+        # Perception parameters
         if min_height is not None:
             config['min_height'] = min_height
 
-        # BURAN distance parameters
+        # Controller distance parameters
         if safe_dist is not None:
             config['min_safe_distance'] = safe_dist
-        # OKO distance parameter (separate from BURAN's min_safe_distance)
-        if oko_safe_dist is not None:
-            config['oko_min_safe_distance'] = oko_safe_dist
+        # Perception distance parameter (separate from controller's min_safe_distance)
+        if perception_safe_dist is not None:
+            config['perception_min_safe_distance'] = perception_safe_dist
         if approach_dist is not None:
             config['approach_slow_distance'] = approach_dist
         if approach_factor is not None:
@@ -494,7 +494,7 @@ class MissionCLI(Node):
                 break
             
         print("\n" + "=" * 50)
-        print("VOSTOK1 STATUS | STATUT VOSTOK1")
+        print("AUTOBOAT STATUS")
         print("=" * 50)
         
         # Mission status (only available during RUNNING state)
@@ -528,31 +528,31 @@ class MissionCLI(Node):
             else:
                 print("⚠️ No status received")
                 print("   Check if the navigation system is running:")
-                if self.mode == 'modular' or self.mode == 'sputnik':
+                if self.mode == 'modular':
                     print(f"   ros2 launch {_LAUNCH_FILE}")
                 else:
-                    print("   ros2 run plan vostok1")
+                    print("   ros2 run plan autoboat")
         
-        # Sputnik config (waypoint generation settings)
+        # Planner config (waypoint generation settings)
         if self.config_status:
-            print(f"\nSputnik Config (Waypoints):")
+            print(f"\nPlanner Config (Waypoints):")
             print(f"  Lanes: {self.config_status.get('lanes', '?')}")
             print(f"  Scan Length: {self.config_status.get('scan_length', '?')}m")
             print(f"  Scan Width: {self.config_status.get('scan_width', '?')}m")
             print(f"  Tolerance: {self.config_status.get('waypoint_tolerance', '?')}m")
         
-        # Buran/control status (obstacle avoidance)
-        if self.buran_status:
-            print(f"\nBuran Status (Controller):")
-            print(f"  Mode: {self.buran_status.get('mode', '?')}")
-            avoidance = self.buran_status.get('avoidance_active', False)
-            obstacle = self.buran_status.get('obstacle_detected', False)
-            distance = self.buran_status.get('obstacle_distance', '?')
-            urgency = self.buran_status.get('urgency', 0.0)
-            obs_count = self.buran_status.get('obstacle_count', 0)
-            is_critical = self.buran_status.get('is_critical', False)
+        # Controller status (obstacle avoidance)
+        if self.controller_status:
+            print(f"\nController Status:")
+            print(f"  Mode: {self.controller_status.get('mode', '?')}")
+            avoidance = self.controller_status.get('avoidance_active', False)
+            obstacle = self.controller_status.get('obstacle_detected', False)
+            distance = self.controller_status.get('obstacle_distance', '?')
+            urgency = self.controller_status.get('urgency', 0.0)
+            obs_count = self.controller_status.get('obstacle_count', 0)
+            is_critical = self.controller_status.get('is_critical', False)
             
-            # OKO v2.0 enhanced display
+            # Perception v2.0 enhanced display
             if is_critical:
                 print(f"  Obstacle: 🚨 CRITICAL ({distance}m) [{obs_count} clusters]")
             elif obstacle:
@@ -562,19 +562,19 @@ class MissionCLI(Node):
             
             print(f"  Urgency: {urgency*100:.0f}%")
             print(f"  Avoidance: {'🔄 Active' if avoidance else 'Inactive'}")
-            print(f"  Heading: {self.buran_status.get('current_yaw', '?')}°")
+            print(f"  Heading: {self.controller_status.get('current_yaw', '?')}°")
         
         # Note about PID/Speed
-        if self.mode == 'modular' or self.mode == 'sputnik':
-            print(f"\n💡 PID/Speed are set via CLI but not broadcast by BURAN")
-            print(f"   Use 'ros2 param get /buran_node kp' to check current values")
+        if self.mode == 'modular':
+            print(f"\n💡 PID/Speed are set via CLI but not broadcast by controller")
+            print(f"   Use 'ros2 param get /heading_controller kp' to check current values")
         
         print("=" * 50)
         
     def interactive_mode(self):
         """Interactive command mode"""
         print("\n" + "=" * 60)
-        print("VOSTOK1 INTERACTIVE MODE | MODE INTERACTIF")
+        print("AUTOBOAT INTERACTIVE MODE")
         print("=" * 60)
         print("Commands:")
         print("  g [lanes] [length] [width] - Generate waypoints")
@@ -593,7 +593,7 @@ class MissionCLI(Node):
         
         while True:
             try:
-                cmd = input("\nvostok1> ").strip().lower().split()
+                cmd = input("\nautoboat> ").strip().lower().split()
                 if not cmd:
                     continue
                     
@@ -642,36 +642,36 @@ class MissionCLI(Node):
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Vostok1 Mission CLI - Terminal control for autonomous boat',
+        description='AutoBoat Mission CLI - Terminal control for autonomous boat',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   # Generate waypoints only
-  ros2 run plan vostok1_cli generate --lanes 8 --length 50 --width 20
+  ros2 run plan autoboat_cli generate --lanes 8 --length 50 --width 20
   
   # Generate with PID and speed in one command
-  ros2 run plan vostok1_cli generate --lanes 10 --length 60 --width 25 --kp 400 --ki 20 --kd 100 --base 500 --max 800
+  ros2 run plan autoboat_cli generate --lanes 10 --length 60 --width 25 --kp 400 --ki 20 --kd 100 --base 500 --max 800
   
   # Mission control
-  ros2 run plan vostok1_cli confirm
-  ros2 run plan vostok1_cli start
-  ros2 run plan vostok1_cli status
-  ros2 run plan vostok1_cli stop
-  ros2 run plan vostok1_cli home
+  ros2 run plan autoboat_cli confirm
+  ros2 run plan autoboat_cli start
+  ros2 run plan autoboat_cli status
+  ros2 run plan autoboat_cli stop
+  ros2 run plan autoboat_cli home
   
   # Separate PID/speed commands
-  ros2 run plan vostok1_cli pid --kp 500 --ki 25 --kd 120
-  ros2 run plan vostok1_cli speed --base 600 --max 900
+  ros2 run plan autoboat_cli pid --kp 500 --ki 25 --kd 120
+  ros2 run plan autoboat_cli speed --base 600 --max 900
   
   # Interactive mode
-  ros2 run plan vostok1_cli interactive
+  ros2 run plan autoboat_cli interactive
         """
     )
     
     # Global mode argument
     parser.add_argument('--mode', '-m', type=str, default='modular',
-                        choices=['vostok1', 'modular', 'sputnik'],
-                        help='Mode: modular/sputnik (default) or vostok1 (deprecated, legacy integrated system)')
+                        choices=['vostok1', 'modular'],
+                        help='Mode: modular (default) or vostok1 (deprecated, legacy integrated system)')
     
     subparsers = parser.add_subparsers(dest='command', help='Command to execute')
     
@@ -685,23 +685,23 @@ Examples:
     gen_parser.add_argument('--kd', type=float, help='PID Derivative gain (optional)')
     gen_parser.add_argument('--base', type=float, help='Base speed in N (optional)')
     gen_parser.add_argument('--max', type=float, help='Max speed in N (optional)')
-    gen_parser.add_argument('--max-turn', type=float, help='Max avoidance turn angle in degrees (optional, BURAN)')
-    # Simple anti-stuck parameters (for BURAN)
-    gen_parser.add_argument('--stuck-timeout', type=float, help='Stuck detection timeout in seconds (optional, BURAN)')
-    gen_parser.add_argument('--stuck-threshold', type=float, help='Stuck detection threshold in meters (optional, BURAN)')
-    # OKO parameters
-    gen_parser.add_argument('--min-height', type=float, help='Min LiDAR height threshold in meters (optional, OKO)')
-    # BURAN distance parameters
-    gen_parser.add_argument('--safe-dist', type=float, help='Min safe distance in meters (optional, BURAN)')
-    gen_parser.add_argument('--oko-safe-dist', type=float, help='OKO detection safe distance in meters (optional, OKO)')
-    gen_parser.add_argument('--approach-dist', type=float, help='Approach slow-down distance in meters (optional, BURAN)')
-    gen_parser.add_argument('--approach-factor', type=float, help='Approach slow-down speed factor 0-1 (optional, BURAN)')
-    # Hazard/A* options (forwarded to Sputnik)
-    gen_parser.add_argument('--hazard', action='store_true', help='Enable hazard avoidance (Sputnik)')
+    gen_parser.add_argument('--max-turn', type=float, help='Max avoidance turn angle in degrees (optional, controller)')
+    # Simple anti-stuck parameters (for controller)
+    gen_parser.add_argument('--stuck-timeout', type=float, help='Stuck detection timeout in seconds (optional, controller)')
+    gen_parser.add_argument('--stuck-threshold', type=float, help='Stuck detection threshold in meters (optional, controller)')
+    # Perception parameters
+    gen_parser.add_argument('--min-height', type=float, help='Min LiDAR height threshold in meters (optional, perception)')
+    # Controller distance parameters
+    gen_parser.add_argument('--safe-dist', type=float, help='Min safe distance in meters (optional, controller)')
+    gen_parser.add_argument('--perception-safe-dist', type=float, help='Perception detection safe distance in meters (optional, perception)')
+    gen_parser.add_argument('--approach-dist', type=float, help='Approach slow-down distance in meters (optional, controller)')
+    gen_parser.add_argument('--approach-factor', type=float, help='Approach slow-down speed factor 0-1 (optional, controller)')
+    # Hazard/A* options (forwarded to planner)
+    gen_parser.add_argument('--hazard', action='store_true', help='Enable hazard avoidance (planner)')
     gen_parser.add_argument('--hazard-boxes', type=str, help='Hazard world boxes string \"xmin,ymin,xmax,ymax;...\"')
     gen_parser.add_argument('--hazard-origin-x', type=float, help='Hazard origin world X')
     gen_parser.add_argument('--hazard-origin-y', type=float, help='Hazard origin world Y')
-    gen_parser.add_argument('--astar', action='store_true', help='Enable runtime A* detours (Sputnik)')
+    gen_parser.add_argument('--astar', action='store_true', help='Enable runtime A* detours (planner)')
     gen_parser.add_argument('--astar-hybrid', action='store_true', help='Enable A* hybrid mode (pre-plan routes)')
     gen_parser.add_argument('--astar-resolution', type=float, help='A* grid resolution (m)')
     gen_parser.add_argument('--astar-safety', type=float, help='A* safety margin (m)')
@@ -746,7 +746,7 @@ Examples:
                 base_speed=args.base, max_speed=args.max, max_turn=args.max_turn,
                 stuck_timeout=args.stuck_timeout, stuck_threshold=args.stuck_threshold,
                 min_height=args.min_height,
-                safe_dist=args.safe_dist, oko_safe_dist=args.oko_safe_dist,
+                safe_dist=args.safe_dist, perception_safe_dist=args.perception_safe_dist,
                 approach_dist=args.approach_dist,
                 approach_factor=args.approach_factor,
                 hazard=args.hazard, hazard_boxes=args.hazard_boxes,

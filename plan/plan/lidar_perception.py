@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-OKO Perception - 3D LiDAR Point Cloud Processing (Enhanced v2.0)
+LiDAR Perception - 3D LiDAR Point Cloud Processing (Enhanced v2.0)
 
-Module: OKO (Perception)  —  named after the Russian word for "eye"
+Module: LiDAR Perception (formerly OKO)
 Role:   Processes 3D LiDAR point clouds and publishes obstacle information.
-See also: SPUTNIK (Planning) and BURAN (Control)
+See also: Waypoint Planner (Planning) and Heading Controller (Control)
 
-Part of the modular Vostok1 architecture.
+Part of the modular AutoBoat architecture.
 Subscribes to 3D LiDAR data, processes point cloud, publishes obstacle information.
 
 Features:
@@ -45,21 +45,21 @@ from sensor_msgs.msg import PointCloud2
 from std_msgs.msg import String
 
 
-class OkoPerception(Node):
+class LidarPerception(Node):
     """
-    OKO - "Œil" (Référence au système d'alerte précoce par satellite)
+    LiDAR Perception (formerly OKO — "Œil", early-warning satellite reference)
     Système de perception et détection d'obstacles
-    
+
     Enhanced with temporal filtering, clustering, and velocity estimation.
     """
     def __init__(self):
-        super().__init__('oko_perception_node')
+        super().__init__('lidar_perception_node')
 
         # --- PARAMETERS ---
         # Tuned for lake bank detection (LiDAR mounted high on WAM-V frame)
         # Lake banks appear BELOW the LiDAR (negative Z values)
-        self.declare_parameter('oko_min_safe_distance', 12.0)  # Detection threshold
-        self.declare_parameter('oko_critical_distance', 4.0)   # Emergency stop threshold
+        self.declare_parameter('perception_min_safe_distance', 12.0)  # Detection threshold
+        self.declare_parameter('perception_critical_distance', 4.0)   # Emergency stop threshold
         self.declare_parameter('hysteresis_distance', 1.5) # Prevent oscillation
         self.declare_parameter('min_height', -15.0)  # Lake bank is ~2-3m below LiDAR
         self.declare_parameter('max_height', 10.0)   # Include terrain above water
@@ -153,7 +153,7 @@ class OkoPerception(Node):
         # Subscribe to runtime config updates (for web dashboard tuning)
         self.create_subscription(
             String,
-            '/sputnik/set_config',
+            '/planning/set_config',
             self.config_callback,
             10
         )
@@ -170,7 +170,7 @@ class OkoPerception(Node):
         self.create_timer(0.05, self.publish_status)
 
         self.get_logger().info("=" * 60)
-        self.get_logger().info("OKO v2.1 - Enhanced Obstacle Detection with Dynamic Parameters")
+        self.get_logger().info("LiDAR Perception v2.1 - Enhanced Obstacle Detection with Dynamic Parameters")
         self.get_logger().info("=" * 60)
         self.get_logger().info(f"Safe Distance: {self.min_safe_distance}m | Critical: {self.critical_distance}m")
         self.get_logger().info(f"Height Filter: {self.min_height}m to {self.max_height}m")
@@ -183,8 +183,8 @@ class OkoPerception(Node):
     def _load_parameters(self):
         """Load/reload all parameters from parameter server"""
         # Basic parameters
-        self.min_safe_distance = self.get_parameter('oko_min_safe_distance').value
-        self.critical_distance = self.get_parameter('oko_critical_distance').value
+        self.min_safe_distance = self.get_parameter('perception_min_safe_distance').value
+        self.critical_distance = self.get_parameter('perception_critical_distance').value
         self.hysteresis_distance = self.get_parameter('hysteresis_distance').value
         self.min_height = self.get_parameter('min_height').value
         self.max_height = self.get_parameter('max_height').value
@@ -218,7 +218,7 @@ class OkoPerception(Node):
             param_name = param.name
 
             # Check if it's one of our parameters
-            if param_name in ['oko_min_safe_distance', 'oko_critical_distance', 'hysteresis_distance',
+            if param_name in ['perception_min_safe_distance', 'perception_critical_distance', 'hysteresis_distance',
                              'min_height', 'max_height', 'min_range', 'max_range', 'sample_rate',
                              'temporal_history_size', 'temporal_threshold', 'cluster_distance',
                              'min_cluster_size', 'water_plane_threshold', 'velocity_history_size',
@@ -274,8 +274,8 @@ class OkoPerception(Node):
                 'max_height': ('max_height', float),
                 'min_range': ('min_range', float),
                 'max_range': ('max_range', float),
-                'oko_min_safe_distance': ('oko_min_safe_distance', float),
-                'oko_critical_distance': ('oko_critical_distance', float),
+                'perception_min_safe_distance': ('perception_min_safe_distance', float),
+                'perception_critical_distance': ('perception_critical_distance', float),
                 'hysteresis_distance': ('hysteresis_distance', float),
                 'cluster_distance': ('cluster_distance', float),
                 'min_cluster_size': ('min_cluster_size', int),
@@ -298,10 +298,10 @@ class OkoPerception(Node):
                     updated.append(f"{attr_name}={new_val}")
 
             if updated:
-                self.get_logger().info(f"⚙️ OKO config updated: {', '.join(updated)}")
+                self.get_logger().info(f"⚙️ Perception config updated: {', '.join(updated)}")
 
         except Exception as e:
-            self.get_logger().error(f"OKO config parse error: {e}")
+            self.get_logger().error(f"Perception config parse error: {e}")
 
     def lidar_callback(self, msg):
         """Process 3D LIDAR point cloud for obstacle detection (Enhanced v2.1)"""
@@ -972,7 +972,7 @@ class OkoPerception(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = OkoPerception()
+    node = LidarPerception()
     
     try:
         rclpy.spin(node)

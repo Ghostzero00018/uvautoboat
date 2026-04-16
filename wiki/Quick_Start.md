@@ -23,10 +23,10 @@ Choose one of the following navigation systems:
 #### Modular System (Recommended)
 
 ```bash
-ros2 launch ~/seal_ws/src/uvautoboat/launch/vostok1.launch.yaml
+ros2 launch ~/seal_ws/src/uvautoboat/launch/autoboat.launch.yaml
 ```
 
-> **Note:** The integrated `ros2 run plan vostok1` is deprecated. Use the modular launch above.
+> **Note:** The integrated `ros2 run plan autoboat` is deprecated. Use the modular launch above.
 
 ---
 
@@ -35,7 +35,7 @@ ros2 launch ~/seal_ws/src/uvautoboat/launch/vostok1.launch.yaml
 You should see terminal output like:
 
 ```text
-[INFO] PROJET-17 — Vostok 1 Navigation System
+[INFO] PROJET-17 — AutoBoat Navigation System
 [INFO] Waiting for GPS signal...
 [INFO] GPS initialized: lat=XX.XXXX, lon=XX.XXXX
 [INFO] MISSION DÉMARRÉE ! | MISSION STARTED!
@@ -74,13 +74,13 @@ ros2 run web_video_server web_video_server
 ### Terminal 4: Navigation System
 
 ```bash
-ros2 launch ~/seal_ws/src/uvautoboat/launch/vostok1.launch.yaml
+ros2 launch ~/seal_ws/src/uvautoboat/launch/autoboat.launch.yaml
 ```
 
 ### Terminal 5: Dashboard Web Server
 
 ```bash
-cd ~/seal_ws/src/uvautoboat/web_dashboard/vostok1
+cd ~/seal_ws/src/uvautoboat/web_dashboard/autoboat
 python3 -m http.server 8002
 ```
 
@@ -99,7 +99,7 @@ http://localhost:8002
 Use the convenience script to launch everything at once:
 
 ```bash
-bash ~/seal_ws/src/uvautoboat/one_click_launch_all/launch_vostok1_complete.sh
+bash ~/seal_ws/src/uvautoboat/one_click_launch_all/launch_autoboat_complete.sh
 ```
 
 This script opens multiple terminals automatically.
@@ -113,31 +113,31 @@ Once the system is running, you can control the mission using the CLI:
 ### Generate Waypoints
 
 ```bash
-ros2 run plan vostok1_cli generate --lanes 10 --length 50 --width 20
+ros2 run plan autoboat_cli generate --lanes 10 --length 50 --width 20
 ```
 
 ### Start Mission
 
 ```bash
-ros2 run plan vostok1_cli start
+ros2 run plan autoboat_cli start
 ```
 
 ### Pause Mission
 
 ```bash
-ros2 run plan vostok1_cli stop
+ros2 run plan autoboat_cli stop
 ```
 
 ### Resume Mission
 
 ```bash
-ros2 run plan vostok1_cli resume
+ros2 run plan autoboat_cli resume
 ```
 
 ### Go Home
 
 ```bash
-ros2 run plan vostok1_cli home
+ros2 run plan autoboat_cli home
 ```
 
 ---
@@ -181,7 +181,7 @@ Press `Ctrl+C` in each terminal to stop the nodes.
 pkill -9 -f "gz sim"
 
 # Kill ROS nodes
-pkill -9 -f vostok1
+pkill -9 -f autoboat
 pkill -9 -f rosbridge
 ```
 

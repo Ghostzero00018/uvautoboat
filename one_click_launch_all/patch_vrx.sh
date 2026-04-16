@@ -5,7 +5,7 @@
 
 set -e
 
-# Detect workspace root dynamically (same logic as launch_vostok1_complete.sh)
+# Detect workspace root dynamically (same logic as launch_autoboat_complete.sh)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 WS_ROOT="$SCRIPT_DIR"
 while [ "$WS_ROOT" != "/" ]; do

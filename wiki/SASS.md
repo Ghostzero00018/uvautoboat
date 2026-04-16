@@ -15,7 +15,7 @@ The anti-stuck recovery has evolved through several iterations:
 
 | Version | Behaviour | Status |
 |:--------|:----------|:-------|
-| Legacy SASS v2.x (see `legacy/fixed_variants/buran_controller_fixed.py`) | Multi-phase escape: PROBE → REVERSE → TURN → FORWARD, with Kalman-filtered drift compensation during each phase | Moved to `legacy/` |
+| Legacy SASS v2.x (see `legacy/fixed_variants/heading_controller_fixed.py`) | Multi-phase escape: PROBE → REVERSE → TURN → FORWARD, with Kalman-filtered drift compensation during each phase | Moved to `legacy/` |
 | Current "Simple Anti-Stuck" | **Turn toward the clearer side** (Left or Right based on `left_clear` vs `right_clear` sector distances) until front is clear; request waypoint skip after 3 consecutive failures | **Active in production** |
 
 **Why the simplification?** The multi-phase v2 logic had several subtle failure modes: phase transitions could get stuck, the "PROBE" phase often wasted time, and tuning the per-phase parameters was fragile. The current single-phase design is both easier to reason about and more reliable — it just picks whichever side has more room and keeps turning until the path opens up, with a skip-waypoint fallback if the boat is genuinely stuck.
@@ -26,7 +26,7 @@ The anti-stuck recovery has evolved through several iterations:
 
 ## Overview
 
-The **Simple Anti-Stuck System (SASS)** is a straightforward recovery mechanism implemented in the BURAN controller. When the boat detects it's stuck (minimal movement despite thrust), SASS executes a simple escape: **turn left until the path is clear**, then resume navigation.
+The **Simple Anti-Stuck System (SASS)** is a straightforward recovery mechanism implemented in the Heading Controller. When the boat detects it's stuck (minimal movement despite thrust), SASS executes a simple escape: **turn left until the path is clear**, then resume navigation.
 
 ---
 
@@ -131,14 +131,14 @@ When SASS alone cannot free the boat, the waypoint skip strategy takes over:
 | Situation | Action |
 |:----------|:-------|
 | Stuck detected | SASS: turn left until clear |
-| Still blocked after 45s | SPUTNIK skips to next waypoint |
-| Go Home mode blocked 15s | SPUTNIK inserts detour waypoint |
+| Still blocked after 45s | The Planner skips to next waypoint |
+| Go Home mode blocked 15s | The Planner inserts detour waypoint |
 
 ---
 
 ## Configuration Parameters
 
-### In `vostok1.launch.yaml` (BURAN node)
+### In `autoboat.launch.yaml` (Controller node)
 
 | Parameter | Default | Description |
 |:----------|:--------|:------------|
@@ -152,8 +152,8 @@ When SASS alone cannot free the boat, the waypoint skip strategy takes over:
 
 ```bash
 # Example: Increase stuck detection sensitivity
-ros2 param set /buran_controller stuck_timeout 2.0
-ros2 param set /buran_controller stuck_threshold 0.3
+ros2 param set /heading_controller stuck_timeout 2.0
+ros2 param set /heading_controller stuck_threshold 0.3
 ```
 
 ---
@@ -262,8 +262,8 @@ ros2 topic echo /control/anti_stuck_status
 **Solution**: Increase timeout or threshold
 
 ```bash
-ros2 param set /buran_controller stuck_timeout 5.0
-ros2 param set /buran_controller stuck_threshold 1.0
+ros2 param set /heading_controller stuck_timeout 5.0
+ros2 param set /heading_controller stuck_threshold 1.0
 ```
 
 ### SASS Doesn't Escape
@@ -272,7 +272,7 @@ ros2 param set /buran_controller stuck_threshold 1.0
 
 **Solution**: Severity calculation should automatically extend duration, but you can manually increase:
 
-- Check if `oko_critical_distance` / `min_safe_distance` are appropriate for your obstacles
+- Check if `perception_critical_distance` / `min_safe_distance` are appropriate for your obstacles
 - Verify drift compensation is working (check Kalman uncertainty)
 
 **Cause**: Boat getting stuck repeatedly in obstacle-dense areas
@@ -290,5 +290,5 @@ ros2 param set /buran_controller stuck_threshold 1.0
 - **[Glossary](Glossary)** — Definitions of Kalman filter, differential thrust, and other terms used above
 - **[Design_Rationale](Design_Rationale)** — Why 12 s timeout, 1 m threshold, and "turn toward clearer side" were chosen
 - **[System_Overview](System_Overview)** — High-level architecture
-- **[3D_LIDAR_Processing](3D_LIDAR_Processing)** — OKO perception that provides the `left_clear`/`right_clear` data SASS uses
+- **[3D_LIDAR_Processing](3D_LIDAR_Processing)** — LiDAR Perception that provides the `left_clear`/`right_clear` data SASS uses
 - **[Common_Issues](Common_Issues)** — Troubleshooting guide

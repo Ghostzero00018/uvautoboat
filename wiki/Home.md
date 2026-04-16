@@ -23,9 +23,9 @@ Welcome to the **AutoBoat Wiki**! This documentation provides comprehensive guid
 - **[System Overview](System_Overview)** — High-level architecture and design philosophy
 - **[Design Rationale](Design_Rationale)** — Why these architecture, algorithm, and parameter choices were made
 - **[Glossary](Glossary)** — Plain-language definitions of every technical term
-- **[Node Naming Refactor Plan](Node_Naming_Refactor_Plan)** — Planned rename: OKO/SPUTNIK/BURAN → functional names
+- **[Node Naming Refactor Plan](Node_Naming_Refactor_Plan)** — Completed rename: OKO/SPUTNIK/BURAN → functional names (lidar_perception, waypoint_planner, heading_controller)
 
-> **Note:** Vostok1 integrated and Atlantis architectures have been deprecated and moved to `legacy/`.
+> **Note:** The former Vostok1 integrated and Atlantis architectures have been deprecated and moved to `legacy/`.
 
 ### 📖 User Guides
 
@@ -38,7 +38,7 @@ Welcome to the **AutoBoat Wiki**! This documentation provides comprehensive guid
 ### 🧠 Core Concepts
 
 - **[GPS Navigation](GPS-Navigation)** — Coordinate systems and equirectangular projection
-- **[3D LIDAR Processing](3D_LIDAR_Processing)** — OKO perception system explained
+- **[3D LIDAR Processing](3D_LIDAR_Processing)** — LiDAR Perception system explained
 - **[PID Control](PID-Control)** — Heading controller fundamentals
 - **[Differential Thrust](Differential-Thrust)** — Two-thruster control system
 - **[Kalman Filtering](Kalman-Filtering)** — State estimation and Bayesian inference
