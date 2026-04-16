@@ -3,8 +3,8 @@
 <package format="3">
   <name>control</name>
   <version>2.1.0</version>
-  <description>Control package for VRX WAM-V with BURAN controller v2.1 featuring simple anti-stuck system, Kalman drift compensation, and adaptive waypoint approach.</description>
-  <maintainer email="yinpuchen0@gmail.com">ghostzero</maintainer>
+  <description>Control package for VRX WAM-V with heading controller v2.1 featuring simple anti-stuck system, Kalman drift compensation, and adaptive waypoint approach.</description>
+  <maintainer email="yinpuchen0@gmail.com">Ghostzero00018</maintainer>
   <license>Apache-2.0</license>
   <url type="repository">https://github.com/Ghostzero00018/uvautoboat</url>
 

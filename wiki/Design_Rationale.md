@@ -15,9 +15,9 @@ The AutoBoat navigation system is built as a **pipeline of three modules** — `
 
 | Module | Role | Question it answers |
 |:-------|:-----|:--------------------|
-| **Perception** (formerly OKO) | Perception | "What do I see?" |
-| **Planner** (formerly SPUTNIK) | Planning | "Where do I go?" |
-| **Controller** (formerly BURAN) | Control | "How do I get there?" |
+| **Perception** | Perception | "What do I see?" |
+| **Planner** | Planning | "Where do I go?" |
+| **Controller** | Control | "How do I get there?" |
 
 #### Why separate processes, not one integrated program?
 

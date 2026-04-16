@@ -318,15 +318,28 @@ sudo ufw allow 8080/tcp
 
 ---
 
-### Dashboard Shows Old Data
+### Dashboard Shows Old Data or Old Names After Pulling Updates
 
-**Symptoms**: Dashboard not updating, stale information
+**Symptoms**: Dashboard not updating, stale information, old node names still showing, parameter changes not taking effect
 
 **Solutions**:
 
-1. **Refresh browser page** (Ctrl+Shift+R)
-2. **Restart rosbridge**
-3. **Check ROS topics publishing**:
+1. **Hard-refresh the browser** (`Ctrl+Shift+R`) — Python's `http.server` doesn't set cache-control headers, so the browser may serve stale HTML/JS from cache
+2. **Restart rosbridge** — rosbridge does not pick up topic/node changes without a restart
+3. **After pulling code updates**, do a clean rebuild and relaunch:
+
+   ```bash
+   cd ~/seal_ws
+   rm -rf build/ install/ log/
+   colcon build --merge-install
+   source install/setup.bash
+   # Relaunch the full system (kills old nodes and starts fresh)
+   bash ~/seal_ws/src/uvautoboat/one_click_launch_all/launch_autoboat_complete.sh
+   ```
+
+   Then hard-refresh the dashboard (`Ctrl+Shift+R`). Running nodes keep old code in memory until restarted — `colcon build` alone does not update them.
+
+4. **Check ROS topics publishing**:
 
    ```bash
    ros2 topic hz /planning/mission_status

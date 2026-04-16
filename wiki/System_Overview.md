@@ -34,15 +34,15 @@ The **Modular (Perception–Planner–Controller)** distributed architecture is 
 
 | Node | Role | Description |
 |:-----|:-----|:------------|
-| **Perception** (formerly OKO) | Perception | 3D LiDAR obstacle detection, temporal filtering, clustering, smoke classification |
-| **Planner** (formerly SPUTNIK) | Planning | Lawnmower waypoint generation, A* detour planning, mission state machine |
-| **Controller** (formerly BURAN) | Control | PID heading control, reactive obstacle avoidance, simple anti-stuck recovery |
+| **Perception** | Perception | 3D LiDAR obstacle detection, temporal filtering, clustering, smoke classification |
+| **Planner** | Planning | Lawnmower waypoint generation, A* detour planning, mission state machine |
+| **Controller** | Control | PID heading control, reactive obstacle avoidance, simple anti-stuck recovery |
 
 - Highly **configurable via YAML** (`autoboat.launch.yaml`)
 - Three separate dashboard config panels (Main, Perception, Controller)
 - Runtime parameter tuning with dirty-params filtering
 
-> **Note:** The integrated AutoBoat (formerly Vostok1) and Atlantis systems have been deprecated and moved to `legacy/`. See `legacy/DEPRECATED.md` for details.
+> **Note:** The integrated AutoBoat and Atlantis systems have been deprecated and moved to `legacy/`. See `legacy/DEPRECATED.md` for details.
 
 ---
 

@@ -289,9 +289,36 @@ class LidarPerception(Node):
                 'solid_max_height': ('solid_max_height', float)
             }
 
+            # Valid ranges: (min, max) — reject values outside these bounds
+            param_ranges = {
+                'min_height': (-50.0, 50.0),
+                'max_height': (-50.0, 50.0),
+                'min_range': (0.0, 500.0),
+                'max_range': (1.0, 500.0),
+                'perception_min_safe_distance': (1.0, 200.0),
+                'perception_critical_distance': (0.5, 100.0),
+                'hysteresis_distance': (0.0, 20.0),
+                'cluster_distance': (0.1, 50.0),
+                'min_cluster_size': (1, 10000),
+                'temporal_history_size': (1, 20),
+                'temporal_threshold': (1, 20),
+                'water_plane_threshold': (0.0, 10.0),
+                'smoke_min_height': (-50.0, 50.0),
+                'smoke_max_height': (-50.0, 100.0),
+                'solid_min_height': (-50.0, 50.0),
+                'solid_max_height': (-50.0, 100.0),
+            }
+
             for config_key, (attr_name, type_func) in param_map.items():
                 if config_key in config:
                     new_val = type_func(config[config_key])
+                    # Range check (skip for booleans)
+                    if config_key in param_ranges:
+                        lo, hi = param_ranges[config_key]
+                        if not (lo <= new_val <= hi):
+                            self.get_logger().warn(
+                                f"Rejected {attr_name}={new_val} (valid range: {lo}–{hi})")
+                            continue
                     setattr(self, attr_name, new_val)
                     # Sync to ROS parameter server so ros2 param get returns current values
                     self.set_parameters([rclpy.parameter.Parameter(attr_name, value=new_val)])

@@ -16,9 +16,11 @@ The system uses three distributed ROS 2 nodes:
 
 | Node | Role | Description |
 | ------ | ------ | ------------- |
-| **Perception** (OKO) | Perception | 3D LiDAR obstacle detection, temporal filtering, clustering, smoke classification |
-| **Planner** (SPUTNIK) | Planning | Lawnmower waypoint generation, A* detour planning, mission state machine |
-| **Controller** (BURAN) | Control | PID heading control, reactive obstacle avoidance, anti-stuck recovery (needs testing) |
+| **Perception** | Perception | 3D LiDAR obstacle detection, temporal filtering, clustering, smoke classification |
+| **Planner** | Planning | Lawnmower waypoint generation, A* detour planning, mission state machine |
+| **Controller** | Control | PID heading control, reactive obstacle avoidance, anti-stuck recovery (needs testing) |
+
+> **Note:** Earlier development used U.S.S.R space-program code-names (OKO, SPUTNIK, BURAN). See [Glossary — Legacy Code-Names](wiki/Glossary.md#legacy-module-code-names-pre-v30) for the mapping.
 
 Supporting components:
 
@@ -216,6 +218,7 @@ uvautoboat/
 | No obstacles detected | Check LiDAR: `ros2 topic hz /wamv/sensors/lidars/lidar_wamv_sensor/points` |
 | LiDAR at world origin | Run `bash one_click_launch_all/patch_vrx.sh` (VRX issue #876) |
 | Build failures | Clean: `rm -rf build install log && colcon build --merge-install` |
+| Dashboard stale after update | Clean build + relaunch + hard-refresh browser (`Ctrl+Shift+R`) |
 | Health check false FAILs | DDS discovery lag — wait 5s and re-run |
 
 ---

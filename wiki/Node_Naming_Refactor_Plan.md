@@ -11,7 +11,7 @@ Renamed OKO / SPUTNIK / BURAN / Vostok1 module code-names to functional `lowerca
 
 ## Why This Change Was Made
 
-The old node names (`oko_perception_node`, `sputnik_planner_node`, `buran_controller_node`) used Russian space-program code-names. While memorable within the original team, they hurt:
+The old node names (`oko_perception_node`, `sputnik_planner_node`, `buran_controller_node`) used U.S.S.R. space-program code-names. While memorable within the original team, they hurt:
 
 1. **Discoverability.** A new contributor searching for "perception node" or "path planner" found nothing without knowing the internal naming scheme.
 2. **Onboarding.** `ros2 node list` output required a mental translation layer before the system made sense to outsiders.

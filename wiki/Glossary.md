@@ -422,9 +422,9 @@ The HTML initially shows "Simple Lawnmower" as checked on page load, but the das
 
 ## Legacy Module Code-Names (pre-v3.0)
 
-> As of v3.0, modules use functional names: `lidar_perception` (formerly OKO), `waypoint_planner` (formerly SPUTNIK), `heading_controller` (formerly BURAN). The Russian space-program names below are retained as historical context.
+> As of v3.0, modules use functional names: `lidar_perception` (formerly OKO), `waypoint_planner` (formerly SPUTNIK), `heading_controller` (formerly BURAN). The U.S.S.R. space-program names below are retained as historical context.
 
-The original modular navigation system and its modules used Russian space-program names as a team naming convention — there is no deep meaning beyond making the modules memorable.
+The original modular navigation system and its modules used U.S.S.R. space-program names as a team naming convention — there is no deep meaning beyond making the modules memorable.
 
 - **Vostok1** (now **AutoBoat**) — the modular navigation system (Vostok = "East" in Russian, also the name of the first human spaceflight).
 - **OKO** (now **lidar_perception**) — the perception module (OKO = "eye" in Russian).

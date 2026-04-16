@@ -22,7 +22,7 @@
 #   - Web Dashboard (real-time monitoring interface)
 #
 # Launch sequence and files called:
-#   T1  Gazebo         ros2 launch vrx_gz competition.launch.py world:=$WORLD
+#   T1  Gazebo         ros2 launch vrx_gz competition.launch.py world:="$WORLD"
 #   T2  ROS Bridge     ros2 launch rosbridge_server rosbridge_websocket_launch.xml  :9090
 #   T3  Nav Stack      ros2 launch launch/autoboat.launch.yaml                      (Perception+Planner+Controller)
 #                        → plan/plan/lidar_perception.py
@@ -270,7 +270,7 @@ gnome-terminal --wait --tab --title="gazebo" -- bash -i -c "
 source \"$INSTALL_DIR/setup.bash\"
 echo \"Starting Gazebo with world: $WORLD\"
 echo 'Note: GPS may take 10-30 seconds to initialize'
-ros2 launch vrx_gz competition.launch.py world:=$WORLD
+ros2 launch vrx_gz competition.launch.py world:="$WORLD"
 " &
 GAZEBO_PID=$!
 sleep 28  # Wait for Gazebo to start and physics to initialize

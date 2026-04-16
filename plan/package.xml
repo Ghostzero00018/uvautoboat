@@ -3,8 +3,8 @@
 <package format="3">
   <name>plan</name>
   <version>2.2.0</version>
-  <description>Planning and perception package for VRX autonomous navigation with A* detour planning, OKO perception v2.1, and SPUTNIK planner v2.2.</description>
-  <maintainer email="yinpuchen0@gmail.com">ghostzero</maintainer>
+  <description>Planning and perception package for VRX autonomous navigation with A* detour planning, LiDAR perception v2.1, and waypoint planner v2.2.</description>
+  <maintainer email="yinpuchen0@gmail.com">Ghostzero00018</maintainer>
   <license>Apache-2.0</license>
   <url type="repository">https://github.com/Ghostzero00018/uvautoboat</url>
 

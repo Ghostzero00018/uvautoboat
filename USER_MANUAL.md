@@ -79,7 +79,7 @@ See [Board.md](Board.md) for detailed milestones and progress tracking.
 
 ### Project Structure
 
-> **Note:** Only the AutoBoat modular system (Perception-Planner-Controller, formerly OKO-SPUTNIK-BURAN) is actively developed. All Atlantis and robust_avoidance code has been moved to `legacy/`.
+> **Note:** Only the AutoBoat modular system (Perception-Planner-Controller) is actively developed. All Atlantis and robust_avoidance code has been moved to `legacy/`.
 
 ```text
 uvautoboat/
@@ -519,9 +519,9 @@ The active navigation system uses three distributed ROS 2 nodes:
 
 | Node | Name | Function |
 | :----- | :----- | :--------- |
-| **Perception** (OKO) | `lidar_perception` | 3D LIDAR obstacle detection, smoke filtering, obstacle clustering |
-| **Planner** (SPUTNIK) | `waypoint_planner` | GPS waypoint planning, A* detour, mission management |
-| **Controller** (BURAN) | `heading_controller` | PID heading control, obstacle avoidance, anti-stuck recovery |
+| **Perception** | `lidar_perception` | 3D LIDAR obstacle detection, smoke filtering, obstacle clustering |
+| **Planner** | `waypoint_planner` | GPS waypoint planning, A* detour, mission management |
+| **Controller** | `heading_controller` | PID heading control, obstacle avoidance, anti-stuck recovery |
 
 > **Note:** Earlier Atlantis and robust_avoidance systems have been deprecated. Their useful features (LiDAR processing, path validation) were integrated into the Perception/Planner/Controller modules. Legacy code is preserved in `legacy/` for reference.
 
@@ -1331,7 +1331,7 @@ The Kalman filter is Bayes' theorem for continuous states with Gaussian distribu
 
 ## Waypoint Planner
 
-The **Waypoint Planner** (formerly SPUTNIK) is the trajectory planning system in the modular AutoBoat architecture.
+The **Waypoint Planner** is the trajectory planning system in the modular AutoBoat architecture.
 
 ### Overview
 

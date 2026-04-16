@@ -2,7 +2,7 @@
 
 ## Summary
 
-Renamed all Russian space-program code-names (OKO, SPUTNIK, BURAN, Vostok1) to
+Renamed all U.S.S.R. space-program code-names (OKO, SPUTNIK, BURAN, Vostok1) to
 functional `snake_case` names following ROS 2 community conventions. One-shot
 atomic rename across 26 active files (~1,100+ branded references). Also documented
 the web communication stack (rosbridge_suite vs ros2-web-bridge) and fixed a

@@ -467,88 +467,135 @@ class HeadingController(Node):
         self.last_position = None
         self.stuck_check_time = None
 
+    def _validate_range(self, name, value, lo, hi):
+        """Return True if value is in [lo, hi], else log warning and return False."""
+        if lo <= value <= hi:
+            return True
+        self.get_logger().warn(f"Rejected {name}={value} (valid range: {lo}–{hi})")
+        return False
+
     def config_callback(self, msg):
         """Handle runtime configuration changes for PID and speed"""
         try:
             config = json.loads(msg.data)
             updated = []
-            
+
             # PID gains
             if 'kp' in config:
-                self.kp = float(config['kp'])
-                updated.append(f"Kp={self.kp}")
+                v = float(config['kp'])
+                if self._validate_range('kp', v, 0.0, 2000.0):
+                    self.kp = v
+                    updated.append(f"Kp={self.kp}")
             if 'ki' in config:
-                self.ki = float(config['ki'])
-                updated.append(f"Ki={self.ki}")
+                v = float(config['ki'])
+                if self._validate_range('ki', v, 0.0, 500.0):
+                    self.ki = v
+                    updated.append(f"Ki={self.ki}")
             if 'kd' in config:
-                self.kd = float(config['kd'])
-                updated.append(f"Kd={self.kd}")
-                
+                v = float(config['kd'])
+                if self._validate_range('kd', v, 0.0, 1000.0):
+                    self.kd = v
+                    updated.append(f"Kd={self.kd}")
+
             # Speed parameters
             if 'base_speed' in config:
-                self.base_speed = float(config['base_speed'])
-                updated.append(f"base_speed={self.base_speed}")
+                v = float(config['base_speed'])
+                if self._validate_range('base_speed', v, 0.0, MAX_THRUST):
+                    self.base_speed = v
+                    updated.append(f"base_speed={self.base_speed}")
             if 'max_speed' in config:
-                self.max_speed = float(config['max_speed'])
-                updated.append(f"max_speed={self.max_speed}")
-                
+                v = float(config['max_speed'])
+                if self._validate_range('max_speed', v, 0.0, MAX_THRUST):
+                    self.max_speed = v
+                    updated.append(f"max_speed={self.max_speed}")
+
             # Obstacle avoidance
             if 'obstacle_slow_factor' in config:
-                self.obstacle_slow_factor = float(config['obstacle_slow_factor'])
-                updated.append(f"slow_factor={self.obstacle_slow_factor}")
+                v = float(config['obstacle_slow_factor'])
+                if self._validate_range('obstacle_slow_factor', v, 0.0, 1.0):
+                    self.obstacle_slow_factor = v
+                    updated.append(f"slow_factor={self.obstacle_slow_factor}")
             if 'critical_distance' in config:
-                self.critical_distance = float(config['critical_distance'])
-                updated.append(f"critical_dist={self.critical_distance}")
+                v = float(config['critical_distance'])
+                if self._validate_range('critical_distance', v, 0.5, 100.0):
+                    self.critical_distance = v
+                    updated.append(f"critical_dist={self.critical_distance}")
             if 'avoid_diff_gain' in config:
-                self.avoid_diff_gain = float(config['avoid_diff_gain'])
-                updated.append(f"diff_gain={self.avoid_diff_gain}")
+                v = float(config['avoid_diff_gain'])
+                if self._validate_range('avoid_diff_gain', v, 0.0, 10.0):
+                    self.avoid_diff_gain = v
+                    updated.append(f"diff_gain={self.avoid_diff_gain}")
             if 'min_safe_distance' in config:
-                self.min_safe_distance = float(config['min_safe_distance'])
-                updated.append(f"safe_dist={self.min_safe_distance}")
+                v = float(config['min_safe_distance'])
+                if self._validate_range('min_safe_distance', v, 1.0, 200.0):
+                    self.min_safe_distance = v
+                    updated.append(f"safe_dist={self.min_safe_distance}")
             if 'reverse_timeout' in config:
-                self.reverse_timeout = float(config['reverse_timeout'])
-                updated.append(f"reverse_timeout={self.reverse_timeout}")
+                v = float(config['reverse_timeout'])
+                if self._validate_range('reverse_timeout', v, 0.5, 30.0):
+                    self.reverse_timeout = v
+                    updated.append(f"reverse_timeout={self.reverse_timeout}")
             if 'max_reverse_distance' in config:
-                self.max_reverse_distance = float(config['max_reverse_distance'])
-                updated.append(f"max_reverse_distance={self.max_reverse_distance}")
+                v = float(config['max_reverse_distance'])
+                if self._validate_range('max_reverse_distance', v, 0.0, 50.0):
+                    self.max_reverse_distance = v
+                    updated.append(f"max_reverse_distance={self.max_reverse_distance}")
             # Bank protection slowdown
             if 'bank_slow_distance' in config:
-                self.bank_slow_distance = float(config['bank_slow_distance'])
-                updated.append(f"bank_dist={self.bank_slow_distance}")
+                v = float(config['bank_slow_distance'])
+                if self._validate_range('bank_slow_distance', v, 1.0, 100.0):
+                    self.bank_slow_distance = v
+                    updated.append(f"bank_dist={self.bank_slow_distance}")
             if 'bank_slow_factor' in config:
-                self.bank_slow_factor = float(config['bank_slow_factor'])
-                updated.append(f"bank_factor={self.bank_slow_factor}")
+                v = float(config['bank_slow_factor'])
+                if self._validate_range('bank_slow_factor', v, 0.0, 1.0):
+                    self.bank_slow_factor = v
+                    updated.append(f"bank_factor={self.bank_slow_factor}")
             # Toggle VFH/polar bias
             if 'use_vfh_bias' in config:
                 self.use_vfh_bias = bool(config['use_vfh_bias'])
                 updated.append(f"use_vfh_bias={self.use_vfh_bias}")
             if 'max_avoidance_turn_deg' in config:
-                self.max_avoidance_turn_deg = float(config['max_avoidance_turn_deg'])
-                updated.append(f"max_avoid_turn={self.max_avoidance_turn_deg}°")
+                v = float(config['max_avoidance_turn_deg'])
+                if self._validate_range('max_avoidance_turn_deg', v, 5.0, 90.0):
+                    self.max_avoidance_turn_deg = v
+                    updated.append(f"max_avoid_turn={self.max_avoidance_turn_deg}°")
 
             # Simple Anti-Stuck System parameters
             if 'stuck_timeout' in config:
-                self.stuck_timeout = float(config['stuck_timeout'])
-                updated.append(f"stuck_timeout={self.stuck_timeout}")
+                v = float(config['stuck_timeout'])
+                if self._validate_range('stuck_timeout', v, 1.0, 120.0):
+                    self.stuck_timeout = v
+                    updated.append(f"stuck_timeout={self.stuck_timeout}")
             if 'stuck_threshold' in config:
-                self.stuck_threshold = float(config['stuck_threshold'])
-                updated.append(f"stuck_threshold={self.stuck_threshold}")
+                v = float(config['stuck_threshold'])
+                if self._validate_range('stuck_threshold', v, 0.1, 20.0):
+                    self.stuck_threshold = v
+                    updated.append(f"stuck_threshold={self.stuck_threshold}")
 
             # Control smoothness parameters
             if 'turn_deadband_deg' in config:
-                self.turn_deadband_deg = float(config['turn_deadband_deg'])
-                updated.append(f"turn_deadband={self.turn_deadband_deg}")
+                v = float(config['turn_deadband_deg'])
+                if self._validate_range('turn_deadband_deg', v, 0.0, 10.0):
+                    self.turn_deadband_deg = v
+                    updated.append(f"turn_deadband={self.turn_deadband_deg}")
             if 'slew_rate_limit' in config:
-                self.slew_rate_limit = float(config['slew_rate_limit'])
-                updated.append(f"slew_rate={self.slew_rate_limit}")
+                v = float(config['slew_rate_limit'])
+                if self._validate_range('slew_rate_limit', v, 0.0, 5000.0):
+                    self.slew_rate_limit = v
+                    updated.append(f"slew_rate={self.slew_rate_limit}")
 
             # Waypoint approach parameters
             if 'approach_slow_distance' in config:
-                self.approach_slow_distance = float(config['approach_slow_distance'])
-                updated.append(f"approach_slow_distance={self.approach_slow_distance}m")
+                v = float(config['approach_slow_distance'])
+                if self._validate_range('approach_slow_distance', v, 1.0, 100.0):
+                    self.approach_slow_distance = v
+                    updated.append(f"approach_slow_distance={self.approach_slow_distance}m")
             if 'approach_slow_factor' in config:
-                self.approach_slow_factor = float(config['approach_slow_factor'])
-                updated.append(f"approach_slow_factor={self.approach_slow_factor}")
+                v = float(config['approach_slow_factor'])
+                if self._validate_range('approach_slow_factor', v, 0.0, 1.0):
+                    self.approach_slow_factor = v
+                    updated.append(f"approach_slow_factor={self.approach_slow_factor}")
 
             # Sync updated values to ROS parameter server
             params_to_sync = []

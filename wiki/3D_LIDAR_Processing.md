@@ -1,6 +1,6 @@
 # 3D LIDAR Processing (LiDAR Perception v2.0)
 
-Deep dive into the **Perception** (formerly OKO) system — 3D LIDAR point cloud processing for obstacle detection.
+Deep dive into the **Perception** system — 3D LIDAR point cloud processing for obstacle detection.
 
 > 💡 **Related pages:**
 >
@@ -11,7 +11,7 @@ Deep dive into the **Perception** (formerly OKO) system — 3D LIDAR point cloud
 
 ## Overview
 
-The **LiDAR Perception** node (formerly OKO, Russian: "eye") is the perception subsystem that processes 3D LIDAR data to detect obstacles in real-time. It uses advanced filtering techniques to provide reliable obstacle information to the navigation system.
+The **LiDAR Perception** node is the perception subsystem that processes 3D LIDAR data to detect obstacles in real-time. It uses advanced filtering techniques to provide reliable obstacle information to the navigation system.
 
 ---
 

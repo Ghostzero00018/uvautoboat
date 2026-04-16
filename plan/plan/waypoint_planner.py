@@ -608,26 +608,41 @@ class WaypointPlanner(Node):
         except Exception as e:
             self.get_logger().warn(f"Skip waypoint error: {e}")
 
+    def _validate_range(self, name, value, lo, hi):
+        """Return True if value is in [lo, hi], else log warning and return False."""
+        if lo <= value <= hi:
+            return True
+        self.get_logger().warn(f"Rejected {name}={value} (valid range: {lo}–{hi})")
+        return False
+
     def config_callback(self, msg):
         """Handle runtime configuration changes"""
         try:
             config = json.loads(msg.data)
             regenerate = False
-            
+
             if 'lanes' in config:
-                self.lanes = int(config['lanes'])
-                regenerate = True
+                v = int(config['lanes'])
+                if self._validate_range('lanes', v, 1, 100):
+                    self.lanes = v
+                    regenerate = True
             if 'scan_length' in config:
-                self.scan_length = float(config['scan_length'])
-                regenerate = True
+                v = float(config['scan_length'])
+                if self._validate_range('scan_length', v, 1.0, 500.0):
+                    self.scan_length = v
+                    regenerate = True
             if 'scan_width' in config:
-                self.scan_width = float(config['scan_width'])
-                regenerate = True
+                v = float(config['scan_width'])
+                if self._validate_range('scan_width', v, 1.0, 500.0):
+                    self.scan_width = v
+                    regenerate = True
 
             # Waypoint approach parameters
             if 'waypoint_tolerance' in config:
-                self.waypoint_tolerance = float(config['waypoint_tolerance'])
-                self.get_logger().info(f"Waypoint tolerance updated: {self.waypoint_tolerance}m")
+                v = float(config['waypoint_tolerance'])
+                if self._validate_range('waypoint_tolerance', v, 0.5, 50.0):
+                    self.waypoint_tolerance = v
+                    self.get_logger().info(f"Waypoint tolerance updated: {self.waypoint_tolerance}m")
 
             # v2.2: A* detour planning runtime config
             if 'astar_enabled' in config:
@@ -637,11 +652,17 @@ class WaypointPlanner(Node):
                 self.astar_hybrid_mode = bool(config['astar_hybrid_mode'])
                 self.get_logger().info(f"A* hybrid mode: {'ENABLED' if self.astar_hybrid_mode else 'DISABLED'}")
             if 'astar_resolution' in config:
-                self.astar.resolution = float(config['astar_resolution'])
+                v = float(config['astar_resolution'])
+                if self._validate_range('astar_resolution', v, 0.5, 20.0):
+                    self.astar.resolution = v
             if 'astar_safety_margin' in config:
-                self.astar.safety_margin = float(config['astar_safety_margin'])
+                v = float(config['astar_safety_margin'])
+                if self._validate_range('astar_safety_margin', v, 1.0, 50.0):
+                    self.astar.safety_margin = v
             if 'astar_max_expansions' in config:
-                self.astar.max_expansions = int(config['astar_max_expansions'])
+                v = int(config['astar_max_expansions'])
+                if self._validate_range('astar_max_expansions', v, 100, 100000):
+                    self.astar.max_expansions = v
 
             # v2.1: Hazard zone runtime config
             if 'hazard_enabled' in config:

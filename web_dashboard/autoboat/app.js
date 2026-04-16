@@ -593,6 +593,10 @@ function subscribeToTopics() {
             message.name.includes('heading_controller')
         )) {
             addTerminalLine(message);
+            // Show red toast for rejected parameter values (server-side validation)
+            if (message.level >= 30 && message.msg && message.msg.startsWith('Rejected ')) {
+                showFeedback(message.msg, 'error');
+            }
         }
     });
     
@@ -1261,7 +1265,14 @@ function readInput(id, fallback) {
     if (isNaN(raw)) return fallback;
     const min = el.min !== '' ? parseFloat(el.min) : -Infinity;
     const max = el.max !== '' ? parseFloat(el.max) : Infinity;
-    return Math.max(min, Math.min(max, raw));
+    const clamped = Math.max(min, Math.min(max, raw));
+    // Warn user if their input was clamped to the valid range
+    if (clamped !== raw) {
+        const label = el.closest('.param-row')?.querySelector('label')?.textContent?.trim() || id;
+        showFeedback(`${label} clamped from ${raw} to ${clamped} (valid range: ${min}–${max})`, 'warning');
+        el.value = clamped;
+    }
+    return clamped;
 }
 
 // Filter a config object to only include params whose input was modified.
@@ -2604,9 +2615,25 @@ function showFeedback(message, type = 'info') {
 }
 
 // Hook into existing page load initialization
+// Auto-append valid range to existing info-tooltip hover text
+function enrichTooltipsWithRanges() {
+    document.querySelectorAll('input[type="number"][min], input[type="number"][max]').forEach(input => {
+        const min = input.min !== '' ? input.min : '—';
+        const max = input.max !== '' ? input.max : '—';
+        if (min === '—' && max === '—') return;
+        // Find the nearest info-tooltip (ℹ️) in the same param-row
+        const row = input.closest('.param-row') || input.parentElement;
+        const tooltip = row?.querySelector('.info-tooltip');
+        if (tooltip && tooltip.title && !tooltip.title.includes('[Range:')) {
+            tooltip.title += ` [Range: ${min}–${max}]`;
+        }
+    });
+}
+
 // Find the existing initConfigPanel call and add initTuningPanel after it
 const originalInit = window.onload;
 window.addEventListener('load', () => {
+    enrichTooltipsWithRanges();
     // Wait for ROS connection before initializing tuning panel
     setTimeout(() => {
         if (connected) {
