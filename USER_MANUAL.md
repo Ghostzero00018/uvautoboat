@@ -780,9 +780,13 @@ Real-time monitoring interface with TNO Cold War aesthetic.
 
 ### Prerequisites
 
+The dashboard communicates with ROS 2 through **rosbridge_suite** (WebSocket bridge, port 9090) and displays camera feeds via **web_video_server** (MJPEG streaming, port 8080). The browser-side client is **roslibjs v1**, loaded from CDN.
+
 ```bash
-sudo apt install ros-jazzy-rosbridge-suite
+sudo apt install ros-jazzy-rosbridge-suite ros-jazzy-web-video-server
 ```
+
+> **Note:** `rosbridge_suite` is the actively maintained official ROS package. A separate project called [ros2-web-bridge](https://github.com/RobotWebTools/ros2-web-bridge) (Node.js-based) was archived in November 2025 and is **not** used by this project.
 
 ### Dashboard Panels
 

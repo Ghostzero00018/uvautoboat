@@ -23,20 +23,22 @@ Real-time web-based monitoring and control dashboard for the Vostok1 autonomous 
 ## Prerequisites
 
 1. **ROS 2 Jazzy** installed and configured
-2. **rosbridge-suite**:
+2. **rosbridge-suite** — WebSocket ↔ ROS 2 bridge (port 9090):
 
    ```bash
    sudo apt install ros-jazzy-rosbridge-suite
    ```
 
-3. **web_video_server** (camera panel):
+3. **web_video_server** — MJPEG camera streaming (port 8080):
 
    ```bash
    sudo apt install ros-jazzy-web-video-server
    ```
 
-4. **Internet access** — the dashboard loads `roslib.js` and `leaflet.js` from CDNs
+4. **Internet access** — the dashboard loads **roslibjs v1** and **Leaflet.js** from CDNs (`cdn.jsdelivr.net`, `unpkg.com`)
 5. **Vostok1 nodes** running via `vostok1.launch.yaml`
+
+> **Not ros2-web-bridge.** A separate project ([ros2-web-bridge](https://github.com/RobotWebTools/ros2-web-bridge)) offered a Node.js-based alternative but was **archived in November 2025** (last targeted ROS 2 Dashing, 2019). This dashboard uses `rosbridge_suite`, the actively maintained official ROS package.
 
 ## Quick Start
 

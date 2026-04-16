@@ -57,7 +57,7 @@ git clone https://github.com/osrf/vrx.git
 
 ### 4. rosbridge-suite
 
-Required for web dashboard WebSocket communication:
+Required for web dashboard WebSocket communication (port 9090). This is the actively maintained official ROS package — **not** [ros2-web-bridge](https://github.com/RobotWebTools/ros2-web-bridge), which was archived in 2025.
 
 ```bash
 sudo apt install ros-jazzy-rosbridge-suite
@@ -65,7 +65,7 @@ sudo apt install ros-jazzy-rosbridge-suite
 
 ### 5. web_video_server
 
-Required for dashboard camera panel:
+Required for dashboard camera panel (MJPEG streaming on port 8080):
 
 ```bash
 sudo apt install ros-jazzy-web-video-server

@@ -51,6 +51,8 @@ The dashboard is browser-based, connecting to ROS 2 via ROSBridge (WebSocket + J
 
 **Cost:** ROSBridge adds one translation layer and a ~5 s timeout for synchronous services — the dashboard uses async pub/sub for anything that could exceed that limit (e.g., health check).
 
+> **Note on ros2-web-bridge:** A separate project ([ros2-web-bridge](https://github.com/RobotWebTools/ros2-web-bridge)) once offered a Node.js-based alternative to rosbridge_suite. It was **archived in November 2025**, last targeted ROS 2 Dashing (2019), and its own README now redirects users to `rosbridge_suite`. AutoBoat uses `rosbridge_suite` — the actively maintained official ROS package — and requires no migration.
+
 ---
 
 ## Algorithm Choices
