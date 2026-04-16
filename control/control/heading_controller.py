@@ -522,7 +522,7 @@ class HeadingController(Node):
                     updated.append(f"critical_dist={self.critical_distance}")
             if 'avoid_diff_gain' in config:
                 v = float(config['avoid_diff_gain'])
-                if self._validate_range('avoid_diff_gain', v, 0.0, 10.0):
+                if self._validate_range('avoid_diff_gain', v, 0.0, 100.0):
                     self.avoid_diff_gain = v
                     updated.append(f"diff_gain={self.avoid_diff_gain}")
             if 'min_safe_distance' in config:

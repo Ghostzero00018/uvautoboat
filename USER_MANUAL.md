@@ -832,6 +832,10 @@ Three independent configuration sections, each with its own Apply button:
 
 **JSON Export:** Four panels (Health Check, System Logs, ROS2 Terminal, Mission Control) include export buttons to download panel contents as JSON files.
 
+**Copy to Clipboard:** Health Check, System Logs, and ROS2 Terminal panels include a "Copy" button for quick clipboard copy of panel contents.
+
+**Parameter Validation:** All numeric inputs are range-validated. Out-of-range values are rejected with an orange warning toast showing the valid range — nothing is sent to ROS until the value is corrected.
+
 **Presets:** The Perception configuration panel includes four presets (Default, Sensitive, Bank-Safe, Aggressive) for quick parameter tuning.
 
 ---

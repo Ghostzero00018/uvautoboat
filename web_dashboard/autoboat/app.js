@@ -1013,12 +1013,51 @@ function initConfigPanel() {
 
     // Apply all config button (applies all parameters including PID, speed, and scan settings)
     document.getElementById('btn-apply-config').addEventListener('click', () => {
-        sendConfig(false);  // Send ALL parameters (PID, speed, scan settings)
-        // Don't clear dirty state immediately - wait for ROS to confirm
-        // The dirty state will be cleared when we receive matching values from ROS
-        // For now, just give feedback
-        addLog('Config sent - waiting for confirmation...', 'info');
-        setTimeout(() => alert('⚙️ Configuration Applied\n\nParameters sent to controller.\n\n⚙️ Configuration Appliquée\n\nParamètres envoyés au contrôleur.'), 100);
+        const success = sendConfig(false);  // Send ALL parameters (PID, speed, scan settings)
+        if (success) {
+            addLog('Config sent - waiting for confirmation...', 'info');
+        }
+    });
+
+    // A* Apply button (sends only A* params)
+    document.getElementById('btn-apply-astar').addEventListener('click', () => {
+        if (!connected || !configPublisher) {
+            showFeedback('Not connected to ROS', 'error');
+            return;
+        }
+        resetValidation();
+        const navMode = getSelectedNavMode();
+        const config = {
+            astar_enabled: (navMode === 'runtime' || navMode === 'hybrid'),
+            astar_hybrid_mode: (navMode === 'hybrid'),
+            hazard_enabled: (navMode === 'hybrid'),
+            astar_resolution: readInput('cfg-astar-resolution', 3.0),
+            astar_safety_margin: readInput('cfg-astar-safety', 12.0),
+            astar_max_expansions: readInput('cfg-astar-max', 20000)
+        };
+        if (hasValidationErrors()) {
+            addLog('A* config not sent — fix out-of-range values first', 'warning');
+            return;
+        }
+        configPublisher.publish(new ROSLIB.Message({ data: JSON.stringify(config) }));
+        markClean(['cfg-astar-resolution', 'cfg-astar-safety', 'cfg-astar-max']);
+        navModeDirty = false;
+        addLog('A* config sent', 'info');
+        showFeedback('✅ A* parameters applied', 'success');
+    });
+
+    // A* Reset button
+    document.getElementById('btn-reset-astar').addEventListener('click', () => {
+        document.getElementById('cfg-astar-resolution').value = '3.0';
+        document.getElementById('cfg-astar-safety').value = '12.0';
+        document.getElementById('cfg-astar-max').value = '20000';
+        // Mark dirty so ROS sync doesn't overwrite
+        ['cfg-astar-resolution', 'cfg-astar-safety', 'cfg-astar-max'].forEach(id => {
+            dirtyInputs.add(id);
+            const el = document.getElementById(id);
+            if (el) el.classList.add('input-dirty');
+        });
+        showFeedback('A* parameters reset to defaults — click Apply to send', 'info');
     });
 
     // Reset to defaults button
@@ -1239,16 +1278,16 @@ function updateConfigFromROS(data) {
         }
     }
 
-    // Update A* advanced parameters if present
-    if (data.astar_resolution !== undefined) {
+    // Update A* advanced parameters if present (skip if user is editing)
+    if (data.astar_resolution !== undefined && !dirtyInputs.has('cfg-astar-resolution')) {
         const el = document.getElementById('cfg-astar-resolution');
         if (el) el.value = data.astar_resolution;
     }
-    if (data.astar_safety_margin !== undefined) {
+    if (data.astar_safety_margin !== undefined && !dirtyInputs.has('cfg-astar-safety')) {
         const el = document.getElementById('cfg-astar-safety');
         if (el) el.value = data.astar_safety_margin;
     }
-    if (data.astar_max_expansions !== undefined) {
+    if (data.astar_max_expansions !== undefined && !dirtyInputs.has('cfg-astar-max')) {
         const el = document.getElementById('cfg-astar-max');
         if (el) el.value = data.astar_max_expansions;
     }
@@ -1257,22 +1296,29 @@ function updateConfigFromROS(data) {
     updateMissionControlUI(data);
 }
 
-// Read and validate a numeric input using its HTML min/max/default attributes
+// Validation error counter — reset before each Apply, check after building config
+let _validationErrors = 0;
+function resetValidation() { _validationErrors = 0; }
+function hasValidationErrors() { return _validationErrors > 0; }
+
+// Read and validate a numeric input using its HTML min/max/default attributes.
+// Returns fallback if out of range, increments _validationErrors, and shows orange toast.
 function readInput(id, fallback) {
     const el = document.getElementById(id);
+    if (!el) return fallback;
     const raw = (el.type === 'hidden' || el.step === '1' || Number.isInteger(fallback))
         ? parseInt(el.value) : parseFloat(el.value);
     if (isNaN(raw)) return fallback;
     const min = el.min !== '' ? parseFloat(el.min) : -Infinity;
     const max = el.max !== '' ? parseFloat(el.max) : Infinity;
-    const clamped = Math.max(min, Math.min(max, raw));
-    // Warn user if their input was clamped to the valid range
-    if (clamped !== raw) {
+    // Reject out-of-range values — return fallback so config object stays well-formed
+    if (min !== -Infinity && max !== Infinity && (raw < min || raw > max)) {
         const label = el.closest('.param-row')?.querySelector('label')?.textContent?.trim() || id;
-        showFeedback(`${label} clamped from ${raw} to ${clamped} (valid range: ${min}–${max})`, 'warning');
-        el.value = clamped;
+        showFeedback(`${label} ${raw} is out of range (valid: ${min}–${max})`, 'warning');
+        _validationErrors++;
+        return fallback;
     }
-    return clamped;
+    return raw;
 }
 
 // Filter a config object to only include params whose input was modified.
@@ -1303,7 +1349,7 @@ function markClean(inputIds) {
 function sendConfig(pidOnly = false) {
     if (!connected || !configPublisher) {
         addLog('Not connected to ROS', 'error');
-        return;
+        return false;
     }
 
     let config = {};
@@ -1313,6 +1359,8 @@ function sendConfig(pidOnly = false) {
         'cfg-kp': 'kp', 'cfg-ki': 'ki', 'cfg-kd': 'kd'
     };
 
+    resetValidation();
+
     if (pidOnly) {
         // Only send PID parameters
         const fullPid = {
@@ -1320,6 +1368,10 @@ function sendConfig(pidOnly = false) {
             ki: readInput('cfg-ki', 20),
             kd: readInput('cfg-kd', 150)
         };
+        if (hasValidationErrors()) {
+            addLog('Config not sent — fix out-of-range values first', 'warning');
+            return false;
+        }
         config = filterDirtyParams(fullPid, pidIdMap);
         addLog('Sending PID config... | Envoi configuration PID...', 'info');
     } else {
@@ -1349,6 +1401,11 @@ function sendConfig(pidOnly = false) {
             astar_safety_margin: readInput('cfg-astar-safety', 12.0),
             astar_max_expansions: readInput('cfg-astar-max', 20000)
         };
+
+        if (hasValidationErrors()) {
+            addLog('Config not sent — fix out-of-range values first', 'warning');
+            return false;
+        }
 
         const mainIdMap = {
             'cfg-lanes': 'lanes', 'cfg-scan-length': 'scan_length', 'cfg-scan-width': 'scan_width',
@@ -1404,6 +1461,7 @@ function sendConfig(pidOnly = false) {
         navModeDirty = false;
         showFeedback(`✅ Config: ${sentCount} parameter(s) applied`, 'success');
     }
+    return true;
 }
 
 function getSelectedNavMode() {
@@ -1620,10 +1678,16 @@ function generateWaypoints() {
     }
     
     // Get waypoint parameters from mission control inputs (validated)
+    resetValidation();
     const lanes = readInput('wp-lanes', 10);
     const length = readInput('wp-length', 15.0);
     const width = readInput('wp-width', 30.0);
-    
+
+    if (hasValidationErrors()) {
+        addLog('Waypoint generation aborted — fix out-of-range values first', 'warning');
+        return;
+    }
+
     // Update hidden config fields for compatibility
     document.getElementById('cfg-lanes').value = lanes;
     document.getElementById('cfg-scan-length').value = length;
@@ -1642,9 +1706,9 @@ function generateWaypoints() {
         astar_enabled: navMode !== 'simple',
         astar_hybrid_mode: navMode === 'hybrid',
         hazard_enabled: navMode === 'hybrid',
-        astar_resolution: parseFloat(document.getElementById('cfg-astar-resolution').value),
-        astar_safety_margin: parseFloat(document.getElementById('cfg-astar-safety').value),
-        astar_max_expansions: parseInt(document.getElementById('cfg-astar-max').value)
+        astar_resolution: readInput('cfg-astar-resolution', 3.0),
+        astar_safety_margin: readInput('cfg-astar-safety', 12.0),
+        astar_max_expansions: readInput('cfg-astar-max', 20000)
     };
     
     const configMsg = new ROSLIB.Message({
@@ -2436,32 +2500,33 @@ function applyPerceptionParameters(presetParams = null) {
         'perception-solid-min-height': 'solid_min_height', 'perception-solid-max-height': 'solid_max_height'
     };
 
-    // Get full parameters from UI or preset
+    // Get full parameters from UI (with validation) or preset
+    resetValidation();
     const fullParams = presetParams || {
-        min_height: parseFloat(document.getElementById('perception-min-height').value),
-        max_height: parseFloat(document.getElementById('perception-max-height').value),
-        min_range: parseFloat(document.getElementById('perception-min-range').value),
-        max_range: parseFloat(document.getElementById('perception-max-range').value),
-        perception_min_safe_distance: parseFloat(document.getElementById('perception-safe-dist').value),
-        perception_critical_distance: parseFloat(document.getElementById('perception-critical-dist').value),
-        cluster_distance: parseFloat(document.getElementById('perception-cluster-dist').value),
-        min_cluster_size: parseInt(document.getElementById('perception-min-cluster-size').value),
-        temporal_history_size: parseInt(document.getElementById('perception-temporal-history').value),
-        temporal_threshold: parseInt(document.getElementById('perception-temporal-threshold').value),
-        water_plane_threshold: parseFloat(document.getElementById('perception-water-threshold').value),
-        hysteresis_distance: parseFloat(document.getElementById('perception-hysteresis').value),
-        // Smoke detection parameters (v2.1)
+        min_height: readInput('perception-min-height', -1.2),
+        max_height: readInput('perception-max-height', 1.5),
+        min_range: readInput('perception-min-range', 2.2),
+        max_range: readInput('perception-max-range', 100),
+        perception_min_safe_distance: readInput('perception-safe-dist', 10.0),
+        perception_critical_distance: readInput('perception-critical-dist', 5.5),
+        cluster_distance: readInput('perception-cluster-dist', 3.0),
+        min_cluster_size: readInput('perception-min-cluster-size', 8),
+        temporal_history_size: readInput('perception-temporal-history', 3),
+        temporal_threshold: readInput('perception-temporal-threshold', 2),
+        water_plane_threshold: readInput('perception-water-threshold', 0.32),
+        hysteresis_distance: readInput('perception-hysteresis', 2.0),
         smoke_filter_enabled: document.getElementById('perception-smoke-enabled') ?
             (document.getElementById('perception-smoke-enabled').value === 'true') : true,
-        smoke_min_height: document.getElementById('perception-smoke-min-height') ?
-            parseFloat(document.getElementById('perception-smoke-min-height').value) : 0.3,
-        smoke_max_height: document.getElementById('perception-smoke-max-height') ?
-            parseFloat(document.getElementById('perception-smoke-max-height').value) : 10.0,
-        solid_min_height: document.getElementById('perception-solid-min-height') ?
-            parseFloat(document.getElementById('perception-solid-min-height').value) : -2.0,
-        solid_max_height: document.getElementById('perception-solid-max-height') ?
-            parseFloat(document.getElementById('perception-solid-max-height').value) : 0.5
+        smoke_min_height: readInput('perception-smoke-min-height', 0.3),
+        smoke_max_height: readInput('perception-smoke-max-height', 10.0),
+        solid_min_height: readInput('perception-solid-min-height', -2.0),
+        solid_max_height: readInput('perception-solid-max-height', 0.5)
     };
+
+    if (hasValidationErrors()) {
+        addLog('Perception config not sent — fix out-of-range values first', 'warning');
+        return;
+    }
 
     // Presets send all params; manual edits send only changed ones
     const params = presetParams ? fullParams : filterDirtyParams(fullParams, perceptionIdMap);
@@ -2501,23 +2566,29 @@ function applyControllerParameters(presetParams = null) {
         'controller-turn-deadband': 'turn_deadband_deg', 'controller-slew-rate': 'slew_rate_limit'
     };
 
-    // Get full parameters from UI or preset
+    // Get full parameters from UI (with validation) or preset
+    resetValidation();
     const fullParams = presetParams || {
-        critical_distance: parseFloat(document.getElementById('controller-critical-dist').value),
-        min_safe_distance: parseFloat(document.getElementById('controller-safe-dist').value),
-        bank_slow_distance: parseFloat(document.getElementById('controller-bank-dist').value),
-        obstacle_slow_factor: parseFloat(document.getElementById('controller-obstacle-slow').value),
-        bank_slow_factor: parseFloat(document.getElementById('controller-bank-slow').value),
-        avoid_diff_gain: parseFloat(document.getElementById('controller-avoid-gain').value),
+        critical_distance: readInput('controller-critical-dist', 6.0),
+        min_safe_distance: readInput('controller-safe-dist', 12.0),
+        bank_slow_distance: readInput('controller-bank-dist', 6.0),
+        obstacle_slow_factor: readInput('controller-obstacle-slow', 0.5),
+        bank_slow_factor: readInput('controller-bank-slow', 0.25),
+        avoid_diff_gain: readInput('controller-avoid-gain', 18),
         use_vfh_bias: document.getElementById('controller-use-vfh').value === 'true',
-        max_avoidance_turn_deg: parseFloat(document.getElementById('controller-max-turn').value),
-        stuck_timeout: parseFloat(document.getElementById('controller-stuck-timeout').value),
-        stuck_threshold: parseFloat(document.getElementById('controller-stuck-threshold').value),
-        reverse_timeout: parseFloat(document.getElementById('controller-reverse-timeout').value),
-        max_reverse_distance: parseFloat(document.getElementById('controller-max-reverse').value),
-        turn_deadband_deg: parseFloat(document.getElementById('controller-turn-deadband').value),
-        slew_rate_limit: parseFloat(document.getElementById('controller-slew-rate').value)
+        max_avoidance_turn_deg: readInput('controller-max-turn', 45),
+        stuck_timeout: readInput('controller-stuck-timeout', 12.0),
+        stuck_threshold: readInput('controller-stuck-threshold', 1.0),
+        reverse_timeout: readInput('controller-reverse-timeout', 4.0),
+        max_reverse_distance: readInput('controller-max-reverse', 25),
+        turn_deadband_deg: readInput('controller-turn-deadband', 0.5),
+        slew_rate_limit: readInput('controller-slew-rate', 80)
     };
+
+    if (hasValidationErrors()) {
+        addLog('Controller config not sent — fix out-of-range values first', 'warning');
+        return;
+    }
 
     // Presets send all params; manual edits send only changed ones
     const params = presetParams ? fullParams : filterDirtyParams(fullParams, controllerIdMap);
@@ -3336,9 +3407,44 @@ function addExportButtonToControls(controlsSelector, panelName, label) {
     controls.appendChild(btn);
 }
 
+// Copy panel text content to clipboard
+function addCopyButton(controlsSelector, panelContentSelector, label) {
+    const controls = document.querySelector(controlsSelector);
+    if (!controls) return;
+    const btn = document.createElement('button');
+    btn.className = 'terminal-btn export-btn';
+    btn.textContent = label || 'Copy';
+    btn.title = 'Copy panel text to clipboard';
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const panel = document.querySelector(panelContentSelector);
+        if (!panel) return;
+        const text = panel.innerText || panel.textContent;
+        navigator.clipboard.writeText(text).then(() => {
+            showFeedback('Copied to clipboard', 'success');
+        }).catch(() => {
+            // Fallback for older browsers / insecure contexts
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            showFeedback('Copied to clipboard', 'success');
+        });
+    });
+    controls.appendChild(btn);
+}
+
 window.addEventListener('load', () => {
     addExportButtonToControls('.health-check-panel .terminal-controls', 'health', 'Export JSON');
     addExportButtonToControls('.logs-panel .terminal-controls', 'logs', 'Export JSON');
     addExportButtonToControls('.terminal-panel .terminal-controls', 'terminal', 'Export JSON');
     addExportButton('.mission-control-panel h2', 'system', 'Export Snapshot');
+    // Copy-to-clipboard buttons
+    addCopyButton('.health-check-panel .terminal-controls', '#health-check-output', 'Copy');
+    addCopyButton('.logs-panel .terminal-controls', '#logs', 'Copy');
+    addCopyButton('.terminal-panel .terminal-controls', '#terminal-output', 'Copy');
 });

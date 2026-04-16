@@ -8,7 +8,7 @@
 |---|---|
 | **Project** | AutoBoat Navigation System |
 | **Repository** | [Ghostzero00018/uvautoboat](https://github.com/Ghostzero00018/uvautoboat) |
-| **Last Updated** | 15-04-2026 |
+| **Last Updated** | 16-04-2026 |
 | **Status** | 🟢 AutoBoat Production Ready (A* path planning + one-click launcher + wiki docs + dashboard config system) |
 
 ---
@@ -186,6 +186,9 @@
 | 15-04-2026 | Supervisor meeting delivered; wiki backfill (Glossary + Design_Rationale); Node Naming Refactor Plan | ✅ |
 | 13-04-2026 | Teammate onboarding fix: bashrc guide, dashboard diagnostics, dynamic WebSocket URL, COLCON_IGNORE tracked, health check audit (46/46) | ✅ |
 | 15-04-2026 | Pre-meeting dry-run after ROS 2 Jazzy apt upgrade — no regression, 46/46 PASS | ✅ |
+| 16-04-2026 | One-shot node rename: OKO/SPUTNIK/BURAN/Vostok1 → functional names (26 files, ~1100+ refs) | ✅ |
+| 16-04-2026 | Dashboard security: XSS fix, SRI hashes, server-side param validation, security wiki page | ✅ |
+| 16-04-2026 | Dashboard UX: reject-not-clamp validation, orange/red toasts, range tooltips, copy buttons, A* panel fixes | ✅ |
 | TBD | Coverage Planning | ⏸️ |
 
 ---
@@ -259,7 +262,7 @@ Current position ──>└─────────────────�
 
 ## 📜 Acknowledgments
 
-**Document Version**: 9.2 | **Last Updated**: 15-04-2026
+**Document Version**: 9.3 | **Last Updated**: 16-04-2026
 
 **Maintained By**: AutoBoat Development Team
 

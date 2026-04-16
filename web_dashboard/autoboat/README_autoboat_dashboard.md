@@ -13,6 +13,9 @@ Real-time web-based monitoring and control dashboard for the AutoBoat autonomous
 - **Perception presets**: Universal, Buoy Field, Pier Detect, Open Water
 - **Health check panel** with live streaming output, elapsed time, and [DONE] completion
 - **JSON export** on Health Check, System Logs, ROS2 Terminal, and Mission Control panels
+- **Copy to clipboard** on Health Check, System Logs, and ROS2 Terminal panels
+- **Parameter validation** — out-of-range values rejected with orange toast, nothing sent to ROS
+- **A* Advanced Parameters** panel with Apply/Reset buttons and range-validated inputs
 - **Emergency stop** with red pulsing badge and thrust cut
 - **Obstacle detection** with Front/Left/Right clearance, urgency scores, clusters, gaps
 - **LiDAR smoke detection** display with H/V spread metrics

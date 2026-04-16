@@ -151,6 +151,92 @@ atomic rename because:
 
 ---
 
+## Dashboard Security and UX Improvements (same day)
+
+### Security fixes
+
+- **XSS protection:** rosout log messages now use `textContent` instead of `innerHTML`
+  to prevent script injection from malformed ROS log messages (`app.js`)
+- **SRI hashes:** added SHA-384 integrity + `crossorigin="anonymous"` to CDN scripts
+  (roslib.js, leaflet.js, leaflet.css) in `index.html`
+- **Server-side parameter range validation:** added `_validate_range()` / `param_ranges`
+  to all 3 Python nodes — out-of-range values rejected with warning log
+  (`lidar_perception.py`, `waypoint_planner.py`, `heading_controller.py`)
+- **Quoted `$WORLD` variable** in `launch_autoboat_complete.sh` to prevent command injection
+- **Dashboard_Security wiki page** created — full security posture, 11 vulnerabilities
+  ranked, risk-by-environment, 3 tiers of mitigations, usage guidelines
+
+### Dashboard parameter validation UX
+
+- **`readInput()` reject-not-clamp:** invalid values now abort the entire Apply operation
+  instead of silently clamping. Orange warning toast shows the valid range. Nothing sent to ROS.
+- **Validation error counter:** `resetValidation()` / `hasValidationErrors()` pattern
+  used by all 4 entry points (sendConfig, applyPerceptionParameters,
+  applyControllerParameters, generateWaypoints)
+- **sendConfig returns true/false:** the unconditional "Configuration Applied" alert
+  was removed — green toast only shown on actual success
+- **All 3 Apply functions now use `readInput()`:** Perception and Controller panels
+  previously used raw `parseFloat()`/`parseInt()`, bypassing validation entirely
+- **Red toast for server-side rejection:** `/rosout` messages starting with "Rejected"
+  trigger a red error toast (catches direct ROS command bypasses)
+- **Auto-appended `[Range: X-Y]`** to all parameter hover tooltips at page load
+
+### HTML min/max bounds sync
+
+Added or fixed `min`/`max` attributes on all dashboard number inputs to match
+the Python server-side validation ranges:
+
+- 16 Perception inputs — all were missing bounds
+- 8 Controller inputs — were missing bounds
+- 5 Controller inputs — had mismatched bounds (e.g., `avoid_diff_gain` HTML said
+  10-100 but Python said 0-10; Python range was wrong, fixed to 0-100)
+- 3 A* inputs — had mismatched bounds (resolution, safety margin, max expansions)
+
+### A* panel fixes
+
+- **Value-revert bug fixed:** `/planning/config` sync callback was unconditionally
+  overwriting A* input values every 1Hz, ignoring user edits. Added `dirtyInputs`
+  check (same pattern used by all other inputs)
+- **`generateWaypoints()` now uses `readInput()`** for A* params instead of raw
+  `parseFloat()`/`parseInt()`
+- **Range mismatches fixed:** `astar_resolution` 0.5-20 (was 0.5-10),
+  `astar_safety_margin` 1-50 (was 1-30), `astar_max_expansions` 100-100000 (was 1000-50000)
+- **Added Apply A* and Reset buttons** with full validation, matching the style
+  of Perception and Controller panels (`apply-btn` / `reset-btn` classes)
+- **Added tooltips** to all 3 A* inputs with descriptions and `[Range: X-Y]`
+  auto-enrichment (via `param-row` class + `info-tooltip` spans)
+
+### Copy-to-clipboard buttons
+
+Added "Copy" button next to "Export JSON" on Health Check, System Logs, and
+ROS2 Terminal panels. One click copies panel text to clipboard with green
+toast confirmation. Includes fallback for older browsers. Initial selectors
+were wrong (`.terminal-output` doesn't exist) — fixed to use actual element
+IDs (`#health-check-output`, `#logs`, `#terminal-output`).
+
+### Unconditional "Configuration Applied" alert removed
+
+The main Apply Config button had a `setTimeout(() => alert(...))` that fired
+regardless of whether `sendConfig()` succeeded or was aborted by validation.
+Fixed: `sendConfig()` now returns `true`/`false`, alert replaced with toast
+that only shows on success.
+
+### Other fixes
+
+- Removed residual `(OKO)` / `(SPUTNIK)` / `(BURAN)` parenthetical references
+  from README.md, USER_MANUAL.md, wiki/System_Overview.md, wiki/Design_Rationale.md,
+  wiki/3D_LIDAR_Processing.md
+- Added "Legacy Code-Names" note to README architecture table linking to Glossary
+- Replaced "Russian" with "U.S.S.R." in space-program references (3 active files)
+- Fixed `avoid_diff_gain` Python range from (0, 10) to (0, 100) — was rejecting
+  the YAML default of 18.0
+- Updated package.xml descriptions (stale OKO/BURAN references)
+- Unified maintainer/author name to `Ghostzero00018` across both packages
+- Added "Dashboard stale after update" troubleshooting tip to README + Common_Issues
+- Expanded Common_Issues "Dashboard Shows Old Data" with full post-update workflow
+
+---
+
 ## Not Modified (by design)
 
 - `legacy/` — historical deprecated code

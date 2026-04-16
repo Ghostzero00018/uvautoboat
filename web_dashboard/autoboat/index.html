@@ -344,17 +344,24 @@
                         </div>
                         <div id="astar-advanced-params" style="display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid #dee2e6;">
                             <label style="font-weight: 600; margin-bottom: 8px; display: block; color: #495057;">A* Advanced Parameters | Paramètres Avancés A*:</label>
-                            <div class="config-item">
+                            <div class="param-row config-item">
                                 <label for="cfg-astar-resolution">Grid Resolution (m):</label>
-                                <input type="number" id="cfg-astar-resolution" min="0.5" max="10" step="any" value="3.0">
+                                <input type="number" id="cfg-astar-resolution" min="0.5" max="20" step="any" value="3.0">
+                                <span class="info-tooltip" title="Size of each A* grid cell. Smaller = more precise but slower | Taille de cellule. Plus petit = plus précis mais plus lent">ℹ️</span>
                             </div>
-                            <div class="config-item">
+                            <div class="param-row config-item">
                                 <label for="cfg-astar-safety">Safety Margin (m):</label>
-                                <input type="number" id="cfg-astar-safety" min="1" max="30" step="any" value="12.0">
+                                <input type="number" id="cfg-astar-safety" min="1" max="50" step="any" value="12.0">
+                                <span class="info-tooltip" title="Obstacle inflation radius for A* planning. Larger = wider berth around obstacles | Rayon d'inflation des obstacles">ℹ️</span>
                             </div>
-                            <div class="config-item">
+                            <div class="param-row config-item">
                                 <label for="cfg-astar-max">Max Expansions:</label>
-                                <input type="number" id="cfg-astar-max" min="1000" max="50000" step="any" value="20000">
+                                <input type="number" id="cfg-astar-max" min="100" max="100000" step="any" value="20000">
+                                <span class="info-tooltip" title="Maximum A* search iterations before giving up. Higher = searches more area but takes longer | Itérations max de recherche A*">ℹ️</span>
+                            </div>
+                            <div style="margin-top: 8px; display: flex; gap: 8px;">
+                                <button id="btn-apply-astar" class="apply-btn" style="flex: 1;">Apply A* | Appliquer A*</button>
+                                <button id="btn-reset-astar" class="reset-btn" style="flex: 0;">Reset</button>
                             </div>
                         </div>
                     </div>
@@ -623,12 +630,12 @@
                                     <h4>Height Filtering | Filtrage Hauteur</h4>
                                     <div class="param-item">
                                         <label for="perception-min-height">Min Height (m):</label>
-                                        <input type="number" id="perception-min-height" step="any" value="-1.2">
+                                        <input type="number" id="perception-min-height" step="any" min="-50" max="50" value="-1.2">
                                         <span class="param-hint">Filter low piers/buoys</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="perception-max-height">Max Height (m):</label>
-                                        <input type="number" id="perception-max-height" step="any" value="1.5">
+                                        <input type="number" id="perception-max-height" step="any" min="-50" max="50" value="1.5">
                                         <span class="param-hint">Reject smoke</span>
                                     </div>
                                 </div>
@@ -637,12 +644,12 @@
                                     <h4>Range Filtering | Filtrage Portée</h4>
                                     <div class="param-item">
                                         <label for="perception-min-range">Min Range (m):</label>
-                                        <input type="number" id="perception-min-range" step="any" value="2.2">
+                                        <input type="number" id="perception-min-range" step="any" min="0" max="500" value="2.2">
                                         <span class="param-hint">Close detection</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="perception-max-range">Max Range (m):</label>
-                                        <input type="number" id="perception-max-range" step="any" value="100">
+                                        <input type="number" id="perception-max-range" step="any" min="1" max="500" value="100">
                                         <span class="param-hint">Extended detection</span>
                                     </div>
                                 </div>
@@ -651,12 +658,12 @@
                                     <h4>Detection Thresholds | Seuils Détection</h4>
                                     <div class="param-item">
                                         <label for="perception-safe-dist">Safe Distance (m):</label>
-                                        <input type="number" id="perception-safe-dist" step="any" value="10.0">
+                                        <input type="number" id="perception-safe-dist" step="any" min="1" max="200" value="10.0">
                                         <span class="param-hint">Start slowing</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="perception-critical-dist">Critical Distance (m):</label>
-                                        <input type="number" id="perception-critical-dist" step="any" value="5.5">
+                                        <input type="number" id="perception-critical-dist" step="any" min="0.5" max="100" value="5.5">
                                         <span class="param-hint">Emergency threshold</span>
                                     </div>
                                 </div>
@@ -669,12 +676,12 @@
                                     <h4>Clustering | Regroupement</h4>
                                     <div class="param-item">
                                         <label for="perception-cluster-dist">Cluster Distance (m):</label>
-                                        <input type="number" id="perception-cluster-dist" step="any" value="3.0">
+                                        <input type="number" id="perception-cluster-dist" step="any" min="0.1" max="50" value="3.0">
                                         <span class="param-hint">Group nearby points</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="perception-min-cluster-size">Min Cluster Size:</label>
-                                        <input type="number" id="perception-min-cluster-size" step="any" min="1" value="8">
+                                        <input type="number" id="perception-min-cluster-size" step="any" min="1" max="10000" value="8">
                                         <span class="param-hint">Filter noise</span>
                                     </div>
                                 </div>
@@ -683,12 +690,12 @@
                                     <h4>Temporal Filtering | Filtrage Temporel</h4>
                                     <div class="param-item">
                                         <label for="perception-temporal-history">History Size:</label>
-                                        <input type="number" id="perception-temporal-history" step="any" min="1" max="10" value="3">
+                                        <input type="number" id="perception-temporal-history" step="any" min="1" max="20" value="3">
                                         <span class="param-hint">Scan buffer</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="perception-temporal-threshold">Threshold:</label>
-                                        <input type="number" id="perception-temporal-threshold" step="any" min="1" max="10" value="2">
+                                        <input type="number" id="perception-temporal-threshold" step="any" min="1" max="20" value="2">
                                         <span class="param-hint">Required confirmations</span>
                                     </div>
                                 </div>
@@ -697,12 +704,12 @@
                                     <h4>Water & Stability | Eau et Stabilité</h4>
                                     <div class="param-item">
                                         <label for="perception-water-threshold">Water Plane Threshold:</label>
-                                        <input type="number" id="perception-water-threshold" step="any" value="0.32">
+                                        <input type="number" id="perception-water-threshold" step="any" min="0" max="10" value="0.32">
                                         <span class="param-hint">Water filtering</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="perception-hysteresis">Hysteresis (m):</label>
-                                        <input type="number" id="perception-hysteresis" step="any" value="2.0">
+                                        <input type="number" id="perception-hysteresis" step="any" min="0" max="20" value="2.0">
                                         <span class="param-hint">Prevent oscillation</span>
                                     </div>
                                 </div>
@@ -723,12 +730,12 @@
                                     </div>
                                     <div class="param-item">
                                         <label for="perception-smoke-min-height">Smoke Min Height (m):</label>
-                                        <input type="number" id="perception-smoke-min-height" step="any" value="2.5">
+                                        <input type="number" id="perception-smoke-min-height" step="any" min="-50" max="50" value="2.5">
                                         <span class="param-hint">Smoke floats above this (SDF: 0.5m start)</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="perception-smoke-max-height">Smoke Max Height (m):</label>
-                                        <input type="number" id="perception-smoke-max-height" step="any" value="10.0">
+                                        <input type="number" id="perception-smoke-max-height" step="any" min="-50" max="100" value="10.0">
                                         <span class="param-hint">Extended for rising smoke (3-8m plumes)</span>
                                     </div>
                                 </div>
@@ -737,12 +744,12 @@
                                     <h4>Solid Objects (v2.1) | Objets Solides</h4>
                                     <div class="param-item">
                                         <label for="perception-solid-min-height">Solid Min Height (m):</label>
-                                        <input type="number" id="perception-solid-min-height" step="any" value="-2.0">
+                                        <input type="number" id="perception-solid-min-height" step="any" min="-50" max="50" value="-2.0">
                                         <span class="param-hint">Solid obstacles min</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="perception-solid-max-height">Solid Max Height (m):</label>
-                                        <input type="number" id="perception-solid-max-height" step="any" value="0.5">
+                                        <input type="number" id="perception-solid-max-height" step="any" min="-50" max="100" value="0.5">
                                         <span class="param-hint">Touch water line</span>
                                     </div>
                                 </div>
@@ -774,17 +781,17 @@
                                     <h4>Distance Thresholds | Seuils Distance</h4>
                                     <div class="param-item">
                                         <label for="controller-critical-dist">Critical Distance (m):</label>
-                                        <input type="number" id="controller-critical-dist" step="any" value="6.0">
+                                        <input type="number" id="controller-critical-dist" step="any" min="0.5" max="100" value="6.0">
                                         <span class="param-hint">Panic/reverse</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="controller-safe-dist">Safe Distance (m):</label>
-                                        <input type="number" id="controller-safe-dist" step="any" value="12.0">
+                                        <input type="number" id="controller-safe-dist" step="any" min="1" max="200" value="12.0">
                                         <span class="param-hint">Start slowing</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="controller-bank-dist">Bank Slow Distance (m):</label>
-                                        <input type="number" id="controller-bank-dist" step="any" value="6.0">
+                                        <input type="number" id="controller-bank-dist" step="any" min="1" max="100" value="6.0">
                                         <span class="param-hint">Extra slow near banks</span>
                                     </div>
                                 </div>
@@ -793,12 +800,12 @@
                                     <h4>Speed Control | Contrôle Vitesse</h4>
                                     <div class="param-item">
                                         <label for="controller-obstacle-slow">Obstacle Slow Factor:</label>
-                                        <input type="number" id="controller-obstacle-slow" step="any" min="0.1" max="1.0" value="0.5">
+                                        <input type="number" id="controller-obstacle-slow" step="any" min="0" max="1.0" value="0.5">
                                         <span class="param-hint">Speed near obstacles</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="controller-bank-slow">Bank Slow Factor:</label>
-                                        <input type="number" id="controller-bank-slow" step="any" min="0.1" max="1.0" value="0.25">
+                                        <input type="number" id="controller-bank-slow" step="any" min="0" max="1.0" value="0.25">
                                         <span class="param-hint">Crawl near banks</span>
                                     </div>
                                 </div>
@@ -807,7 +814,7 @@
                                     <h4>Steering | Direction</h4>
                                     <div class="param-item">
                                         <label for="controller-avoid-gain">Avoid Diff Gain:</label>
-                                        <input type="number" id="controller-avoid-gain" step="any" min="10" max="100" value="18">
+                                        <input type="number" id="controller-avoid-gain" step="any" min="0" max="100" value="18">
                                         <span class="param-hint">Steering aggressiveness</span>
                                     </div>
                                     <div class="param-item">
@@ -820,7 +827,7 @@
                                     </div>
                                     <div class="param-item">
                                         <label for="controller-max-turn">Max Turn Angle (°):</label>
-                                        <input type="number" id="controller-max-turn" step="any" min="10" max="90" value="45">
+                                        <input type="number" id="controller-max-turn" step="any" min="5" max="90" value="45">
                                         <span class="param-hint">Avoidance turn limit</span>
                                     </div>
                                 </div>
@@ -833,12 +840,12 @@
                                     <h4>Stuck Detection | Détection Blocage</h4>
                                     <div class="param-item">
                                         <label for="controller-stuck-timeout">Stuck Timeout (s):</label>
-                                        <input type="number" id="controller-stuck-timeout" step="any" min="1" max="30" value="12.0">
+                                        <input type="number" id="controller-stuck-timeout" step="any" min="1" max="120" value="12.0">
                                         <span class="param-hint">Time before stuck detection</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="controller-stuck-threshold">Stuck Threshold (m):</label>
-                                        <input type="number" id="controller-stuck-threshold" step="any" value="1.0">
+                                        <input type="number" id="controller-stuck-threshold" step="any" min="0.1" max="20" value="1.0">
                                         <span class="param-hint">Movement threshold</span>
                                     </div>
                                 </div>
@@ -847,12 +854,12 @@
                                     <h4>Critical Obstacle | Obstacle Critique</h4>
                                     <div class="param-item">
                                         <label for="controller-reverse-timeout">Reverse Timeout (s):</label>
-                                        <input type="number" id="controller-reverse-timeout" step="any" value="4.0">
+                                        <input type="number" id="controller-reverse-timeout" step="any" min="0.5" max="30" value="4.0">
                                         <span class="param-hint">Reverse duration</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="controller-max-reverse">Max Reverse Distance (m):</label>
-                                        <input type="number" id="controller-max-reverse" step="any" value="25">
+                                        <input type="number" id="controller-max-reverse" step="any" min="0" max="50" value="25">
                                         <span class="param-hint">Max reverse</span>
                                     </div>
                                 </div>
@@ -861,12 +868,12 @@
                                     <h4>Turn Behavior | Comportement Virage</h4>
                                     <div class="param-item">
                                         <label for="controller-turn-deadband">Turn Deadband (deg):</label>
-                                        <input type="number" id="controller-turn-deadband" step="any" value="0.5">
+                                        <input type="number" id="controller-turn-deadband" step="any" min="0" max="10" value="0.5">
                                         <span class="param-hint">Precision threshold</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="controller-slew-rate">Slew Rate Limit (N):</label>
-                                        <input type="number" id="controller-slew-rate" step="any" value="80">
+                                        <input type="number" id="controller-slew-rate" step="any" min="0" max="5000" value="80">
                                         <span class="param-hint">Max thrust change</span>
                                     </div>
                                 </div>
