@@ -218,6 +218,19 @@ sudo ufw status
 # If active: sudo ufw allow 9090/tcp && sudo ufw allow 8002/tcp && sudo ufw allow 8080/tcp
 ```
 
+## Security
+
+The dashboard currently has **no authentication, encryption, or access control**. All 3 ports (8002, 9090, 8080) are accessible to any device on the same network.
+
+This is acceptable for local simulation but poses risks on shared networks or field deployments. See **[wiki/Dashboard_Security.md](../../wiki/Dashboard_Security.md)** for the full security assessment, known vulnerabilities, and recommended mitigations.
+
+**Quick safety measure for shared networks:**
+
+```bash
+# Bind dashboard to localhost only (prevents remote access)
+python3 -m http.server -b 127.0.0.1 8002
+```
+
 ## License
 
 Part of the uvautoboat project — Apache License 2.0.

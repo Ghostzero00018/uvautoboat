@@ -58,9 +58,10 @@ Welcome to the **AutoBoat Wiki**! This documentation provides comprehensive guid
 - **[Testing Guide](Testing-Guide)** — Unit tests and integration tests
 - **[API Reference](API-Reference)** — ROS 2 topics, services, and parameters
 
-### 🐛 Troubleshooting
+### 🐛 Troubleshooting & Security
 
 - **[Common Issues](Common_Issues)** — Solutions to frequent problems
+- **[Dashboard Security](Dashboard_Security)** — Security assessment, known vulnerabilities, and mitigation recommendations
 - **[Debug Commands](Debug-Commands)** — Diagnostic tools
 - **[FAQ](FAQ)** — Frequently asked questions
 
