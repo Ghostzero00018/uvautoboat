@@ -1441,7 +1441,8 @@ function addTerminalLine(message) {
     
     // Format the message
     const msgText = message.msg || message;
-    line.innerHTML = `<span class="timestamp">[${timestamp}]</span> <span class="level">${levelPrefix}</span> <span class="message">${msgText}</span>`;
+    line.innerHTML = `<span class="timestamp">[${timestamp}]</span> <span class="level">${levelPrefix}</span> <span class="message"></span>`;
+    line.querySelector('.message').textContent = msgText;
     
     terminal.appendChild(line);
     
