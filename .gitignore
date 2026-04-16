@@ -50,7 +50,6 @@ test_results/
 .idea/
 *.swp
 *~
-.claude/
 compile_commands.json
 
 # OS Generated
