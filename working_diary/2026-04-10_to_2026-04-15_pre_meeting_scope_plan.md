@@ -350,7 +350,14 @@ prevent the 1-second ROS sync from overwriting before Apply is clicked.
 The following items are **not blockers** but should be addressed in the
 next development cycle:
 
-### 1. Non-standard ROS node names (OKO / SPUTNIK / BURAN)
+### 1. Non-standard ROS node names (OKO / SPUTNIK / BURAN) — ✅ Resolved 16-04-2026
+
+> **Follow-up (16-04-2026):** This issue was resolved the day after the
+> meeting — executed as a one-shot atomic rename rather than the
+> two-release deprecation cycle originally proposed below. See
+> `working_diary/Week6_13_04-17_04.md` (Thursday entry) for the execution
+> record, and `wiki/Node_Naming_Refactor_Plan.md` for the final scope.
+> The content below is preserved as the original Apr 15 analysis.
 
 The current navigation nodes use Russian space-program code-names
 (Vostok1 = system name; OKO = perception; SPUTNIK = planning; BURAN =

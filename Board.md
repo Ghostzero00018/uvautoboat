@@ -256,7 +256,7 @@ Current position ──>└─────────────────�
 | **ROS 2 Parameter Migration** | ✅ Done | Parameters now configurable via `autoboat.launch.yaml` |
 | **Multi-Terminal Launch** | ✅ Done | `one_click_launch_all/launch_autoboat_complete.sh` available |
 | **Debugging Required** | 🔄 In Progress | Complex planning and obstacle detection still need debugging |
-| **Node Naming Refactor** | 🔄 In Progress | Rename OKO/SPUTNIK/BURAN → functional names (lidar_perception/waypoint_planner/heading_controller). See [wiki/Node_Naming_Refactor_Plan](wiki/Node_Naming_Refactor_Plan.md) |
+| **Node Naming Refactor** | ✅ Done | One-shot atomic rename completed 16-04-2026 (OKO → `lidar_perception`, SPUTNIK → `waypoint_planner`, BURAN → `heading_controller`, Vostok1 → `AutoBoat`, vostok1_cli → `autoboat_cli`). See [wiki/Node_Naming_Refactor_Plan](wiki/Node_Naming_Refactor_Plan.md) for the full record. |
 
 ---
 
