@@ -8,8 +8,8 @@
 |---|---|
 | **Project** | AutoBoat Navigation System |
 | **Repository** | [Ghostzero00018/uvautoboat](https://github.com/Ghostzero00018/uvautoboat) |
-| **Last Updated** | 16-04-2026 |
-| **Status** | 🟢 AutoBoat Production Ready (A* path planning + one-click launcher + wiki docs + dashboard config system) |
+| **Last Updated** | 18-04-2026 |
+| **Status** | 🟢 Simulation ready (A* path planning + one-click launcher + wiki docs + dashboard config system). Real-hardware deployment begins next week. |
 
 ---
 
@@ -21,6 +21,7 @@
 | 2 | Autonomous Navigation | ✅ | 100% |
 | 3 | Coverage Planning | ⏸️ | 0% |
 | 4 | Integration & Testing | 🔄 | 90% |
+| 5 | Real-Hardware Deployment | 🔜 | 0% |
 
 ### Active System
 
@@ -54,7 +55,7 @@
 ### AutoBoat Navigation System
 
 - Integrated perception + planning + control
-- Modular variant: Perception + Planner + Controller distributed architecture
+- Modular variant: Perception + Planner + Controller three-node pipeline
 - 3D PointCloud processing (height/distance filtering)
 - Simple Anti-Stuck System
   - Turn left until clear
@@ -127,6 +128,62 @@
 
 ---
 
+## Phase 5: Real-Hardware Deployment 🔜
+
+**Status**: Planned | **Expected kickoff**: Week of 20-04-2026 | **Priority**: High
+
+Supervisor has signalled imminent access to the real AutoBoat central control unit (CCU). Expected two-tier control architecture:
+
+- **High-level (confirmed)**: Raspberry Pi 5 running ROS 2 Jazzy + this repo's nodes, LiDAR driver, GPS/IMU drivers, dashboard, shore comms.
+- **Low-level (TBD — not confirmed)**: Supervisor mentioned something like an STM32 microcontroller, but the exact chip / whether a dedicated low-level board exists at all has not been confirmed. Could be STM32, ESP32, a commercial motor controller, or even omitted (Pi handles everything). Clarify with supervisor before hardware arrives.
+
+The whole repo is expected to run on the Pi 5.
+
+### Risks ranked (mitigation prep can start on Linux workstation without hardware)
+
+| # | Risk | Why it matters | Mitigation |
+|:-:|------|----------------|------------|
+| 1 | LiDAR performance on Pi 5 | 30k points × 10 Hz in `rclpy` may saturate 1-2 cores | Profile callback in VRX; have `sample_rate: 2` + raised `min_cluster_size` as fallback; last resort = rewrite hot loop in `rclcpp` |
+| 2 | `/wamv/*` topic hardcoding | 3 months of work tied to simulated topic names | Launch-file remapping (cleanest); inventory every `/wamv/*` reference to make next-week swap mechanical |
+| 3 | Low-level bridge (new node, only needed *if* a separate low-level controller exists) | Translate thrust commands + ingest telemetry; protocol (UART/CAN/micro-ROS/GPIO PWM) depends on whatever the low-level controller runs — or is a non-issue if the Pi drives thrusters directly | **Ask supervisor: is there a low-level controller at all, and if yes what runs on it?** — this answer determines whether a bridge node is needed |
+| 4 | Headless comms to shore | Dashboard range ≈ Pi's WiFi (30-50 m typical) | Walk-test WiFi range; 4G modem or directional antenna if > 50 m mission box; static IP or mDNS |
+| 5 | Power-loss robustness | SD cards corrupt on sudden power-off — default boat failure mode | USB 3 SSD boot or read-only root FS with tmpfs overlay for logs |
+| 6 | Safety integration | Real boat can damage property | Hardware watchdog (location depends on CCU architecture) + physical E-stop + geofence (enable `hazard_enabled: true` with test-lake polygon); end-to-end verify dashboard E-stop cuts thrusters |
+
+### Prep tasks (no hardware required)
+
+| Task | Status |
+|------|:------:|
+| Write `remap.launch.yaml` aliasing `/wamv/*` → neutral topics; verify stack still runs | ⬜ |
+| Profile `/perception/obstacle_info` Hz in VRX; document baseline | ⬜ |
+| Stub bridge node (inputs `/control/thrust_cmd`, outputs thrusters) with pass-through behaviour | ⬜ |
+| Inventory of every `/wamv/*` reference across Python, YAML, JS, HTML | ⬜ |
+| Supervisor conversation: confirm CCU architecture (is there a low-level controller? what chip? what firmware? any interface-control document?) | ⬜ |
+| Spec shore-comms plan (WiFi range test, fallback to 4G) | ⬜ |
+
+### Hardware-arrival tasks (requires CCU on-bench)
+
+| Task | Status |
+|------|:------:|
+| Install Ubuntu 24.04 + ROS 2 Jazzy on Pi 5 | ⬜ |
+| Build workspace on Pi 5 (native ARM64 build) | ⬜ |
+| Wire bridge node to real low-level protocol (only if supervisor confirms a separate low-level controller) | ⬜ |
+| Swap `/wamv/*` remaps to real driver topic names | ⬜ |
+| Bench test: dashboard → Pi 5 → (low-level if present) → thruster signal (dry bench, motors disconnected) | ⬜ |
+| Static analysis of thermals + current draw under full-stack load | ⬜ |
+
+### On-water tasks (requires full CCU in boat, test-lake access)
+
+| Task | Status |
+|------|:------:|
+| Manual-joystick test (no autonomy) — verify thruster mapping + E-stop | ⬜ |
+| Single-waypoint autonomous run in fenced test area | ⬜ |
+| Multi-waypoint mission with obstacle avoidance | ⬜ |
+| Long-duration robustness (15+ min) on-water | ⬜ |
+| Failure-mode drills: manual override, E-stop, low-battery return-to-home | ⬜ |
+
+---
+
 ## 📝 Issue Tracking
 
 ### Resolved ✅
@@ -188,16 +245,23 @@
 | 16-04-2026 | One-shot node rename: OKO/SPUTNIK/BURAN/Vostok1 → functional names (26 files, ~1100+ refs) | ✅ |
 | 16-04-2026 | Dashboard security: XSS fix, SRI hashes, server-side param validation, security wiki page | ✅ |
 | 16-04-2026 | Dashboard UX: reject-not-clamp validation, orange/red toasts, range tooltips, copy buttons, A* panel fixes | ✅ |
+| 17-04-2026 | Param-range single source of truth: Python nodes publish `PARAM_RANGES`, dashboard auto-syncs HTML min/max | ✅ |
+| 17-04-2026 | Dashboard `JSON.parse` hardening: 8 subscribers wrapped in try/catch to tolerate malformed messages | ✅ |
+| 17-04-2026 | Dashboard UX polish: 31 hover tooltips, nav-mode restyle, preset confirm dialog, map grid performance | ✅ |
+| 17-04-2026 | LiDAR smoke detection fully removed (-624 LOC across 10 files); FINISHED counter clamp; split-screen CSS hardening | ✅ |
+| 18-04-2026 | Hardware-deployment phase logged; docs audit (`distributed` → modular) across README + USER_MANUAL + Board | ✅ |
+| TBD | Real-hardware deployment (Pi 5 as confirmed target; low-level CCU architecture TBD) | 🔜 |
 | TBD | Coverage Planning | ⏸️ |
 
 ---
 
 ## 🎯 Next Priorities
 
-1. Long-duration stress testing (15+ min missions)
-2. Complex waypoint circuits with obstacles
-3. Performance benchmarking (RMS error analysis)
-4. Coverage planning algorithms (boustrophedon)
+1. **Phase 5 prep tasks** (see above): supervisor conversation on CCU architecture, topic-remap dry run, LiDAR profiling, bridge-node stub, `/wamv/*` inventory
+2. Long-duration stress testing (15+ min missions) — may be superseded by on-water runs once hardware lands
+3. Complex waypoint circuits with obstacles
+4. Performance benchmarking (RMS error analysis)
+5. Coverage planning algorithms (boustrophedon)
 
 ---
 
@@ -261,7 +325,7 @@ Current position ──>└─────────────────�
 
 ## 📜 Acknowledgments
 
-**Document Version**: 9.3 | **Last Updated**: 16-04-2026
+**Document Version**: 9.4 | **Last Updated**: 18-04-2026
 
 **Maintained By**: AutoBoat Development Team
 

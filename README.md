@@ -12,7 +12,7 @@
 
 ## 🏗️ Architecture
 
-The system uses three distributed ROS 2 nodes:
+The system is a modular 3-node ROS 2 pipeline:
 
 | Node | Role | Description |
 | ------ | ------ | ------------- |

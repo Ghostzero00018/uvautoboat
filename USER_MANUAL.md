@@ -55,7 +55,7 @@ The project implements a hierarchical autonomous navigation framework combining 
 **Key Contributions:**
 
 - **AutoBoat Navigation System**: Integrated autonomous navigation with 3D LIDAR perception
-- **Modular Architecture**: Distributed nodes (Perception-Planner-Controller) for flexible deployment
+- **Modular Architecture**: Three-node pipeline (Perception-Planner-Controller) for flexible deployment
 - **Simple Anti-Stuck System**: Turn left until clear recovery with Kalman-filtered drift compensation
 - **Web Dashboard**: Real-time monitoring with better visualization
 - **Waypoint Skip Strategy**: Automatic skip for blocked waypoints ensuring mission completion
@@ -513,7 +513,7 @@ Understanding the coordinate system is essential for working with VRX simulation
 
 ### Modular Architecture (Perception-Planner-Controller)
 
-The active navigation system uses three distributed ROS 2 nodes:
+The active navigation system is a modular 3-node ROS 2 pipeline:
 
 | Node | Name | Function |
 | :----- | :----- | :--------- |
@@ -1719,7 +1719,7 @@ Open an issue on [GitHub](https://github.com/Ghostzero00018/uvautoboat/issues) w
 
 Project finished by IMT NORD EUROPE DNM DMI-2026
 
-Last updated at 13-04-2026
+Last updated at 18-04-2026
 
 ---
 
