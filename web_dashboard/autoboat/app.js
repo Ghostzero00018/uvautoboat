@@ -72,8 +72,7 @@ let currentState = {
         min_safe_distance: 12.0
     },
     world: {
-        name: 'unknown',
-        hasSmoke: false
+        name: 'unknown'
     }
 };
 
@@ -102,14 +101,12 @@ function initWorldBanner() {
 }
 
 let _prevBanner = {};
-function updateWorldBanner(name, hasSmoke) {
-    if (_prevBanner.name === name && _prevBanner.hasSmoke === hasSmoke) return;
+function updateWorldBanner(name) {
+    if (_prevBanner.name === name) return;
     _prevBanner.name = name;
-    _prevBanner.hasSmoke = hasSmoke;
     const banner = document.getElementById('world-banner-text');
     if (!banner) return;
-    const smokeText = hasSmoke ? 'with smoke sources detected' : 'no smoke sources detected';
-    banner.innerHTML = `Currently loaded world is <b><i>${(name || 'unknown').replace(/</g, '&lt;')}</i></b> - ${smokeText}`;
+    banner.innerHTML = `Currently loaded world is <b><i>${(name || 'unknown').replace(/</g, '&lt;')}</i></b>`;
 }
 
 
@@ -584,22 +581,6 @@ function subscribeToTopics() {
         }
     });
 
-    // DEPRECATED: Pollutant sources (smoke generators) from SDF files
-    // LiDAR Smoke Detection (v2.2) - Active smoke detection
-    const smokeDetectionTopic = new ROSLIB.Topic({
-        ros: ros,
-        name: '/perception/smoke_detected',
-        messageType: 'std_msgs/String'
-    });
-
-    smokeDetectionTopic.subscribe((message) => {
-        let data;
-        try { data = JSON.parse(message.data); }
-        catch (e) { if (DEBUG_MODE) console.warn('Bad /perception/smoke_detected JSON:', e); return; }
-        if (DEBUG_MODE) console.log('Smoke detection update:', data);
-        updateSmokeDetection(data);
-    });
-
     if (DEBUG_MODE) console.log('Subscribed to all topics (integrated + modular)');
     addLog('Subscribed to topics (AutoBoat + Modular)', 'info');
     
@@ -1052,8 +1033,6 @@ function initConfigPanel() {
         'perception-min-height', 'perception-max-height', 'perception-min-range', 'perception-max-range',
         'perception-safe-dist', 'perception-critical-dist', 'perception-cluster-dist', 'perception-min-cluster-size',
         'perception-temporal-history', 'perception-temporal-threshold', 'perception-water-threshold', 'perception-hysteresis',
-        'perception-smoke-enabled', 'perception-smoke-min-height', 'perception-smoke-max-height',
-        'perception-solid-min-height', 'perception-solid-max-height',
         // Controller inputs
         'controller-critical-dist', 'controller-safe-dist', 'controller-bank-dist',
         'controller-obstacle-slow', 'controller-bank-slow', 'controller-avoid-gain',
@@ -1188,9 +1167,7 @@ const PERCEPTION_DEFAULTS = {
     'perception-safe-dist': 10.0, 'perception-critical-dist': 5.5,  // perception_critical_distance in ROS
     'perception-cluster-dist': 3.0, 'perception-min-cluster-size': 8,
     'perception-temporal-history': 3, 'perception-temporal-threshold': 2,
-    'perception-water-threshold': 0.32, 'perception-hysteresis': 2.0,
-    'perception-smoke-min-height': 2.5, 'perception-smoke-max-height': 10.0,
-    'perception-solid-min-height': -2.0, 'perception-solid-max-height': 0.5
+    'perception-water-threshold': 0.32, 'perception-hysteresis': 2.0
 };
 
 // Controller launch defaults (must match autoboat.launch.yaml)
@@ -1209,9 +1186,6 @@ function resetPerceptionToDefaults() {
         const el = document.getElementById(id);
         if (el) { el.value = val; dirtyInputs.add(id); el.classList.add('input-dirty'); }
     }
-    // Reset smoke enabled select
-    const smokeEl = document.getElementById('perception-smoke-enabled');
-    if (smokeEl) smokeEl.value = 'true';
     addLog('Perception parameters reset to launch defaults | Paramètres Perception réinitialisés', 'info');
     showFeedback('🔄 Perception reset to launch defaults', 'info');
 }
@@ -1616,10 +1590,7 @@ function updateWorldFromConfig(data) {
     if (data.world_name) {
         currentState.world.name = data.world_name;
     }
-    if (data.pollutant_sources) {
-        currentState.world.hasSmoke = (data.pollutant_sources.length || 0) > 0;
-    }
-    updateWorldBanner(currentState.world.name, currentState.world.hasSmoke);
+    updateWorldBanner(currentState.world.name);
 }
 // Initialize terminal controls
 function initTerminal() {
@@ -2213,64 +2184,6 @@ function localToGPS(x, y, refLat, refLon) {
     return [lat, lon];
 }
 
-// Update LiDAR Smoke Detection UI (v2.2)
-function updateSmokeDetection(data) {
-    const statusEl = document.getElementById('smoke-detection-status');
-    const distanceEl = document.getElementById('smoke-distance');
-    const pointsEl = document.getElementById('smoke-points');
-    const spreadEl = document.getElementById('smoke-spread');
-    const locationEl = document.getElementById('smoke-location');
-
-    if (!statusEl || !distanceEl || !pointsEl || !spreadEl || !locationEl) return;
-
-    if (data.detected) {
-        // Smoke detected!
-        statusEl.textContent = '🌫️ SMOKE DETECTED';
-        statusEl.className = 'value badge';
-        statusEl.style.backgroundColor = '#ff6b6b';
-        statusEl.style.color = '#fff';
-        statusEl.style.fontWeight = 'bold';
-
-        distanceEl.textContent = `${data.distance.toFixed(1)}m`;
-        pointsEl.textContent = `${data.point_count} pts`;
-
-        // Show horizontal/vertical spread ratio
-        const hSpread = data.horizontal_spread || 0;
-        const vSpread = data.vertical_spread || 0;
-        spreadEl.textContent = `${hSpread.toFixed(1)}m / ${vSpread.toFixed(1)}m`;
-        spreadEl.style.color = (hSpread > vSpread * 0.8) ? '#2ecc71' : '#e74c3c';
-
-        locationEl.textContent = `(${data.center_x.toFixed(1)}, ${data.center_y.toFixed(1)})`;
-
-        // Log to terminal
-        addTerminalLine({
-            level: 30,
-            msg: `🌫️ SMOKE DETECTED: ${data.point_count} pts at ${data.distance.toFixed(1)}m (H=${hSpread.toFixed(1)}m, V=${vSpread.toFixed(1)}m)`,
-            name: 'smoke_detection'
-        });
-
-        // Optional: Add smoke marker to map if boat position is known
-        if (currentState.gps && currentState.gps.latitude && currentState.gps.longitude) {
-            // Calculate smoke position in world coordinates
-            // (This would require transformation from local to GPS)
-            // For now, just log the detection
-        }
-    } else {
-        // No smoke detected
-        statusEl.textContent = '✓ No smoke';
-        statusEl.className = 'value badge';
-        statusEl.style.backgroundColor = '#2ecc71';
-        statusEl.style.color = '#fff';
-        statusEl.style.fontWeight = 'normal';
-
-        distanceEl.textContent = '-';
-        pointsEl.textContent = '0';
-        spreadEl.textContent = '-';
-        spreadEl.style.color = '';
-        locationEl.textContent = '-';
-    }
-}
-
 // =============================================================================
 // PERCEPTION & CONTROL TUNING SYSTEM
 // =============================================================================
@@ -2291,12 +2204,7 @@ const TUNING_PRESETS = {
             temporal_history_size: 3,
             temporal_threshold: 3,
             water_plane_threshold: 0.2,
-            hysteresis_distance: 1.3,
-            smoke_filter_enabled: true,
-            smoke_min_height: 0.3,
-            smoke_max_height: 10.0,
-            solid_min_height: -2.0,
-            solid_max_height: 0.5
+            hysteresis_distance: 1.3
         },
         controller: {
             critical_distance: 3.5,
@@ -2329,13 +2237,7 @@ const TUNING_PRESETS = {
             temporal_history_size: 2,
             temporal_threshold: 2,
             water_plane_threshold: 0.2,
-            hysteresis_distance: 1.0,
-            // Smoke detection (v2.1) - Aggressive filtering for clustered buoys
-            smoke_filter_enabled: true,
-            smoke_min_height: 0.3,
-            smoke_max_height: 10.0,
-            solid_min_height: -2.0,
-            solid_max_height: 0.6
+            hysteresis_distance: 1.0
         },
         controller: {
             critical_distance: 3.0,
@@ -2368,13 +2270,7 @@ const TUNING_PRESETS = {
             temporal_history_size: 3,
             temporal_threshold: 2,
             water_plane_threshold: 0.15,
-            hysteresis_distance: 1.5,
-            // Smoke detection (v2.1) - Detect low piers
-            smoke_filter_enabled: true,
-            smoke_min_height: 0.3,
-            smoke_max_height: 10.0,
-            solid_min_height: -2.0,
-            solid_max_height: 0.8
+            hysteresis_distance: 1.5
         },
         controller: {
             critical_distance: 2.5,
@@ -2407,13 +2303,7 @@ const TUNING_PRESETS = {
             temporal_history_size: 2,
             temporal_threshold: 1,
             water_plane_threshold: 0.5,
-            hysteresis_distance: 2.0,
-            // Smoke detection (v2.1) - Conservative for open water
-            smoke_filter_enabled: false,  // Disabled for open water
-            smoke_min_height: 0.3,
-            smoke_max_height: 10.0,
-            solid_min_height: -2.0,
-            solid_max_height: 0.5
+            hysteresis_distance: 2.0
         },
         controller: {
             critical_distance: 5.0,
@@ -2538,23 +2428,6 @@ function updatePerceptionInputs(params) {
     document.getElementById('perception-temporal-threshold').value = params.temporal_threshold;
     document.getElementById('perception-water-threshold').value = params.water_plane_threshold;
     document.getElementById('perception-hysteresis').value = params.hysteresis_distance;
-
-    // Smoke detection parameters (v2.1)
-    if (params.smoke_filter_enabled !== undefined) {
-        document.getElementById('perception-smoke-enabled').value = params.smoke_filter_enabled.toString();
-    }
-    if (params.smoke_min_height !== undefined) {
-        document.getElementById('perception-smoke-min-height').value = params.smoke_min_height;
-    }
-    if (params.smoke_max_height !== undefined) {
-        document.getElementById('perception-smoke-max-height').value = params.smoke_max_height;
-    }
-    if (params.solid_min_height !== undefined) {
-        document.getElementById('perception-solid-min-height').value = params.solid_min_height;
-    }
-    if (params.solid_max_height !== undefined) {
-        document.getElementById('perception-solid-max-height').value = params.solid_max_height;
-    }
 }
 
 // Update Controller input fields from preset
@@ -2592,10 +2465,7 @@ function applyPerceptionParameters(presetParams = null) {
         'perception-safe-dist': 'perception_min_safe_distance', 'perception-critical-dist': 'perception_critical_distance',
         'perception-cluster-dist': 'cluster_distance', 'perception-min-cluster-size': 'min_cluster_size',
         'perception-temporal-history': 'temporal_history_size', 'perception-temporal-threshold': 'temporal_threshold',
-        'perception-water-threshold': 'water_plane_threshold', 'perception-hysteresis': 'hysteresis_distance',
-        'perception-smoke-enabled': 'smoke_filter_enabled',
-        'perception-smoke-min-height': 'smoke_min_height', 'perception-smoke-max-height': 'smoke_max_height',
-        'perception-solid-min-height': 'solid_min_height', 'perception-solid-max-height': 'solid_max_height'
+        'perception-water-threshold': 'water_plane_threshold', 'perception-hysteresis': 'hysteresis_distance'
     };
 
     // Get full parameters from UI (with validation) or preset
@@ -2612,13 +2482,7 @@ function applyPerceptionParameters(presetParams = null) {
         temporal_history_size: readInput('perception-temporal-history', 3),
         temporal_threshold: readInput('perception-temporal-threshold', 2),
         water_plane_threshold: readInput('perception-water-threshold', 0.32),
-        hysteresis_distance: readInput('perception-hysteresis', 2.0),
-        smoke_filter_enabled: document.getElementById('perception-smoke-enabled') ?
-            (document.getElementById('perception-smoke-enabled').value === 'true') : true,
-        smoke_min_height: readInput('perception-smoke-min-height', 0.3),
-        smoke_max_height: readInput('perception-smoke-max-height', 10.0),
-        solid_min_height: readInput('perception-solid-min-height', -2.0),
-        solid_max_height: readInput('perception-solid-max-height', 0.5)
+        hysteresis_distance: readInput('perception-hysteresis', 2.0)
     };
 
     if (hasValidationErrors()) {
@@ -2836,10 +2700,6 @@ const PARAM_TO_INPUT_IDS = {
     'temporal_threshold': ['perception-temporal-threshold'],
     'water_plane_threshold': ['perception-water-threshold'],
     'hysteresis_distance': ['perception-hysteresis'],
-    'smoke_min_height': ['perception-smoke-min-height'],
-    'smoke_max_height': ['perception-smoke-max-height'],
-    'solid_min_height': ['perception-solid-min-height'],
-    'solid_max_height': ['perception-solid-max-height'],
     // Controller panel
     'critical_distance': ['controller-critical-dist'],
     'bank_slow_distance': ['controller-bank-dist'],
@@ -3058,7 +2918,6 @@ async function validateWaypoints(waypoints) {
         checks: {
             reachable: { pass: true, message: '✅ All waypoints reachable' },
             obstacles: { pass: true, message: '✅ No waypoints in known obstacles', warnings: [] },
-            smoke: { pass: true, message: '✅ Path clear of smoke zones', warnings: [] },
             proximity: { pass: true, message: '✅ Safe clearance from obstacles', warnings: [] }
         },
         estimates: {
@@ -3092,10 +2951,6 @@ async function validateWaypoints(waypoints) {
             validation.checks.obstacles.warnings.push(`${obstacleCount} obstacles currently detected`);
         }
     }
-
-    // Check smoke zones (if pollutant sources detected)
-    // This would check waypoint proximity to known smoke sources
-    // Simplified for now
 
     currentValidation = validation;
     return validation;

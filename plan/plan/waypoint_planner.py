@@ -227,9 +227,6 @@ class WaypointPlanner(Node):
         self.declare_parameter('astar_resolution', 3.0)
         self.declare_parameter('astar_safety_margin', 12.0)
         self.declare_parameter('astar_max_expansions', 20000)
-        # Pollutant source scanning (smoke generators in SDF)
-        self.declare_parameter('pollutant_scan_enabled', False)
-        self.declare_parameter('pollutant_sdf_glob', '')
         self.astar_enabled = bool(self.get_parameter('astar_enabled').value)
         self.astar_hybrid_mode = bool(self.get_parameter('astar_hybrid_mode').value)
         self.astar = AStarSolver(
@@ -237,8 +234,6 @@ class WaypointPlanner(Node):
             safety_margin=float(self.get_parameter('astar_safety_margin').value),
             max_expansions=int(self.get_parameter('astar_max_expansions').value),
         )
-        self.pollutant_scan_enabled = bool(self.get_parameter('pollutant_scan_enabled').value)
-        self.pollutant_sdf_glob = str(self.get_parameter('pollutant_sdf_glob').value)
 
         # --- STATE ---
         self.start_gps = None
@@ -278,9 +273,6 @@ class WaypointPlanner(Node):
         self.detour_forward_offset = 10.0  # Forward offset when inserting side detour
         self.detour_start_time = None
         self.min_obstacle_distance_for_skip = 15.0  # Skip waypoints within this distance of obstacles
-        self.pollutant_sources = []  # {name, world:[x,y,z], local:[x,y]}
-        self.detected_pollutants = set()  # Track which pollutants have been detected
-        self.pollutant_detection_distance = 25.0  # Detection radius in meters (smoke plumes)
 
         # --- SUBSCRIBERS ---
         self.create_subscription(
@@ -343,7 +335,6 @@ class WaypointPlanner(Node):
         self.pub_current_target = self.create_publisher(String, '/planning/current_target', 10)
         self.pub_mission_status = self.create_publisher(String, '/planning/mission_status', 10)
         self.pub_config = self.create_publisher(String, '/planning/config', 10)
-        self.pub_pollutants = self.create_publisher(String, '/perception/pollutant_sources', 10)
         self.pub_param_ranges = self.create_publisher(String, '/planning/param_ranges', 10)
 
         # Control loop at 10Hz
@@ -378,11 +369,6 @@ class WaypointPlanner(Node):
         self.get_logger().info("Waiting for GPS signal...")
         self.get_logger().info("Commands: ros2 run plan autoboat_cli --help")
         self.get_logger().info("=" * 50)
-
-        # Scan for pollutant sources (smoke generators) and publish
-        if self.pollutant_scan_enabled:
-            self.scan_pollutant_sources()
-            self.publish_pollutant_sources()
 
     def gps_callback(self, msg):
         """Handle GPS updates"""
@@ -740,8 +726,6 @@ class WaypointPlanner(Node):
             'astar_resolution': self.astar.resolution,
             'astar_safety_margin': self.astar.safety_margin,
             'astar_max_expansions': self.astar.max_expansions,
-            # Pollutant sources
-            'pollutant_sources': self.pollutant_sources,
             'world_name': self.world_name
         }
         msg = String()
@@ -872,9 +856,6 @@ class WaypointPlanner(Node):
 
         # Get current position
         curr_x, curr_y = self.latlon_to_meters(self.current_gps[0], self.current_gps[1])
-
-        # Check for pollutant sources nearby
-        self.detect_pollutant_sources(curr_x, curr_y)
 
         # Check if mission complete
         if self.current_wp_index >= len(self.waypoints):
@@ -1322,9 +1303,9 @@ class WaypointPlanner(Node):
         msg = String()
         msg.data = json.dumps({
             'state': self.state,
-            'current_waypoint': self.current_wp_index + 1,
+            'current_waypoint': min(self.current_wp_index + 1, len(self.waypoints)),
             'total_waypoints': len(self.waypoints),
-            'progress_percent': round(100 * self.current_wp_index / max(1, len(self.waypoints)), 1),
+            'progress_percent': round(100 * min(self.current_wp_index, len(self.waypoints)) / max(1, len(self.waypoints)), 1),
             'elapsed_time': round(elapsed, 1),
             'position': [round(curr_x, 2), round(curr_y, 2)],
             'mission_armed': self.mission_armed,
@@ -1413,128 +1394,6 @@ class WaypointPlanner(Node):
             if xmin <= x <= xmax and ymin <= y <= ymax:
                 return True
         return False
-
-    # ==================== POLLUTANT SOURCE SCAN (SMOKE GENERATORS) ====================
-    def scan_pollutant_sources(self):
-        """Parse SDF files to find smoke generators and cache their positions."""
-        sources = []
-        # Locate repo root containing test_environment
-        base = Path(__file__).resolve()
-        roots = []
-        # Walk up to find test_environment when running from source
-        for _ in range(8):
-            if (base / 'test_environment').exists():
-                roots.append(base)
-                break
-            base = base.parent
-        # Also try CWD and workspace-style path
-        roots.append(Path.cwd())
-        roots.append(Path.cwd() / 'test_environment')
-
-        patterns = [p.strip() for p in self.pollutant_sdf_glob.split(';') if p.strip()]
-        sdf_files = []
-        for pat in patterns:
-            # Absolute glob
-            if pat.startswith('/'):
-                sdf_files.extend(glob.glob(pat))
-                continue
-            # Relative glob against candidate roots
-            for root in roots:
-                if root is None:
-                    continue
-                sdf_files.extend(glob.glob(str(root / pat)))
-
-        for sdf in sdf_files:
-            try:
-                tree = ET.parse(sdf)
-                root_elem = tree.getroot()
-                for model in root_elem.findall('.//model'):
-                    name = model.get('name', '')
-                    if 'smoke' not in name.lower():
-                        continue
-                    pose_elem = model.find('pose')
-                    if pose_elem is None or pose_elem.text is None:
-                        continue
-                    pose_vals = [float(x) for x in pose_elem.text.strip().split()]
-                    wx, wy = pose_vals[0], pose_vals[1]
-                    wz = pose_vals[2] if len(pose_vals) > 2 else 0.0
-                    # Default to world coords as local; apply hazard-origin offset if available
-                    lx, ly = wx, wy
-                    try:
-                        hx = float(self.get_parameter('hazard_origin_world_x').value)
-                        hy = float(self.get_parameter('hazard_origin_world_y').value)
-                        lx = wx - hx
-                        ly = wy - hy
-                    except Exception:
-                        pass
-                    sources.append({
-                        'name': name,
-                        'world': [round(wx, 2), round(wy, 2), round(wz, 2)],
-                        'local': [round(lx, 2), round(ly, 2)]
-                    })
-            except Exception as e:
-                self.get_logger().warn(f"Pollutant scan failed for {sdf}: {e}")
-
-        self.pollutant_sources = sources
-        if sources:
-            self.get_logger().info("=" * 70)
-            self.get_logger().info(f"🌫️ POLLUTANT SOURCES DETECTED | SOURCES DE POLLUANTS DÉTECTÉES: {len(sources)}")
-            self.get_logger().info("=" * 70)
-            for i, s in enumerate(sources, 1):
-                self.get_logger().info(
-                    f"  [{i}] {s['name']}: World({s['world'][0]:7.1f}, {s['world'][1]:7.1f})m → "
-                    f"Local({s['local'][0]:7.1f}, {s['local'][1]:7.1f})m"
-                )
-            self.get_logger().info("=" * 70)
-        else:
-            self.get_logger().info("=" * 70)
-            self.get_logger().info("✅ NO POLLUTANT SOURCES | AUCUNE SOURCE DE POLLUANT DÉTECTÉE")
-            self.get_logger().info("   (World loaded without smoke generators | Monde chargé sans générateurs de fumée)")
-            self.get_logger().info("=" * 70)
-
-    def publish_pollutant_sources(self):
-        """Publish pollutant sources for dashboard/minimap."""
-        # Always publish count, even if no sources found
-        msg = String()
-        msg.data = json.dumps({
-            'sources': self.pollutant_sources,
-            'count': len(self.pollutant_sources),
-            'status': 'detected' if self.pollutant_sources else 'none'
-        })
-        self.pub_pollutants.publish(msg)
-
-    def detect_pollutant_sources(self, curr_x, curr_y):
-        """
-        Check if boat is near any pollutant source (smoke generator).
-        Log detection when boat comes within detection_distance of a source.
-        """
-        if not self.pollutant_sources:
-            return
-
-        for source in self.pollutant_sources:
-            source_name = source.get('name', 'Unknown')
-            local_pos = source.get('local') or source.get('world') or [0, 0]
-            source_x, source_y = local_pos[0], local_pos[1]
-
-            # Calculate distance to this pollutant source
-            distance = math.hypot(curr_x - source_x, curr_y - source_y)
-
-            # Check if detected and log if within range
-            if distance <= self.pollutant_detection_distance:
-                if source_name not in self.detected_pollutants:
-                    # First detection - log it
-                    self.get_logger().warn(
-                        f"🌫️ POLLUTANT SOURCE DETECTED | SOURCE DE POLLUANT DÉTECTÉE: "
-                        f"{source_name} at ({source_x:.1f}m, {source_y:.1f}m), "
-                        f"Distance: {distance:.2f}m"
-                    )
-                    self.detected_pollutants.add(source_name)
-            else:
-                # Clear detection if we move away
-                if source_name in self.detected_pollutants:
-                    # Check if we've moved far enough away to reset detection
-                    if distance > self.pollutant_detection_distance + 2.0:  # Hysteresis
-                        self.detected_pollutants.discard(source_name)
 
     def _segment_intersects_hazard(self, x1, y1, x2, y2, margin=0.0) -> bool:
         """Check if a line segment intersects any hazard zone (with optional margin)."""

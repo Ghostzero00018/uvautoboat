@@ -133,39 +133,6 @@
                 </div>
             </div>
 
-            <!-- LiDAR Smoke Detection Panel (v2.2) -->
-            <div class="panel" style="border-left: 3px solid #ff6b6b;">
-                <h2 style="font-size: 16px;">🔍 LiDAR Smoke Detection (Live)</h2>
-                <p style="font-size: 0.85em; color: #666; margin: -5px 0 10px 0; line-height: 1.4;">
-                    Real-time smoke detection with spatial density filtering (filters out compact solid objects)
-                </p>
-                <div class="info-grid">
-                    <div class="info-item full-width">
-                        <span class="label">Status:</span>
-                        <span id="smoke-detection-status" class="value badge">No smoke</span>
-                    </div>
-                    <div class="info-item">
-                        <span class="label">Distance:</span>
-                        <span id="smoke-distance" class="value">-</span>
-                    </div>
-                    <div class="info-item">
-                        <span class="label">Point Count:</span>
-                        <span id="smoke-points" class="value">0</span>
-                    </div>
-                    <div class="info-item">
-                        <span class="label">Spread (H/V):</span>
-                        <span id="smoke-spread" class="value">-</span>
-                    </div>
-                    <div class="info-item">
-                        <span class="label">Location:</span>
-                        <span id="smoke-location" class="value">-</span>
-                    </div>
-                    <div class="info-item full-width" style="font-size: 0.75em; color: #666; margin-top: 5px;">
-                        <span>Filters: Diffuse (&gt;2.5m) + Horizontal-dominant (wider than tall)</span>
-                    </div>
-                </div>
-            </div>
-
             <!-- Thruster Control Panel -->
             <div class="panel">
                 <h2>Thrusters | Propulseurs</h2>
@@ -631,8 +598,8 @@
                                     <div class="param-item">
                                         <label for="perception-max-height">Max Height (m):</label>
                                         <input type="number" id="perception-max-height" step="any" min="-50" max="50" value="1.5">
-                                        <span class="info-tooltip" title="Highest Z to keep. Rejects points above this (sky, rising smoke, distant bank tops) | Hauteur Z maximale conservée">ℹ️</span>
-                                        <span class="param-hint">Reject smoke</span>
+                                        <span class="info-tooltip" title="Highest Z to keep. Rejects points above this (sky, tall masts, distant bank tops) | Hauteur Z maximale conservée">ℹ️</span>
+                                        <span class="param-hint">Reject tall clutter</span>
                                     </div>
                                 </div>
 
@@ -721,50 +688,6 @@
                                 </div>
                             </div>
 
-                            <!-- Smoke & Object Classification Section -->
-                            <h3 style="font-size: 14px; color: #6610f2; margin: 20px 0 10px 0; padding-bottom: 5px; border-bottom: 2px solid #6610f2;">🌫️ Smoke & Object Classification (v2.1)</h3>
-                            <div class="param-grid">
-                                <div class="param-group">
-                                    <h4>Smoke Detection | Détection Fumée</h4>
-                                    <div class="param-item">
-                                        <label for="perception-smoke-enabled">Enable Smoke Filter:</label>
-                                        <select id="perception-smoke-enabled">
-                                            <option value="true">Enabled</option>
-                                            <option value="false">Disabled</option>
-                                        </select>
-                                        <span class="info-tooltip" title="Toggle the smoke-plume rejection filter. Only relevant for worlds with smoke sources (not the default demo world) | Active le filtre anti-fumée">ℹ️</span>
-                                        <span class="param-hint">Toggle smoke filtering</span>
-                                    </div>
-                                    <div class="param-item">
-                                        <label for="perception-smoke-min-height">Smoke Min Height (m):</label>
-                                        <input type="number" id="perception-smoke-min-height" step="any" min="-50" max="50" value="2.5">
-                                        <span class="info-tooltip" title="Minimum Z at which the smoke filter starts considering points as plume. Rising smoke floats above this altitude | Hauteur min où la fumée commence">ℹ️</span>
-                                        <span class="param-hint">Smoke floats above this (SDF: 0.5m start)</span>
-                                    </div>
-                                    <div class="param-item">
-                                        <label for="perception-smoke-max-height">Smoke Max Height (m):</label>
-                                        <input type="number" id="perception-smoke-max-height" step="any" min="-50" max="100" value="10.0">
-                                        <span class="info-tooltip" title="Maximum Z for the smoke plume band. Covers typical 3-8m rising plumes | Hauteur max d'un panache de fumée">ℹ️</span>
-                                        <span class="param-hint">Extended for rising smoke (3-8m plumes)</span>
-                                    </div>
-                                </div>
-
-                                <div class="param-group">
-                                    <h4>Solid Objects (v2.1) | Objets Solides</h4>
-                                    <div class="param-item">
-                                        <label for="perception-solid-min-height">Solid Min Height (m):</label>
-                                        <input type="number" id="perception-solid-min-height" step="any" min="-50" max="50" value="-2.0">
-                                        <span class="info-tooltip" title="Lowest Z at which a cluster is classified as solid (not smoke). Submerged or water-line objects start here | Hauteur min d'un objet solide">ℹ️</span>
-                                        <span class="param-hint">Solid obstacles min</span>
-                                    </div>
-                                    <div class="param-item">
-                                        <label for="perception-solid-max-height">Solid Max Height (m):</label>
-                                        <input type="number" id="perception-solid-max-height" step="any" min="-50" max="100" value="0.5">
-                                        <span class="info-tooltip" title="Highest Z at which a cluster counts as a solid obstacle. Above this, points may be smoke or sky | Hauteur max d'un objet solide">ℹ️</span>
-                                        <span class="param-hint">Touch water line</span>
-                                    </div>
-                                </div>
-                            </div>
                             <div class="tuning-btn-row">
                                 <button id="btn-reset-perception" class="reset-btn">🔄 Reset Defaults</button>
                                 <button id="btn-apply-perception" class="apply-btn" disabled title="Waiting for ROS config sync...">Apply Perception Params | Appliquer</button>

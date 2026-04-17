@@ -16,7 +16,7 @@ The system uses three distributed ROS 2 nodes:
 
 | Node | Role | Description |
 | ------ | ------ | ------------- |
-| **Perception** | Perception | 3D LiDAR obstacle detection, temporal filtering, clustering, smoke classification |
+| **Perception** | Perception | 3D LiDAR obstacle detection, temporal filtering, clustering |
 | **Planner** | Planning | Lawnmower waypoint generation, A* detour planning, mission state machine |
 | **Controller** | Control | PID heading control, reactive obstacle avoidance, anti-stuck recovery (needs testing) |
 

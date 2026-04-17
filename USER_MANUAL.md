@@ -29,21 +29,20 @@
 9. [Web Dashboard](#web-dashboard)
 10. [Simple Anti-Stuck System](#simple-anti-stuck-system)
 11. [Waypoint Skip Strategy](#waypoint-skip-strategy)
-12. [LiDAR Smoke Detection](#lidar-smoke-detection)
-13. [Terminal Mission Control (CLI)](#terminal-mission-control)
-14. [Technical Documentation](#technical-documentation)
+12. [Terminal Mission Control (CLI)](#terminal-mission-control)
+13. [Technical Documentation](#technical-documentation)
     - [Performance Specifications](#performance-specifications)
     - [Waypoint Planner](#waypoint-planner)
     - [A* Path Planning](#a-path-planning)
-15. [Troubleshooting](#troubleshooting)
-16. [Utility Scripts](#utility-scripts)
-17. [Command Cheatsheet](#command-cheatsheet)
-18. [Future Roadmap](#future-roadmap)
-19. [Contributing](#contributing)
+14. [Troubleshooting](#troubleshooting)
+15. [Utility Scripts](#utility-scripts)
+16. [Command Cheatsheet](#command-cheatsheet)
+17. [Future Roadmap](#future-roadmap)
+18. [Contributing](#contributing)
     - [Legacy Directory](#legacy-directory)
-20. [References](#references)
-21. [Acknowledgments](#acknowledgments)
-22. [License](#license)
+19. [References](#references)
+20. [Acknowledgments](#acknowledgments)
+21. [License](#license)
 
 ---
 
@@ -198,7 +197,6 @@ uvautoboat/
 | **Path Priority Logic** | Feature that prioritizes GPS trajectory over obstacle panic when the direct path is clear |
 | **Z-Node Interpolation** | Feature that prioritizes GPS trajectory over obstacle panic when the direct path is clear |
 | **A\* Path Planning** | Grid-based pathfinding algorithm with obstacle inflation and pre-defined hazard zones |
-| **LiDAR Smoke Detection** | Real-time smoke detection with spatial density filtering (H/V spread ratio analysis) |
 | **Emergency Stop** | Latching emergency stop from dashboard or CLI — cuts thrust immediately |
 | **JSON Log Export** | Export panel contents (health check, logs, terminal, mission) as JSON files |
 | **Health Check Service** | ROS 2 node streaming 45 system checks to the dashboard with live output |
@@ -519,7 +517,7 @@ The active navigation system uses three distributed ROS 2 nodes:
 
 | Node | Name | Function |
 | :----- | :----- | :--------- |
-| **Perception** | `lidar_perception` | 3D LIDAR obstacle detection, smoke filtering, obstacle clustering |
+| **Perception** | `lidar_perception` | 3D LIDAR obstacle detection, obstacle clustering |
 | **Planner** | `waypoint_planner` | GPS waypoint planning, A* detour, mission management |
 | **Controller** | `heading_controller` | PID heading control, obstacle avoidance, anti-stuck recovery |
 
@@ -800,7 +798,7 @@ sudo apt install ros-jazzy-rosbridge-suite ros-jazzy-web-video-server
 | **Anti-Stuck** | Escape status, drift vector |
 | **Trajectory Map** | Interactive Leaflet map with boat position |
 | **Configuration** | Path, PID, Speed parameter controls (with Apply) |
-| **Perception Configuration** | Perception parameters (height, range, clustering, smoke) |
+| **Perception Configuration** | Perception parameters (height, range, clustering) |
 | **Controller Configuration** | Control parameters (safety distances, avoidance, anti-stuck) |
 | **Health Check** | Live-streaming system health check (45 checks) with elapsed time |
 | **System Logs** | Live ROS log feed |
@@ -814,7 +812,7 @@ Three independent configuration sections, each with its own Apply button:
 | Section | Parameters | Target Node |
 | :-------- | :----------- | :------------ |
 | **Main Config** | Lanes, Length, Width, PID (Kp/Ki/Kd), Speed (Base/Max) | Planner + Controller |
-| **Perception Config** | Height range, detection range, clustering, temporal filtering, smoke detection | Perception |
+| **Perception Config** | Height range, detection range, clustering, temporal filtering | Perception |
 | **Controller Config** | Safety distances, avoidance gains, anti-stuck, VFH bias, slew rate | Controller |
 
 **Mission Control Buttons:**
@@ -963,108 +961,6 @@ DÉTOUR! Inserting detour waypoint LEFT at (45.2, -12.8)
 ```
 
 > **Note:** Skipping ensures mission completion even when waypoints are placed among obstacles like buoy lines.
-
----
-
-## LiDAR Smoke Detection
-
-The **LiDAR Perception** system includes intelligent real-time smoke detection using LiDAR point cloud analysis with advanced filtering to eliminate false positives from terrain, vegetation, and solid objects.
-
-### Detection Algorithm
-
-The smoke detection uses a **three-layer filtering system** to distinguish real smoke from environmental features:
-
-```text
-LiDAR Point Cloud
-        ↓
-┌─────────────────────────────────────────┐
-│ Layer 1: Height Filtering               │
-│ • Range: 2.5m - 10.0m above water       │
-│ • Eliminates: water, low terrain, buoys │
-└─────────────────────────────────────────┘
-        ↓
-┌─────────────────────────────────────────┐
-│ Layer 2: Point Count Threshold          │
-│ • Minimum: 200 LiDAR points             │
-│ • Eliminates: small compact objects     │
-└─────────────────────────────────────────┘
-        ↓
-┌─────────────────────────────────────────┐
-│ Layer 3: Spatial Density Analysis       │
-│ • Spatial spread: >2.5m (diffuse cloud) │
-│ • H/V ratio: horizontal > vertical×0.8  │
-│ • Eliminates: terrain, trees, buildings │
-└─────────────────────────────────────────┘
-        ↓
-   🌫️ SMOKE DETECTED
-```
-
-### Key Features
-
-| Feature | Description |
-| :-------- | :------------ |
-| **Spatial Spread Analysis** | Calculates 3D point cloud dispersion to identify diffuse smoke vs compact objects |
-| **Horizontal/Vertical Ratio** | Smoke spreads wider than tall; trees/terrain are vertically dominant |
-| **Real-time Detection** | Updates at LiDAR frequency (~10 Hz) with sub-meter accuracy |
-| **Distance Estimation** | Reports smoke cloud center position and distance (up to 30m range) |
-| **Dashboard Integration** | Live display with H/V spread metrics for debugging |
-
-### Configuration Parameters
-
-Located in `launch/autoboat.launch.yaml`:
-
-| Parameter | Default | Description |
-| :---------- | :-------- | :------------ |
-| `smoke_detection_enabled` | true | Enable/disable active smoke detection |
-| `smoke_min_height` | 2.5m | Minimum height for smoke candidates |
-| `smoke_max_height` | 10.0m | Maximum height for smoke plume |
-| `smoke_min_cluster_size` | 200 pts | Minimum LiDAR points to confirm smoke |
-| `smoke_detection_range` | 30.0m | Maximum detection range |
-
-### Dashboard Display
-
-The web dashboard shows real-time smoke detection status:
-
-```text
-🔍 LiDAR Smoke Detection (Live)
-Status: 🌫️ SMOKE DETECTED
-Distance: 15.3m
-Point Count: 342 pts
-Spread (H/V): 5.2m / 3.1m  ← Green = valid, Red = rejected
-Location: (-12.5, 8.3)
-Filters: Diffuse (>2.5m) + Horizontal-dominant (wider than tall)
-```
-
-### Detection Examples
-
-| Scenario | Height | Points | H/V Spread | Result |
-| :--------- | :------- | :------- | :----------- | :------- |
-| **Real smoke plume** | 3-7m | 520 | 5.8m / 3.4m | ✅ DETECTED |
-| **Lake bank trees** | 2.5-10m | 420 | 2.5m / 8.2m | ❌ Rejected (too vertical) |
-| **Buoy/marker** | 3.0m | 85 | - | ❌ Rejected (too few points) |
-| **Compact object** | 4.0m | 250 | 0.9m / 0.8m | ❌ Rejected (not diffuse) |
-
-### ROS 2 Topics
-
-| Topic | Type | Description |
-| :------ | :----- | :------------ |
-| `/perception/smoke_detected` | String (JSON) | Smoke detection status with position and metrics |
-
-**Message Format:**
-
-```json
-{
-  "detected": true,
-  "point_count": 342,
-  "center_x": -12.5,
-  "center_y": 8.3,
-  "distance": 15.3,
-  "spatial_spread": 6.2,
-  "horizontal_spread": 5.8,
-  "vertical_spread": 3.4,
-  "timestamp": 1234567890
-}
-```
 
 ---
 
@@ -1412,7 +1308,6 @@ Lane 3: End <────────────────────┘
 | **3D Obstacle Avoidance** | Real-time LIDAR point cloud processing with sector analysis |
 | **A\* Path Planning** | Integrated A* algorithm dynamically plans detours around obstacle clusters and hazard zones |
 | **Hybrid Route Generation** | Pre-calculates A* paths between waypoints to avoid known static hazards |
-| **Pollutant Detection** | Automatically identifies and logs proximity to smoke/pollutant sources defined in the world |
 | **Simple Anti-Stuck** | Turn left until clear recovery maneuver (Heading Controller) |
 | **XTE Path Correction** | "Lookahead" steering logic that actively pulls the boat back to the ideal path line |
 | **Waypoint Skip** | Automatic skip for blocked waypoints after timeout |
@@ -1560,7 +1455,7 @@ chmod +x one_click_launch_all/launch_autoboat_complete.sh
 ./one_click_launch_all/launch_autoboat_complete.sh
 
 # Launch with custom world
-./one_click_launch_all/launch_autoboat_complete.sh --world sydney_regatta_smoke
+./one_click_launch_all/launch_autoboat_complete.sh --world sydney_regatta_DEFAULT
 
 # Launch without dashboard (headless)
 ./one_click_launch_all/launch_autoboat_complete.sh --skip-dashboard
@@ -1819,7 +1714,7 @@ Open an issue on [GitHub](https://github.com/Ghostzero00018/uvautoboat/issues) w
 
 **Development Teams**:
 
-- Perception & Planning Team: LiDAR Perception (3D LiDAR Processing & Smoke Detection), Waypoint Planner (GPS Waypoint Navigation & A* Path Planning)
+- Perception & Planning Team: LiDAR Perception (3D LiDAR Processing), Waypoint Planner (GPS Waypoint Navigation & A* Path Planning)
 - Control Team: Heading Controller (PID Control & Obstacle Avoidance)
 
 Project finished by IMT NORD EUROPE DNM DMI-2026

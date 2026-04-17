@@ -49,12 +49,14 @@ header {
 
 .header-left {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 1.2rem;
 }
 
 .header-right {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 1.2rem;
 }
@@ -67,9 +69,10 @@ h1 {
 .world-banner {
     margin-top: 6px;
     overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
     width: 100%;
-    max-width: 520px;
+    max-width: 360px;
     color: #6b7280;
     font-size: 0.95rem;
 }
@@ -213,8 +216,10 @@ h2 {
 
 .mission-status-bar {
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
     align-items: center;
+    gap: 10px;
     padding: 10px 15px;
     background: rgba(0, 0, 0, 0.3);
     border-radius: 8px;
@@ -870,6 +875,7 @@ h2 {
 
 .config-buttons {
     display: flex;
+    flex-wrap: wrap;
     gap: 20px;
     justify-content: center;
     padding-top: 15px;
@@ -937,8 +943,10 @@ h2 {
 /* ========== TERMINAL PANEL ========== */
 .terminal-header {
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
     align-items: center;
+    gap: 10px;
     padding: 10px 15px;
     background: #f0f0f0;
     border-bottom: 1px solid #e0e0e0;
@@ -954,8 +962,9 @@ h2 {
 
 .terminal-controls {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 15px;
+    gap: 10px 15px;
 }
 
 .terminal-btn {
@@ -1138,6 +1147,19 @@ h2 {
     }
     .config-grid {
         grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+/* Split-screen sweet spot (Gazebo + dashboard side-by-side) */
+@media (max-width: 1024px) {
+    .tuning-panel {
+        grid-column: span 1;
+    }
+    .world-banner {
+        max-width: 280px;
+    }
+    .terminal-header h2 {
+        font-size: 16px;
     }
 }
 

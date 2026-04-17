@@ -18,7 +18,6 @@ Real-time web-based monitoring and control dashboard for the AutoBoat autonomous
 - **A* Advanced Parameters** panel with Apply/Reset buttons and range-validated inputs
 - **Emergency stop** with red pulsing badge and thrust cut
 - **Obstacle detection** with Front/Left/Right clearance, urgency scores, clusters, gaps
-- **LiDAR smoke detection** display with H/V spread metrics
 - **Anti-stuck status** with Kalman drift uncertainty indicator
 - **Embedded camera feed** via web_video_server (MJPEG)
 - **State badges** for: INIT, IDLE, WAITING_CONFIRM, WAYPOINTS_PREVIEW, READY, DRIVING, PAUSED, FINISHED, EMERGENCY_STOP, JOYSTICK
@@ -75,12 +74,11 @@ Then open **<http://localhost:8002>**.
 | **Mission Status**         | State badge, waypoint progress, distance, speed, time remaining                 |
 | **Mission Control**        | Generate, Confirm, Start, Stop, Resume, Emergency Stop, Go Home, Reset          |
 | **Obstacle Detection**     | Front/Left/Right clearance with urgency scores and status badge                 |
-| **LiDAR Smoke Detection**  | Smoke status, distance, point count, H/V spread metrics                         |
 | **Thruster Output**        | Left/Right thrust with visual bars                                              |
 | **Anti-Stuck Status**      | Escape mode, direction (LEFT), front clearance, drift vector, Kalman sigma      |
 | **Trajectory Map**         | Interactive Leaflet map with boat position, waypoints, trajectory               |
 | **Main Configuration**     | PID gains, speed, safe distance, waypoint tolerance, A* settings                |
-| **Perception Configuration**      | 17 perception params with 4 presets (Universal, Buoy Field, Pier, Open Water)   |
+| **Perception Configuration**      | 12 perception params with 4 presets (Universal, Buoy Field, Pier, Open Water)   |
 | **Controller Configuration**    | 14 control params (safety distances, avoidance, anti-stuck, slew rate)          |
 | **Health Check**           | Live streaming 45-check system diagnostic with elapsed time                     |
 | **System Logs**            | Timestamped, color-coded log entries                                            |
@@ -96,7 +94,7 @@ Each section sends only its own parameters. With dirty-params filtering, only fi
 | Button           | Parameters                                          | Target Nodes    |
 | ---------------- | --------------------------------------------------- | --------------- |
 | **Apply Config** | PID, speed, lanes, waypoint tolerance, A* settings  | Planner + Controller |
-| **Apply Perception** | Height/range filters, clustering, temporal, smoke | Perception           |
+| **Apply Perception** | Height/range filters, clustering, temporal | Perception           |
 | **Apply Controller** | Safety distances, avoidance gains, anti-stuck, slew | Controller         |
 
 All three publish to `/planning/set_config`. Each node picks out only the keys it recognizes.
@@ -154,7 +152,6 @@ Perception and Controller share the `/planning/set_config` topic. Parameters wit
 | `/planning/waypoints`          | Waypoint list for map                |
 | `/planning/current_target`     | Current navigation target            |
 | `/perception/obstacle_info`    | LiDAR obstacle detection (JSON)      |
-| `/perception/smoke_detected`   | LiDAR smoke detection (JSON)         |
 | `/control/status`              | Heading controller status            |
 | `/control/anti_stuck_status`   | Anti-stuck escape status             |
 | `/planning/config`              | Current config values (syncs fields) |

@@ -26,7 +26,7 @@
 
 | System | Architecture | Sensors | Features |
 |--------|--------------|---------|----------|
-| **AutoBoat Modular** | Distributed (Perception + Planner + Controller) | 3D PointCloud | A* path planning, LiDAR smoke detection, simple anti-stuck, runtime config, web dashboard + camera, waypoint persistence |
+| **AutoBoat Modular** | Modular (Perception + Planner + Controller) | 3D PointCloud | A* path planning, simple anti-stuck, runtime config, web dashboard + camera, waypoint persistence |
 
 > **Note:** The integrated AutoBoat monolith has been deprecated and moved to `legacy/`. Use the modular system.
 
@@ -100,7 +100,6 @@
 | Min-range spawn fix (5m) | ✅ |
 | A* path planning (hybrid + runtime) | ✅ |
 | One-click launcher script | ✅ |
-| LiDAR smoke detection (spatial density filtering) | ✅ |
 | Emergency stop (dashboard + CLI + nodes) | ✅ |
 | JSON log export (4 panels) | ✅ |
 | Health check service (ROS 2 node + dashboard streaming) | ✅ |

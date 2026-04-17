@@ -21,7 +21,7 @@
 #
 # Usage (multi-terminal) - IMPORTANT: Follow timing order!
 #
-#   T1: Gazebo (VRX): ros2 launch vrx_gz competition.launch.py world:=sydney_regatta_smoke_wildlife
+#   T1: Gazebo (VRX): ros2 launch vrx_gz competition.launch.py world:=sydney_regatta_DEFAULT
 #       Wait 15–20s for physics to start.
 #
 #   T2: Rosbridge (for web dashboard): ros2 launch rosbridge_server rosbridge_websocket_launch.xml delay_between_messages:=0.0
@@ -43,9 +43,8 @@
 #       wait longer or check with: ros2 topic echo /wamv/sensors/gps/gps/fix --once
 #
 # Supported worlds:
-#   - sydney_regatta_smoke_wildlife ✓ GPS working (recommended)
-#   - sydney_regatta_smoke ✓ GPS working
-#   - sydney_regatta_DEFAULT ✓ GPS working, for cleaner testing
+#   - sydney_regatta_DEFAULT ✓ GPS working (default, no smoke sources)
+#   - Other VRX competition worlds (sydney_regatta, sydney_regatta_practice, etc.)
 #
 # ============================================================================
 
@@ -95,24 +94,6 @@ launch:
       value: 0.32       # Balance water rejection vs dropouts
     - name: velocity_history_size
       value: 5          # Frames for velocity estimation (v2.0: detect moving obstacles)
-    # Smoke filtering (v2.1) - Tuned for sydney_regatta_smoke.sdf particle properties
-    - name: smoke_filter_enabled
-      value: true       # Enable smoke filtering (prevents smoke from being counted as obstacles)
-    - name: smoke_min_height
-      value: 2.5        # Smoke floats well above water (avoid low markers/buoys)
-    - name: smoke_max_height
-      value: 10.0       # Smoke rises but typically below 10m for VRX smoke generators
-    - name: solid_min_height
-      value: -2.0       # Solid obstacles below water line
-    - name: solid_max_height
-      value: 0.5        # Solid obstacles at/near water surface
-    # Smoke detection (v2.2) - Active LiDAR-based smoke detection with spatial density filtering
-    - name: smoke_detection_enabled
-      value: true       # Enabled with spatial density check (filters out compact solid objects)
-    - name: smoke_min_cluster_size
-      value: 200        # Moderate threshold: actual smoke clouds are typically large (500+ points)
-    - name: smoke_detection_range
-      value: 30.0       # Detect smoke within 30m range
 
 # ============================================================================
 # Waypoint Planner Node (GPS Waypoint Navigation)
@@ -160,7 +141,6 @@ launch:
     - name: astar_max_expansions
       value: 20000      # Max node expansions for A* search
     # Note: hazard_world_boxes removed - not used when hazard_enabled=false (see line 125)
-    # Note: pollutant_scan_enabled removed (default false; smoke worlds moved to legacy)
 
 # ============================================================================
 # Heading Controller Node (PID Control with Obstacle Avoidance)

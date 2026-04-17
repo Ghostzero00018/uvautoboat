@@ -68,10 +68,6 @@ class LidarPerception(Node):
         'temporal_history_size': (1, 20),
         'temporal_threshold': (1, 20),
         'water_plane_threshold': (0.0, 10.0),
-        'smoke_min_height': (-50.0, 50.0),
-        'smoke_max_height': (-50.0, 100.0),
-        'solid_min_height': (-50.0, 50.0),
-        'solid_max_height': (-50.0, 100.0),
     }
 
     def __init__(self):
@@ -96,18 +92,6 @@ class LidarPerception(Node):
         self.declare_parameter('min_cluster_size', 3)         # Reduced: detect smaller obstacles
         self.declare_parameter('water_plane_threshold', 0.5)  # Tolerance for water plane removal
         self.declare_parameter('velocity_history_size', 5)    # Reduced: faster velocity estimate
-
-        # Smoke detection parameters (v2.1) - Now dynamic!
-        self.declare_parameter('smoke_filter_enabled', True)   # Enable smoke filtering
-        self.declare_parameter('smoke_min_height', 0.5)        # Smoke floats above this height
-        self.declare_parameter('smoke_max_height', 4.0)        # Smoke typically below this
-        self.declare_parameter('solid_min_height', -2.0)       # Solid obstacles min height
-        self.declare_parameter('solid_max_height', 0.5)        # Solid obstacles touch water line
-
-        # Smoke detection parameters (v2.2) - Active detection
-        self.declare_parameter('smoke_detection_enabled', True)  # Enable smoke detection (separate from filtering)
-        self.declare_parameter('smoke_min_cluster_size', 50)     # Min points to confirm smoke presence
-        self.declare_parameter('smoke_detection_range', 50.0)    # Max range to detect smoke (m)
 
         # Load initial parameter values
         self._load_parameters()
@@ -184,9 +168,6 @@ class LidarPerception(Node):
         self.pub_obstacle_info = self.create_publisher(
             String, '/perception/obstacle_info', 10
         )
-        self.pub_smoke_detected = self.create_publisher(
-            String, '/perception/smoke_detected', 10
-        )
         self.pub_param_ranges = self.create_publisher(
             String, '/perception/param_ranges', 10
         )
@@ -205,8 +186,6 @@ class LidarPerception(Node):
         self.get_logger().info(f"Height Filter: {self.min_height}m to {self.max_height}m")
         self.get_logger().info(f"Temporal Filter: {self.temporal_threshold}/{self.temporal_history_size} scans")
         self.get_logger().info(f"Clustering: {self.cluster_distance}m eps, {self.min_cluster_size} min points")
-        if self.smoke_filter_enabled:
-            self.get_logger().info(f"Smoke Filter: {self.smoke_min_height}m to {self.smoke_max_height}m")
         self.get_logger().info("=" * 60)
 
     def _load_parameters(self):
@@ -229,18 +208,6 @@ class LidarPerception(Node):
         self.water_plane_threshold = self.get_parameter('water_plane_threshold').value
         self.velocity_history_size = self.get_parameter('velocity_history_size').value
 
-        # Smoke filtering parameters
-        self.smoke_filter_enabled = self.get_parameter('smoke_filter_enabled').value
-        self.smoke_min_height = self.get_parameter('smoke_min_height').value
-        self.smoke_max_height = self.get_parameter('smoke_max_height').value
-        self.solid_min_height = self.get_parameter('solid_min_height').value
-        self.solid_max_height = self.get_parameter('solid_max_height').value
-
-        # Smoke detection parameters (v2.2)
-        self.smoke_detection_enabled = self.get_parameter('smoke_detection_enabled').value
-        self.smoke_min_cluster_size = self.get_parameter('smoke_min_cluster_size').value
-        self.smoke_detection_range = self.get_parameter('smoke_detection_range').value
-
     def parameter_callback(self, params):
         """Called when parameters are changed via set_parameters service (DYNAMIC UPDATES)"""
         for param in params:
@@ -250,10 +217,7 @@ class LidarPerception(Node):
             if param_name in ['perception_min_safe_distance', 'perception_critical_distance', 'hysteresis_distance',
                              'min_height', 'max_height', 'min_range', 'max_range', 'sample_rate',
                              'temporal_history_size', 'temporal_threshold', 'cluster_distance',
-                             'min_cluster_size', 'water_plane_threshold', 'velocity_history_size',
-                             'smoke_filter_enabled', 'smoke_min_height', 'smoke_max_height',
-                             'solid_min_height', 'solid_max_height',
-                             'smoke_detection_enabled', 'smoke_min_cluster_size', 'smoke_detection_range']:
+                             'min_cluster_size', 'water_plane_threshold', 'velocity_history_size']:
 
                 # Reload all parameters
                 self._load_parameters()
@@ -317,11 +281,6 @@ class LidarPerception(Node):
                 'temporal_history_size': ('temporal_history_size', int),
                 'temporal_threshold': ('temporal_threshold', int),
                 'water_plane_threshold': ('water_plane_threshold', float),
-                'smoke_filter_enabled': ('smoke_filter_enabled', bool),
-                'smoke_min_height': ('smoke_min_height', float),
-                'smoke_max_height': ('smoke_max_height', float),
-                'solid_min_height': ('solid_min_height', float),
-                'solid_max_height': ('solid_max_height', float)
             }
 
             # Valid ranges come from self.PARAM_RANGES (class-level constant — also
@@ -357,10 +316,6 @@ class LidarPerception(Node):
         range_filtered = 0
         behind_filtered = 0
         water_filtered = 0
-        smoke_filtered = 0  # FIX: Initialize smoke counter
-
-        # Smoke detection storage (v2.2)
-        smoke_points = []  # Store (x, y, z, dist) for smoke candidates
 
         point_step = msg.point_step
         data = msg.data
@@ -385,27 +340,7 @@ class LidarPerception(Node):
                 if self.min_range < dist_2d < self.max_range:
                     all_z_values.append(z)
 
-                # 1. SMOKE CLASSIFICATION (v2.1 - Dynamic parameters)
-                if self.smoke_filter_enabled:
-                    # Smoke floats above water surface
-                    is_smoke_candidate = (self.smoke_min_height < z < self.smoke_max_height)
-                    # Solid obstacles touch the water line
-                    is_solid_obstacle = (self.solid_min_height < z <= self.solid_max_height)
-
-                    if is_smoke_candidate:
-                        smoke_filtered += 1
-                        # v2.2: Smoke detection - collect smoke points for analysis
-                        if self.smoke_detection_enabled:
-                            dist_2d = math.sqrt(x*x + y*y)
-                            if dist_2d <= self.smoke_detection_range:
-                                smoke_points.append((x, y, z, dist_2d))
-                        continue
-
-                    if not is_solid_obstacle:
-                        height_filtered += 1
-                        continue
-
-                # 2. HEIGHT FILTERING (Respects dashboard parameters)
+                # 1. HEIGHT FILTERING (Respects dashboard parameters)
                 if z < self.min_height or z > self.max_height:
                     height_filtered += 1
                     continue
@@ -449,79 +384,12 @@ class LidarPerception(Node):
             sorted_z = sorted(all_z_values)
             self.water_plane_z = sorted_z[len(sorted_z) // 20]  # 5th percentile
 
-        # 6. SMOKE DETECTION ANALYSIS (v2.2)
-        smoke_center_x, smoke_center_y, smoke_distance = 0.0, 0.0, 0.0
-        smoke_point_count = len(smoke_points)
-
-        if self.smoke_detection_enabled and smoke_point_count >= self.smoke_min_cluster_size:
-            # Calculate smoke cluster center (average position)
-            smoke_array = np.array(smoke_points)
-            smoke_center_x = float(np.mean(smoke_array[:, 0]))
-            smoke_center_y = float(np.mean(smoke_array[:, 1]))
-            smoke_distance = float(math.sqrt(smoke_center_x**2 + smoke_center_y**2))
-
-            # SPATIAL DENSITY CHECK: Smoke is diffuse, terrain/vegetation is structured
-            # Calculate standard deviation of point positions (spread metric)
-            std_x = float(np.std(smoke_array[:, 0]))
-            std_y = float(np.std(smoke_array[:, 1]))
-            std_z = float(np.std(smoke_array[:, 2]))
-            spatial_spread = math.sqrt(std_x**2 + std_y**2 + std_z**2)
-
-            # Additional check: Horizontal vs vertical spread ratio
-            # Smoke: spreads more horizontally (wide plume, moderate vertical)
-            # Trees/terrain: tall vertical structures, less horizontal spread
-            horizontal_spread = math.sqrt(std_x**2 + std_y**2)
-            vertical_spread = std_z
-
-            # Smoke should have:
-            # 1. High overall spatial spread (>2.5m for diffuse cloud)
-            # 2. Horizontal spread > vertical spread (smoke spreads wider than tall)
-            is_diffuse = spatial_spread > 2.5
-            is_horizontal_dominant = horizontal_spread > vertical_spread * 0.8  # Smoke is wider than tall
-
-            if is_diffuse and is_horizontal_dominant:
-                # Log smoke detection (throttled)
-                self.get_logger().info(
-                    f"🌫️ SMOKE DETECTED: {smoke_point_count} points at {smoke_distance:.1f}m "
-                    f"({smoke_center_x:.1f}, {smoke_center_y:.1f}), spread={spatial_spread:.1f}m "
-                    f"(H={horizontal_spread:.1f}m, V={vertical_spread:.1f}m)",
-                    throttle_duration_sec=2.0
-                )
-
-                # Publish smoke detection
-                smoke_msg = String()
-                smoke_msg.data = json.dumps({
-                    'detected': True,
-                    'point_count': smoke_point_count,
-                    'center_x': round(smoke_center_x, 2),
-                    'center_y': round(smoke_center_y, 2),
-                    'distance': round(smoke_distance, 2),
-                    'spatial_spread': round(spatial_spread, 2),
-                    'horizontal_spread': round(horizontal_spread, 2),
-                    'vertical_spread': round(vertical_spread, 2),
-                    'timestamp': self.get_clock().now().to_msg().sec
-                })
-                self.pub_smoke_detected.publish(smoke_msg)
-            else:
-                # Rejected: compact object or vertical structure (not smoke)
-                reject_reason = "too compact" if not is_diffuse else "too vertical (terrain/trees)"
-                self.get_logger().debug(
-                    f"Rejected smoke candidate: {smoke_point_count} points, spread={spatial_spread:.1f}m "
-                    f"(H={horizontal_spread:.1f}m, V={vertical_spread:.1f}m) - {reject_reason}",
-                    throttle_duration_sec=5.0
-                )
-        else:
-            # Publish no smoke detected
-            if self.smoke_detection_enabled:
-                smoke_msg = String()
-                smoke_msg.data = json.dumps({'detected': False})
-                self.pub_smoke_detected.publish(smoke_msg)
 
         # Debug logging (throttled)
         self.get_logger().info(
             f"LiDAR: {total_points} pts, valid={valid_points}, "
             f"h_filt={height_filtered}, r_filt={range_filtered}, "
-            f"smoke_filt={smoke_filtered}, water={water_filtered}, "
+            f"water={water_filtered}, "
             f"behind={behind_filtered}, final={len(points)}",
             throttle_duration_sec=2.0
         )
