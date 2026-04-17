@@ -486,7 +486,6 @@ sudo ufw allow 8080/tcp
 2. **Reduce LIDAR processing**:
    - Increase `min_range` (process fewer points)
    - Reduce temporal history size
-3. **Use haiku model** for agents (if using Claude Code features)
 
 ---
 

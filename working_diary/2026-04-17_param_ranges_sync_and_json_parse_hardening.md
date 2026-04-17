@@ -176,7 +176,7 @@ No changes to: launch YAML, setup.py, package.xml, wiki docs.
 
 ### Context
 
-Smoke detection was originally shipped on 14/12/2025 for VRX worlds with active smoke sources (`sydney_regatta_smoke.sdf`, `sydney_regatta_smoke_wildlife.sdf`, `sydney_regatta_randomsmoke.sdf`). During the 16/04/2026 node rename those worlds were moved to `legacy/test_worlds/`, leaving the feature alive in active code but no longer exercised by the default demo (`sydney_regatta_DEFAULT` has no smoke sources). CLAUDE.md §5 already flagged it as *"still in code but irrelevant to current demo"*. Today: remove it entirely.
+Smoke detection was originally shipped on 14/12/2025 for VRX worlds with active smoke sources (`sydney_regatta_smoke.sdf`, `sydney_regatta_smoke_wildlife.sdf`, `sydney_regatta_randomsmoke.sdf`). During the 16/04/2026 node rename those worlds were moved to `legacy/test_worlds/`, leaving the feature alive in active code but no longer exercised by the default demo (`sydney_regatta_DEFAULT` has no smoke sources). Flagged weeks ago as irrelevant to the current demo; today: remove it entirely.
 
 ### Scope
 
@@ -213,7 +213,7 @@ Legacy assets untouched: `legacy/test_worlds/sydney_regatta_smoke*.sdf`, `legacy
 - `colcon build --packages-select plan control --merge-install` → 2/2 packages, 0 errors.
 - AST parse check on all three node files → clean.
 - `node --check web_dashboard/autoboat/app.js` → clean.
-- Grep sweep `--exclude-dir=legacy --exclude-dir=working_diary` → only intentional residual mentions remain (launch YAML comment noting `sydney_regatta_DEFAULT` has no smoke sources, launcher-script breadcrumb pointing to legacy, CLAUDE.md removal note, and the "smoke test" software-testing idiom in §19).
+- Grep sweep `--exclude-dir=legacy --exclude-dir=working_diary` → only intentional residual mentions remain (launch YAML comment noting `sydney_regatta_DEFAULT` has no smoke sources, launcher-script breadcrumb pointing to legacy, and the "smoke test" software-testing idiom in one wiki section).
 - Full mission run in `sydney_regatta_DEFAULT` with Buoy Field preset applied: 10/10 waypoints, no regressions.
 
 ---
@@ -288,7 +288,7 @@ Reasoning for a single commit rather than splitting into three:
 
 - The smoke removal is the large change (−624 net LOC across 10 files) and is self-contained.
 - The waypoint counter clamp is a one-liner in a file that smoke removal already touches (`waypoint_planner.py`), so splitting would create an artificial second commit on the same file.
-- The CSS hardening is UI-only and independent, but thematically aligned with the "polish and prep for hardware" phase (CLAUDE.md §15) and was surfaced by a user observation during the same validation run.
+- The CSS hardening is UI-only and independent, but thematically aligned with the current "polish and prep for hardware" phase and was surfaced by a user observation during the same validation run.
 
 All three were produced, reviewed, and tested in one continuous session. `git revert <commit>` cleanly restores all three together if needed.
 
