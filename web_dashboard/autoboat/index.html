@@ -631,11 +631,13 @@
                                     <div class="param-item">
                                         <label for="perception-min-height">Min Height (m):</label>
                                         <input type="number" id="perception-min-height" step="any" min="-50" max="50" value="-1.2">
+                                        <span class="info-tooltip" title="Lowest Z (height) to keep in the LiDAR point cloud. Points below this are rejected as ground or underwater | Hauteur Z minimale conservée">ℹ️</span>
                                         <span class="param-hint">Filter low piers/buoys</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="perception-max-height">Max Height (m):</label>
                                         <input type="number" id="perception-max-height" step="any" min="-50" max="50" value="1.5">
+                                        <span class="info-tooltip" title="Highest Z to keep. Rejects points above this (sky, rising smoke, distant bank tops) | Hauteur Z maximale conservée">ℹ️</span>
                                         <span class="param-hint">Reject smoke</span>
                                     </div>
                                 </div>
@@ -645,11 +647,13 @@
                                     <div class="param-item">
                                         <label for="perception-min-range">Min Range (m):</label>
                                         <input type="number" id="perception-min-range" step="any" min="0" max="500" value="2.2">
+                                        <span class="info-tooltip" title="Closest LiDAR hits to keep. Points nearer than this are ignored (usually the boat hull itself) | Distance minimale LiDAR conservée">ℹ️</span>
                                         <span class="param-hint">Close detection</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="perception-max-range">Max Range (m):</label>
                                         <input type="number" id="perception-max-range" step="any" min="1" max="500" value="100">
+                                        <span class="info-tooltip" title="Farthest LiDAR hits to keep. Larger values extend detection but add noise from distant terrain | Distance maximale LiDAR">ℹ️</span>
                                         <span class="param-hint">Extended detection</span>
                                     </div>
                                 </div>
@@ -659,11 +663,13 @@
                                     <div class="param-item">
                                         <label for="perception-safe-dist">Safe Distance (m):</label>
                                         <input type="number" id="perception-safe-dist" step="any" min="1" max="200" value="10.0">
+                                        <span class="info-tooltip" title="Obstacle distance at which perception raises urgency. Controller will start slowing below this | Distance à laquelle le contrôleur ralentit">ℹ️</span>
                                         <span class="param-hint">Start slowing</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="perception-critical-dist">Critical Distance (m):</label>
                                         <input type="number" id="perception-critical-dist" step="any" min="0.5" max="100" value="5.5">
+                                        <span class="info-tooltip" title="Urgency saturates to 1.0 below this distance. Triggers emergency reverse/stop in the controller | Seuil d'urgence critique">ℹ️</span>
                                         <span class="param-hint">Emergency threshold</span>
                                     </div>
                                 </div>
@@ -677,11 +683,13 @@
                                     <div class="param-item">
                                         <label for="perception-cluster-dist">Cluster Distance (m):</label>
                                         <input type="number" id="perception-cluster-dist" step="any" min="0.1" max="50" value="3.0">
+                                        <span class="info-tooltip" title="Max separation between points of the same obstacle cluster. Larger values merge more points into one obstacle | Distance max dans un cluster">ℹ️</span>
                                         <span class="param-hint">Group nearby points</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="perception-min-cluster-size">Min Cluster Size:</label>
                                         <input type="number" id="perception-min-cluster-size" step="any" min="1" max="10000" value="8">
+                                        <span class="info-tooltip" title="Minimum points required to confirm an obstacle. Smaller clusters are rejected as sensor noise | Nombre min de points par cluster">ℹ️</span>
                                         <span class="param-hint">Filter noise</span>
                                     </div>
                                 </div>
@@ -691,11 +699,13 @@
                                     <div class="param-item">
                                         <label for="perception-temporal-history">History Size:</label>
                                         <input type="number" id="perception-temporal-history" step="any" min="1" max="20" value="3">
+                                        <span class="info-tooltip" title="Number of recent LiDAR scans kept in a rolling buffer for temporal filtering | Taille du tampon de scans récents">ℹ️</span>
                                         <span class="param-hint">Scan buffer</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="perception-temporal-threshold">Threshold:</label>
                                         <input type="number" id="perception-temporal-threshold" step="any" min="1" max="20" value="2">
+                                        <span class="info-tooltip" title="Obstacle must appear in at least this many recent scans to be confirmed. Default 2/3 rejects single-frame ghosts | Scans nécessaires pour confirmer">ℹ️</span>
                                         <span class="param-hint">Required confirmations</span>
                                     </div>
                                 </div>
@@ -705,11 +715,13 @@
                                     <div class="param-item">
                                         <label for="perception-water-threshold">Water Plane Threshold:</label>
                                         <input type="number" id="perception-water-threshold" step="any" min="0" max="10" value="0.32">
+                                        <span class="info-tooltip" title="Tolerance around the estimated water plane Z. Points within this band are filtered as water-surface reflections | Tolérance autour du plan d'eau">ℹ️</span>
                                         <span class="param-hint">Water filtering</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="perception-hysteresis">Hysteresis (m):</label>
                                         <input type="number" id="perception-hysteresis" step="any" min="0" max="20" value="2.0">
+                                        <span class="info-tooltip" title="Dead zone around detection boundary to prevent the obstacle flag flickering on/off when a target sits near the threshold | Zone morte anti-oscillation">ℹ️</span>
                                         <span class="param-hint">Prevent oscillation</span>
                                     </div>
                                 </div>
@@ -726,16 +738,19 @@
                                             <option value="true">Enabled</option>
                                             <option value="false">Disabled</option>
                                         </select>
+                                        <span class="info-tooltip" title="Toggle the smoke-plume rejection filter. Only relevant for worlds with smoke sources (not the default demo world) | Active le filtre anti-fumée">ℹ️</span>
                                         <span class="param-hint">Toggle smoke filtering</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="perception-smoke-min-height">Smoke Min Height (m):</label>
                                         <input type="number" id="perception-smoke-min-height" step="any" min="-50" max="50" value="2.5">
+                                        <span class="info-tooltip" title="Minimum Z at which the smoke filter starts considering points as plume. Rising smoke floats above this altitude | Hauteur min où la fumée commence">ℹ️</span>
                                         <span class="param-hint">Smoke floats above this (SDF: 0.5m start)</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="perception-smoke-max-height">Smoke Max Height (m):</label>
                                         <input type="number" id="perception-smoke-max-height" step="any" min="-50" max="100" value="10.0">
+                                        <span class="info-tooltip" title="Maximum Z for the smoke plume band. Covers typical 3-8m rising plumes | Hauteur max d'un panache de fumée">ℹ️</span>
                                         <span class="param-hint">Extended for rising smoke (3-8m plumes)</span>
                                     </div>
                                 </div>
@@ -745,11 +760,13 @@
                                     <div class="param-item">
                                         <label for="perception-solid-min-height">Solid Min Height (m):</label>
                                         <input type="number" id="perception-solid-min-height" step="any" min="-50" max="50" value="-2.0">
+                                        <span class="info-tooltip" title="Lowest Z at which a cluster is classified as solid (not smoke). Submerged or water-line objects start here | Hauteur min d'un objet solide">ℹ️</span>
                                         <span class="param-hint">Solid obstacles min</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="perception-solid-max-height">Solid Max Height (m):</label>
                                         <input type="number" id="perception-solid-max-height" step="any" min="-50" max="100" value="0.5">
+                                        <span class="info-tooltip" title="Highest Z at which a cluster counts as a solid obstacle. Above this, points may be smoke or sky | Hauteur max d'un objet solide">ℹ️</span>
                                         <span class="param-hint">Touch water line</span>
                                     </div>
                                 </div>
@@ -782,16 +799,19 @@
                                     <div class="param-item">
                                         <label for="controller-critical-dist">Critical Distance (m):</label>
                                         <input type="number" id="controller-critical-dist" step="any" min="0.5" max="100" value="6.0">
+                                        <span class="info-tooltip" title="Below this, the controller triggers micro-reverse / panic stop. Should be slightly larger than the perception critical distance | Seuil de recul d'urgence">ℹ️</span>
                                         <span class="param-hint">Panic/reverse</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="controller-safe-dist">Safe Distance (m):</label>
                                         <input type="number" id="controller-safe-dist" step="any" min="1" max="200" value="12.0">
+                                        <span class="info-tooltip" title="Below this, reactive avoidance (steer toward clearer side) activates. Chosen slightly larger than perception safe distance for a buffer | Distance de début d'évitement">ℹ️</span>
                                         <span class="param-hint">Start slowing</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="controller-bank-dist">Bank Slow Distance (m):</label>
                                         <input type="number" id="controller-bank-dist" step="any" min="1" max="100" value="6.0">
+                                        <span class="info-tooltip" title="Distance at which the controller applies extra slowdown near lake banks or walls to give hull clearance | Distance de ralentissement près des berges">ℹ️</span>
                                         <span class="param-hint">Extra slow near banks</span>
                                     </div>
                                 </div>
@@ -801,11 +821,13 @@
                                     <div class="param-item">
                                         <label for="controller-obstacle-slow">Obstacle Slow Factor:</label>
                                         <input type="number" id="controller-obstacle-slow" step="any" min="0" max="1.0" value="0.5">
+                                        <span class="info-tooltip" title="Speed multiplier when an obstacle is in the safe-distance band. 0.5 means 50% of base speed; 0 means full stop | Facteur de ralentissement près d'obstacles">ℹ️</span>
                                         <span class="param-hint">Speed near obstacles</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="controller-bank-slow">Bank Slow Factor:</label>
                                         <input type="number" id="controller-bank-slow" step="any" min="0" max="1.0" value="0.25">
+                                        <span class="info-tooltip" title="Speed multiplier when near a bank (Bank Slow Distance). Usually smaller than the obstacle factor for safer hull clearance | Facteur de ralentissement près des berges">ℹ️</span>
                                         <span class="param-hint">Crawl near banks</span>
                                     </div>
                                 </div>
@@ -815,6 +837,7 @@
                                     <div class="param-item">
                                         <label for="controller-avoid-gain">Avoid Diff Gain:</label>
                                         <input type="number" id="controller-avoid-gain" step="any" min="0" max="100" value="18">
+                                        <span class="info-tooltip" title="Differential-thrust gain applied during obstacle avoidance. Higher = sharper steering toward clearer side but less stable | Gain de steering différentiel">ℹ️</span>
                                         <span class="param-hint">Steering aggressiveness</span>
                                     </div>
                                     <div class="param-item">
@@ -823,11 +846,13 @@
                                             <option value="true">Enabled</option>
                                             <option value="false">Disabled</option>
                                         </select>
+                                        <span class="info-tooltip" title="Bias steering toward the best gap from the VFH polar histogram. Enable for dense buoy fields or pier clutter; off for open water | Activer le biais VFH">ℹ️</span>
                                         <span class="param-hint">Gap navigation</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="controller-max-turn">Max Turn Angle (°):</label>
                                         <input type="number" id="controller-max-turn" step="any" min="5" max="90" value="45">
+                                        <span class="info-tooltip" title="Clamp on how sharply the controller can turn during an avoidance maneuver. Prevents wild spins from noisy LiDAR | Angle max de virage d'évitement">ℹ️</span>
                                         <span class="param-hint">Avoidance turn limit</span>
                                     </div>
                                 </div>
@@ -841,11 +866,13 @@
                                     <div class="param-item">
                                         <label for="controller-stuck-timeout">Stuck Timeout (s):</label>
                                         <input type="number" id="controller-stuck-timeout" step="any" min="1" max="120" value="12.0">
+                                        <span class="info-tooltip" title="How long movement must stay below threshold before the boat is declared stuck and anti-stuck recovery triggers | Délai avant déclenchement de l'anti-blocage">ℹ️</span>
                                         <span class="param-hint">Time before stuck detection</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="controller-stuck-threshold">Stuck Threshold (m):</label>
                                         <input type="number" id="controller-stuck-threshold" step="any" min="0.1" max="20" value="1.0">
+                                        <span class="info-tooltip" title="Minimum distance the boat must cover within Stuck Timeout to avoid being flagged as stuck | Distance min de mouvement pour ne pas être bloqué">ℹ️</span>
                                         <span class="param-hint">Movement threshold</span>
                                     </div>
                                 </div>
@@ -855,11 +882,13 @@
                                     <div class="param-item">
                                         <label for="controller-reverse-timeout">Reverse Timeout (s):</label>
                                         <input type="number" id="controller-reverse-timeout" step="any" min="0.5" max="30" value="4.0">
+                                        <span class="info-tooltip" title="Maximum duration of a single micro-reverse maneuver. Prevents runaway backward motion | Durée max d'une manœuvre de recul">ℹ️</span>
                                         <span class="param-hint">Reverse duration</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="controller-max-reverse">Max Reverse Distance (m):</label>
                                         <input type="number" id="controller-max-reverse" step="any" min="0" max="50" value="25">
+                                        <span class="info-tooltip" title="Cap on cumulative reverse travel during an escape attempt. Stops the boat from drifting far backward into unknown terrain | Distance max cumulée en recul">ℹ️</span>
                                         <span class="param-hint">Max reverse</span>
                                     </div>
                                 </div>
@@ -869,11 +898,13 @@
                                     <div class="param-item">
                                         <label for="controller-turn-deadband">Turn Deadband (deg):</label>
                                         <input type="number" id="controller-turn-deadband" step="any" min="0" max="10" value="0.5">
+                                        <span class="info-tooltip" title="Heading errors below this angle are ignored (no correction). Stops PID hunting when close to target heading | Zone morte du contrôle en cap">ℹ️</span>
                                         <span class="param-hint">Precision threshold</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="controller-slew-rate">Slew Rate Limit (N):</label>
                                         <input type="number" id="controller-slew-rate" step="any" min="0" max="5000" value="80">
+                                        <span class="info-tooltip" title="Maximum change in thruster output per control step. Smooths acceleration and prevents mechanical jerk | Limite de variation de la poussée">ℹ️</span>
                                         <span class="param-hint">Max thrust change</span>
                                     </div>
                                 </div>
