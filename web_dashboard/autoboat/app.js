@@ -397,7 +397,9 @@ function subscribeToTopics() {
     });
     
     missionStatusTopic.subscribe((message) => {
-        const data = JSON.parse(message.data);
+        let data;
+        try { data = JSON.parse(message.data); }
+        catch (e) { if (DEBUG_MODE) console.warn('Bad /planning/mission_status JSON:', e); return; }
         if (DEBUG_MODE) console.log('Mission status:', data);
         updateMissionStatus({
             state: data.state,
@@ -418,7 +420,9 @@ function subscribeToTopics() {
     });
     
     controllerAntiStuckTopic.subscribe((message) => {
-        const data = JSON.parse(message.data);
+        let data;
+        try { data = JSON.parse(message.data); }
+        catch (e) { if (DEBUG_MODE) console.warn('Bad /control/anti_stuck_status JSON:', e); return; }
         if (DEBUG_MODE) console.log('Controller anti-stuck status:', data);
         updateAntiStuckStatus(data);
     });
@@ -432,7 +436,9 @@ function subscribeToTopics() {
     });
     
     modularTargetTopic.subscribe((message) => {
-        const data = JSON.parse(message.data);
+        let data;
+        try { data = JSON.parse(message.data); }
+        catch (e) { if (DEBUG_MODE) console.warn('Bad /planning/current_target JSON:', e); return; }
         if (DEBUG_MODE) console.log('Modular current target:', data);
         // Distance display is handled by updateMissionStatus() from /planning/mission_status
         // This topic is kept for other current_target data if needed in the future
@@ -446,7 +452,9 @@ function subscribeToTopics() {
     });
     
     modularWaypointsTopic.subscribe((message) => {
-        const data = JSON.parse(message.data);
+        let data;
+        try { data = JSON.parse(message.data); }
+        catch (e) { if (DEBUG_MODE) console.warn('Bad /planning/waypoints JSON:', e); return; }
         if (DEBUG_MODE) console.log('Modular waypoints received:', data);
         if (data.waypoints && data.waypoints.length > 0) {
             // Check if waypoints actually changed
@@ -471,7 +479,9 @@ function subscribeToTopics() {
     });
     
     modularObstacleTopic.subscribe((message) => {
-        const data = JSON.parse(message.data);
+        let data;
+        try { data = JSON.parse(message.data); }
+        catch (e) { if (DEBUG_MODE) console.warn('Bad /perception/obstacle_info JSON:', e); return; }
         if (DEBUG_MODE) console.log('Modular obstacle status:', data);
         // Convert modular format to autoboat format with LiDAR v2.0/v2.1 enhancements
         // LiDAR v2.0: front_clear, left_clear, right_clear ARE the distances in meters
@@ -511,7 +521,9 @@ function subscribeToTopics() {
     });
     
     modularControlTopic.subscribe((message) => {
-        const data = JSON.parse(message.data);
+        let data;
+        try { data = JSON.parse(message.data); }
+        catch (e) { if (DEBUG_MODE) console.warn('Bad /control/status JSON:', e); return; }
         if (DEBUG_MODE) console.log('Modular control status:', data);
         if (data.stop_override !== undefined) {
             missionState.stopOverride = !!data.stop_override;
@@ -532,7 +544,9 @@ function subscribeToTopics() {
     });
 
     smokeDetectionTopic.subscribe((message) => {
-        const data = JSON.parse(message.data);
+        let data;
+        try { data = JSON.parse(message.data); }
+        catch (e) { if (DEBUG_MODE) console.warn('Bad /perception/smoke_detected JSON:', e); return; }
         if (DEBUG_MODE) console.log('Smoke detection update:', data);
         updateSmokeDetection(data);
     });
@@ -561,7 +575,9 @@ function subscribeToTopics() {
     });
     
     modularConfigTopic.subscribe((message) => {
-        const data = JSON.parse(message.data);
+        let data;
+        try { data = JSON.parse(message.data); }
+        catch (e) { if (DEBUG_MODE) console.warn('Bad /planning/config JSON:', e); return; }
         if (DEBUG_MODE) console.log('Config received (planner):', data);
         updateConfigFromROS(data);
         updateWorldFromConfig(data);
