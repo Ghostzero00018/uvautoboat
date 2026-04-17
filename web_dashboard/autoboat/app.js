@@ -16,6 +16,8 @@ let waypointPath = null;  // Line connecting waypoints
 let currentWaypointMarker = null;  // Highlight current target
 let gridLayerGroup = null;  // Grid overlay layer group
 let gridEventHandlerRegistered = false;  // Prevent duplicate grid event handlers
+let gridEnabled = true;  // User toggle — off for max framerate on weak GPUs
+let gridRedrawTimer = null;  // Debounce handle for addGridOverlay() redraws
 
 // Configuration publisher
 let configPublisher = null;
@@ -178,13 +180,21 @@ function initMap() {
     map.addControl(new FollowBoatControl());
     updateFollowButtonState();
 
-    // Add grid overlay to map
+    // Add grid overlay to map + toggle button
     addGridOverlay();
+    addGridToggleControl();
 
     addLog('Map initialized', 'info');
 }
 
-// Add grid overlay to map (OPTIMIZED - fixes infinite loop)
+// Adaptive grid spacing — pick a spacing from this list so the grid always has
+// a reasonable visual density regardless of zoom level. Prevents the line
+// count from exploding when zoomed out (which previously froze weak GPUs).
+const GRID_SPACING_CHOICES_M = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000];
+const GRID_TARGET_PX_PER_CELL = 60;  // Aim for ~60px per cell on screen
+const GRID_MAX_LINES = 200;           // Safety cap — skip drawing if above this
+
+// Add grid overlay to map (OPTIMIZED — adaptive spacing + debounced + safety cap)
 function addGridOverlay() {
     if (!map) return;
 
@@ -193,63 +203,102 @@ function addGridOverlay() {
         gridLayerGroup = L.layerGroup().addTo(map);
     }
 
-    // Clear existing grid lines efficiently
+    // Register event handler ONCE. Always register so the toggle can
+    // re-enable the grid without another call site.
+    if (!gridEventHandlerRegistered) {
+        gridEventHandlerRegistered = true;
+        map.on('moveend zoomend', scheduleGridRedraw);
+    }
+
+    // Fast exits: user toggled grid off, or we're mid-debounce
     gridLayerGroup.clearLayers();
+    if (!gridEnabled) return;
 
-    // Get map bounds
-    const bounds = map.getBounds();
+    // Pick a grid spacing so cells are ~60px on screen. metersPerPixel varies
+    // with latitude and zoom; Leaflet exposes this via map.containerPointToLatLng.
     const center = map.getCenter();
+    const metersPerPixel = _computeMetersPerPixel(center.lat, map.getZoom());
+    const targetMeters = GRID_TARGET_PX_PER_CELL * metersPerPixel;
+    let spacingMeters = GRID_SPACING_CHOICES_M[GRID_SPACING_CHOICES_M.length - 1];
+    for (const s of GRID_SPACING_CHOICES_M) {
+        if (s >= targetMeters) { spacingMeters = s; break; }
+    }
 
-    // Grid spacing in meters (approximate - will vary with zoom)
-    const gridSpacingMeters = 50; // 50 meter grid
-    const metersPerDegreeLat = 111000; // Approximate
+    const bounds = map.getBounds();
+    const metersPerDegreeLat = 111000;
     const metersPerDegreeLon = 111000 * Math.cos(center.lat * Math.PI / 180);
+    const gridSpacingLat = spacingMeters / metersPerDegreeLat;
+    const gridSpacingLon = spacingMeters / metersPerDegreeLon;
 
-    const gridSpacingLat = gridSpacingMeters / metersPerDegreeLat;
-    const gridSpacingLon = gridSpacingMeters / metersPerDegreeLon;
-
-    // Calculate grid lines
     const minLat = Math.floor(bounds.getSouth() / gridSpacingLat) * gridSpacingLat;
     const maxLat = Math.ceil(bounds.getNorth() / gridSpacingLat) * gridSpacingLat;
     const minLon = Math.floor(bounds.getWest() / gridSpacingLon) * gridSpacingLon;
     const maxLon = Math.ceil(bounds.getEast() / gridSpacingLon) * gridSpacingLon;
 
-    // Draw latitude lines (horizontal)
+    // Safety cap — if something goes wrong (e.g. weird bounds), skip drawing
+    const latLines = Math.ceil((maxLat - minLat) / gridSpacingLat) + 1;
+    const lonLines = Math.ceil((maxLon - minLon) / gridSpacingLon) + 1;
+    if (latLines + lonLines > GRID_MAX_LINES) {
+        if (DEBUG_MODE) console.warn(`Grid skipped: ${latLines + lonLines} lines > ${GRID_MAX_LINES} cap`);
+        return;
+    }
+
+    const lineStyle = {
+        color: '#3498db',
+        weight: 1,
+        opacity: 0.3,
+        dashArray: '5, 5',
+        interactive: false
+    };
+
     for (let lat = minLat; lat <= maxLat; lat += gridSpacingLat) {
-        L.polyline(
-            [[lat, bounds.getWest()], [lat, bounds.getEast()]],
-            {
-                color: '#3498db',
-                weight: 1,
-                opacity: 0.3,
-                dashArray: '5, 5',
-                interactive: false
-            }
-        ).addTo(gridLayerGroup);
+        L.polyline([[lat, bounds.getWest()], [lat, bounds.getEast()]], lineStyle)
+            .addTo(gridLayerGroup);
     }
-
-    // Draw longitude lines (vertical)
     for (let lon = minLon; lon <= maxLon; lon += gridSpacingLon) {
-        L.polyline(
-            [[bounds.getSouth(), lon], [bounds.getNorth(), lon]],
-            {
-                color: '#3498db',
-                weight: 1,
-                opacity: 0.3,
-                dashArray: '5, 5',
-                interactive: false
-            }
-        ).addTo(gridLayerGroup);
+        L.polyline([[bounds.getSouth(), lon], [bounds.getNorth(), lon]], lineStyle)
+            .addTo(gridLayerGroup);
     }
+}
 
-    // Register event handler ONLY ONCE (prevents infinite loop)
-    if (!gridEventHandlerRegistered) {
-        gridEventHandlerRegistered = true;
-        map.on('moveend zoomend', function() {
-            // Redraw grid without re-registering handler
-            addGridOverlay();
-        });
-    }
+// Approximate meters-per-pixel at a given latitude and zoom level. Uses the
+// Web Mercator relationship: meters/pixel = 156543.03 * cos(lat) / 2^zoom.
+function _computeMetersPerPixel(lat, zoom) {
+    return 156543.03 * Math.cos(lat * Math.PI / 180) / Math.pow(2, zoom);
+}
+
+// Debounced grid redraw — rapid pan/zoom shouldn't trigger a cascade of redraws.
+function scheduleGridRedraw() {
+    if (gridRedrawTimer) clearTimeout(gridRedrawTimer);
+    gridRedrawTimer = setTimeout(() => {
+        gridRedrawTimer = null;
+        addGridOverlay();
+    }, 150);
+}
+
+// Leaflet control: small button in the top-right to toggle the grid on/off.
+// Useful on weak GPUs where even the adaptive grid costs framerate.
+function addGridToggleControl() {
+    if (!map) return;
+    const GridToggle = L.Control.extend({
+        options: { position: 'topright' },
+        onAdd: function() {
+            const btn = L.DomUtil.create('button', 'leaflet-bar leaflet-control grid-toggle-btn');
+            btn.type = 'button';
+            btn.title = 'Toggle grid overlay | Activer/désactiver la grille';
+            btn.textContent = '⊞';
+            btn.style.cssText = 'width:30px;height:30px;background:#fff;border:2px solid rgba(0,0,0,0.2);cursor:pointer;font-size:18px;line-height:26px;padding:0;';
+            L.DomEvent.disableClickPropagation(btn);
+            btn.addEventListener('click', () => {
+                gridEnabled = !gridEnabled;
+                btn.style.background = gridEnabled ? '#fff' : '#ddd';
+                btn.style.color = gridEnabled ? '#333' : '#999';
+                addGridOverlay();
+            });
+            return btn;
+        }
+    });
+    new GridToggle().addTo(map);
 }
 
 // Connect to ROS via rosbridge
@@ -1075,8 +1124,11 @@ function initConfigPanel() {
         configPublisher.publish(new ROSLIB.Message({ data: JSON.stringify(config) }));
         markClean(['cfg-astar-resolution', 'cfg-astar-safety', 'cfg-astar-max']);
         navModeDirty = false;
-        addLog('A* config sent', 'info');
-        showFeedback('✅ A* parameters applied', 'success');
+        // Spell out what got sent so the user knows the nav mode + 3 numeric params are ALL included
+        const modeLabel = navMode === 'hybrid' ? 'Hybrid Mode' : navMode === 'runtime' ? 'Runtime A*' : 'Simple Lawnmower';
+        const msg = `✅ A* applied: mode="${modeLabel}" + 3 params (resolution, safety_margin, max_expansions)`;
+        addLog(msg, 'info');
+        showFeedback(msg, 'success');
     });
 
     // A* Reset button
@@ -2433,6 +2485,19 @@ function applyPreset(presetName) {
     const preset = TUNING_PRESETS[presetName];
     if (!preset) {
         addLog(`Preset ${presetName} not found`, 'error');
+        return;
+    }
+
+    // Confirmation dialog — presets overwrite BOTH Perception and Controller params in one click,
+    // so prevent misclicks by asking the user to confirm before anything is sent to ROS.
+    const perceptionCount = Object.keys(preset.perception || {}).length;
+    const controllerCount = Object.keys(preset.controller || {}).length;
+    const msg = `Apply "${preset.name}" preset?\n\nThis will overwrite:\n` +
+                `  • ${perceptionCount} Perception parameter(s)\n` +
+                `  • ${controllerCount} Controller parameter(s)\n\n` +
+                `Current values will be replaced.`;
+    if (!confirm(msg)) {
+        addLog(`Preset ${preset.name} cancelled by user`, 'info');
         return;
     }
 

@@ -1379,6 +1379,67 @@ h2 {
     font-style: italic;
 }
 
+/* Navigation Mode radio cards — matches dashboard accent styling */
+.nav-mode-section {
+    margin-top: 12px;
+}
+
+.nav-mode-section h4 {
+    color: var(--accent);
+    margin: 0 0 8px 0;
+}
+
+.nav-mode-title {
+    font-weight: 600;
+    margin-bottom: 10px;
+    display: block;
+    color: #495057;
+}
+
+.nav-mode-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-left: 4px;
+}
+
+.nav-mode-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease-in-out;
+    background: #fff;
+}
+
+.nav-mode-option:hover {
+    border-color: var(--accent);
+    background: #f8f9ff;
+}
+
+.nav-mode-option:has(input:checked) {
+    border-color: var(--accent);
+    background: #eef1fe;
+    box-shadow: 0 0 0 1px var(--accent);
+}
+
+.nav-mode-option input[type="radio"] {
+    accent-color: var(--accent);
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    flex-shrink: 0;
+}
+
+.nav-mode-label {
+    color: #333;
+    line-height: 1.4;
+    font-size: 0.95em;
+}
+
 .apply-btn {
     width: 100%;
     padding: 14px 24px;

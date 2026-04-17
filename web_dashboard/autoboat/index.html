@@ -317,29 +317,23 @@
                         <span id="waypoint-count">Waypoints: 0</span> |
                         <span id="estimated-distance">Distance: 0m</span>
                     </div>
-                    <div class="config-section" style="margin-top: 12px;">
-                        <h4 style="color: var(--accent);">Navigation Mode | Mode de Navigation</h4>
+                    <div class="config-section nav-mode-section">
+                        <h4>Navigation Mode | Mode de Navigation</h4>
                         <div class="config-item">
-                            <label style="font-weight: 600; margin-bottom: 8px; display: block; color: #495057;">Planning Strategy | Stratégie de Planification:</label>
-                            <div style="margin-left: 10px;">
-                                <div style="margin-bottom: 10px;">
+                            <label class="nav-mode-title">Planning Strategy | Stratégie de Planification:</label>
+                            <div class="nav-mode-options">
+                                <label class="nav-mode-option" for="nav-mode-simple">
                                     <input type="radio" id="nav-mode-simple" name="nav-mode" value="simple" checked>
-                                    <label for="nav-mode-simple" style="margin-left: 5px; cursor: pointer; color: #333;">
-                                        <strong>Simple Lawnmower</strong> — Basic zigzag pattern | Motif zigzag de base
-                                    </label>
-                                </div>
-                                <div style="margin-bottom: 10px;">
+                                    <span class="nav-mode-label"><strong>Simple Lawnmower</strong> — Basic zigzag pattern | Motif zigzag de base</span>
+                                </label>
+                                <label class="nav-mode-option" for="nav-mode-runtime">
                                     <input type="radio" id="nav-mode-runtime" name="nav-mode" value="runtime">
-                                    <label for="nav-mode-runtime" style="margin-left: 5px; cursor: pointer; color: #333;">
-                                        <strong>⚡ Runtime A*</strong> — Reactive detours when blocked | Détours réactifs si bloqué
-                                    </label>
-                                </div>
-                                <div style="margin-bottom: 10px;">
+                                    <span class="nav-mode-label"><strong>⚡ Runtime A*</strong> — Reactive detours when blocked | Détours réactifs si bloqué</span>
+                                </label>
+                                <label class="nav-mode-option" for="nav-mode-hybrid">
                                     <input type="radio" id="nav-mode-hybrid" name="nav-mode" value="hybrid">
-                                    <label for="nav-mode-hybrid" style="margin-left: 5px; cursor: pointer; color: #333;">
-                                        <strong>🧠 Hybrid Mode</strong> — Pre-planned routes avoiding obstacles | Routes pré-planifiées évitant obstacles
-                                    </label>
-                                </div>
+                                    <span class="nav-mode-label"><strong>🧠 Hybrid Mode</strong> — Pre-planned routes avoiding obstacles | Routes pré-planifiées évitant obstacles</span>
+                                </label>
                             </div>
                         </div>
                         <div id="astar-advanced-params" style="display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid #dee2e6;">
