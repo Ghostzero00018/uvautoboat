@@ -1,11 +1,12 @@
-# 2026-04-17 — Parameter Range Sync + Dashboard JSON Parse Hardening
+# 2026-04-17 — Parameter Range Sync, JSON Parse Hardening, and Dashboard UX Polish
 
 ## Summary
 
-Two dashboard-related commits today:
+Three dashboard-related commits today:
 
 1. **Single source of truth for parameter validation ranges** — Python nodes now publish their `PARAM_RANGES` dicts on dedicated topics, and the dashboard subscribes to auto-sync HTML `min`/`max` attributes at runtime. Eliminates the manual 4-place sync burden (launch YAML, HTML, app.js, Python) that had already caused real bugs like the `avoid_diff_gain` range mismatch.
 2. **Wrap `JSON.parse(message.data)` in try/catch** across 8 dashboard subscribers to tolerate malformed messages (mostly caused by Python's `json.dumps` emitting non-spec `NaN`/`Infinity` for uninitialized Kalman filter values before the first GPS fix).
+3. **Dashboard UX polish pass** — 31 new hover tooltips on Perception + Controller inputs, restyled Navigation Mode radios, clearer Apply A* toast, `confirm()` dialog for preset buttons, and adaptive-spacing + debounced map grid with a toggle button to fix lag when zooming out on weak GPUs.
 
 ---
 
@@ -116,6 +117,43 @@ Commit: `01b1424`
 
 ---
 
+## 3. Dashboard UX Polish Pass
+
+Several small UX issues surfaced during end-of-day testing. Bundled into one UX-focused commit.
+
+### Hover tooltips on Perception + Controller inputs
+
+Before: only Main Config and A* Advanced panels had `ℹ️` hover tooltips. Perception Tuning and Heading Controller Parameters panels had inline `.param-hint` labels but no detailed on-hover explanation. Added 31 new `info-tooltip` spans (17 Perception + 14 Controller), bilingual EN | FR, matching the existing pattern. Auto-appended `[Range: X–Y]` suffix is handled by the existing `enrichTooltipsWithRanges()` at page load.
+
+### Navigation Mode radio restyle
+
+Before: 3 nav-mode radios (Simple Lawnmower / Runtime A* / Hybrid Mode) used raw `<input type="radio">` with inline styles — visually inconsistent with the rest of the dashboard. Rewrote as `.nav-mode-option` cards with `var(--accent)` bordered highlight on selection, hover effect, and 6 new CSS rules in `style_merged.css`.
+
+### Apply A* toast message clarity
+
+Before: clicking Apply A* showed `"✅ A* parameters applied"` — the user couldn't tell the 3 radio modes (`astar_enabled`, `astar_hybrid_mode`, `hazard_enabled`) were included alongside the 3 numeric params. Updated to spell out both: `✅ A* applied: mode="Runtime A*" + 3 params (resolution, safety_margin, max_expansions)`. Same text goes to System Logs panel too.
+
+### Preset buttons now ask before applying
+
+Before: clicking any of the 4 preset buttons (Universal / Buoy Field / Pier / Open Water) immediately overwrote Perception + Controller params with no confirmation. Added a `confirm()` dialog showing how many params will be overwritten (e.g. "Apply 'Buoy Field' preset? This will overwrite: 17 Perception + 14 Controller parameters."). Cancel → `Preset X cancelled by user` in System Logs, nothing sent to ROS.
+
+### Map grid performance on weak GPUs
+
+User reported the trajectory map froze when zooming out, especially on the Linux laptop's integrated graphics. Root cause: grid used fixed 50 m spacing regardless of zoom, so line count grew quadratically with viewport area (400 lines at 10 km view, 4000 at 100 km view). Redraw also fired on every `moveend`/`zoomend` event without debouncing.
+
+Four fixes combined:
+
+1. **Adaptive spacing** — picks grid size from `[10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000]` m based on meters-per-pixel. Target ~60 px per cell. Grid now always shows ~20–40 lines regardless of zoom level.
+2. **Safety cap** — skips drawing and logs a warning if somehow the line count would exceed 200.
+3. **Debounce** — new `scheduleGridRedraw()` waits 150 ms of idle before redrawing, so rapid zoom gestures don't cascade redraws.
+4. **Toggle button** — Leaflet `L.Control` `⊞` button top-right of the map. Click to disable the grid entirely; click again to re-enable. Useful for max framerate during intensive testing.
+
+Verified: zooming from default view to ~100 km whole-region view is now smooth; grid stays visually dense but performant. Toggle button dims when off.
+
+Commit: single commit covering all 5 UX fixes (tooltips + nav-mode restyle + A* toast + preset confirmation + grid performance).
+
+---
+
 ## Files modified today
 
 ### Python (3 files)
@@ -124,8 +162,10 @@ Commit: `01b1424`
 - `plan/plan/waypoint_planner.py`
 - `control/control/heading_controller.py`
 
-### Dashboard (1 file)
+### Dashboard (3 files)
 
-- `web_dashboard/autoboat/app.js` (both commits)
+- `web_dashboard/autoboat/app.js` — all three commits (param_ranges, JSON.parse hardening, UX polish)
+- `web_dashboard/autoboat/index.html` — UX polish only (tooltips + nav-mode restyle)
+- `web_dashboard/autoboat/style_merged.css` — UX polish only (6 new rules for `.nav-mode-*` classes)
 
-No changes to: launch YAML, `index.html` (fallbacks preserved), setup.py, package.xml, wiki docs.
+No changes to: launch YAML, setup.py, package.xml, wiki docs.
