@@ -169,6 +169,19 @@ class WaypointPlanner(Node):
     Waypoint Planner - Trajectory planning system
     (Named after the first artificial satellite)
     """
+
+    # Single source of truth for parameter validation ranges.
+    # Published on /planning/param_ranges so the dashboard can sync HTML min/max.
+    PARAM_RANGES = {
+        'lanes': (1, 100),
+        'scan_length': (1.0, 500.0),
+        'scan_width': (1.0, 500.0),
+        'waypoint_tolerance': (0.5, 50.0),
+        'astar_resolution': (0.5, 20.0),
+        'astar_safety_margin': (1.0, 50.0),
+        'astar_max_expansions': (100, 100000),
+    }
+
     def __init__(self):
         super().__init__('waypoint_planner_node')
 
@@ -331,9 +344,14 @@ class WaypointPlanner(Node):
         self.pub_mission_status = self.create_publisher(String, '/planning/mission_status', 10)
         self.pub_config = self.create_publisher(String, '/planning/config', 10)
         self.pub_pollutants = self.create_publisher(String, '/perception/pollutant_sources', 10)
+        self.pub_param_ranges = self.create_publisher(String, '/planning/param_ranges', 10)
 
         # Control loop at 10Hz
         self.create_timer(0.1, self.planning_loop)
+
+        # Republish param ranges every 5s so late-subscribing dashboards always get them
+        self.create_timer(5.0, self._publish_param_ranges)
+        self._publish_param_ranges()  # initial publish on startup
         
         # Publish config at 1Hz
         self.create_timer(1.0, self.publish_config)
@@ -608,12 +626,21 @@ class WaypointPlanner(Node):
         except Exception as e:
             self.get_logger().warn(f"Skip waypoint error: {e}")
 
-    def _validate_range(self, name, value, lo, hi):
-        """Return True if value is in [lo, hi], else log warning and return False."""
+    def _validate(self, name, value):
+        """Validate against PARAM_RANGES[name]. Log + reject if out of bounds."""
+        if name not in self.PARAM_RANGES:
+            return True  # no range defined, accept
+        lo, hi = self.PARAM_RANGES[name]
         if lo <= value <= hi:
             return True
         self.get_logger().warn(f"Rejected {name}={value} (valid range: {lo}–{hi})")
         return False
+
+    def _publish_param_ranges(self):
+        """Publish validation ranges so the dashboard can sync HTML min/max."""
+        msg = String()
+        msg.data = json.dumps({k: [lo, hi] for k, (lo, hi) in self.PARAM_RANGES.items()})
+        self.pub_param_ranges.publish(msg)
 
     def config_callback(self, msg):
         """Handle runtime configuration changes"""
@@ -623,24 +650,24 @@ class WaypointPlanner(Node):
 
             if 'lanes' in config:
                 v = int(config['lanes'])
-                if self._validate_range('lanes', v, 1, 100):
+                if self._validate('lanes', v):
                     self.lanes = v
                     regenerate = True
             if 'scan_length' in config:
                 v = float(config['scan_length'])
-                if self._validate_range('scan_length', v, 1.0, 500.0):
+                if self._validate('scan_length', v):
                     self.scan_length = v
                     regenerate = True
             if 'scan_width' in config:
                 v = float(config['scan_width'])
-                if self._validate_range('scan_width', v, 1.0, 500.0):
+                if self._validate('scan_width', v):
                     self.scan_width = v
                     regenerate = True
 
             # Waypoint approach parameters
             if 'waypoint_tolerance' in config:
                 v = float(config['waypoint_tolerance'])
-                if self._validate_range('waypoint_tolerance', v, 0.5, 50.0):
+                if self._validate('waypoint_tolerance', v):
                     self.waypoint_tolerance = v
                     self.get_logger().info(f"Waypoint tolerance updated: {self.waypoint_tolerance}m")
 
@@ -653,15 +680,15 @@ class WaypointPlanner(Node):
                 self.get_logger().info(f"A* hybrid mode: {'ENABLED' if self.astar_hybrid_mode else 'DISABLED'}")
             if 'astar_resolution' in config:
                 v = float(config['astar_resolution'])
-                if self._validate_range('astar_resolution', v, 0.5, 20.0):
+                if self._validate('astar_resolution', v):
                     self.astar.resolution = v
             if 'astar_safety_margin' in config:
                 v = float(config['astar_safety_margin'])
-                if self._validate_range('astar_safety_margin', v, 1.0, 50.0):
+                if self._validate('astar_safety_margin', v):
                     self.astar.safety_margin = v
             if 'astar_max_expansions' in config:
                 v = int(config['astar_max_expansions'])
-                if self._validate_range('astar_max_expansions', v, 100, 100000):
+                if self._validate('astar_max_expansions', v):
                     self.astar.max_expansions = v
 
             # v2.1: Hazard zone runtime config

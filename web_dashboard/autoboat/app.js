@@ -566,7 +566,24 @@ function subscribeToTopics() {
         updateConfigFromROS(data);
         updateWorldFromConfig(data);
     });
-    
+
+    // Subscribe to param ranges from all 3 nodes — syncs HTML min/max from Python authoritative ranges
+    ['/perception/param_ranges', '/planning/param_ranges', '/control/param_ranges'].forEach(topicName => {
+        const topic = new ROSLIB.Topic({
+            ros: ros,
+            name: topicName,
+            messageType: 'std_msgs/String'
+        });
+        topic.subscribe((message) => {
+            try {
+                const ranges = JSON.parse(message.data);
+                applyRangesToDashboard(ranges);
+            } catch (e) {
+                if (DEBUG_MODE) console.warn(`Bad message on ${topicName}:`, e);
+            }
+        });
+    });
+
     // Create mission command publisher (Planner modular mode only)
     missionCommandPublisher = new ROSLIB.Topic({
         ros: ros,
@@ -2686,7 +2703,9 @@ function showFeedback(message, type = 'info') {
 }
 
 // Hook into existing page load initialization
-// Auto-append valid range to existing info-tooltip hover text
+// Auto-append valid range to existing info-tooltip hover text.
+// Strips any previous [Range: ...] suffix so tooltips reflect the latest min/max
+// (important when ranges come from /perception/param_ranges etc. and may change).
 function enrichTooltipsWithRanges() {
     document.querySelectorAll('input[type="number"][min], input[type="number"][max]').forEach(input => {
         const min = input.min !== '' ? input.min : '—';
@@ -2695,10 +2714,88 @@ function enrichTooltipsWithRanges() {
         // Find the nearest info-tooltip (ℹ️) in the same param-row
         const row = input.closest('.param-row') || input.parentElement;
         const tooltip = row?.querySelector('.info-tooltip');
-        if (tooltip && tooltip.title && !tooltip.title.includes('[Range:')) {
-            tooltip.title += ` [Range: ${min}–${max}]`;
+        if (tooltip && tooltip.title) {
+            // Strip any previous [Range: ...] then append the fresh one
+            tooltip.title = tooltip.title.replace(/\s*\[Range:[^\]]*\]/, '') + ` [Range: ${min}–${max}]`;
         }
     });
+}
+
+// Param name → list of HTML input IDs. A param may appear in multiple inputs
+// (e.g., 'lanes' is in both cfg-lanes and wp-lanes). Used by applyRangesToDashboard
+// to sync min/max from ROS nodes onto HTML inputs at runtime.
+const PARAM_TO_INPUT_IDS = {
+    // Main Config (Planner + Controller)
+    'lanes': ['cfg-lanes', 'wp-lanes'],
+    'scan_length': ['cfg-scan-length', 'wp-length'],
+    'scan_width': ['cfg-scan-width', 'wp-width'],
+    'kp': ['cfg-kp'],
+    'ki': ['cfg-ki'],
+    'kd': ['cfg-kd'],
+    'base_speed': ['cfg-base-speed'],
+    'max_speed': ['cfg-max-speed'],
+    'min_safe_distance': ['cfg-safe-dist', 'controller-safe-dist'],
+    'waypoint_tolerance': ['cfg-waypoint-tolerance'],
+    'approach_slow_distance': ['cfg-approach-slow-distance'],
+    'approach_slow_factor': ['cfg-approach-slow-factor'],
+    // A* Advanced
+    'astar_resolution': ['cfg-astar-resolution'],
+    'astar_safety_margin': ['cfg-astar-safety'],
+    'astar_max_expansions': ['cfg-astar-max'],
+    // Perception panel
+    'min_height': ['perception-min-height'],
+    'max_height': ['perception-max-height'],
+    'min_range': ['perception-min-range'],
+    'max_range': ['perception-max-range'],
+    'perception_min_safe_distance': ['perception-safe-dist'],
+    'perception_critical_distance': ['perception-critical-dist'],
+    'cluster_distance': ['perception-cluster-dist'],
+    'min_cluster_size': ['perception-min-cluster-size'],
+    'temporal_history_size': ['perception-temporal-history'],
+    'temporal_threshold': ['perception-temporal-threshold'],
+    'water_plane_threshold': ['perception-water-threshold'],
+    'hysteresis_distance': ['perception-hysteresis'],
+    'smoke_min_height': ['perception-smoke-min-height'],
+    'smoke_max_height': ['perception-smoke-max-height'],
+    'solid_min_height': ['perception-solid-min-height'],
+    'solid_max_height': ['perception-solid-max-height'],
+    // Controller panel
+    'critical_distance': ['controller-critical-dist'],
+    'bank_slow_distance': ['controller-bank-dist'],
+    'obstacle_slow_factor': ['controller-obstacle-slow'],
+    'bank_slow_factor': ['controller-bank-slow'],
+    'avoid_diff_gain': ['controller-avoid-gain'],
+    'max_avoidance_turn_deg': ['controller-max-turn'],
+    'stuck_timeout': ['controller-stuck-timeout'],
+    'stuck_threshold': ['controller-stuck-threshold'],
+    'reverse_timeout': ['controller-reverse-timeout'],
+    'max_reverse_distance': ['controller-max-reverse'],
+    'turn_deadband_deg': ['controller-turn-deadband'],
+    'slew_rate_limit': ['controller-slew-rate'],
+};
+
+// Apply ranges received from a ROS node to HTML inputs at runtime.
+// rangesJson: {param_name: [min, max], ...} — JSON from /<ns>/param_ranges
+function applyRangesToDashboard(rangesJson) {
+    let changed = 0;
+    for (const [paramName, range] of Object.entries(rangesJson)) {
+        if (!Array.isArray(range) || range.length !== 2) continue;
+        const [min, max] = range;
+        const inputIds = PARAM_TO_INPUT_IDS[paramName];
+        if (!inputIds) continue;
+        for (const id of inputIds) {
+            const el = document.getElementById(id);
+            if (el) {
+                el.min = String(min);
+                el.max = String(max);
+                changed++;
+            }
+        }
+    }
+    if (changed > 0) {
+        enrichTooltipsWithRanges();  // re-run so tooltips reflect the new ranges
+        if (DEBUG_MODE) console.log(`applyRangesToDashboard: updated ${changed} input(s)`);
+    }
 }
 
 // Find the existing initConfigPanel call and add initTuningPanel after it

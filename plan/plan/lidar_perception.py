@@ -52,6 +52,28 @@ class LidarPerception(Node):
 
     Enhanced with temporal filtering, clustering, and velocity estimation.
     """
+
+    # Single source of truth for parameter validation ranges.
+    # Published on /perception/param_ranges so the dashboard can sync HTML min/max.
+    PARAM_RANGES = {
+        'min_height': (-50.0, 50.0),
+        'max_height': (-50.0, 50.0),
+        'min_range': (0.0, 500.0),
+        'max_range': (1.0, 500.0),
+        'perception_min_safe_distance': (1.0, 200.0),
+        'perception_critical_distance': (0.5, 100.0),
+        'hysteresis_distance': (0.0, 20.0),
+        'cluster_distance': (0.1, 50.0),
+        'min_cluster_size': (1, 10000),
+        'temporal_history_size': (1, 20),
+        'temporal_threshold': (1, 20),
+        'water_plane_threshold': (0.0, 10.0),
+        'smoke_min_height': (-50.0, 50.0),
+        'smoke_max_height': (-50.0, 100.0),
+        'solid_min_height': (-50.0, 50.0),
+        'solid_max_height': (-50.0, 100.0),
+    }
+
     def __init__(self):
         super().__init__('lidar_perception_node')
 
@@ -165,9 +187,16 @@ class LidarPerception(Node):
         self.pub_smoke_detected = self.create_publisher(
             String, '/perception/smoke_detected', 10
         )
+        self.pub_param_ranges = self.create_publisher(
+            String, '/perception/param_ranges', 10
+        )
 
         # Publish at 20Hz
         self.create_timer(0.05, self.publish_status)
+
+        # Republish param ranges every 5s so late-subscribing dashboards always get them
+        self.create_timer(5.0, self._publish_param_ranges)
+        self._publish_param_ranges()  # initial publish on startup
 
         self.get_logger().info("=" * 60)
         self.get_logger().info("LiDAR Perception v2.1 - Enhanced Obstacle Detection with Dynamic Parameters")
@@ -262,6 +291,12 @@ class LidarPerception(Node):
         except Exception:
             pass
 
+    def _publish_param_ranges(self):
+        """Publish validation ranges so the dashboard can sync HTML min/max."""
+        msg = String()
+        msg.data = json.dumps({k: [lo, hi] for k, (lo, hi) in self.PARAM_RANGES.items()})
+        self.pub_param_ranges.publish(msg)
+
     def config_callback(self, msg):
         """Handle runtime configuration changes from web dashboard"""
         try:
@@ -289,32 +324,14 @@ class LidarPerception(Node):
                 'solid_max_height': ('solid_max_height', float)
             }
 
-            # Valid ranges: (min, max) — reject values outside these bounds
-            param_ranges = {
-                'min_height': (-50.0, 50.0),
-                'max_height': (-50.0, 50.0),
-                'min_range': (0.0, 500.0),
-                'max_range': (1.0, 500.0),
-                'perception_min_safe_distance': (1.0, 200.0),
-                'perception_critical_distance': (0.5, 100.0),
-                'hysteresis_distance': (0.0, 20.0),
-                'cluster_distance': (0.1, 50.0),
-                'min_cluster_size': (1, 10000),
-                'temporal_history_size': (1, 20),
-                'temporal_threshold': (1, 20),
-                'water_plane_threshold': (0.0, 10.0),
-                'smoke_min_height': (-50.0, 50.0),
-                'smoke_max_height': (-50.0, 100.0),
-                'solid_min_height': (-50.0, 50.0),
-                'solid_max_height': (-50.0, 100.0),
-            }
-
+            # Valid ranges come from self.PARAM_RANGES (class-level constant — also
+            # published on /perception/param_ranges so the dashboard can sync HTML min/max)
             for config_key, (attr_name, type_func) in param_map.items():
                 if config_key in config:
                     new_val = type_func(config[config_key])
                     # Range check (skip for booleans)
-                    if config_key in param_ranges:
-                        lo, hi = param_ranges[config_key]
+                    if config_key in self.PARAM_RANGES:
+                        lo, hi = self.PARAM_RANGES[config_key]
                         if not (lo <= new_val <= hi):
                             self.get_logger().warn(
                                 f"Rejected {attr_name}={new_val} (valid range: {lo}–{hi})")

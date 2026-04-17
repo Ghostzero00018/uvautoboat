@@ -142,6 +142,40 @@ class HeadingController(Node):
     Heading Controller - Boat controller with PID navigation
     Enhanced with simple anti-stuck system and Kalman drift compensation
     """
+
+    # Single source of truth for parameter validation ranges.
+    # Published on /control/param_ranges so the dashboard can sync HTML min/max.
+    PARAM_RANGES = {
+        # PID gains
+        'kp': (0.0, 2000.0),
+        'ki': (0.0, 500.0),
+        'kd': (0.0, 1000.0),
+        # Speed parameters
+        'base_speed': (0.0, MAX_THRUST),
+        'max_speed': (0.0, MAX_THRUST),
+        # Obstacle avoidance
+        'obstacle_slow_factor': (0.0, 1.0),
+        'critical_distance': (0.5, 100.0),
+        'avoid_diff_gain': (0.0, 100.0),
+        'min_safe_distance': (1.0, 200.0),
+        'reverse_timeout': (0.5, 30.0),
+        'max_reverse_distance': (0.0, 50.0),
+        # Bank protection slowdown
+        'bank_slow_distance': (1.0, 100.0),
+        'bank_slow_factor': (0.0, 1.0),
+        # Steering
+        'max_avoidance_turn_deg': (5.0, 90.0),
+        # Simple Anti-Stuck System
+        'stuck_timeout': (1.0, 120.0),
+        'stuck_threshold': (0.1, 20.0),
+        # Control smoothness
+        'turn_deadband_deg': (0.0, 10.0),
+        'slew_rate_limit': (0.0, 5000.0),
+        # Waypoint approach
+        'approach_slow_distance': (1.0, 100.0),
+        'approach_slow_factor': (0.0, 1.0),
+    }
+
     def __init__(self):
         super().__init__('heading_controller_node')
 
@@ -333,9 +367,14 @@ class HeadingController(Node):
         
         # Request waypoint skip (after multiple stuck attempts)
         self.pub_skip_request = self.create_publisher(String, '/planning/skip_waypoint', 10)
+        self.pub_param_ranges = self.create_publisher(String, '/control/param_ranges', 10)
 
         # Control loop at 20Hz
         self.create_timer(self.dt, self.control_loop)
+
+        # Republish param ranges every 5s so late-subscribing dashboards always get them
+        self.create_timer(5.0, self._publish_param_ranges)
+        self._publish_param_ranges()  # initial publish on startup
         
         # Anti-stuck status publisher at 2Hz
         self.create_timer(0.5, self.publish_anti_stuck_status)
@@ -467,12 +506,21 @@ class HeadingController(Node):
         self.last_position = None
         self.stuck_check_time = None
 
-    def _validate_range(self, name, value, lo, hi):
-        """Return True if value is in [lo, hi], else log warning and return False."""
+    def _validate(self, name, value):
+        """Validate against PARAM_RANGES[name]. Log + reject if out of bounds."""
+        if name not in self.PARAM_RANGES:
+            return True  # no range defined, accept
+        lo, hi = self.PARAM_RANGES[name]
         if lo <= value <= hi:
             return True
         self.get_logger().warn(f"Rejected {name}={value} (valid range: {lo}–{hi})")
         return False
+
+    def _publish_param_ranges(self):
+        """Publish validation ranges so the dashboard can sync HTML min/max."""
+        msg = String()
+        msg.data = json.dumps({k: [lo, hi] for k, (lo, hi) in self.PARAM_RANGES.items()})
+        self.pub_param_ranges.publish(msg)
 
     def config_callback(self, msg):
         """Handle runtime configuration changes for PID and speed"""
@@ -483,72 +531,72 @@ class HeadingController(Node):
             # PID gains
             if 'kp' in config:
                 v = float(config['kp'])
-                if self._validate_range('kp', v, 0.0, 2000.0):
+                if self._validate('kp', v):
                     self.kp = v
                     updated.append(f"Kp={self.kp}")
             if 'ki' in config:
                 v = float(config['ki'])
-                if self._validate_range('ki', v, 0.0, 500.0):
+                if self._validate('ki', v):
                     self.ki = v
                     updated.append(f"Ki={self.ki}")
             if 'kd' in config:
                 v = float(config['kd'])
-                if self._validate_range('kd', v, 0.0, 1000.0):
+                if self._validate('kd', v):
                     self.kd = v
                     updated.append(f"Kd={self.kd}")
 
             # Speed parameters
             if 'base_speed' in config:
                 v = float(config['base_speed'])
-                if self._validate_range('base_speed', v, 0.0, MAX_THRUST):
+                if self._validate('base_speed', v):
                     self.base_speed = v
                     updated.append(f"base_speed={self.base_speed}")
             if 'max_speed' in config:
                 v = float(config['max_speed'])
-                if self._validate_range('max_speed', v, 0.0, MAX_THRUST):
+                if self._validate('max_speed', v):
                     self.max_speed = v
                     updated.append(f"max_speed={self.max_speed}")
 
             # Obstacle avoidance
             if 'obstacle_slow_factor' in config:
                 v = float(config['obstacle_slow_factor'])
-                if self._validate_range('obstacle_slow_factor', v, 0.0, 1.0):
+                if self._validate('obstacle_slow_factor', v):
                     self.obstacle_slow_factor = v
                     updated.append(f"slow_factor={self.obstacle_slow_factor}")
             if 'critical_distance' in config:
                 v = float(config['critical_distance'])
-                if self._validate_range('critical_distance', v, 0.5, 100.0):
+                if self._validate('critical_distance', v):
                     self.critical_distance = v
                     updated.append(f"critical_dist={self.critical_distance}")
             if 'avoid_diff_gain' in config:
                 v = float(config['avoid_diff_gain'])
-                if self._validate_range('avoid_diff_gain', v, 0.0, 100.0):
+                if self._validate('avoid_diff_gain', v):
                     self.avoid_diff_gain = v
                     updated.append(f"diff_gain={self.avoid_diff_gain}")
             if 'min_safe_distance' in config:
                 v = float(config['min_safe_distance'])
-                if self._validate_range('min_safe_distance', v, 1.0, 200.0):
+                if self._validate('min_safe_distance', v):
                     self.min_safe_distance = v
                     updated.append(f"safe_dist={self.min_safe_distance}")
             if 'reverse_timeout' in config:
                 v = float(config['reverse_timeout'])
-                if self._validate_range('reverse_timeout', v, 0.5, 30.0):
+                if self._validate('reverse_timeout', v):
                     self.reverse_timeout = v
                     updated.append(f"reverse_timeout={self.reverse_timeout}")
             if 'max_reverse_distance' in config:
                 v = float(config['max_reverse_distance'])
-                if self._validate_range('max_reverse_distance', v, 0.0, 50.0):
+                if self._validate('max_reverse_distance', v):
                     self.max_reverse_distance = v
                     updated.append(f"max_reverse_distance={self.max_reverse_distance}")
             # Bank protection slowdown
             if 'bank_slow_distance' in config:
                 v = float(config['bank_slow_distance'])
-                if self._validate_range('bank_slow_distance', v, 1.0, 100.0):
+                if self._validate('bank_slow_distance', v):
                     self.bank_slow_distance = v
                     updated.append(f"bank_dist={self.bank_slow_distance}")
             if 'bank_slow_factor' in config:
                 v = float(config['bank_slow_factor'])
-                if self._validate_range('bank_slow_factor', v, 0.0, 1.0):
+                if self._validate('bank_slow_factor', v):
                     self.bank_slow_factor = v
                     updated.append(f"bank_factor={self.bank_slow_factor}")
             # Toggle VFH/polar bias
@@ -557,43 +605,43 @@ class HeadingController(Node):
                 updated.append(f"use_vfh_bias={self.use_vfh_bias}")
             if 'max_avoidance_turn_deg' in config:
                 v = float(config['max_avoidance_turn_deg'])
-                if self._validate_range('max_avoidance_turn_deg', v, 5.0, 90.0):
+                if self._validate('max_avoidance_turn_deg', v):
                     self.max_avoidance_turn_deg = v
                     updated.append(f"max_avoid_turn={self.max_avoidance_turn_deg}°")
 
             # Simple Anti-Stuck System parameters
             if 'stuck_timeout' in config:
                 v = float(config['stuck_timeout'])
-                if self._validate_range('stuck_timeout', v, 1.0, 120.0):
+                if self._validate('stuck_timeout', v):
                     self.stuck_timeout = v
                     updated.append(f"stuck_timeout={self.stuck_timeout}")
             if 'stuck_threshold' in config:
                 v = float(config['stuck_threshold'])
-                if self._validate_range('stuck_threshold', v, 0.1, 20.0):
+                if self._validate('stuck_threshold', v):
                     self.stuck_threshold = v
                     updated.append(f"stuck_threshold={self.stuck_threshold}")
 
             # Control smoothness parameters
             if 'turn_deadband_deg' in config:
                 v = float(config['turn_deadband_deg'])
-                if self._validate_range('turn_deadband_deg', v, 0.0, 10.0):
+                if self._validate('turn_deadband_deg', v):
                     self.turn_deadband_deg = v
                     updated.append(f"turn_deadband={self.turn_deadband_deg}")
             if 'slew_rate_limit' in config:
                 v = float(config['slew_rate_limit'])
-                if self._validate_range('slew_rate_limit', v, 0.0, 5000.0):
+                if self._validate('slew_rate_limit', v):
                     self.slew_rate_limit = v
                     updated.append(f"slew_rate={self.slew_rate_limit}")
 
             # Waypoint approach parameters
             if 'approach_slow_distance' in config:
                 v = float(config['approach_slow_distance'])
-                if self._validate_range('approach_slow_distance', v, 1.0, 100.0):
+                if self._validate('approach_slow_distance', v):
                     self.approach_slow_distance = v
                     updated.append(f"approach_slow_distance={self.approach_slow_distance}m")
             if 'approach_slow_factor' in config:
                 v = float(config['approach_slow_factor'])
-                if self._validate_range('approach_slow_factor', v, 0.0, 1.0):
+                if self._validate('approach_slow_factor', v):
                     self.approach_slow_factor = v
                     updated.append(f"approach_slow_factor={self.approach_slow_factor}")
 
