@@ -169,3 +169,148 @@ Commit: single commit covering all 5 UX fixes (tooltips + nav-mode restyle + A* 
 - `web_dashboard/autoboat/style_merged.css` — UX polish only (6 new rules for `.nav-mode-*` classes)
 
 No changes to: launch YAML, setup.py, package.xml, wiki docs.
+
+---
+
+## 4. LiDAR Smoke Detection — Full Removal
+
+### Context
+
+Smoke detection was originally shipped on 14/12/2025 for VRX worlds with active smoke sources (`sydney_regatta_smoke.sdf`, `sydney_regatta_smoke_wildlife.sdf`, `sydney_regatta_randomsmoke.sdf`). During the 16/04/2026 node rename those worlds were moved to `legacy/test_worlds/`, leaving the feature alive in active code but no longer exercised by the default demo (`sydney_regatta_DEFAULT` has no smoke sources). CLAUDE.md §5 already flagged it as *"still in code but irrelevant to current demo"*. Today: remove it entirely.
+
+### Scope
+
+Two distinct but related features were removed together:
+
+- **LiDAR smoke detection** in `plan/plan/lidar_perception.py` — active publisher on `/perception/smoke_detected`, 8 parameters, three-layer spatial classification (height band → point-count threshold → H/V spread ratio), plus horizontal/vertical spread analysis that published JSON per scan.
+- **SDF pollutant scanning** in `plan/plan/waypoint_planner.py` — parsed SDF world files for smoke-generator model positions, published on `/perception/pollutant_sources`, included hazard-proximity checks in the planning loop. Disabled by default (`pollutant_scan_enabled: false`) and only ever relevant to the smoke worlds.
+
+### Subtle behaviour change to expect
+
+Previously in `lidar_callback()` with `smoke_filter_enabled=True`, the gate order was:
+
+1. smoke gate (reject points in smoke band)
+2. solid gate (keep only points in solid band)
+3. generic height filter (keep points in `min_height`–`max_height`)
+
+After removal, only step 3 runs. With the YAML defaults `min_height=-1.2, max_height=1.5`, points with `z ∈ (0.5, 1.5] m` — previously rejected as *"neither smoke nor solid"* — now pass through as obstacles. Expected effect: taller navigation-relevant features (buoy top markers, signal masts, standing wildlife) are **more** likely to be detected, not fewer. Verified in a full mission run: 10/10 waypoints completed cleanly in `sydney_regatta_DEFAULT`, no regression.
+
+### Files changed
+
+| File | Delta |
+|:--|:--|
+| `plan/plan/lidar_perception.py` | 8 params, `PARAM_RANGES` entries, classification + analysis blocks, smoke publisher (~138 LOC removed) |
+| `plan/plan/waypoint_planner.py` | 2 pollutant params, state attrs, publisher, SDF-scanning methods, status-JSON field (~120 LOC removed) |
+| `launch/autoboat.launch.yaml` | 6 smoke param declarations removed |
+| `web_dashboard/autoboat/index.html` | Smoke status panel (32 lines) + *Smoke & Object Classification* subsection (~43 lines); one tooltip reworded |
+| `web_dashboard/autoboat/app.js` | `smokeDetectionTopic` subscription + `updateSmokeDetection()` function; smoke entries in `PARAM_TO_INPUT_IDS`, `PERCEPTION_DEFAULTS`, `allConfigInputs`, `updatePerceptionParamsFromROS()`, `applyPerceptionParameters()`; 4 TUNING_PRESETS trimmed; `updateWorldBanner(hasSmoke)` simplified |
+| `README.md`, `USER_MANUAL.md`, `Board.md`, `wiki/System_Overview.md`, `web_dashboard/autoboat/README_autoboat_dashboard.md` | Dedicated section (82 lines in USER_MANUAL) + inline mentions removed |
+| `.ai-context/CLAUDE.md` | §5 *"smoke filter code exists but is irrelevant"* bullet replaced with §10 pitfall note documenting the 17/04/2026 removal; topic table example updated |
+
+Legacy assets untouched per CLAUDE.md §1.3: `legacy/test_worlds/sydney_regatta_smoke*.sdf`, `legacy/environment_plugins/dead_zone_plugin.cc`, and every `legacy/` reference describing smoke-world SDFs. The 14/12/2025 Board.md milestone row was also preserved as historical fact.
+
+### Verification
+
+- `colcon build --packages-select plan control --merge-install` → 2/2 packages, 0 errors.
+- AST parse check on all three node files → clean.
+- `node --check web_dashboard/autoboat/app.js` → clean.
+- Grep sweep `--exclude-dir=legacy --exclude-dir=working_diary` → only intentional residual mentions remain (launch YAML comment noting `sydney_regatta_DEFAULT` has no smoke sources, launcher-script breadcrumb pointing to legacy, CLAUDE.md removal note, and the "smoke test" software-testing idiom in §19).
+- Full mission run in `sydney_regatta_DEFAULT` with Buoy Field preset applied: 10/10 waypoints, no regressions.
+
+---
+
+## 5. FINISHED-state Waypoint Counter Clamp
+
+### Bug
+
+After a successful mission the dashboard status panel showed:
+
+```text
+State: FINISHED
+Waypoint: 14/13
+Distance: 0.0m
+```
+
+Root cause in `plan/plan/waypoint_planner.py` (mission-status publisher): `self.current_wp_index` is incremented one past the last valid index when the final waypoint is reached, then the state transitions to `FINISHED`. The published field was `self.current_wp_index + 1`, so for a 13-waypoint mission with valid indices `0..12`, the post-transition value becomes `13 + 1 = 14` against `total=13`. The `progress_percent` calculation (`100 * current_wp_index / total`) had the same off-by-one and could report `107.7 %`.
+
+### Fix
+
+One-line clamp on both fields at the publish site:
+
+```python
+'current_waypoint': min(self.current_wp_index + 1, len(self.waypoints)),
+'total_waypoints': len(self.waypoints),
+'progress_percent': round(100 * min(self.current_wp_index, len(self.waypoints)) / max(1, len(self.waypoints)), 1),
+```
+
+Display-only fix in `app.js` was considered but rejected — clamping at the source also covers the CLI (`autoboat_cli`) and any other downstream consumer of `/planning/mission_status`.
+
+### Verification
+
+Re-ran a mission to completion. After FINISHED the panel now reads `Waypoint: 10/10` (for the 10-WP test run) with progress bar exactly at 100 %. Mid-mission counter still increments normally (`7/10` on WP index 6 — no off-by-one regression).
+
+---
+
+## 6. Dashboard Split-Screen Layout Hardening
+
+### Trigger
+
+During end-of-day validation the user ran Gazebo and the dashboard side-by-side on a single monitor. At that ~900-1000 px dashboard width, the Health Check panel header clipped the **Copy** button (added at runtime after Run/Clear/Auto-scroll/Export) outside the right edge of the panel — the user could see the Export button but had to resize the window to get to Copy.
+
+### Audit findings
+
+An Explore-agent sweep of `style_merged.css` + `index.html` surfaced 7 flex rows with no `flex-wrap` directive plus a responsive-breakpoint gap (only `@media (max-width: 1200px)` and `(max-width: 768px)` existed, leaving 769-1199 px uncovered — exactly the split-screen range):
+
+| Severity | Rule | Issue |
+|:--|:--|:--|
+| Critical | `.terminal-controls` | 6 children in a non-wrapping flex row → Copy/Export clipped on 3 panels (Health Check, Logs, Terminal) |
+| Critical | `.terminal-header` | Bilingual title + controls with `justify-content: space-between`, no wrap |
+| Critical | `.mission-status-bar` | State + GPS badges in non-wrapping row |
+| Moderate | `.config-buttons` | Column-stack only at ≤768 px; squeezes at 900 px |
+| Moderate | `.header-left` / `.header-right` | World banner (520 px max) ate >50 % of a 900 px viewport |
+| Moderate | Breakpoint gap | No rule between 768 px and 1200 px |
+| Low | `.world-banner` | `overflow:hidden; white-space:nowrap` without `text-overflow: ellipsis` (silent clipping) |
+
+### Fix (single CSS file, +24/-2 lines)
+
+- Added `flex-wrap: wrap` to `.terminal-controls`, `.terminal-header`, `.mission-status-bar`, `.config-buttons`, `.header-left`, `.header-right`.
+- Reduced `.world-banner` `max-width` from `520px` → `360px`; added `text-overflow: ellipsis` so long world names truncate visibly instead of invisibly clipping.
+- New `@media (max-width: 1024px)` block covering the split-screen gap: drops `.tuning-panel` from `grid-column: span 2` to `span 1`, shrinks `.world-banner` further to `280px`, scales `.terminal-header h2` to 16 px.
+
+### Verification
+
+Hard-refreshed the dashboard at full width (≥1200 px) — no visual regression, Copy/Export still right-aligned in headers. Dragged window edge to ~900 px — Copy button now wraps to a second row instead of clipping; world banner shows "…" for long names; tuning panel reflows to a single column cleanly at 1024 px; below 768 px the original column-stack behaviour still engages. No console warnings.
+
+---
+
+## Afternoon commit — single cohesive bundle
+
+Reasoning for a single commit rather than splitting into three:
+
+- The smoke removal is the large change (−624 net LOC across 10 files) and is self-contained.
+- The waypoint counter clamp is a one-liner in a file that smoke removal already touches (`waypoint_planner.py`), so splitting would create an artificial second commit on the same file.
+- The CSS hardening is UI-only and independent, but thematically aligned with the "polish and prep for hardware" phase (CLAUDE.md §15) and was surfaced by a user observation during the same validation run.
+
+All three were produced, reviewed, and tested in one continuous session. `git revert <commit>` cleanly restores all three together if needed.
+
+Commit message subject: `refactor: Remove LiDAR smoke detection; fix FINISHED counter and split-screen layout`
+
+### Files modified (afternoon additions)
+
+| Category | File | Change |
+|:--|:--|:--|
+| Python | `plan/plan/lidar_perception.py` | Smoke removal (~138 LOC) |
+| Python | `plan/plan/waypoint_planner.py` | Pollutant scanning removal (~120 LOC) + FINISHED counter clamp |
+| Launch | `launch/autoboat.launch.yaml` | 6 smoke param declarations removed |
+| Dashboard | `web_dashboard/autoboat/index.html` | Smoke status panel + tuning subsection removed |
+| Dashboard | `web_dashboard/autoboat/app.js` | Smoke subscription, function, presets, mappings removed |
+| Dashboard | `web_dashboard/autoboat/style_merged.css` | 7 `flex-wrap` additions + new 1024 px media block |
+| Docs | `README.md`, `USER_MANUAL.md`, `Board.md`, `wiki/System_Overview.md`, `web_dashboard/autoboat/README_autoboat_dashboard.md` | Smoke section + inline refs removed |
+| Meta | `.ai-context/CLAUDE.md` (Gist) | §5 stale bullet removed; §10 removal note added; §9 proactive-test-pipeline rule, §10 machine-specific work patterns, §12 revert-test-changes rule added earlier in the day |
+
+---
+
+## Side-topics (no repo impact)
+
+- **SSH-over-443 fallback on blocked networks.** While attempting to push the morning's work from a hotspot ("DESKTOP-MNLKGA2 9662", a laptop tether), `git push` timed out while `git pull` appeared to work from cache. Root cause: port 22 blocked by the hotspot upstream. Fix: added `ssh.github.com:443` alias to `~/.ssh/config` for both `github.com` and `gist.github.com`. Verified with `ssh -T git@github.com`. Saved as auto-memory (`reference_ssh_over_443.md`) so future sessions on either machine can diagnose the same symptom without re-deriving the fix.
+- **Stale auto-memory cleanup.** Removed `project_param_ranges_single_source.md` — the entry described a "planned" feature that was already shipped in commit `911a8f8` this morning.
