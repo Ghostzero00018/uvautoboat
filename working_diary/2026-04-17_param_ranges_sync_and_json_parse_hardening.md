@@ -205,9 +205,8 @@ After removal, only step 3 runs. With the YAML defaults `min_height=-1.2, max_he
 | `web_dashboard/autoboat/index.html` | Smoke status panel (32 lines) + *Smoke & Object Classification* subsection (~43 lines); one tooltip reworded |
 | `web_dashboard/autoboat/app.js` | `smokeDetectionTopic` subscription + `updateSmokeDetection()` function; smoke entries in `PARAM_TO_INPUT_IDS`, `PERCEPTION_DEFAULTS`, `allConfigInputs`, `updatePerceptionParamsFromROS()`, `applyPerceptionParameters()`; 4 TUNING_PRESETS trimmed; `updateWorldBanner(hasSmoke)` simplified |
 | `README.md`, `USER_MANUAL.md`, `Board.md`, `wiki/System_Overview.md`, `web_dashboard/autoboat/README_autoboat_dashboard.md` | Dedicated section (82 lines in USER_MANUAL) + inline mentions removed |
-| `.ai-context/CLAUDE.md` | §5 *"smoke filter code exists but is irrelevant"* bullet replaced with §10 pitfall note documenting the 17/04/2026 removal; topic table example updated |
 
-Legacy assets untouched per CLAUDE.md §1.3: `legacy/test_worlds/sydney_regatta_smoke*.sdf`, `legacy/environment_plugins/dead_zone_plugin.cc`, and every `legacy/` reference describing smoke-world SDFs. The 14/12/2025 Board.md milestone row was also preserved as historical fact.
+Legacy assets untouched: `legacy/test_worlds/sydney_regatta_smoke*.sdf`, `legacy/environment_plugins/dead_zone_plugin.cc`, and every `legacy/` reference describing smoke-world SDFs. The 14/12/2025 Board.md milestone row was also preserved as historical fact.
 
 ### Verification
 
@@ -306,11 +305,9 @@ Commit message subject: `refactor: Remove LiDAR smoke detection; fix FINISHED co
 | Dashboard | `web_dashboard/autoboat/app.js` | Smoke subscription, function, presets, mappings removed |
 | Dashboard | `web_dashboard/autoboat/style_merged.css` | 7 `flex-wrap` additions + new 1024 px media block |
 | Docs | `README.md`, `USER_MANUAL.md`, `Board.md`, `wiki/System_Overview.md`, `web_dashboard/autoboat/README_autoboat_dashboard.md` | Smoke section + inline refs removed |
-| Meta | `.ai-context/CLAUDE.md` (Gist) | §5 stale bullet removed; §10 removal note added; §9 proactive-test-pipeline rule, §10 machine-specific work patterns, §12 revert-test-changes rule added earlier in the day |
 
 ---
 
-## Side-topics (no repo impact)
+## Side-topic (no repo impact)
 
-- **SSH-over-443 fallback on blocked networks.** While attempting to push the morning's work from a hotspot ("DESKTOP-MNLKGA2 9662", a laptop tether), `git push` timed out while `git pull` appeared to work from cache. Root cause: port 22 blocked by the hotspot upstream. Fix: added `ssh.github.com:443` alias to `~/.ssh/config` for both `github.com` and `gist.github.com`. Verified with `ssh -T git@github.com`. Saved as auto-memory (`reference_ssh_over_443.md`) so future sessions on either machine can diagnose the same symptom without re-deriving the fix.
-- **Stale auto-memory cleanup.** Removed `project_param_ranges_single_source.md` — the entry described a "planned" feature that was already shipped in commit `911a8f8` this morning.
+- **SSH-over-443 fallback on blocked networks.** While attempting to push the morning's work from a hotspot ("DESKTOP-MNLKGA2 9662", a laptop tether), `git push` timed out while `git pull` appeared to work from cache. Root cause: port 22 blocked by the hotspot upstream. Fix: added `ssh.github.com:443` alias to `~/.ssh/config` for both `github.com` and `gist.github.com`. Verified with `ssh -T git@github.com`. Will keep the config entry permanently — harmless on unrestricted networks, lifesaver on restricted ones.
