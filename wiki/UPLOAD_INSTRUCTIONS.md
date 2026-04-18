@@ -1,363 +1,81 @@
-# GitHub Wiki Upload Instructions
+# Wiki Sync Workflow
 
-Step-by-step guide to upload these wiki pages to your GitHub repository wiki.
+Source of truth: the `wiki/` folder in this repo.
+Published copy: `github.com/Ghostzero00018/uvautoboat/wiki`.
 
----
-
-## Method 1: Manual Upload (Recommended for First Time)
-
-### Step 1: Enable Wiki on GitHub
-
-1. Go to your repository: `https://github.com/Ghostzero00018/uvautoboat`
-2. Click **Settings** (top menu)
-3. Scroll down to **Features** section
-4. Check ✅ **Wikis** to enable
-5. Click **Save changes**
-
-### Step 2: Access Wiki
-
-1. Click **Wiki** tab in your repository
-2. Click **Create the first page** (if wiki is empty)
-
-### Step 3: Upload Pages
-
-For each `.md` file in the `wiki/` directory:
-
-#### Upload Home Page
-
-1. In Wiki, click **New Page**
-2. Title: Leave as "Home" (this is automatic for first page)
-3. Copy content from `wiki/Home.md`
-4. Paste into editor
-5. Click **Save Page**
-
-#### Upload Other Pages
-
-Repeat for each wiki page:
-
-| File Name | Wiki Page Title |
-|:----------|:----------------|
-| `Installation_Guide.md` | Installation Guide |
-| `Quick_Start.md` | Quick Start |
-| `System_Overview.md` | System Overview |
-| `SASS.md` | Simple Anti-Stuck |
-| `3D_LIDAR_Processing.md` | 3D LIDAR Processing |
-| `Common_Issues.md` | Common Issues |
-
-**Steps for each:**
-
-1. Click **New Page** button
-2. Enter **Page title** (from table above, use hyphens not spaces)
-3. Copy content from corresponding `.md` file
-4. Paste into editor
-5. Click **Save Page**
+The two are kept in sync **automatically** via a GitHub Action that runs whenever `wiki/**` changes on `main`. The helper script and manual steps below exist as fallbacks for when the Action is unavailable or for disaster recovery.
 
 ---
 
-## Method 2: Git Clone (Advanced Users)
+## Automatic (normal path)
 
-### Step 1: Clone Wiki Repository
+1. Edit any file under `wiki/*.md`.
+2. Commit and push the main repo.
+3. The workflow at `.github/workflows/sync-wiki.yml` fires on the push (only when `wiki/**` changed), copies every `wiki/*.md` into the wiki repo, and commits as `github-actions[bot]`.
+4. Verify at `github.com/Ghostzero00018/uvautoboat/wiki` within ~30 s.
 
-GitHub wikis are actually Git repositories!
+The workflow skips `UPLOAD_INSTRUCTIONS.md` — this meta file stays in the main repo and does not become a wiki page.
+
+---
+
+## Manual sync (fallback)
+
+Run the helper script from the main repo root:
 
 ```bash
-cd ~/seal_ws/src/uvautoboat
-git clone https://github.com/Ghostzero00018/uvautoboat.wiki.git wiki-repo
+scripts/sync_wiki.sh "Commit message describing what changed"
 ```
 
-### Step 2: Copy Wiki Files
+What it does:
 
-```bash
-cp wiki/*.md wiki-repo/
-cd wiki-repo
-```
+- Clones `git@github.com:Ghostzero00018/uvautoboat.wiki.git` to `../uvautoboat.wiki/` (sibling to the main repo) on first run.
+- Pulls latest with rebase.
+- Copies every `wiki/*.md` into the clone, strips `UPLOAD_INSTRUCTIONS.md`.
+- Bails cleanly if nothing changed; otherwise commits and pushes.
 
-### Step 3: Commit and Push
-
-```bash
-git add *.md
-git commit -m "Add comprehensive wiki documentation"
-git push origin master
-```
-
-**Note**: Wiki repository uses `master` branch, not `main`.
+Prerequisite: SSH access to `git@github.com`. If port 22 is blocked on your network, the SSH-over-443 config in `~/.ssh/config` handles it transparently.
 
 ---
 
-## Method 3: Batch Upload Script
+## Manual step-by-step (for disaster recovery)
 
-Create a script to automate the upload process:
-
-```bash
-#!/bin/bash
-# upload-wiki.sh
-
-WIKI_DIR="wiki"
-WIKI_REPO="https://github.com/Ghostzero00018/uvautoboat.wiki.git"
-
-# Clone wiki repo
-git clone $WIKI_REPO wiki-repo
-cd wiki-repo
-
-# Copy all markdown files
-cp ../$WIKI_DIR/*.md .
-
-# Commit and push
-git add *.md
-git commit -m "Update wiki documentation - $(date +%Y-%m-%d)"
-git push origin master
-
-echo "✅ Wiki uploaded successfully!"
-```
-
-**Usage:**
+If both the Action and the script are unusable, do it by hand:
 
 ```bash
-chmod +x upload-wiki.sh
-./upload-wiki.sh
-```
-
----
-
-## Verifying Upload
-
-After uploading, verify the wiki:
-
-1. Go to `https://github.com/Ghostzero00018/uvautoboat/wiki`
-2. Check **Home** page loads correctly
-3. Click links to verify page navigation
-4. Check images display properly
-5. Verify code blocks have syntax highlighting
-
----
-
-## Wiki File Structure
-
-Your wiki pages should be organized as:
-
-```text
-wiki/
-├── Home.md                    # Landing page
-├── Installation_Guide.md      # Setup instructions
-├── Quick_Start.md             # 5-minute quick start
-├── System_Overview.md         # Architecture overview
-├── SASS.md                    # Simple Anti-Stuck
-├── 3D_LIDAR_Processing.md     # LiDAR Perception
-├── Common_Issues.md           # Troubleshooting
-└── [Additional pages...]      # Future additions
-```
-
----
-
-## Additional Pages to Create
-
-Based on the wiki home navigation, you may want to create these pages later:
-
-### Getting Started
-
-- [ ] `First-Mission-Tutorial.md`
-
-### Architecture
-
-- [ ] `AutoBoat-Architecture.md`
-- [ ] `Modular-Architecture.md`
-- [ ] `Atlantis-Architecture.md`
-- [ ] `ROS2-Topic-Flow.md`
-
-### User Guides
-
-- [ ] `Terminal-Mission-Control.md`
-- [ ] `Web-Dashboard-Guide.md`
-- [ ] `Keyboard-Teleop.md`
-- [ ] `Configuration-and-Tuning.md`
-- [ ] `Launch-Files-Reference.md`
-
-### Core Concepts
-
-- [ ] `GPS-Navigation.md`
-- [ ] `PID-Control.md`
-- [ ] `Differential-Thrust.md`
-- [ ] `Kalman-Filtering.md`
-
-### Advanced Features
-
-- [ ] `Astar-Path-Planning.md`
-- [ ] `Waypoint-Skip-Strategy.md`
-- [ ] `Obstacle-Avoidance-Loop.md`
-- [ ] `Hazard-Zone-Management.md`
-
-### Development
-
-- [ ] `Contributing.md`
-- [ ] `Code-Review-Standards.md`
-- [ ] `Testing-Guide.md`
-- [ ] `API-Reference.md`
-
-### Troubleshooting
-
-- [ ] `Debug-Commands.md`
-- [ ] `FAQ.md`
-
-### References
-
-- [ ] `ROS2-Resources.md`
-- [ ] `VRX-Competition.md`
-- [ ] `Related-Projects.md`
-
----
-
-## Wiki Maintenance
-
-### Updating Pages
-
-To update an existing page:
-
-**Manual Method:**
-
-1. Go to wiki page
-2. Click **Edit** button (top right)
-3. Make changes
-4. Click **Save Page**
-
-**Git Method:**
-
-```bash
-cd wiki-repo
-# Edit files
-git add .
-git commit -m "Update: description of changes"
-git push origin master
-```
-
-### Adding Images
-
-To add images to wiki:
-
-1. **Upload to repository first**:
-
-   ```bash
-   # In main repo
-   git add images/new-image.png
-   git commit -m "Add wiki image"
-   git push
-   ```
-
-2. **Reference in wiki markdown**:
-
-   ```markdown
-   ![Alt text](https://raw.githubusercontent.com/Ghostzero00018/uvautoboat/main/images/new-image.png)
-   ```
-
----
-
-## Best Practices
-
-### Link Format
-
-Use relative wiki links:
-
-```markdown
-[Installation Guide](Installation_Guide)
-```
-
-NOT:
-
-```markdown
-[Installation Guide](https://github.com/Ghostzero00018/uvautoboat/wiki/Installation_Guide)
-```
-
-### Code Blocks
-
-Use language identifiers:
-
-```markdown
-```bash
-ros2 run plan autoboat
-\`\`\`
-```
-
-### Tables
-
-Use consistent formatting:
-
-```markdown
-| Column 1 | Column 2 |
-|:---------|:---------|
-| Data 1   | Data 2   |
-```
-
-### Headings
-
-Use proper hierarchy:
-
-```markdown
-# Page Title (only one H1)
-## Main Section (H2)
-### Subsection (H3)
-```
-
----
-
-## Troubleshooting Wiki Upload
-
-### Wiki Not Showing
-
-**Cause**: Wiki not enabled in repository settings
-
-**Solution**: Enable in Settings → Features → Wikis
-
-### Images Not Loading
-
-**Cause**: Image path incorrect
-
-**Solution**: Use raw GitHub URLs:
-
-```markdown
-https://raw.githubusercontent.com/Ghostzero00018/uvautoboat/main/images/file.png
-```
-
-### Links Broken
-
-**Cause**: Incorrect wiki link format
-
-**Solution**: Use page title with underscores:
-
-- Correct: `[System Overview](System_Overview)`
-- Wrong: `[System Overview](System Overview)`
-
-### Push Rejected (Git Method)
-
-**Cause**: Wiki changed on GitHub
-
-**Solution**: Pull first:
-
-```bash
-git pull origin master
+# 1. Clone (first time only)
+git clone git@github.com:Ghostzero00018/uvautoboat.wiki.git ~/seal_ws/uvautoboat.wiki
+
+# 2. Sync
+cd ~/seal_ws/uvautoboat.wiki
+git pull --rebase origin master
+cp ~/seal_ws/src/uvautoboat/wiki/*.md .
+rm -f UPLOAD_INSTRUCTIONS.md
+
+# 3. Commit and push
+git add -A
+git commit -m "Sync wiki"
 git push origin master
 ```
 
 ---
 
-## Next Steps
+## GitHub Wiki conventions (cheat sheet)
 
-After uploading the wiki:
-
-1. **Update main README** to link to wiki pages
-2. **Create remaining wiki pages** from checklist above
-3. **Add screenshots** to make pages more visual
-4. **Get feedback** from team members
-5. **Keep wiki updated** as code changes
-
----
-
-## Questions?
-
-If you need help with wiki upload:
-
-- Check GitHub's [Wiki Documentation](https://docs.github.com/en/communities/documenting-your-project-with-wikis)
-- Open an issue on the repository
-- Contact the AutoBoat development team
+- **Branch**: the wiki repo uses `master`, not `main`.
+- **Page title from filename**: `System_Overview.md` becomes the page titled `System Overview` (underscores render as spaces).
+- **Home** is the landing page (must exist at the root).
+- **Inter-page links** use `[Title](Page_Name)` — no `.md` suffix, underscores in the target.
+- **Sidebars/footers**: create `_Sidebar.md` or `_Footer.md` at the root. These are not currently used by this project.
+- **Deletions are manual**: if a page is removed from `wiki/`, the sync scripts do not delete it from the published wiki. Delete it directly in the wiki clone (or via the GitHub UI) and push.
 
 ---
 
-## Good luck with your wiki! 🚀
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|:--|:--|:--|
+| Workflow didn't run | Push didn't touch `wiki/**` | Expected — only changes under `wiki/` trigger the sync |
+| Workflow failed with permission error | `contents: write` permission missing or default token scope tightened | Check `permissions:` block in the workflow file; re-grant in repo Settings → Actions → Workflow permissions |
+| Script push rejected (non-fast-forward) | Wiki edited via GitHub UI after last local sync | Script does `git pull --rebase` first; if rebase conflicts, resolve by hand in `~/seal_ws/uvautoboat.wiki/` |
+| Wiki tab invisible on repo page | Wikis disabled in repo Settings | Repo Settings → Features → tick Wikis |
+| Page renders as "Not Found" | Link target uses `.md` suffix or spaces | GitHub Wiki URLs drop `.md` and replace spaces with dashes or underscores depending on the page title |

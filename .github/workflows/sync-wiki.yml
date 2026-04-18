@@ -1,0 +1,41 @@
+name: Sync wiki from main repo
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'wiki/**'
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main repo
+        uses: actions/checkout@v4
+
+      - name: Clone wiki repo
+        run: |
+          git clone \
+            "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.wiki.git" \
+            wiki-repo
+
+      - name: Sync pages
+        run: |
+          cp wiki/*.md wiki-repo/
+          rm -f wiki-repo/UPLOAD_INSTRUCTIONS.md
+
+      - name: Commit and push if changed
+        working-directory: wiki-repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "No wiki changes to sync."
+            exit 0
+          fi
+          git add -A
+          git commit -m "Sync wiki from main repo @ ${{ github.sha }}"
+          git push origin master
