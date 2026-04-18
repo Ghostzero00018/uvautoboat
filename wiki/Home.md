@@ -16,7 +16,6 @@ Welcome to the **AutoBoat Wiki**! This documentation provides comprehensive guid
 
 - **[Installation Guide](Installation_Guide)** — Set up ROS 2, Gazebo, and AutoBoat
 - **[Quick Start](Quick_Start)** — Get your first mission running in 5 minutes
-- **[First Mission Tutorial](First-Mission-Tutorial)** — Step-by-step walkthrough
 
 ### 🏗️ Architecture
 
@@ -27,49 +26,15 @@ Welcome to the **AutoBoat Wiki**! This documentation provides comprehensive guid
 
 > **Note:** The former Vostok1 integrated and Atlantis architectures have been deprecated and moved to `legacy/`.
 
-### 📖 User Guides
+### 🔧 Module Deep Dives
 
-- **[Terminal Mission Control (CLI)](Terminal-Mission-Control)** — Command-line interface
-- **[Web Dashboard Guide](Web-Dashboard-Guide)** — Real-time monitoring interface
-- **[Keyboard Teleop](Keyboard-Teleop)** — Manual control for testing
-- **[Configuration & Tuning](Configuration-and-Tuning)** — Parameter reference
-- **[Launch Files Reference](Launch-Files-Reference)** — YAML and Python launch files
-
-### 🧠 Core Concepts
-
-- **[GPS Navigation](GPS-Navigation)** — Coordinate systems and equirectangular projection
-- **[3D LIDAR Processing](3D_LIDAR_Processing)** — LiDAR Perception system explained
-- **[PID Control](PID-Control)** — Heading controller fundamentals
-- **[Differential Thrust](Differential-Thrust)** — Two-thruster control system
-- **[Kalman Filtering](Kalman-Filtering)** — State estimation and Bayesian inference
-
-### 🛠️ Advanced Features
-
-- **[Simple Anti-Stuck System (SASS)](SASS)** — Turn left until clear recovery
-- **[A* Path Planning](Astar-Path-Planning)** — Grid-based obstacle avoidance
-- **[Waypoint Skip Strategy](Waypoint-Skip-Strategy)** — Handling blocked waypoints
-- **[Obstacle Avoidance Loop](Obstacle-Avoidance-Loop)** — Continuous perception-control cycle
-- **[Hazard Zone Management](Hazard-Zone-Management)** — Pre-defined no-go areas
-
-### 🧪 Development
-
-- **[Contributing Guidelines](Contributing)** — How to contribute code
-- **[Code Review Standards](Code-Review-Standards)** — Best practices
-- **[Testing Guide](Testing-Guide)** — Unit tests and integration tests
-- **[API Reference](API-Reference)** — ROS 2 topics, services, and parameters
+- **[3D LIDAR Processing](3D_LIDAR_Processing)** — LiDAR Perception internals: temporal filtering, clustering, sector analysis
+- **[Simple Anti-Stuck System (SASS)](SASS)** — Heading Controller escape behaviour: turn toward clearer side until front is clear
 
 ### 🐛 Troubleshooting & Security
 
 - **[Common Issues](Common_Issues)** — Solutions to frequent problems
 - **[Dashboard Security](Dashboard_Security)** — Security assessment, known vulnerabilities, and mitigation recommendations
-- **[Debug Commands](Debug-Commands)** — Diagnostic tools
-- **[FAQ](FAQ)** — Frequently asked questions
-
-### 📚 References
-
-- **[ROS 2 Resources](ROS2-Resources)** — External documentation
-- **[VRX Competition](VRX-Competition)** — Competition information
-- **[Related Projects](Related-Projects)** — Similar work and inspiration
 
 ---
 
@@ -78,9 +43,10 @@ Welcome to the **AutoBoat Wiki**! This documentation provides comprehensive guid
 | Phase | Description | Status |
 |:------|:------------|:------:|
 | Phase 1 | Architecture & MVP | ✅ DONE |
-| Phase 2 | Obstacle Avoidance | ✅ DONE |
-| Phase 3 | Coverage & Search | ⏸️ Planned |
+| Phase 2 | Autonomous Navigation | ✅ DONE |
+| Phase 3 | Coverage Planning | ⏸️ Planned |
 | Phase 4 | Integration & Testing | 🔄 90% |
+| Phase 5 | Real-Hardware Deployment | 🔜 Planned |
 
 See [Board.md](https://github.com/Ghostzero00018/uvautoboat/blob/main/Board.md) for detailed milestones.
 
