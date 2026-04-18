@@ -20,7 +20,7 @@ Built on **ROS 2 Jazzy** and **Gazebo Harmonic**, the framework provides a robus
 ## Key Contributions
 
 - **AutoBoat Navigation System**: Integrated autonomous navigation with 3D LIDAR perception
-- **Modular Architecture**: Distributed nodes (Perception-Planner-Controller) for flexible deployment
+- **Modular Architecture**: Three-node pipeline (Perception-Planner-Controller) for flexible deployment
 - **Simple Anti-Stuck System**: Turn left until clear recovery with Kalman-filtered drift compensation
 - **Web Dashboard**: Real-time monitoring with visualization
 - **Waypoint Skip Strategy**: Automatic skip for blocked waypoints ensuring mission completion
@@ -30,7 +30,7 @@ Built on **ROS 2 Jazzy** and **Gazebo Harmonic**, the framework provides a robus
 
 ## Active Navigation System
 
-The **Modular (Perception–Planner–Controller)** distributed architecture is the active system:
+The **Modular (Perception–Planner–Controller)** three-node pipeline is the active system:
 
 | Node | Role | Description |
 |:-----|:-----|:------------|

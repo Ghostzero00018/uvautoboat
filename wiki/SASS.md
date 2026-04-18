@@ -26,7 +26,7 @@ The anti-stuck recovery has evolved through several iterations:
 
 ## Overview
 
-The **Simple Anti-Stuck System (SASS)** is a straightforward recovery mechanism implemented in the Heading Controller. When the boat detects it's stuck (minimal movement despite thrust), SASS executes a simple escape: **turn left until the path is clear**, then resume navigation.
+The **Simple Anti-Stuck System (SASS)** is a straightforward recovery mechanism implemented in the Heading Controller. When the boat detects it's stuck (minimal movement despite thrust), SASS executes a simple escape: **turn toward whichever side (left or right) has more clearance** until the front is clear, then resume navigation.
 
 ---
 
@@ -34,7 +34,7 @@ The **Simple Anti-Stuck System (SASS)** is a straightforward recovery mechanism 
 
 | Feature | Description |
 |:--------|:------------|
-| **Simple Escape** | Turn left continuously until front clearance > safe distance |
+| **Simple Escape** | Turn toward the clearer side (left or right) until `front_clear > min_safe_distance` |
 | **Stuck Detection** | Monitors position movement over configurable timeout |
 | **Skip During Avoidance** | Won't trigger stuck detection while actively avoiding obstacles |
 | **Kalman Drift Compensation** | Estimates current/wind with uncertainty |
@@ -62,7 +62,7 @@ SASS triggers when the boat is **stuck**:
 
 ## Escape Strategy
 
-SASS uses a simple, reliable approach — **turn left until clear**:
+SASS uses a simple, reliable approach — **turn toward the clearer side until the front is clear**:
 
 ```text
 1. Stuck Detection:
@@ -72,8 +72,8 @@ SASS uses a simple, reliable approach — **turn left until clear**:
    - Trigger escape mode
 
 2. Simple Escape:
-   - Apply differential thrust: Left=-450, Right=+450
-   - Turn left continuously
+   - Compare left_clear vs right_clear sector distances
+   - Apply differential thrust biased toward whichever side has more room
    - Check front_clear distance every iteration
    - Exit when front_clear > min_safe_distance
 
@@ -130,7 +130,7 @@ When SASS alone cannot free the boat, the waypoint skip strategy takes over:
 
 | Situation | Action |
 |:----------|:-------|
-| Stuck detected | SASS: turn left until clear |
+| Stuck detected | SASS: turn toward clearer side until clear |
 | Still blocked after 45s | The Planner skips to next waypoint |
 | Go Home mode blocked 15s | The Planner inserts detour waypoint |
 
@@ -164,14 +164,14 @@ Two complementary strategies for handling blocked waypoints:
 
 | Strategy | Trigger | Action |
 |:---------|:--------|:-------|
-| **SASS** | Boat physically stuck (no movement) | Turn left until clear |
+| **SASS** | Boat physically stuck (no movement) | Turn toward clearer side until clear |
 | **Waypoint Skip** | Obstacle blocking for 45s | Skip to next waypoint |
 
 **Typical Flow:**
 
 1. Boat approaches waypoint
 2. Obstacle detected → slow down and navigate around
-3. If stuck → SASS activates (Phase 0-3)
+3. If stuck → SASS activates (single-phase: rotate toward clearer side)
 4. If still can't reach after 45s → Skip waypoint
 5. Continue to next waypoint
 
@@ -182,27 +182,23 @@ Two complementary strategies for handling blocked waypoints:
 **Scenario**: Boat gets wedged between two buoys
 
 ```text
-T=0s:   Boat stuck between buoys
-        → SASS activates
+T=0s:    Boat stuck between buoys
+         LEFT: 2.1m | RIGHT: 5.8m | FRONT: 1.4m
+         movement over last 12s: 0.4m (< 1.0m threshold)
+         → SASS activates, escape_mode = True
 
-T=0-2s: PHASE 0 (PROBE)
-        LEFT: 6m | RIGHT: 5m | BACK: 12m
-        → Choose BACK
+T=0-Xs:  Single-phase rotation
+         right_clear > left_clear → bias differential thrust to the RIGHT
+         (boat rotates toward the clearer side)
+         front_clear still below min_safe_distance → keep rotating
 
-T=2-6s: PHASE 1 (REVERSE)
-        Backing away from buoys...
-
-T=6-10s: PHASE 2 (TURN)
-         Rotating toward open water...
-
-T=10-12s: PHASE 3 (FORWARD)
-          Testing forward movement...
-          → Success! Movement resumed
-
-T=12s:  SASS SUCCESS
-        → Add no-go zone at (25.3, 15.7)
-        → Resume normal navigation
+T=Xs:    front_clear > min_safe_distance
+         → escape_mode = False, PID integral reset
+         → Resume normal navigation toward current waypoint
 ```
+
+If the boat fails to clear after repeated attempts (`consecutive_stuck_count`
+increases), the waypoint skip strategy kicks in — see next section.
 
 ---
 
@@ -210,22 +206,24 @@ T=12s:  SASS SUCCESS
 
 ### Dashboard Panel
 
-The dashboard shows:
+The dashboard's **Anti-Stuck Status** panel shows the fields published on
+`/control/anti_stuck_status`:
 
-- **Current phase** (Probe/Reverse/Turn/Forward)
-- **No-go zones** (red circles on map)
-- **Drift vector** (arrow showing current/wind)
-- **Kalman uncertainty** (color-coded confidence)
+- **Escape mode** (boolean — is SASS currently active?)
+- **Front clearance** (metres — front sector distance from LiDAR Perception)
+- **Consecutive attempts** (how many times SASS has fired without resolving)
+- **Drift vector** (estimated currents/wind in m/s, from the 2D Kalman filter)
+- **Drift uncertainty** (colour-coded confidence in the drift estimate)
 
 ### Terminal Output
 
+Typical log sequence when SASS triggers and resolves:
+
 ```text
-🚨 BLOQUÉ! | STUCK! - No progress for 3.2s (moved only 0.3m)
-🔧 SASS PHASE 0: PROBE - Scanning escape directions...
-🔧 SASS PHASE 1: REVERSE - Backing away from obstacle
-🔧 SASS PHASE 2: TURN - Rotating RIGHT (clearer side)
-🔧 SASS PHASE 3: FORWARD - Testing escape with drift compensation
-✅ SASS SUCCESS: Escaped! No-go zone added at (X, Y)
+🚨 STUCK! Simple escape (Attempt 1)
+(front: 1.4m L: 2.1m R: 5.8m)
+...
+✅ Path clear - escape complete
 ```
 
 ### ROS 2 Topic
@@ -238,16 +236,13 @@ ros2 topic echo /control/anti_stuck_status
 
 ```json
 {
-  "active": true,
-  "phase": 2,
-  "phase_name": "TURN",
-  "elapsed": 7.5,
-  "no_go_zones": [
-    {"x": 23.4, "y": 12.1, "radius": 8.0},
-    {"x": 45.2, "y": -8.3, "radius": 8.0}
-  ],
-  "drift_estimate": {"vx": 0.12, "vy": -0.05},
-  "drift_uncertainty": 0.03
+  "is_stuck": true,
+  "escape_mode": true,
+  "consecutive_attempts": 1,
+  "front_clear": 1.4,
+  "drift_vector": [0.12, -0.05],
+  "drift_uncertainty": [0.03, 0.04],
+  "drift_kalman_gain": [0.12, 0.10]
 }
 ```
 
@@ -268,20 +263,20 @@ ros2 param set /heading_controller stuck_threshold 1.0
 
 ### SASS Doesn't Escape
 
-**Cause**: Escape duration too short for complex obstacles
+**Cause**: Both sector clearances are tight and the boat can't find a clear direction
 
-**Solution**: Severity calculation should automatically extend duration, but you can manually increase:
+**Solution**:
 
 - Check if `perception_critical_distance` / `min_safe_distance` are appropriate for your obstacles
-- Verify drift compensation is working (check Kalman uncertainty)
+- Verify drift compensation is working (check Kalman uncertainty on the dashboard)
+- If SASS exits back to idle without clearing, `consecutive_stuck_count` will climb and the Planner will request a waypoint skip after repeated attempts
 
 **Cause**: Boat getting stuck repeatedly in obstacle-dense areas
 
 **Solution**:
 
-- Enable A* path planning to avoid obstacle fields
-- Reduce `no_go_zone_radius` if zones overlap too much
-- Use waypoint skip strategy to move past difficult areas
+- Enable A* detour planning (`astar_enabled: true`, default) so the Planner routes around the obstacle cluster rather than relying on SASS to escape it
+- Use the waypoint skip strategy (automatic after the 45 s `waypoint_skip_timeout`) to move past difficult areas
 
 ---
 
