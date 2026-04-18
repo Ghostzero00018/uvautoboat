@@ -94,8 +94,8 @@ SASS uses a **2D Kalman filter** to estimate environmental drift (currents, wind
 ```python
 x = [drift_x, drift_y]    # State estimate (m/s)
 P = uncertainty           # Covariance matrix (confidence)
-Q = 0.001                 # Process noise (drift changes slowly)
-R = 0.1                   # Measurement noise (GPS/IMU error)
+Q = 0.01                  # Process noise (drift changes slowly)
+R = 0.5                   # Measurement noise (GPS/IMU error)
 ```
 
 ### Update Cycle

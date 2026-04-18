@@ -11,7 +11,7 @@ Complete guide to installing AutoBoat and its dependencies.
 | OS | Ubuntu 24.04 LTS | Ubuntu 24.04 LTS |
 | RAM | 8 GB | 16 GB |
 | Storage | 40 GB | 60 GB |
-| Python | 3.10+ | 3.12 |
+| Python | 3.10+ | 3.10+ |
 | GPU | Integrated | Dedicated (for Gazebo) |
 
 ---
