@@ -47,26 +47,32 @@
                     <div class="info-item">
                         <span class="label">State | État:</span>
                         <span id="state" class="value">-</span>
+                        <span class="info-tooltip" title="Current planner state: IDLE / WAYPOINTS_PREVIEW / READY / DRIVING / PAUSED / FINISHED / EMERGENCY_STOP / JOYSTICK">ℹ️</span>
                     </div>
                     <div class="info-item">
                         <span class="label">Waypoint:</span>
                         <span id="waypoint" class="value">-</span>
+                        <span class="info-tooltip" title="Current waypoint index / total waypoints">ℹ️</span>
                     </div>
                     <div class="info-item">
                         <span class="label">Distance:</span>
                         <span id="distance" class="value">-</span>
+                        <span class="info-tooltip" title="Straight-line distance to the current target waypoint (m)">ℹ️</span>
                     </div>
                     <div class="info-item">
                         <span class="label">Blocked:</span>
                         <span id="blocked-reason" class="value">None</span>
+                        <span class="info-tooltip" title="Why the planner is blocked from advancing (obstacle, critical distance, etc.) — 'None' when free to proceed">ℹ️</span>
                     </div>
                     <div class="info-item">
                         <span class="label">Stop Override:</span>
                         <span id="stop-override" class="value">Inactive</span>
+                        <span class="info-tooltip" title="STOP latch status — stays LATCHED after an emergency stop until explicitly cleared">ℹ️</span>
                     </div>
                     <div class="info-item">
                         <span class="label">Detour:</span>
                         <span id="detour-badge" class="value badge" style="display:none;background:#f39c12;color:#fff;">Active</span>
+                        <span class="info-tooltip" title="Lateral detour waypoint is currently inserted (after prolonged block)">ℹ️</span>
                     </div>
                 </div>
             </div>
@@ -78,18 +84,22 @@
                     <div class="info-item">
                         <span class="label">Latitude:</span>
                         <span id="latitude" class="value">-</span>
+                        <span class="info-tooltip" title="GPS latitude in decimal degrees (WGS 84)">ℹ️</span>
                     </div>
                     <div class="info-item">
                         <span class="label">Longitude:</span>
                         <span id="longitude" class="value">-</span>
+                        <span class="info-tooltip" title="GPS longitude in decimal degrees (WGS 84)">ℹ️</span>
                     </div>
                     <div class="info-item">
                         <span class="label">Local X:</span>
                         <span id="local-x" class="value">-</span>
+                        <span class="info-tooltip" title="Eastward offset from the mission start point (m)">ℹ️</span>
                     </div>
                     <div class="info-item">
                         <span class="label">Local Y:</span>
                         <span id="local-y" class="value">-</span>
+                        <span class="info-tooltip" title="Northward offset from the mission start point (m)">ℹ️</span>
                     </div>
                 </div>
             </div>
@@ -101,34 +111,42 @@
                     <div class="info-item">
                         <span class="label">Min Distance:</span>
                         <span id="min-obstacle" class="value">-</span>
+                        <span class="info-tooltip" title="Distance to the closest LiDAR cluster in any sector (m)">ℹ️</span>
                     </div>
                     <div class="info-item">
                         <span class="label">Urgency:</span>
                         <span id="urgency" class="value">0%</span>
+                        <span class="info-tooltip" title="Distance-weighted threat level (0–100%). 100% = obstacle within critical distance">ℹ️</span>
                     </div>
                     <div class="info-item">
                         <span class="label">Front Clear:</span>
                         <span id="front-clear" class="value">-</span>
+                        <span class="info-tooltip" title="Nearest obstacle distance in the front sector (m)">ℹ️</span>
                     </div>
                     <div class="info-item">
                         <span class="label">Best Gap:</span>
                         <span id="best-gap" class="value">-</span>
+                        <span class="info-tooltip" title="Direction (deg, 0°=forward) of the widest navigable gap from the VFH polar histogram">ℹ️</span>
                     </div>
                     <div class="info-item">
                         <span class="label">Left Clear:</span>
                         <span id="left-clear" class="value">-</span>
+                        <span class="info-tooltip" title="Nearest obstacle distance in the left sector (m)">ℹ️</span>
                     </div>
                     <div class="info-item">
                         <span class="label">Obstacles:</span>
                         <span id="obstacle-count" class="value">0</span>
+                        <span class="info-tooltip" title="Number of distinct obstacle clusters detected this scan (after water-plane removal and temporal filter)">ℹ️</span>
                     </div>
                     <div class="info-item">
                         <span class="label">Right Clear:</span>
                         <span id="right-clear" class="value">-</span>
+                        <span class="info-tooltip" title="Nearest obstacle distance in the right sector (m)">ℹ️</span>
                     </div>
                     <div class="info-item full-width">
                         <span class="label">Status:</span>
                         <span id="obstacle-status" class="value badge">Clear</span>
+                        <span class="info-tooltip" title="Overall perception verdict: Clear / Warning / Critical (critical triggers reverse)">ℹ️</span>
                     </div>
                 </div>
             </div>
@@ -140,10 +158,12 @@
                     <div class="info-item">
                         <span class="label">Left | Gauche:</span>
                         <span id="left-thrust" class="value">-</span>
+                        <span class="info-tooltip" title="Left thruster command (thrust units, signed; negative = reverse)">ℹ️</span>
                     </div>
                     <div class="info-item">
                         <span class="label">Right | Droit:</span>
                         <span id="right-thrust" class="value">-</span>
+                        <span class="info-tooltip" title="Right thruster command (thrust units, signed; negative = reverse)">ℹ️</span>
                     </div>
                 </div>
                 <div class="thrust-bars">
@@ -169,26 +189,32 @@
                     <div class="info-item full-width">
                         <span class="label">Status | Statut:</span>
                         <span id="stuck-status" class="value badge clear">Normal</span>
+                        <span class="info-tooltip" title="Overall stuck status. Triggers after ~12 s stationary with <1 m movement (tunable)">ℹ️</span>
                     </div>
                     <div class="info-item">
                         <span class="label">Action:</span>
                         <span id="escape-phase" class="value">Idle | En attente</span>
+                        <span class="info-tooltip" title="Current escape action: IDLE / TURNING LEFT / TURNING RIGHT">ℹ️</span>
                     </div>
                     <div class="info-item">
                         <span class="label">Direction:</span>
-                        <span id="best-direction" class="value">← LEFT | Gauche (fixed)</span>
+                        <span id="best-direction" class="value">— Idle | Attente</span>
+                        <span class="info-tooltip" title="Side the controller is currently turning toward during an escape (or Idle when not escaping)">ℹ️</span>
                     </div>
                     <div class="info-item">
                         <span class="label">Front Clear | Avant:</span>
                         <span id="probe-results" class="value">-</span>
+                        <span class="info-tooltip" title="Front-sector clearance measured by LiDAR (m). Escape ends once this exceeds the safe distance">ℹ️</span>
                     </div>
                     <div class="info-item">
                         <span class="label">Drift | Dérive:</span>
                         <span id="drift-vector" class="value">Minimal</span>
+                        <span class="info-tooltip" title="Kalman-estimated environmental drift vector (m/s @ heading). 'Minimal' below 0.1 m/s">ℹ️</span>
                     </div>
                     <div class="info-item">
                         <span class="label">Kalman σ:</span>
-                        <span id="drift-uncertainty" class="value" title="Kalman filter uncertainty">-</span>
+                        <span id="drift-uncertainty" class="value">-</span>
+                        <span class="info-tooltip" title="Kalman filter uncertainty (P diagonal). <0.05 high confidence, >0.15 low confidence">ℹ️</span>
                     </div>
                 </div>
             </div>
@@ -480,16 +506,16 @@
                         <h3>Speed | Vitesse</h3>
                         <div class="config-item">
                             <label for="cfg-base-speed">
-                                Base:
-                                <span class="info-tooltip" title="Normal cruising speed (thrust units) | Vitesse de croisière normale">ℹ️</span>
+                                Base (thrust, 100–2000):
+                                <span class="info-tooltip" title="Normal cruising thrust (unitless, per-thruster). YAML default 400. | Poussée de croisière normale">ℹ️</span>
                             </label>
                             <input type="number" id="cfg-base-speed" min="100" max="2000" step="any" value="400" data-default="400">
                             <span class="value-display"></span>
                         </div>
                         <div class="config-item">
                             <label for="cfg-max-speed">
-                                Max:
-                                <span class="info-tooltip" title="Maximum speed during navigation (thrust units) | Vitesse maximale">ℹ️</span>
+                                Max (thrust, 100–2000):
+                                <span class="info-tooltip" title="Maximum thrust during navigation (unitless, per-thruster). YAML default 800. | Poussée maximale">ℹ️</span>
                             </label>
                             <input type="number" id="cfg-max-speed" min="100" max="2000" step="any" value="800" data-default="800">
                             <span class="value-display"></span>
@@ -761,7 +787,7 @@
                                         <label for="controller-use-vfh">Use VFH Bias:</label>
                                         <select id="controller-use-vfh">
                                             <option value="true">Enabled</option>
-                                            <option value="false">Disabled</option>
+                                            <option value="false" selected>Disabled</option>
                                         </select>
                                         <span class="info-tooltip" title="Bias steering toward the best gap from the VFH polar histogram. Enable for dense buoy fields or pier clutter; off for open water | Activer le biais VFH">ℹ️</span>
                                         <span class="param-hint">Gap navigation</span>

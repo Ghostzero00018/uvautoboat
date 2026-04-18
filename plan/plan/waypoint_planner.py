@@ -1311,6 +1311,7 @@ class WaypointPlanner(Node):
             'mission_armed': self.mission_armed,
             'gps_ready': gps_ready,
             'detour_active': self.detour_waypoint_inserted,
+            'go_home_mode': self.go_home_mode,
             'joystick_override': self.state == "JOYSTICK",
             'blocked_reason': self.blocked_reason
         })

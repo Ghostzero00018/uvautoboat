@@ -45,6 +45,7 @@ let missionState = {
     waypointsGenerated: false,
     missionArmed: false,
     joystickOverride: false,
+    goHomeMode: false,
     waypoints: [],
     currentWaypoint: 0,
     totalWaypoints: 0,
@@ -454,7 +455,8 @@ function subscribeToTopics() {
             distance_to_waypoint: data.distance_to_target || 0,
             local_x: data.position ? data.position[0] : 0,
             local_y: data.position ? data.position[1] : 0,
-            detour_active: data.detour_active || false
+            detour_active: data.detour_active || false,
+            go_home_mode: data.go_home_mode || false
         });
     });
 
@@ -736,6 +738,7 @@ function updateMissionStatus(data) {
     currentState.mission.state = data.state || 'UNKNOWN';
     currentState.mission.waypoint = data.waypoint || 0;
     missionState.blockedReason = data.blocked_reason || '';
+    missionState.goHomeMode = data.go_home_mode || false;
     // Detour badge
     updateDetourBadge(!!data.detour_active);
     // Guard against missing distance fields to avoid crashes on refresh
@@ -901,7 +904,10 @@ function updateAntiStuckStatus(data) {
     }
 
     if (escapePhase) {
-        const phaseText = data.escape_mode ? 'TURNING LEFT | Virage Gauche' : 'IDLE | Attente';
+        const dir = data.escape_direction || 'IDLE';
+        const phaseText = data.escape_mode
+            ? (dir === 'RIGHT' ? 'TURNING RIGHT | Virage Droite' : 'TURNING LEFT | Virage Gauche')
+            : 'IDLE | Attente';
         if (_prevAntiStuck.phase !== phaseText) {
             escapePhase.textContent = phaseText;
             escapePhase.className = data.escape_mode ? 'value active' : 'value';
@@ -954,10 +960,17 @@ function updateAntiStuckStatus(data) {
         probeResults.textContent = `Front: ${data.front_clear ? data.front_clear.toFixed(1) : 'N/A'}m`;
     }
 
-    // Update best direction indicator if exists
+    // Update best direction indicator — reflects the side the controller is currently turning toward
     const bestDirection = document.getElementById('best-direction');
     if (bestDirection) {
-        bestDirection.textContent = '← LEFT | Gauche (fixed)';
+        const dir = data.escape_direction || 'IDLE';
+        const dirText = dir === 'LEFT'  ? '← LEFT | Gauche'
+                      : dir === 'RIGHT' ? 'RIGHT → | Droite'
+                      :                   '— Idle | Attente';
+        if (_prevAntiStuck.direction !== dirText) {
+            bestDirection.textContent = dirText;
+            _prevAntiStuck.direction = dirText;
+        }
     }
 
     // Add terminal log for stuck events
@@ -1880,6 +1893,7 @@ function updateMissionControlUI(state) {
     missionState.gpsReady = (state.gps_ready !== undefined) ? state.gps_ready : connected;
     missionState.missionArmed = state.mission_armed || false;
     missionState.joystickOverride = state.joystick_override || false;
+    missionState.goHomeMode = state.go_home_mode || false;
     missionState.totalWaypoints = (state.total_waypoints !== undefined)
         ? state.total_waypoints
         : missionState.totalWaypoints;
@@ -2312,7 +2326,7 @@ const TUNING_PRESETS = {
             obstacle_slow_factor: 0.4,
             bank_slow_factor: 0.3,
             avoid_diff_gain: 18.0,
-            use_vfh_bias: true,
+            use_vfh_bias: false,
             max_avoidance_turn_deg: 45.0,
             stuck_timeout: 4.0,
             stuck_threshold: 0.8,
@@ -3029,7 +3043,10 @@ function updateMissionProgress() {
 
         // Calculate progress percentage
         const waypointProgress = (missionState.currentWaypoint / missionState.totalWaypoints) * 100;
-        const progressPct = waypointProgress.toFixed(0) + '%';
+        // Go Home overrides the waypoint counter (single synthetic home waypoint → would read 100%)
+        const progressPct = missionState.goHomeMode
+            ? '🏠 Returning Home'
+            : waypointProgress.toFixed(0) + '%';
 
         // Update progress bar
         const progressBar = document.getElementById('mission-progress-bar');
@@ -3049,7 +3066,9 @@ function updateMissionProgress() {
         }
 
         // Update waypoint count
-        const wpText = `${missionState.currentWaypoint}/${missionState.totalWaypoints}`;
+        const wpText = missionState.goHomeMode
+            ? 'Return trip'
+            : `${missionState.currentWaypoint}/${missionState.totalWaypoints}`;
         if (_prevProgress.wp !== wpText) {
             document.getElementById('progress-waypoints').textContent = wpText;
             _prevProgress.wp = wpText;

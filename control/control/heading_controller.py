@@ -296,6 +296,7 @@ class HeadingController(Node):
         self.escape_mode = False
         self.escape_start_time = None
         self.consecutive_stuck_count = 0
+        self.escape_direction = 'IDLE'  # 'IDLE' | 'LEFT' | 'RIGHT' — published for dashboard
 
         # Drift compensation with Kalman filter
         self.position_history = []
@@ -498,6 +499,7 @@ class HeadingController(Node):
         """Reset all escape/stuck/avoidance state variables"""
         self.escape_mode = False
         self.is_stuck = False
+        self.escape_direction = 'IDLE'
         self.avoidance_mode = False
         self.reverse_start_time = None
         self.integral_error = 0.0
@@ -1032,12 +1034,14 @@ class HeadingController(Node):
                         self.consecutive_stuck_count = 0
                         self.is_stuck = False
                         self.escape_mode = False
+                        self.escape_direction = 'IDLE'
             else:
                 # Boat is making progress - reset stuck state
                 if self.is_stuck:
                     self.get_logger().info("✅ Unstuck! Resuming navigation")
                 self.is_stuck = False
                 self.escape_mode = False
+                self.escape_direction = 'IDLE'
 
                 # Reset consecutive stuck counter if making good progress
                 if distance_moved > self.stuck_threshold * 2.0:
@@ -1061,6 +1065,7 @@ class HeadingController(Node):
             self.get_logger().info("✅ Path clear - escape complete")
             self.escape_mode = False
             self.is_stuck = False
+            self.escape_direction = 'IDLE'
             self.integral_error = 0.0
             self.previous_error = 0.0
             self.last_position = (self.current_x, self.current_y)
@@ -1074,6 +1079,7 @@ class HeadingController(Node):
             else:
                 self.send_thrust(-turn_power, turn_power)
                 direction = "LEFT"
+            self.escape_direction = direction
             self.get_logger().info(
                 f"🔄 Escape turning {direction} "
                 f"(front: {self.front_clear:.1f}m L: {self.left_clear:.1f}m R: {self.right_clear:.1f}m)",
@@ -1137,6 +1143,7 @@ class HeadingController(Node):
         msg.data = json.dumps({
             'is_stuck': self.is_stuck,
             'escape_mode': self.escape_mode,
+            'escape_direction': self.escape_direction,
             'consecutive_attempts': self.consecutive_stuck_count,
             'front_clear': round(self.front_clear, 1),
             'drift_vector': [round(self.drift_vector[0], 3), round(self.drift_vector[1], 3)],
