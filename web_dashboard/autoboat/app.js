@@ -94,6 +94,7 @@ window.addEventListener('load', () => {
     initTerminal();
     initWorldBanner();
     initCollapsiblePanels();
+    initOnboarding();
     addLog('Dashboard initialized', 'info');
 });
 
@@ -104,6 +105,189 @@ function initCollapsiblePanels() {
             h.parentElement.classList.toggle('collapsed');
         });
     });
+}
+
+// ========== FIRST-RUN ONBOARDING TOUR ==========
+// Bump the storage key suffix (e.g. _v2) if the steps change meaningfully — returning users
+// will then see the refreshed tour once, rather than silently missing new guidance.
+const ONBOARDING_STORAGE_KEY = 'autoboat_tutorial_seen_v1';
+
+const ONBOARDING_STEPS = [
+    {
+        targetSelector: null,
+        title: 'Welcome to AutoBoat',
+        subtitle: 'Bienvenue — 5-step tour',
+        body: 'This is the control dashboard for the AutoBoat autonomous USV. The next four steps walk through a full mission: generate a route, confirm it, start navigation, and where to halt the boat if something goes wrong. You can replay this tour anytime from the ? button in the header.'
+    },
+    {
+        targetSelector: '#btn-generate-waypoints',
+        title: 'Step 1 — Generate a route',
+        subtitle: 'Étape 1 — Générer',
+        body: 'Pick the number of lanes, lane length and width, then select a Navigation Mode (Simple Lawnmower, Runtime A*, or Hybrid). Clicking Generate Waypoints sends the parameters to the planner, which returns a lawnmower sweep pattern and draws it on the trajectory map.'
+    },
+    {
+        targetSelector: '#btn-confirm-waypoints',
+        title: 'Step 2 — Review and confirm',
+        subtitle: 'Étape 2 — Confirmer',
+        body: 'The generated waypoints appear on the map. Inspect the route for clashes with the shoreline or obstacles. Click Confirm to lock the plan, or Cancel to regenerate with different settings. The mission state transitions from WAITING_CONFIRM to READY once confirmed.'
+    },
+    {
+        targetSelector: '#btn-start-mission',
+        title: 'Step 3 — Start the mission',
+        subtitle: 'Étape 3 — Démarrer',
+        body: 'The heading controller begins tracking the first waypoint at the configured PID gains. During the run, obstacle clearance, VFH gap direction, Kalman-estimated drift, and waypoint progress are all live on the panels below. STOP pauses the mission; RESUME continues; RETURN HOME heads back to spawn.'
+    },
+    {
+        targetSelector: '#header-estop-badge',
+        title: 'Emergency Stop',
+        subtitle: 'Arrêt d\'urgence — always accessible',
+        body: 'This header shortcut (and the big red button in Mission Control) immediately cuts thrust. After use, click Resume to recover the mission or Reset to clear the plan. The ℹ️ icons on every panel explain the individual fields — no need to memorise them up front.'
+    }
+];
+
+const onboardingState = {
+    currentStep: 0,
+    backdrop: null,
+    card: null,
+    highlightedEl: null,
+    keyHandler: null
+};
+
+function initOnboarding() {
+    const helpBtn = document.getElementById('header-help-btn');
+    if (helpBtn) {
+        helpBtn.addEventListener('click', () => startOnboarding(true));
+    }
+
+    // Auto-launch for first-time visitors, after the rest of the dashboard has settled
+    if (!localStorage.getItem(ONBOARDING_STORAGE_KEY)) {
+        setTimeout(() => startOnboarding(false), 900);
+    }
+}
+
+function startOnboarding(isReplay) {
+    if (onboardingState.backdrop) return;  // already running
+
+    onboardingState.currentStep = 0;
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'onboarding-backdrop';
+    document.body.appendChild(backdrop);
+    onboardingState.backdrop = backdrop;
+
+    const card = document.createElement('div');
+    card.className = 'onboarding-card';
+    card.setAttribute('role', 'dialog');
+    card.setAttribute('aria-live', 'polite');
+    document.body.appendChild(card);
+    onboardingState.card = card;
+
+    onboardingState.keyHandler = (e) => {
+        if (e.key === 'Escape') { endOnboarding(false); }
+        else if (e.key === 'ArrowRight' || e.key === 'Enter') { nextOnboardingStep(); }
+        else if (e.key === 'ArrowLeft') { prevOnboardingStep(); }
+    };
+    document.addEventListener('keydown', onboardingState.keyHandler);
+
+    renderOnboardingStep();
+    if (!isReplay) {
+        addLog('Welcome tour started — click Skip to dismiss', 'info');
+    }
+}
+
+function renderOnboardingStep() {
+    const step = ONBOARDING_STEPS[onboardingState.currentStep];
+    const total = ONBOARDING_STEPS.length;
+    const idx = onboardingState.currentStep;
+    const isFirst = idx === 0;
+    const isLast = idx === total - 1;
+
+    clearOnboardingHighlight();
+
+    if (step.targetSelector) {
+        const target = document.querySelector(step.targetSelector);
+        if (target) {
+            target.classList.add('onboarding-highlight');
+            onboardingState.highlightedEl = target;
+            target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }
+
+    const backLabel = 'Back | Retour';
+    const skipLabel = 'Skip | Passer';
+    const nextLabel = isLast ? 'Finish | Terminer' : 'Next | Suivant';
+    const nextClass = isLast ? 'finish' : 'next';
+
+    onboardingState.card.innerHTML = `
+        <div class="onboarding-progress">Step ${idx + 1} of ${total}</div>
+        <h3>${escapeOnboardingText(step.title)}</h3>
+        <span class="onboarding-subtitle">${escapeOnboardingText(step.subtitle)}</span>
+        <p>${escapeOnboardingText(step.body)}</p>
+        <div class="onboarding-buttons">
+            <button class="onboarding-btn back" ${isFirst ? 'style="visibility: hidden;"' : ''}>${backLabel}</button>
+            <div style="display: flex; gap: 8px;">
+                <button class="onboarding-btn skip">${skipLabel}</button>
+                <button class="onboarding-btn ${nextClass}">${nextLabel}</button>
+            </div>
+        </div>
+    `;
+
+    onboardingState.card.querySelector('.onboarding-btn.back').addEventListener('click', prevOnboardingStep);
+    onboardingState.card.querySelector('.onboarding-btn.skip').addEventListener('click', () => endOnboarding(false));
+    onboardingState.card.querySelector(`.onboarding-btn.${nextClass}`).addEventListener('click', nextOnboardingStep);
+}
+
+function nextOnboardingStep() {
+    if (!onboardingState.card) return;
+    if (onboardingState.currentStep >= ONBOARDING_STEPS.length - 1) {
+        endOnboarding(true);
+    } else {
+        onboardingState.currentStep += 1;
+        renderOnboardingStep();
+    }
+}
+
+function prevOnboardingStep() {
+    if (!onboardingState.card || onboardingState.currentStep === 0) return;
+    onboardingState.currentStep -= 1;
+    renderOnboardingStep();
+}
+
+function endOnboarding(completed) {
+    clearOnboardingHighlight();
+    if (onboardingState.backdrop) {
+        onboardingState.backdrop.remove();
+        onboardingState.backdrop = null;
+    }
+    if (onboardingState.card) {
+        onboardingState.card.remove();
+        onboardingState.card = null;
+    }
+    if (onboardingState.keyHandler) {
+        document.removeEventListener('keydown', onboardingState.keyHandler);
+        onboardingState.keyHandler = null;
+    }
+    try {
+        localStorage.setItem(ONBOARDING_STORAGE_KEY, '1');
+    } catch (e) {
+        // localStorage may be unavailable in private mode — tour will simply replay next session
+    }
+    if (completed) {
+        addLog('Welcome tour completed', 'info');
+    }
+}
+
+function clearOnboardingHighlight() {
+    if (onboardingState.highlightedEl) {
+        onboardingState.highlightedEl.classList.remove('onboarding-highlight');
+        onboardingState.highlightedEl = null;
+    }
+}
+
+function escapeOnboardingText(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
 }
 
 // World banner marquee
