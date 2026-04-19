@@ -468,6 +468,40 @@ h2 {
     }
 }
 
+.header-estop-badge {
+    background: linear-gradient(135deg, #ff0000, #cc0000);
+    color: #fff;
+    font-weight: 700;
+    font-size: 0.85rem;
+    letter-spacing: 0.5px;
+    padding: 6px 12px;
+    border: 2px solid #ff0000;
+    border-radius: 6px;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(255, 0, 0, 0.4);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.header-estop-badge:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 12px rgba(255, 0, 0, 0.6);
+    background: linear-gradient(135deg, #ff3333, #ff0000);
+}
+
+.header-estop-badge:active {
+    transform: scale(0.97);
+}
+
+.header-estop-badge.latched {
+    animation: emergency-btn-glow 1.2s ease-in-out infinite;
+}
+
+.mission-btn.emergency.estop-flash {
+    outline: 4px solid #ffeb3b;
+    outline-offset: 4px;
+    animation: emergency-btn-glow 0.4s ease-in-out 3;
+}
+
 @keyframes emergency-flash {
     0%, 100% {
         background: linear-gradient(135deg, #ff0000, #cc0000);
@@ -1496,6 +1530,25 @@ h2 {
 .config-btn.apply:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+}
+
+.apply-waiting-label {
+    display: none;
+    margin: 6px 0 0;
+    font-size: 0.85em;
+    color: #b45309;
+    font-style: italic;
+    font-weight: 500;
+}
+
+.waiting-sync + .apply-waiting-label,
+.tuning-btn-row .waiting-sync + .apply-waiting-label {
+    display: inline-block;
+}
+
+.tuning-btn-row .apply-waiting-label {
+    flex-basis: 100%;
+    margin-left: 2px;
 }
 
 .tuning-btn-row {

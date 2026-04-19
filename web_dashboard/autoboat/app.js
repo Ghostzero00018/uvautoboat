@@ -790,7 +790,8 @@ function updateMissionStatus(data) {
     
     document.getElementById('state').textContent = (data.state || 'UNKNOWN').replace(/_/g, ' ');
     document.getElementById('waypoint').textContent = `${data.waypoint || 0}/${data.total_waypoints || missionState.totalWaypoints || 0}`;
-    document.getElementById('distance').textContent = distance.toFixed(1) + 'm';
+    const distanceValue = Number(currentState.mission.distance);
+    document.getElementById('distance').textContent = (Number.isFinite(distanceValue) ? distanceValue : 0).toFixed(1) + 'm';
     const blockedEl = document.getElementById('blocked-reason');
     if (blockedEl) {
         const reason = missionState.blockedReason || 'None';
@@ -1291,6 +1292,7 @@ function updateConfigFromROS(data) {
         document.querySelectorAll('.apply-btn[disabled], .config-btn.apply[disabled]').forEach(btn => {
             btn.disabled = false;
             btn.title = '';
+            btn.classList.remove('waiting-sync');
         });
     }
     
@@ -1745,17 +1747,34 @@ function initMissionControl() {
         emergencyStop();
     });
 
-    // Joystick Override
+    // Joystick Override — debounced to prevent rapid toggling during command latency
     document.getElementById('btn-joystick-enable').addEventListener('click', () => {
-        sendMissionCommand('joystick_enable');
-        setTimeout(() => alert('🎮 Joystick Mode Enabled\n\nAutonomous control disabled. Use keyboard teleop.\n\n🎮 Mode Joystick Activé\n\nContrôle autonome désactivé. Utilisez le téléopération.'), 100);
+        debounceCommand(() => {
+            sendMissionCommand('joystick_enable');
+            setTimeout(() => alert('🎮 Joystick Mode Enabled\n\nAutonomous control disabled. Use keyboard teleop.\n\n🎮 Mode Joystick Activé\n\nContrôle autonome désactivé. Utilisez le téléopération.'), 100);
+        });
     });
 
     document.getElementById('btn-joystick-disable').addEventListener('click', () => {
-        sendMissionCommand('joystick_disable');
-        setTimeout(() => alert('🤖 Autonomous Mode Restored\n\nJoystick override disabled.\n\n🤖 Mode Autonome Restauré\n\nJoystick désactivé.'), 100);
+        debounceCommand(() => {
+            sendMissionCommand('joystick_disable');
+            setTimeout(() => alert('🤖 Autonomous Mode Restored\n\nJoystick override disabled.\n\n🤖 Mode Autonome Restauré\n\nJoystick désactivé.'), 100);
+        });
     });
-    
+
+    // Header E-Stop shortcut — scrolls to and flashes the real Emergency Stop button
+    const headerEstop = document.getElementById('header-estop-badge');
+    if (headerEstop) {
+        headerEstop.addEventListener('click', () => {
+            const target = document.getElementById('btn-emergency-stop');
+            if (!target) return;
+            target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            target.focus({ preventScroll: true });
+            target.classList.add('estop-flash');
+            setTimeout(() => target.classList.remove('estop-flash'), 1200);
+        });
+    }
+
     if (DEBUG_MODE) console.log('Mission control initialized');
 }
 
@@ -1961,7 +1980,13 @@ function updateMissionControlUI(state) {
         stateBadge.textContent = stateLabels[missionState.state] || missionState.state;
         stateBadge.className = `mission-badge ${missionState.state.toLowerCase()}`;
     }
-    
+
+    // Header E-Stop badge pulses while the latch is active
+    const headerEstopBadge = document.getElementById('header-estop-badge');
+    if (headerEstopBadge) {
+        headerEstopBadge.classList.toggle('latched', missionState.state === 'EMERGENCY_STOP');
+    }
+
     // Update button states based on mission state
     const btnGenerate = document.getElementById('btn-generate-waypoints');
     const btnConfirm = document.getElementById('btn-confirm-waypoints');
@@ -1969,17 +1994,22 @@ function updateMissionControlUI(state) {
     const btnStart = document.getElementById('btn-start-mission');
     const btnStop = document.getElementById('btn-stop-mission');
     const btnResume = document.getElementById('btn-resume-mission');
+    const btnReset = document.getElementById('btn-reset-mission');
     const btnJoyEnable = document.getElementById('btn-joystick-enable');
     const btnJoyDisable = document.getElementById('btn-joystick-disable');
     const btnGoHome = document.getElementById('btn-go-home');
     const hasWaypoints = (missionState.totalWaypoints || 0) > 0 || (missionState.waypoints && missionState.waypoints.length > 0);
     const resumableStates = ['PAUSED', 'EMERGENCY_STOP'];
     const awaitingDecision = ['WAITING_CONFIRM', 'WAYPOINTS_PREVIEW'].includes(missionState.state);
-    
+
     // Reset all buttons
-    [btnGenerate, btnConfirm, btnCancel, btnStart, btnStop, btnResume, btnGoHome, btnJoyEnable, btnJoyDisable].forEach(btn => {
+    [btnGenerate, btnConfirm, btnCancel, btnStart, btnStop, btnResume, btnReset, btnGoHome, btnJoyEnable, btnJoyDisable].forEach(btn => {
         if (btn) btn.disabled = true;
     });
+
+    // Reset is safe in most states, but NOT during the Confirm/Cancel window —
+    // racing a clear_mission against a pending confirm_waypoints leaves the planner inconsistent
+    if (btnReset) btnReset.disabled = !connected || awaitingDecision;
     
     // STOP/joystick toggles only when not awaiting confirm/cancel
     if (!awaitingDecision) {
@@ -2666,8 +2696,9 @@ function showFeedback(message, type = 'info') {
     toast.textContent = message;
     toastContainer.appendChild(toast);
 
-    // Auto-remove after delay
-    const duration = type === 'error' || type === 'warning' ? 5000 : 3000;
+    // Auto-remove after delay — errors need extra time to read (range messages, rejections)
+    const TOAST_DURATIONS = { error: 6500, warning: 5500, success: 3000, info: 3500 };
+    const duration = TOAST_DURATIONS[type] || 3500;
     setTimeout(() => {
         toast.style.animation = 'slideOut 0.3s ease-in';
         setTimeout(() => {
