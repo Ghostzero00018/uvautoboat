@@ -246,6 +246,87 @@ Follow-up question from the user: is VFH "banned" in the ROS node? Answer: no, i
 
 ---
 
+## 7. Preset, VFH, and Dashboard Polish (2026-04-19, afternoon/evening)
+
+After the dashboard UX overhaul landed, the day continued with three audits that each produced a focused cleanup commit, plus a last round of Go Home work driven by live-testing feedback.
+
+### 7.1 Preset system audit + 3 cleanup fixes
+
+Traced the 4-preset wiring end-to-end across `app.js` (`TUNING_PRESETS`, `applyPreset`, `updatePerceptionInputs`, `updateControllerInputs`), `index.html` (4 buttons), `style_merged.css` (4 colour variants), and the three ROS subscribers that consume the bus (`/planning/set_config`). Findings:
+
+- All 4 presets have consistent key coverage (12 perception, 14 controller). VFH state matches the 3-on / Open-Water-off design after the morning fix.
+- **10 perception and 2 controller `declare_parameter` defaults in Python had drifted** from the YAML defaults. YAML overrides at launch so no runtime drift, but reading Python alone was misleading (e.g., `min_height=-15.0` in Python vs `-1.2` in YAML).
+- **4 controller keys identical across all 4 presets AND identical to YAML defaults** (`avoid_diff_gain=18.0`, `reverse_timeout=4.0`, `turn_deadband_deg=0.5`, `max_avoidance_turn_deg=45.0`). Dead weight on every preset apply.
+- **`autoboat_cli.py` still had a `--mode vostok1` argparse branch** that published to `/vostok1/*` topics with only a warn message. Fully unused — the legacy integrated system's topics are long gone.
+
+Applied in `d7dd869 refactor: Sync Python defaults, trim preset keys, drop CLI legacy mode`:
+
+- Synced 10 perception + 2 controller `declare_parameter` defaults to match YAML.
+- Trimmed 4 dead-weight keys from all 4 presets; added `!== undefined` guards in `updateControllerInputs()` so presets that omit a key no longer write `undefined` into the HTML input.
+- Removed `--mode` argparse flag, `MissionCLI.__init__(mode=...)` parameter, all `self.mode == 'modular'` branches, and legacy topic fallbacks from `autoboat_cli.py`.
+
+Verified live: `ros2 run plan autoboat_cli --help` no longer lists `--mode`; `--mode vostok1 status` rejects with "invalid choice: 'vostok1'"; `ros2 param get /lidar_perception_node min_height` returns `-1.2` (YAML, unchanged at runtime); Buoy Field preset apply shows "12 Perception + 10 Controller" (down from 12/14); `ros2 param get /heading_controller_node avoid_diff_gain` stays at `18.0` after a preset click (dead-weight key no longer pushed).
+
+### 7.2 VFH status audit + 4 improvements
+
+Asked whether VFH was being actively used after the morning's preset click flipped `use_vfh_bias=true`. Answer: yes. Full trace of the VFH path:
+
+- **Perception** (`lidar_perception.py`): `_calculate_polar_histogram()` (left/right free-space bias), `_calculate_vfh_steering()` (72 bins × 5° over 360°, blocks within 15 m, 10° clearance inflation, picks free bin closest to `target_angle`). Outputs `polar_bias` and `vfh_gap` in `/perception/obstacle_info`.
+- **Controller** (`heading_controller.py:864-905`): gates on `use_vfh_bias AND (obstacle_detected OR force_avoid_active)`, fuses LR-clearance + VFH-direction + polar-histogram into a differential bias, clamps to `±avoid_diff_gain`, applies as differential thrust.
+
+Four improvement opportunities identified; user approved all four.
+
+Applied in `62b4320 refactor: Target-aware VFH with tunable params and loosened polar gate`:
+
+1. **Target-aware VFH.** Previously `_calculate_vfh_steering()` was called with `target_angle=0.0` (hardcoded forward). For a boat 45° off-waypoint, VFH picked the forwardmost clear gap, not the toward-waypoint clear gap. Fix: controller publishes its computed `angle_error` (body-frame radians) on a new `/control/heading_error` topic (`Float64`) once per control tick, after the PID step. Perception subscribes, stores `self.body_heading_error`, passes it as `target_angle`. VFH now aims at the actual intended direction, not blindly forward. World-frame vs body-frame was the subtle gotcha — perception's existing `self.target_angle` (from `/planning/current_target`) is world-frame compass bearing; the controller's `angle_error` is body-frame, which is what VFH needs.
+2. **4 new ROS params.** Exposed `vfh_block_distance` (15.0), `vfh_bin_width_deg` (5.0), `vfh_clearance_deg` (10.0), `vfh_polar_power` (1.0) as `declare_parameter` + YAML + `_load_parameters()` + used in the VFH / polar functions. YAML defaults match the prior hardcoded values → no runtime behaviour change at launch, but the knobs are now field-tunable per scenario without a code change.
+3. **Legacy comment cleanup.** Stripped `# from all_in_one_stack` and `# for BURAN compatibility` references from `lidar_perception.py` headers / status JSON comments; replaced with neutral descriptions.
+4. **Polar-bias gate loosened.** Was `if self.force_avoid_active and self.urgency > 0.2:`. Outer gate already requires obstacle detection, so the extra `force_avoid_active` made the wide-field signal almost never fire. Changed to `if self.urgency > 0.2:` — polar histogram now contributes whenever urgency is meaningful during any obstacle encounter.
+
+Verified live: `ros2 topic list` shows `/control/heading_error`; `ros2 topic echo /control/heading_error --once` returned `data: 0.054 rad` (~3° off-course) during an active mission, confirming the body-frame error is flowing through; `ros2 param list /lidar_perception_node | grep vfh` lists the 4 new params with their YAML values.
+
+### 7.3 Vostok1-era breadcrumb cleanup
+
+Same commit `62b4320` (chore sub-subject). Audited the active code tree (excluding the frozen `legacy/` tree and the append-only `working_diary/`) for residual OKO / SPUTNIK / BURAN / Vostok1 references. Kept the legitimate historical references — `wiki/Node_Naming_Refactor_Plan.md` (entire file IS the rename record), `wiki/Glossary.md`'s "Legacy Module Code-Names" section, Board milestone entries, README's historical pointer to Glossary. Removed 5 true-stale items:
+
+- `web_dashboard/autoboat/style_merged.css:1` — header comment `/* Vostok1 Web Dashboard ... */` → `/* AutoBoat Web Dashboard ... */`
+- `plan/plan/lidar_perception.py:5, 50` — `(formerly OKO)` and `(formerly OKO — "Œil", early-warning satellite reference)` breadcrumbs stripped
+- `plan/plan/waypoint_planner.py:5` — `(formerly SPUTNIK)` stripped
+- `control/control/heading_controller.py:5` — `(formerly BURAN)` stripped
+- `wiki/Node_Naming_Refactor_Plan.md:107` — stale grep-claim about "outside this file and the Glossary historical note" tightened to "outside this file" (the Glossary no longer contains the literal `oko_perception_node` string, only the short-form `OKO`).
+
+### 7.4 Go Home progress bar — from "stuck at 100%" to real fill
+
+Live retest of the morning's Go Home label fix exposed two more bugs, both in `web_dashboard/autoboat/app.js`:
+
+**Bug A — 1 Hz race between two subscribers.** `/planning/mission_status` (~5 Hz) and `/planning/config` (1 Hz) both wrote to `missionState.currentWaypoint` / `missionState.goHomeMode` / `missionState.totalWaypoints`. `mission_status` carries these fields; `config` does not. `updateMissionControlUI()` used `|| 0` / `|| false` defaults, so every config tick clobbered the good values set by `updateMissionStatus`. Flicker visible as the progress bar briefly dropping to 0% / mission-mode labels reverting. Fix: guard the three assignments with explicit `!== undefined` checks, matching the pattern `totalWaypoints` already used.
+
+**Bug B — bar always full during Go Home.** Root cause: bar width was computed from `currentWaypoint / totalWaypoints = 1 / 1 = 100%` during Go Home (synthetic single home waypoint). The morning fix had only relabelled the *text*; the *fill* stayed at 100% regardless of distance. User correctly noted: "the boat can be far from spawn but the bar is full."
+
+Rebuilt the Go Home progress as distance-based:
+
+- New `missionState.goHomeInitialDistance` field, captured from the first `distance_to_target > 0.5 m` observed while `goHomeMode` is true. Reset when `goHomeMode` flips false.
+- Render: `waypointProgress = (1 − currentDistance / initialDistance) × 100`, clamped to `[0, 100]`.
+- Moved the `🏠 Returning Home` label from the bar's inner text to the waypoint-count slot, so the bar text can now show a live percentage as it fills.
+
+**Bonus latent bug surfaced during the fix.** `currentState.mission.distance` had been stuck at `0.0 m` for the whole mission history. The mission_status subscriber cherry-picked `data.distance_to_target` (a field that doesn't exist on that topic), and the separate `/planning/current_target` subscriber — which IS the authoritative source of `distance_to_target` — was parsing the JSON and throwing it away. Fix: rewired `/planning/current_target` callback to store `currentState.mission.distance` + do the Go Home initial-distance capture there; removed the bogus cherry-pick; `updateMissionStatus()` no longer clobbers distance when the field is absent. Side effect: the Mission Status panel's "Distance:" display now works for every mission, not only Go Home.
+
+Pending commit: `fix: Dashboard Go Home progress + mission-state race + distance wiring`.
+
+### 7.5 Stale `ros2` daemon — diagnosis-only, worth logging
+
+During the Go Home retest, a side terminal's `ros2 node list` returned empty while the boat was clearly responding to dashboard commands. Same symptom from the dashboard's Health Check panel (`[FAIL] Cannot reach ROS 2 graph`). Ruled out env-var mismatch — `/proc/<pid>/environ` of `lidar_perception_node` and the side shell both showed identical `ROS_DOMAIN_ID=56`, `ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET`. Root cause: stale per-user `ros2 daemon` cache. Fixed with:
+
+```bash
+ros2 daemon stop
+ros2 daemon start
+ros2 node list
+```
+
+No code change this round — adding to the operational knowledge base. Worth remembering for Phase 5: if the daemon is restarted or its socket gets wedged while nodes are already up, the CLI and the dashboard's health check will report an empty graph even though the nodes are fine. Longer-term fix candidate: `ros2 daemon stop` prime at the top of the health check subprocess, or an empty-state message in the dashboard panel suggesting the daemon restart recipe.
+
+---
+
 ## Commit trail
 
 2026-04-18 (all pushed to `main`):
@@ -264,7 +345,13 @@ d36d0bf docs: Trim out-of-place bullet in Common_Issues; reword 2026-04-17 diary
 ```text
 ee4bbcc docs: Fix stale Kalman params, health-check count, Python version
 d7f7cf5 fix: Dashboard Go Home label, escape direction, VFH default, tooltips
-<pending> docs: Expand 18-04 diary to cover 19-04 — fact-check and dashboard UX
+e58dc15 docs: Expand 18-04 diary to cover 19-04 fact-check and dashboard UX
+5c04de6 docs: Correct numbering in the 2026-04-19 diary entries for clarity
+fbc8f89 docs: Expand 18-04 diary to cover 19-04 fact-check and dashboard UX
+d7dd869 refactor: Sync Python defaults, trim preset keys, drop CLI legacy mode
+62b4320 refactor: Target-aware VFH with tunable params and loosened polar gate; chore: Strip Vostok1-era breadcrumbs from active code
+<pending> fix: Dashboard Go Home progress + mission-state race + distance wiring
+<pending> docs: Append 2026-04-19 afternoon work (preset/VFH/Vostok1/Go Home) to diary
 ```
 
 On the wiki repo (separate `uvautoboat.wiki.git`):
@@ -296,3 +383,5 @@ New items surfaced on 2026-04-19:
 
 1. **Dashboard controller-param ROS-sync gap**: observed during VFH debugging that there is no sync path from the `heading_controller` node's parameter state back to the Controller Tuning panel. Users toggling a preset change the ROS state, but the dashboard's display of that state is driven only by its own input fields, never re-read from the controller. If the controller rejects a value (server-side validation), the dashboard's display will silently drift from reality. Not urgent — flag as future-iteration cleanup.
 2. **Optional "VFH Live" status badge**: one-line indicator in the status column showing whether VFH is currently biasing steering (distinct from the tuning-panel toggle). Only if someone gets confused again about whether it's on. Ticket-sized, trivially skippable.
+3. **`ros2 daemon` cache staleness as an ops gotcha**: the dashboard Health Check panel (and any side `ros2 node list`) will silently report an empty graph if the local per-user `ros2 daemon` goes stale, even while the nodes are healthy and the boat responds to commands. Recovery is `ros2 daemon stop && ros2 daemon start`. Worth adding either a prime at the top of the health check subprocess or an empty-state hint on the dashboard panel; likely to bite again on the Pi 5 in Phase 5. Low priority but easy to miss.
+4. **VFH tuning sweep once on hardware**: the four new `vfh_*` ROS params (`vfh_block_distance`, `vfh_bin_width_deg`, `vfh_clearance_deg`, `vfh_polar_power`) are currently at values tuned for the VRX LiDAR. When the real LiDAR model is known during Phase 5, do a short scan-width and bin-count sweep to match the new sensor's angular resolution.

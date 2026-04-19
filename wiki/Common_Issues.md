@@ -597,6 +597,48 @@ ros2 run plan autoboat --ros-args --log-level debug
 
 ---
 
+### `ros2 node list` Empty / Health Check "Cannot Reach ROS 2 Graph"
+
+**Symptoms**:
+
+- `ros2 node list` in a side terminal returns empty.
+- The dashboard's Health Check panel aborts with `[FAIL] Cannot reach ROS 2 graph — is the simulation running?`.
+- **But** the boat actively responds to commands from the dashboard, so the ROS 2 graph is genuinely alive — only the CLI view is blind.
+
+**Root cause**: the local per-user `ros2 daemon` cache has gone stale. Any CLI call that queries the daemon (including the Health Check subprocess) returns an empty graph until the daemon is restarted.
+
+**Diagnosis** (rule out env-var mismatch first):
+
+```bash
+# Env of a running launcher-spawned node:
+cat /proc/$(pgrep -f lidar_perception_node | head -1)/environ 2>/dev/null | tr '\0' '\n' | grep -E '^(ROS|RMW|FASTRTPS)' | sort
+
+# Env of your current shell:
+env | grep -E '^(ROS|RMW|FASTRTPS)' | sort
+```
+
+If the two outputs match (`ROS_DOMAIN_ID`, `ROS_AUTOMATIC_DISCOVERY_RANGE`, etc.), the shell is correctly configured and the daemon is the culprit.
+
+**Solution**:
+
+```bash
+ros2 daemon stop
+ros2 daemon start
+ros2 node list
+```
+
+After the restart, both the side CLI and the dashboard Health Check panel see the full graph again.
+
+**Alternative one-shot check** (bypasses the daemon entirely):
+
+```bash
+ros2 node list --no-daemon
+```
+
+Returns a direct-discovery snapshot without the daemon cache. Typically a smaller set than the daemon's accumulated view, but useful to confirm nodes are actually alive when you suspect the daemon is the problem.
+
+---
+
 ### Cannot Kill Processes
 
 **Symptoms**: `Ctrl+C` doesn't stop nodes
