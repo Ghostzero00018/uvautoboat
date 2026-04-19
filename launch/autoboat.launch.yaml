@@ -94,6 +94,15 @@ launch:
       value: 0.32       # Balance water rejection vs dropouts
     - name: velocity_history_size
       value: 5          # Frames for velocity estimation (v2.0: detect moving obstacles)
+    # VFH / polar histogram tuning — only applies when use_vfh_bias is true on the controller
+    - name: vfh_block_distance
+      value: 15.0       # Distance at which a VFH bin is marked blocked (m)
+    - name: vfh_bin_width_deg
+      value: 5.0        # Angular bin width (deg) — smaller = finer histogram, slower compute
+    - name: vfh_clearance_deg
+      value: 10.0       # Inflation around blocked bins (deg) — safety margin
+    - name: vfh_polar_power
+      value: 1.0        # Distance weighting exponent for polar histogram (1.0 = linear)
 
 # ============================================================================
 # Waypoint Planner Node (GPS Waypoint Navigation)

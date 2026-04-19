@@ -104,7 +104,7 @@ The original plan proposed a v3.0/v3.1 deprecation cycle with shim files, dual-p
 | Use `perception_*` for renamed parameters (not `lidar_*`) | Sensor-agnostic: if camera perception is added later, `perception_min_safe_distance` still makes sense. |
 | Rename `Vostok1` → `AutoBoat` | Aligns system branding with the repository name `uvautoboat`. |
 | Rename `/sputnik/*` topics → `/planning/*` | Aligns with existing `/planning/path`, `/planning/waypoints` topics already in use. |
-| Rename documentation fully | Half-renamed docs are worse than fully old or fully new. `grep "oko_perception_node"` now returns zero outside this file and the Glossary historical note. |
+| Rename documentation fully | Half-renamed docs are worse than fully old or fully new. `grep "oko_perception_node"` now returns zero outside this file. |
 | Retain old names in `wiki/Glossary.md` | The "Legacy Module Code-Names (pre-v3.0)" section preserves historical context for anyone reading old commits or logs. |
 
 ---

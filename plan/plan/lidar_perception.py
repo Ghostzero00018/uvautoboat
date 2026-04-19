@@ -2,7 +2,7 @@
 """
 LiDAR Perception - 3D LiDAR Point Cloud Processing (Enhanced v2.0)
 
-Module: LiDAR Perception (formerly OKO)
+Module: LiDAR Perception
 Role:   Processes 3D LiDAR point clouds and publishes obstacle information.
 See also: Waypoint Planner (Planning) and Heading Controller (Control)
 
@@ -42,12 +42,12 @@ import numpy as np
 from collections import deque
 
 from sensor_msgs.msg import PointCloud2
-from std_msgs.msg import String
+from std_msgs.msg import String, Float64
 
 
 class LidarPerception(Node):
     """
-    LiDAR Perception (formerly OKO — "Œil", early-warning satellite reference)
+    LiDAR Perception — 3D LiDAR obstacle detection and classification.
     Système de perception et détection d'obstacles
 
     Enhanced with temporal filtering, clustering, and velocity estimation.
@@ -93,6 +93,12 @@ class LidarPerception(Node):
         self.declare_parameter('water_plane_threshold', 0.32) # Balance water rejection vs dropouts
         self.declare_parameter('velocity_history_size', 5)    # Reduced: faster velocity estimate
 
+        # VFH / polar histogram tuning (opt-in via use_vfh_bias on controller)
+        self.declare_parameter('vfh_block_distance', 15.0)    # Distance at which a bin is marked blocked (m)
+        self.declare_parameter('vfh_bin_width_deg', 5.0)      # Angular bin width (degrees) — smaller = finer
+        self.declare_parameter('vfh_clearance_deg', 10.0)     # Inflation around blocked bins (degrees)
+        self.declare_parameter('vfh_polar_power', 1.0)        # Distance weighting exponent for polar histogram
+
         # Load initial parameter values
         self._load_parameters()
 
@@ -136,9 +142,11 @@ class LidarPerception(Node):
         self.obstacle_tracks = {}  # {id: deque of (x, y, timestamp)}
         self.obstacle_velocities = {}  # {id: (vx, vy)}
 
-        # 7. Advanced steering techniques (from all_in_one_stack)
+        # 7. Advanced steering state (polar histogram + VFH)
         self.polar_bias = 0.0  # Left/right balance [-1:turn right, 0:balanced, +1:turn left]
         self.vfh_steer = 0.0   # VFH steering angle (radians)
+        # Body-frame heading error from controller (radians) — used as VFH target direction
+        self.body_heading_error = 0.0
 
         # --- SUBSCRIBER ---
         self.create_subscription(
@@ -161,6 +169,14 @@ class LidarPerception(Node):
             String,
             '/planning/set_config',
             self.config_callback,
+            10
+        )
+
+        # Subscribe to controller heading error for target-aware VFH
+        self.create_subscription(
+            Float64,
+            '/control/heading_error',
+            self._heading_error_callback,
             10
         )
 
@@ -208,6 +224,12 @@ class LidarPerception(Node):
         self.water_plane_threshold = self.get_parameter('water_plane_threshold').value
         self.velocity_history_size = self.get_parameter('velocity_history_size').value
 
+        # VFH tuning
+        self.vfh_block_distance = self.get_parameter('vfh_block_distance').value
+        self.vfh_bin_width_deg = self.get_parameter('vfh_bin_width_deg').value
+        self.vfh_clearance_deg = self.get_parameter('vfh_clearance_deg').value
+        self.vfh_polar_power = self.get_parameter('vfh_polar_power').value
+
     def parameter_callback(self, params):
         """Called when parameters are changed via set_parameters service (DYNAMIC UPDATES)"""
         for param in params:
@@ -240,6 +262,10 @@ class LidarPerception(Node):
                 break  # Only reload once per callback
 
         return SetParametersResult(successful=True)
+
+    def _heading_error_callback(self, msg):
+        """Cache the controller's body-frame heading error for VFH targeting."""
+        self.body_heading_error = float(msg.data)
 
     def target_callback(self, msg):
         """Update target direction for adaptive sectors"""
@@ -412,11 +438,13 @@ class LidarPerception(Node):
         # 6. Velocity estimation - track clusters over time
         self._update_obstacle_tracks(self.clusters, current_time)
 
-        # POLAR HISTOGRAM: Calculate left/right balance (from all_in_one_stack)
+        # POLAR HISTOGRAM: weighted left/right free-space balance
         self.polar_bias = self._calculate_polar_histogram(points_array)
 
+        # VFH STEERING aimed at the controller's current waypoint direction (body frame)
+
         # VFH STEERING: Find best steering direction through gaps
-        self.vfh_steer = self._calculate_vfh_steering(points_array, target_angle=0.0)
+        self.vfh_steer = self._calculate_vfh_steering(points_array, target_angle=self.body_heading_error)
 
         # 1. Temporal filtering for obstacle detection
         raw_detected = raw_min_distance < self.min_safe_distance
@@ -548,9 +576,9 @@ class LidarPerception(Node):
 
     def _calculate_polar_histogram(self, points):
         """
-        POLAR HISTOGRAM (from all_in_one_stack technique)
-        Calculate weighted left/right free space balance
-        Returns: bias in [-1.0 (turn right), 0.0 (balanced), +1.0 (turn left)]
+        POLAR HISTOGRAM — weighted left/right free-space balance.
+        Returns bias in [-1.0 (turn right), 0.0 (balanced), +1.0 (turn left)].
+        Weighting exponent is tunable via the `vfh_polar_power` ROS parameter.
         """
         if len(points) < 10:
             return 0.0
@@ -559,8 +587,7 @@ class LidarPerception(Node):
         distances = points[:, 3]
 
         # Weight: distance^power (higher power = prefer far space)
-        power = 1.0  # Linear weighting (tunable)
-        weights = distances ** power
+        weights = distances ** self.vfh_polar_power
 
         left_score = np.sum(weights[angles > 0.0])
         right_score = np.sum(weights[angles < 0.0])
@@ -575,19 +602,25 @@ class LidarPerception(Node):
 
     def _calculate_vfh_steering(self, points, target_angle=0.0):
         """
-        VECTOR FIELD HISTOGRAM (VFH) - from all_in_one_stack
-        Find best steering direction through gaps
-        Returns: steering angle (radians) or None if no gap found
+        VECTOR FIELD HISTOGRAM (VFH) — find best steering direction through gaps.
+
+        target_angle (radians, body frame) is the direction VFH tries to steer
+        toward; the returned steering angle is the free bin nearest to it.
+        Bin width, block distance, and clearance inflation are all tunable via
+        the `vfh_bin_width_deg`, `vfh_block_distance`, and `vfh_clearance_deg`
+        ROS parameters.
+
+        Returns: steering angle (radians) or None if no gap found.
         """
         if len(points) < 10:
             return None
 
-        # Bin parameters
-        bin_width_deg = 5.0  # 5° bins = 72 sectors
+        # Bin parameters (tunable)
+        bin_width_deg = float(self.vfh_bin_width_deg)
         bin_rad = math.radians(bin_width_deg)
-        num_bins = int(360 / bin_width_deg)
+        num_bins = max(1, int(round(360.0 / bin_width_deg)))
         blocked = [False] * num_bins
-        block_dist = 15.0  # Obstacle threshold distance
+        block_dist = float(self.vfh_block_distance)
 
         # Mark blocked bins
         angles = np.arctan2(points[:, 1], points[:, 0])
@@ -600,7 +633,7 @@ class LidarPerception(Node):
                     blocked[bin_idx] = True
 
         # Inflate blocked bins by clearance (safety margin)
-        clearance_bins = int(math.ceil(math.radians(10.0) / bin_rad))  # 10° clearance
+        clearance_bins = int(math.ceil(math.radians(float(self.vfh_clearance_deg)) / bin_rad))
         if clearance_bins > 0:
             blocked_inflated = blocked[:]
             for i, is_blocked in enumerate(blocked):
@@ -803,7 +836,7 @@ class LidarPerception(Node):
                     'speed': round(speed, 2)
                 })
         
-        # Calculate best_gap for BURAN compatibility (direction in degrees, width in degrees)
+        # best_gap for controller consumption (direction in degrees, width in degrees)
         best_gap = None
         if self.gaps:
             best = max(self.gaps, key=lambda g: g['width'])
@@ -813,7 +846,7 @@ class LidarPerception(Node):
                 'distance': float(round(best['distance'], 1))
             }
 
-        # VFH-style gap from steer suggestion (for BURAN compatibility)
+        # VFH-style gap from steer suggestion (consumed by heading controller)
         vfh_gap = None
         if self.vfh_steer is not None:
             vfh_gap = {
@@ -830,7 +863,7 @@ class LidarPerception(Node):
             'left_clear': float(round(self.left_clear, 2)) if math.isfinite(self.left_clear) else 999.9,
             'right_clear': float(round(self.right_clear, 2)) if math.isfinite(self.right_clear) else 999.9,
             'is_critical': bool(self.min_obstacle_distance < self.critical_distance),
-            # BURAN-compatible fields
+            # Controller-consumed fields
             'urgency': float(round(self.overall_urgency, 3)),
             'obstacle_count': int(len(self.clusters)),
             'best_gap': best_gap,
@@ -844,7 +877,7 @@ class LidarPerception(Node):
             'moving_obstacles': moving_obstacles,
             'water_plane_z': float(round(self.water_plane_z, 2)) if self.water_plane_z else None,
             'temporal_confidence': float(len(self.detection_history) / self.temporal_history_size),
-            # Advanced steering techniques (from all_in_one_stack)
+            # Advanced steering signals (polar histogram + VFH)
             'polar_bias': float(round(self.polar_bias, 3)),  # [-1:right, 0:balanced, +1:left]
             'vfh_steer_deg': float(round(math.degrees(self.vfh_steer), 1)) if self.vfh_steer is not None else None,
             'vfh_gap': vfh_gap,

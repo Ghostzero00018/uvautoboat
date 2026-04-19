@@ -2,7 +2,7 @@
 """
 Waypoint Planner - GPS Waypoint Navigation Planning
 
-Module: Waypoint Planner (formerly SPUTNIK)
+Module: Waypoint Planner
 Role:   Generates waypoints, manages mission state, and publishes navigation targets.
 See also: LiDAR Perception (Perception) and Heading Controller (Control)
 

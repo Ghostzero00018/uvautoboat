@@ -2,7 +2,7 @@
 """
 Heading Controller - Motion Control System
 
-Module: Heading Controller (formerly BURAN)
+Module: Heading Controller
 Role:   PID heading control, thruster output, and obstacle avoidance maneuvers.
 See also: LiDAR Perception (Perception) and Waypoint Planner (Planning)
 
@@ -369,6 +369,8 @@ class HeadingController(Node):
         # Request waypoint skip (after multiple stuck attempts)
         self.pub_skip_request = self.create_publisher(String, '/planning/skip_waypoint', 10)
         self.pub_param_ranges = self.create_publisher(String, '/control/param_ranges', 10)
+        # Body-frame heading error published for perception's target-aware VFH
+        self.pub_heading_error = self.create_publisher(Float64, '/control/heading_error', 10)
 
         # Control loop at 20Hz
         self.create_timer(self.dt, self.control_loop)
@@ -803,6 +805,9 @@ class HeadingController(Node):
             target_angle = math.atan2(dy, dx)
             angle_error = self.normalize_angle(target_angle - self.current_yaw)
 
+        # Publish body-frame heading error for perception's target-aware VFH
+        self.pub_heading_error.publish(Float64(data=float(angle_error)))
+
         # PID Controller with anti-windup
         self.integral_error += angle_error * self.dt
         self.integral_error = max(-INTEGRAL_LIMIT, min(INTEGRAL_LIMIT, self.integral_error))
@@ -886,7 +891,9 @@ class HeadingController(Node):
 
                 # 3. Polar histogram bias (free space comparison) gated by urgency
                 # polar_bias: +1 = left wide open, -1 = right wide open
-                if self.force_avoid_active and self.urgency > 0.2:
+                # Outer gate already requires (obstacle_detected OR force_avoid_active); here
+                # we only need urgency to be meaningful to let the wide-field signal contribute.
+                if self.urgency > 0.2:
                     diff_bias += self.polar_bias * self.avoid_diff_gain
 
                 # Clamp bias to avoid over-steering
