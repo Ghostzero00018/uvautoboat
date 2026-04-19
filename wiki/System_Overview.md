@@ -21,7 +21,7 @@ Built on **ROS 2 Jazzy** and **Gazebo Harmonic**, the framework provides a robus
 
 - **AutoBoat Navigation System**: Integrated autonomous navigation with 3D LIDAR perception
 - **Modular Architecture**: Three-node pipeline (Perception-Planner-Controller) for flexible deployment
-- **Simple Anti-Stuck System**: Turn left until clear recovery with Kalman-filtered drift compensation
+- **Simple Anti-Stuck System**: Turn toward clearer side until path clear, with Kalman-filtered drift compensation
 - **Web Dashboard**: Real-time monitoring with visualization
 - **Waypoint Skip Strategy**: Automatic skip for blocked waypoints ensuring mission completion
 - **A* Path Planning**: Grid-based pathfinding for obstacle avoidance
@@ -133,9 +133,8 @@ The **Modular (Perception–Planner–Controller)** three-node pipeline is the a
 
 ### Simple Anti-Stuck System
 
-- Turn left until clear recovery strategy
-- Multi-direction scanning before escape
-- No-go zone memory (up to 20 zones)
+- Turn toward clearer side (left or right, chosen by live sector-clearance comparison) until the path is clear
+- Single-phase escape — no probe/reverse/turn sub-states
 - Kalman filter for drift estimation
 - Adaptive duration based on severity
 

@@ -56,7 +56,7 @@ The project implements a hierarchical autonomous navigation framework combining 
 
 - **AutoBoat Navigation System**: Integrated autonomous navigation with 3D LIDAR perception
 - **Modular Architecture**: Three-node pipeline (Perception-Planner-Controller) for flexible deployment
-- **Simple Anti-Stuck System**: Turn left until clear recovery with Kalman-filtered drift compensation
+- **Simple Anti-Stuck System**: Turn toward clearer side until path clear, with Kalman-filtered drift compensation
 - **Web Dashboard**: Real-time monitoring with better visualization
 - **Waypoint Skip Strategy**: Automatic skip for blocked waypoints ensuring mission completion
 - **A-star Planner Algorithm**: Whenever path is blocked by an obstacle thanks to this algorithm it will avoid it
@@ -189,7 +189,7 @@ uvautoboat/
 | **Autonomous Navigation** | GPS-based waypoint following with lawnmower pattern generation |
 | **3D Obstacle Avoidance** | Real-time LIDAR point cloud processing with sector analysis |
 | **Differential Thrust** | Independent left/right thruster control with PID heading |
-| **Simple Anti-Stuck** | Turn left until clear with Kalman drift compensation |
+| **Simple Anti-Stuck** | Turn toward clearer side until path clear, with Kalman drift compensation |
 | **Waypoint Skip** | Automatic skip for blocked waypoints after timeout |
 | **Go Home** | One-click return to spawn point |
 | **Web Dashboard** | Real-time monitoring with interactive map |
@@ -537,7 +537,7 @@ Detailed ROS 2 topic connections between the modular nodes:
 │  │ (LiDAR)  │                           ────────► Planner (obstacle_callback)    │
 │  └──────────┘                                                                   │
 │       ▲                                                                         │
-│       │ /wamv/sensors/lidars/lidar_wamv/points                                  │
+│       │ /wamv/sensors/lidars/lidar_wamv_sensor/points                           │
 │                                                                                 │
 │  ┌──────────┐  /planning/current_target ──────► Controller (target_callback)     │
 │  │ Planner  │  /planning/mission_status ──────► Controller (mission_status_cb)   │
@@ -569,7 +569,9 @@ Detailed ROS 2 topic connections between the modular nodes:
 | :------ | :------- |
 | `/perception/obstacle_info` | `{obstacle_detected, min_distance, front_clear, left_clear, right_clear, is_critical}` |
 | `/planning/current_target` | `{current_position, target_waypoint, distance_to_target, waypoint_index, target_heading}` |
-| `/planning/mission_status` | `{state, current_waypoint, total_waypoints, progress_percent, elapsed_time}` |
+| `/planning/mission_status` | `{state, current_waypoint, total_waypoints, progress_percent, elapsed_time, position, mission_armed, gps_ready, detour_active, go_home_mode, joystick_override, blocked_reason}` |
+| `/control/anti_stuck_status` | `{is_stuck, escape_mode, escape_direction, consecutive_attempts, front_clear, drift_vector, drift_uncertainty, drift_kalman_gain}` |
+| `/control/heading_error` | `Float64` — body-frame heading error (radians) used by perception for target-aware VFH |
 | `/planning/detour_request` | `{type, x, y}` |
 
 ### Data Flow Diagram
@@ -679,6 +681,7 @@ The obstacle avoidance runs **continuously** - not as a one-time decision. The b
 | `/planning/config` | Current planner configuration (JSON) |
 | `/control/status` | Heading controller status (JSON) |
 | `/control/anti_stuck_status` | Anti-stuck recovery status (JSON) |
+| `/control/heading_error` | Body-frame heading error (Float64, rad) — consumed by Perception for target-aware VFH |
 | `/perception/obstacle_info` | Obstacle detection from Perception (JSON) |
 
 ---
@@ -834,20 +837,20 @@ Three independent configuration sections, each with its own Apply button:
 
 **Parameter Validation:** All numeric inputs are range-validated. Out-of-range values are rejected with an orange warning toast showing the valid range — nothing is sent to ROS until the value is corrected.
 
-**Presets:** The Perception configuration panel includes four presets (Default, Sensitive, Bank-Safe, Aggressive) for quick parameter tuning.
+**Presets:** The Tuning panel includes four presets (`Universal`, `Buoy Field`, `Pier Detect`, `Open Water`) for quick parameter tuning. Each preset rewrites ~12 perception + ~10 controller params in one click. VFH bias is enabled in three of the four presets; `Open Water` leaves it off.
 
 ---
 
 ## Simple Anti-Stuck System
 
 Simple recovery system when the boat becomes trapped or immobilized.
-The AutoBoat heading controller implements a straightforward anti-stuck strategy: **turn left until the path is clear, then resume navigation**.
+The AutoBoat heading controller implements a straightforward anti-stuck strategy: **turn toward the clearer side (left or right, based on sector clearance) until the path is clear, then resume navigation**.
 
 ### Features
 
 | Feature | Description |
 | :-------- | :------------ |
-| **Simple Escape** | Turn left continuously until front clearance > safe distance |
+| **Simple Escape** | Turn toward clearer side (left or right) until front clearance > safe distance |
 | **Stuck Detection** | Monitors position movement over configurable timeout (default 12s) |
 | **Skip During Avoidance** | Won't trigger stuck detection while actively avoiding obstacles |
 | **Kalman Drift Compensation** | Estimates current/wind with uncertainty to improve navigation |
@@ -863,8 +866,10 @@ The AutoBoat heading controller implements a straightforward anti-stuck strategy
    - Trigger escape mode
 
 2. Simple Escape:
-   - Apply differential thrust: Left=-450, Right=+450
-   - Turn left continuously
+   - Compare left_clear vs right_clear from LiDAR
+   - Apply differential thrust toward the clearer side
+     - right_clear > left_clear → Left=+450, Right=-450 (turn right)
+     - else                    → Left=-450, Right=+450 (turn left)
    - Check front_clear distance every iteration
    - Exit when front_clear > min_safe_distance
 
@@ -913,7 +918,7 @@ When the boat is physically stuck and cannot move, the controller's anti-stuck s
 
 | Attempt | Action |
 | :-------- | :------- |
-| 1st | Turn left until clear |
+| 1st | Turn toward clearer side until clear |
 | 2nd+ | Continue turning and retry approach |
 | Timeout (45s) | **Skip waypoint** and continue to next |
 
@@ -976,14 +981,6 @@ The **autoboat_cli** provides terminal-based mission control when the web dashbo
 | **All-in-One Generate** | Waypoints + PID + Speed in a single command |
 | **Interactive Shell** | Rapid command entry without retyping prefixes |
 
-### Modes
-
-| Mode | Flag | Description |
-| :----- | :----- | :------------ |
-| **Modular** | `--mode modular` (default) | Planner + Controller (active system) |
-| **Planner** | `--mode planner` | Alias for modular |
-
->
 ### Waypoint Generation
 
 ```bash
@@ -1299,6 +1296,7 @@ Lane 3: End <────────────────────┘
 | `/planning/current_target` | Current navigation target (JSON) |
 | `/planning/mission_status` | Mission state and progress (JSON) |
 | `/planning/config` | Current configuration (JSON) |
+| `/control/heading_error` | Body-frame heading error (Float64, rad) — emitted by Controller for target-aware VFH |
 
 ### Key Features
 
@@ -1308,7 +1306,7 @@ Lane 3: End <────────────────────┘
 | **3D Obstacle Avoidance** | Real-time LIDAR point cloud processing with sector analysis |
 | **A\* Path Planning** | Integrated A* algorithm dynamically plans detours around obstacle clusters and hazard zones |
 | **Hybrid Route Generation** | Pre-calculates A* paths between waypoints to avoid known static hazards |
-| **Simple Anti-Stuck** | Turn left until clear recovery maneuver (Heading Controller) |
+| **Simple Anti-Stuck** | Turn toward clearer side (bidirectional) recovery maneuver (Heading Controller) |
 | **XTE Path Correction** | "Lookahead" steering logic that actively pulls the boat back to the ideal path line |
 | **Waypoint Skip** | Automatic skip for blocked waypoints after timeout |
 | **Go Home** | One-click return to spawn point |
@@ -1336,7 +1334,7 @@ Lane 3: End <────────────────────┘
 | **Boat not moving** | Check GPS: `ros2 topic echo /wamv/sensors/gps/gps/fix --once` |
 | **Spinning in circles** | Reduce PID: `ros2 param set /heading_controller_node kp 300` |
 | **Dashboard disconnected** | See "Dashboard Connection Diagnostics" below |
-| **No obstacles detected** | Check LIDAR: `ros2 topic hz /wamv/sensors/lidars/lidar_wamv/points` |
+| **No obstacles detected** | Check LIDAR: `ros2 topic hz /wamv/sensors/lidars/lidar_wamv_sensor/points` |
 | **Critical at spawn** | Increase `min_range` to 5.0 in launch file |
 | **Build failures** | Clean: `rm -rf build install log && colcon build` |
 | **A* not finding paths** | Reduce `astar_safety_margin` or increase `astar_resolution` |
@@ -1415,7 +1413,7 @@ sudo ufw allow 8080/tcp   # web_video_server (camera)
 ros2 topic echo /wamv/sensors/gps/gps/fix --once
 
 # Check LIDAR rate
-ros2 topic hz /wamv/sensors/lidars/lidar_wamv/points
+ros2 topic hz /wamv/sensors/lidars/lidar_wamv_sensor/points
 
 # Check node running
 ros2 node list | grep -E "perception|planner|controller"

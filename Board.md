@@ -58,7 +58,7 @@
 - Modular variant: Perception + Planner + Controller three-node pipeline
 - 3D PointCloud processing (height/distance filtering)
 - Simple Anti-Stuck System
-  - Turn left until clear
+  - Turn toward clearer side (bidirectional) until path clear
   - Kalman-filtered drift compensation
   - Skip detection during obstacle avoidance
 - **Waypoint Skip Strategy** (NEW)

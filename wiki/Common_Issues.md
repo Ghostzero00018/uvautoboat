@@ -156,7 +156,7 @@ gz service -s /world/sydney_regatta/set_pose \
 
 ```bash
 # Check LIDAR data rate
-ros2 topic hz /wamv/sensors/lidars/lidar_wamv/points
+ros2 topic hz /wamv/sensors/lidars/lidar_wamv_sensor/points
 
 # Check obstacle info
 ros2 topic echo /perception/obstacle_info
@@ -569,7 +569,7 @@ sudo ufw allow 8080/tcp
   value: true
 ```
 
-**Note**: Currently only `control/launch/all_in_one_bringup.launch.py` sets this. Other launches may need updates.
+**Note**: `launch/autoboat.launch.yaml` sets this for all active nodes in the modular pipeline.
 
 ---
 

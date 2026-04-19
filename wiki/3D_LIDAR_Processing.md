@@ -410,10 +410,10 @@ min_range: 7.0  # Ignore nearby dock
 
 ```bash
 # Check scan rate
-ros2 topic hz /wamv/sensors/lidars/lidar_wamv/points
+ros2 topic hz /wamv/sensors/lidars/lidar_wamv_sensor/points
 
 # View raw point cloud (first scan)
-ros2 topic echo /wamv/sensors/lidars/lidar_wamv/points --once
+ros2 topic echo /wamv/sensors/lidars/lidar_wamv_sensor/points --once
 ```
 
 ### Monitor Obstacle Info
@@ -427,7 +427,7 @@ ros2 topic echo /perception/obstacle_info
 ```bash
 rviz2
 # Add PointCloud2 display
-# Topic: /wamv/sensors/lidars/lidar_wamv/points
+# Topic: /wamv/sensors/lidars/lidar_wamv_sensor/points
 # Fixed Frame: wamv/base_link
 ```
 

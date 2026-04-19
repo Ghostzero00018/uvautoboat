@@ -75,12 +75,12 @@ Then open **<http://localhost:8002>**.
 | **Mission Control**        | Generate, Confirm, Start, Stop, Resume, Emergency Stop, Go Home, Reset          |
 | **Obstacle Detection**     | Front/Left/Right clearance with urgency scores and status badge                 |
 | **Thruster Output**        | Left/Right thrust with visual bars                                              |
-| **Anti-Stuck Status**      | Escape mode, direction (LEFT), front clearance, drift vector, Kalman sigma      |
+| **Anti-Stuck Status**      | Escape mode, live direction (LEFT/RIGHT/IDLE), front clearance, drift vector, Kalman sigma |
 | **Trajectory Map**         | Interactive Leaflet map with boat position, waypoints, trajectory               |
 | **Main Configuration**     | PID gains, speed, safe distance, waypoint tolerance, A* settings                |
-| **Perception Configuration**      | 12 perception params with 4 presets (Universal, Buoy Field, Pier, Open Water)   |
+| **Perception Configuration**      | 12 perception params with 4 presets (Universal, Buoy Field, Pier Detect, Open Water) |
 | **Controller Configuration**    | 14 control params (safety distances, avoidance, anti-stuck, slew rate)          |
-| **Health Check**           | Live streaming 45-check system diagnostic with elapsed time                     |
+| **Health Check**           | Live streaming 46-check system diagnostic with elapsed time                     |
 | **System Logs**            | Timestamped, color-coded log entries                                            |
 | **ROS2 Terminal**          | Direct ROS2 command output                                                      |
 | **Camera Feed**            | MJPEG stream with configurable topic                                            |

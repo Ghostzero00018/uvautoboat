@@ -86,9 +86,20 @@ The Perception node implements a VFH-style polar histogram and publishes a `best
 1. **The default demo world is clean.** `sydney_regatta_DEFAULT` has just a few obstacles — the simpler 3-sector avoidance (Front/Left/Right clearance checks) is sufficient. VFH is designed for dense clutter (buoy fields, pier pylons, anchored boat fleets) where the structure of the *whole* obstacle field matters.
 2. **VFH can oscillate in sparse environments.** When two gaps have nearly equal width, VFH's "pick the best gap" step can jump between them frame-to-frame, causing the boat to zig-zag. The 3-sector method is monotonic: it just picks whichever side has more room, with less frame-to-frame variability.
 
-**When to enable it:** the dashboard's 4 tuning presets are named for scenarios where VFH shines — `Buoy Field`, `Pier`, `Open Water`, and `Universal`. Three of these four turn VFH on. Clicking a preset (as the operator) flips the toggle; otherwise it stays off.
+**When to enable it:** the dashboard's 4 tuning presets are named for scenarios where VFH shines — `Buoy Field`, `Pier Detect`, `Open Water`, and `Universal`. Three of these four turn VFH on (`Open Water` leaves it off). Clicking a preset (as the operator) flips the toggle; otherwise it stays off.
 
 **Limitations of VFH in any case:** it is a purely local, reactive method with no memory and no global planning. It can get trapped in local minima (dead-end corridors). That is why VFH is paired with the Planner's global lawnmower + A\* rerouting — VFH handles "how to squeeze through obstacles locally", the Planner handles "where to go overall".
+
+**Runtime tuning knobs** (exposed as ROS parameters on `lidar_perception_node`, with defaults in `launch/autoboat.launch.yaml`):
+
+| Parameter | Default | Purpose |
+|:---|:---|:---|
+| `vfh_block_distance` | 15.0 m | Distance at which a bin is marked blocked. Lowering narrows VFH's attention window to closer obstacles. |
+| `vfh_bin_width_deg` | 5.0 ° | Angular bin width. Smaller = finer histogram, more compute. Larger = coarser, faster, less sensitive to small gaps. |
+| `vfh_clearance_deg` | 10.0 ° | Inflation around blocked bins (safety margin). Increase in cluttered environments to avoid grazing obstacles. |
+| `vfh_polar_power` | 1.0 | Exponent for distance weighting in the polar histogram. `1.0` = linear; higher values prefer far-away free space more strongly. |
+
+**Target-aware VFH.** VFH's "best gap" is selected as the free bin closest to the controller's current waypoint-relative heading error (published on `/control/heading_error`, body frame), not blindly forward. This means VFH steers through clutter *toward* the waypoint rather than just picking the forwardmost clear gap.
 
 See **[Glossary: VFH](Glossary#vfh-vector-field-histogram)** for the 3-step algorithm breakdown.
 

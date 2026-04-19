@@ -238,6 +238,7 @@ ros2 topic echo /control/anti_stuck_status
 {
   "is_stuck": true,
   "escape_mode": true,
+  "escape_direction": "RIGHT",
   "consecutive_attempts": 1,
   "front_clear": 1.4,
   "drift_vector": [0.12, -0.05],
@@ -245,6 +246,8 @@ ros2 topic echo /control/anti_stuck_status
   "drift_kalman_gain": [0.12, 0.10]
 }
 ```
+
+`escape_direction` is `"LEFT"`, `"RIGHT"`, or `"IDLE"` — tracks which side the controller is currently turning toward during an active escape, based on the live comparison of `left_clear` and `right_clear`. `"IDLE"` when not escaping.
 
 ---
 
