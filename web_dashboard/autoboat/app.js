@@ -46,6 +46,9 @@ let missionState = {
     missionArmed: false,
     joystickOverride: false,
     goHomeMode: false,
+    // Snapshot of distance-to-home the moment Go Home starts, used to turn the
+    // single-waypoint return trip into a real progress bar. Reset when goHomeMode flips off.
+    goHomeInitialDistance: null,
     waypoints: [],
     currentWaypoint: 0,
     totalWaypoints: 0,
@@ -452,7 +455,8 @@ function subscribeToTopics() {
             state: data.state,
             waypoint: data.current_waypoint,
             total_waypoints: data.total_waypoints,
-            distance_to_waypoint: data.distance_to_target || 0,
+            // distance_to_target is NOT in /planning/mission_status — the
+            // /planning/current_target subscriber owns that field.
             local_x: data.position ? data.position[0] : 0,
             local_y: data.position ? data.position[1] : 0,
             detour_active: data.detour_active || false,
@@ -488,8 +492,18 @@ function subscribeToTopics() {
         try { data = JSON.parse(message.data); }
         catch (e) { if (DEBUG_MODE) console.warn('Bad /planning/current_target JSON:', e); return; }
         if (DEBUG_MODE) console.log('Modular current target:', data);
-        // Distance display is handled by updateMissionStatus() from /planning/mission_status
-        // This topic is kept for other current_target data if needed in the future
+        // /planning/current_target is the authoritative source for distance-to-target;
+        // /planning/mission_status does not carry it.
+        if (data.distance_to_target !== undefined && data.distance_to_target !== null) {
+            currentState.mission.distance = data.distance_to_target;
+            // Capture the initial distance at the moment Go Home starts so the bar
+            // can fill progressively as the boat approaches home.
+            if (missionState.goHomeMode
+                && missionState.goHomeInitialDistance === null
+                && data.distance_to_target > 0.5) {
+                missionState.goHomeInitialDistance = data.distance_to_target;
+            }
+        }
     });
     
     // Modular waypoints from waypoint_planner
@@ -741,11 +755,17 @@ function updateMissionStatus(data) {
     missionState.goHomeMode = data.go_home_mode || false;
     // Detour badge
     updateDetourBadge(!!data.detour_active);
-    // Guard against missing distance fields to avoid crashes on refresh
-    const distance = (data.distance_to_waypoint !== undefined && data.distance_to_waypoint !== null)
-        ? data.distance_to_waypoint
-        : 0;
-    currentState.mission.distance = distance;
+    // Only update distance if the caller actually provided it — the /planning/current_target
+    // subscriber is the authoritative source and writes `currentState.mission.distance` directly.
+    if (data.distance_to_waypoint !== undefined && data.distance_to_waypoint !== null) {
+        currentState.mission.distance = data.distance_to_waypoint;
+    }
+
+    // Reset the captured Go Home initial distance once we leave Go Home so the next
+    // trip starts fresh. The capture itself happens in the /planning/current_target subscriber.
+    if (!missionState.goHomeMode && missionState.goHomeInitialDistance !== null) {
+        missionState.goHomeInitialDistance = null;
+    }
     
     // CRITICAL: Update missionState.currentWaypoint so waypoints on map reflect current progress
     // This is needed for displayWaypointsOnMap() to show correct waypoint coloring (passed/current/pending)
@@ -1893,11 +1913,17 @@ function updateMissionControlUI(state) {
     missionState.gpsReady = (state.gps_ready !== undefined) ? state.gps_ready : connected;
     missionState.missionArmed = state.mission_armed || false;
     missionState.joystickOverride = state.joystick_override || false;
-    missionState.goHomeMode = state.go_home_mode || false;
-    missionState.totalWaypoints = (state.total_waypoints !== undefined)
-        ? state.total_waypoints
-        : missionState.totalWaypoints;
-    missionState.currentWaypoint = state.current_waypoint || 0;
+    // Guard fields that /planning/mission_status owns — /planning/config doesn't carry them
+    // and unguarded `|| false/0` would clobber the good value every config tick (1 Hz race).
+    if (state.go_home_mode !== undefined) {
+        missionState.goHomeMode = state.go_home_mode;
+    }
+    if (state.total_waypoints !== undefined) {
+        missionState.totalWaypoints = state.total_waypoints;
+    }
+    if (state.current_waypoint !== undefined) {
+        missionState.currentWaypoint = state.current_waypoint;
+    }
     missionState.startLat = state.start_lat;
     missionState.startLon = state.start_lon;
     if (missionState.waypoints && missionState.waypoints.length > 0) {
@@ -3035,11 +3061,21 @@ function updateMissionProgress() {
         }
 
         // Calculate progress percentage
-        const waypointProgress = (missionState.currentWaypoint / missionState.totalWaypoints) * 100;
-        // Go Home overrides the waypoint counter (single synthetic home waypoint → would read 100%)
-        const progressPct = missionState.goHomeMode
-            ? '🏠 Returning Home'
-            : waypointProgress.toFixed(0) + '%';
+        let waypointProgress;
+        if (missionState.goHomeMode) {
+            // Distance-based progress: 0% at start of return trip, 100% at home.
+            // Falls back to 0% until we've captured a non-trivial initial distance.
+            const init = missionState.goHomeInitialDistance;
+            const curr = currentState.mission.distance || 0;
+            if (init && init > 0) {
+                waypointProgress = Math.max(0, Math.min(100, (1 - curr / init) * 100));
+            } else {
+                waypointProgress = 0;
+            }
+        } else {
+            waypointProgress = (missionState.currentWaypoint / missionState.totalWaypoints) * 100;
+        }
+        const progressPct = waypointProgress.toFixed(0) + '%';
 
         // Update progress bar
         const progressBar = document.getElementById('mission-progress-bar');
@@ -3058,9 +3094,9 @@ function updateMissionProgress() {
             _prevProgress.speedClass = speedClass;
         }
 
-        // Update waypoint count
+        // Update waypoint count (Go Home label moves here since the bar now shows real %)
         const wpText = missionState.goHomeMode
-            ? 'Return trip'
+            ? '🏠 Returning Home'
             : `${missionState.currentWaypoint}/${missionState.totalWaypoints}`;
         if (_prevProgress.wp !== wpText) {
             document.getElementById('progress-waypoints').textContent = wpText;
