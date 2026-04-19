@@ -159,7 +159,7 @@ A parallel audit pass this morning checked all active markdown in the main repo 
 
 **MED-severity:**
 
-- Health-check count drift across docs: README + USER_MANUAL said "45 checks"; Glossary + Board said "46 checks". Script has 26 static `pass`/`fail`/`warn` call sites, some inside loops — needed a live run to resolve authoritatively. (Resolved in §5 below.)
+- Health-check count drift across docs: README + USER_MANUAL said "45 checks"; Glossary + Board said "46 checks". Script has 26 static `pass`/`fail`/`warn` call sites, some inside loops — needed a live run to resolve authoritatively. Resolved by the live health-check run described below (46 confirmed).
 
 **LOW-severity:**
 
