@@ -2695,15 +2695,20 @@ function applyPreset(presetName) {
     updatePerceptionInputs(preset.perception);
     updateControllerInputs(preset.controller);
 
-    // Reveal the tuning sections so the user can see what changed
-    expandTuningSection('perception-params');
-    expandTuningSection('controller-params');
-
     // Diff + flash; scroll the first changed field into view
     const changed = PRESET_INPUT_IDS.filter(id => {
         const el = document.getElementById(id);
         return el && el.value !== before[id];
     });
+
+    // Only reveal a tuning sub-section if at least one of its fields actually moved —
+    // respects the user's prior collapse state for sub-sections this preset doesn't touch
+    // (e.g. Open Water leaves perception untouched, so keep that sub-section as it was).
+    const changedPerception = changed.filter(id => id.startsWith('perception-'));
+    const changedController = changed.filter(id => id.startsWith('controller-'));
+    if (changedPerception.length > 0) expandTuningSection('perception-params');
+    if (changedController.length > 0) expandTuningSection('controller-params');
+
     if (changed.length > 0) {
         flashChangedInputs(changed);
         const firstChanged = document.getElementById(changed[0]);
