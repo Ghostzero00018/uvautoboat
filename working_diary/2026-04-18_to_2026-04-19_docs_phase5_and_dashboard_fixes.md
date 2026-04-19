@@ -12,9 +12,9 @@ Two-day diary. Day 1 focused on wiki infrastructure and hardware-prep paperwork;
 
 **2026-04-19:**
 
-4. Main-repo markdown fact-check against authoritative sources (launch YAML, Python, git log); small but real corrections committed.
-5. Live health-check run resolves the "45 vs 46 checks" count drift; six active-doc hits updated.
-6. Dashboard UX overhaul driven by live testing: Go Home returning-home label, anti-stuck direction plumbing, status-panel tooltips with ℹ️ affordances, speed unit labels, VFH default visual state.
+1. Main-repo markdown fact-check against authoritative sources (launch YAML, Python, git log); small but real corrections committed.
+2. Live health-check run resolves the "45 vs 46 checks" count drift; six active-doc hits updated.
+3. Dashboard UX overhaul driven by live testing: Go Home returning-home label, anti-stuck direction plumbing, status-panel tooltips with ℹ️ affordances, speed unit labels, VFH default visual state.
 
 ---
 
@@ -294,5 +294,5 @@ Carrying over from 18-04 — still the right priorities:
 
 New items surfaced on 2026-04-19:
 
-4. **Dashboard controller-param ROS-sync gap**: observed during VFH debugging that there is no sync path from the `heading_controller` node's parameter state back to the Controller Tuning panel. Users toggling a preset change the ROS state, but the dashboard's display of that state is driven only by its own input fields, never re-read from the controller. If the controller rejects a value (server-side validation), the dashboard's display will silently drift from reality. Not urgent — flag as future-iteration cleanup.
-5. **Optional "VFH Live" status badge**: one-line indicator in the status column showing whether VFH is currently biasing steering (distinct from the tuning-panel toggle). Only if someone gets confused again about whether it's on. Ticket-sized, trivially skippable.
+1. **Dashboard controller-param ROS-sync gap**: observed during VFH debugging that there is no sync path from the `heading_controller` node's parameter state back to the Controller Tuning panel. Users toggling a preset change the ROS state, but the dashboard's display of that state is driven only by its own input fields, never re-read from the controller. If the controller rejects a value (server-side validation), the dashboard's display will silently drift from reality. Not urgent — flag as future-iteration cleanup.
+2. **Optional "VFH Live" status badge**: one-line indicator in the status column showing whether VFH is currently biasing steering (distinct from the tuning-panel toggle). Only if someone gets confused again about whether it's on. Ticket-sized, trivially skippable.
