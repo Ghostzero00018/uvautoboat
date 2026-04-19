@@ -121,6 +121,87 @@ h2 {
     gap: 20px;
 }
 
+/* Panel display order — Mission Control first so new users see actionable buttons,
+   then the trajectory map with the camera feed stacked underneath, then status/telemetry. */
+.mission-control-panel { order: -3; }
+.map-camera-group { order: -2; }
+
+/* Map + camera live in one grid cell so the camera always appears directly under the map,
+   regardless of how the auto-fit grid reflows at other breakpoints. */
+.map-camera-group {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* Collapsible info panels — click the h2 to hide the body.
+   Start expanded so nothing is hidden by surprise on first load. */
+.panel.collapsible > h2 {
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+    padding-right: 28px;
+}
+
+.panel.collapsible > h2::after {
+    content: '▾';
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.8em;
+    color: #7a8a99;
+    transition: transform 0.2s ease;
+}
+
+.panel.collapsible.collapsed > h2::after {
+    transform: translateY(-50%) rotate(-90deg);
+}
+
+.panel.collapsible.collapsed > *:not(h2) {
+    display: none;
+}
+
+.panel.collapsible > h2:hover {
+    color: #2980b9;
+}
+
+/* Step-transition hints in the mission control panel — connect Step 1 → 2 → 3 visually */
+.step-hint {
+    margin: 10px 0 6px;
+    padding: 8px 14px;
+    background: linear-gradient(90deg, rgba(52, 152, 219, 0.08), rgba(52, 152, 219, 0));
+    border-left: 3px solid #3498db;
+    border-radius: 4px;
+    color: #2c3e50;
+    font-size: 0.9em;
+    line-height: 1.4;
+}
+
+.step-help {
+    margin: 4px 0 10px;
+    padding: 8px 12px;
+    background: rgba(241, 196, 15, 0.12);
+    border-left: 3px solid #f1c40f;
+    border-radius: 4px;
+    color: #5d4c1a;
+    font-size: 0.85em;
+    line-height: 1.5;
+}
+
+/* Preset click feedback — outlines each input whose value just changed */
+.preset-changed-flash {
+    outline: 2px solid #f39c12;
+    outline-offset: 2px;
+    background-color: #fff8e1 !important;
+    animation: preset-flash-pulse 0.55s ease-in-out 2;
+}
+
+@keyframes preset-flash-pulse {
+    0%, 100% { background-color: #fff8e1; }
+    50% { background-color: #ffe0b2; }
+}
+
 /* ========== PANELS ========== */
 .panel {
     background: white;
@@ -181,6 +262,7 @@ h2 {
 
 .camera-controls {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 10px;
     padding: 10px;
@@ -191,14 +273,21 @@ h2 {
 .camera-controls label {
     font-weight: 600;
     color: #333;
+    flex: 0 0 auto;
 }
 
 .camera-controls input[type="text"] {
+    flex: 1 1 200px;
+    min-width: 0;
     border: 1px solid #ddd;
     border-radius: 4px;
     padding: 6px;
     font-family: monospace;
     font-size: 12px;
+}
+
+.camera-controls .config-btn {
+    flex: 0 0 auto;
 }
 
 /* ========== MISSION CONTROL PANEL ========== */

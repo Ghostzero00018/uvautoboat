@@ -93,8 +93,18 @@ window.addEventListener('load', () => {
     initCameraFeed();      // Camera/RViz stream panel
     initTerminal();
     initWorldBanner();
+    initCollapsiblePanels();
     addLog('Dashboard initialized', 'info');
 });
+
+// Wire click-to-collapse on any .panel.collapsible — the h2 toggles the panel's .collapsed class
+function initCollapsiblePanels() {
+    document.querySelectorAll('.panel.collapsible > h2').forEach(h => {
+        h.addEventListener('click', () => {
+            h.parentElement.classList.toggle('collapsed');
+        });
+    });
+}
 
 // World banner marquee
 function initWorldBanner() {
@@ -2424,6 +2434,47 @@ function initTuningPanel() {
     if (DEBUG_MODE) console.log('Tuning panel initialized');
 }
 
+// All tuning input IDs that can change when a preset is applied. Used for diff + flash.
+const PRESET_INPUT_IDS = [
+    'perception-min-height', 'perception-max-height', 'perception-min-range', 'perception-max-range',
+    'perception-safe-dist', 'perception-critical-dist', 'perception-cluster-dist',
+    'perception-min-cluster-size', 'perception-temporal-history', 'perception-temporal-threshold',
+    'perception-water-threshold', 'perception-hysteresis',
+    'controller-critical-dist', 'controller-safe-dist', 'controller-bank-dist',
+    'controller-obstacle-slow', 'controller-bank-slow', 'controller-avoid-gain',
+    'controller-use-vfh', 'controller-max-turn', 'controller-stuck-timeout',
+    'controller-stuck-threshold', 'controller-reverse-timeout', 'controller-max-reverse',
+    'controller-turn-deadband', 'controller-slew-rate'
+];
+
+// Expand a collapsed tuning section and sync the caret
+function expandTuningSection(contentId) {
+    const content = document.getElementById(contentId);
+    if (!content) return;
+    if (content.style.display === 'none' || content.style.display === '') {
+        content.style.display = 'block';
+        const header = document.querySelector(`.tuning-section-header[data-target="${contentId}"]`);
+        if (header) {
+            const icon = header.querySelector('.section-icon');
+            if (icon) icon.textContent = '▼';
+        }
+    }
+}
+
+// Briefly highlight input fields whose value changed — drops the class after the animation
+function flashChangedInputs(inputIds) {
+    inputIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('preset-changed-flash');
+    });
+    setTimeout(() => {
+        inputIds.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.classList.remove('preset-changed-flash');
+        });
+    }, 2200);
+}
+
 // Apply preset configuration
 function applyPreset(presetName) {
     const preset = TUNING_PRESETS[presetName];
@@ -2449,23 +2500,45 @@ function applyPreset(presetName) {
     statusEl.textContent = `Applying ${preset.name} preset...`;
     statusEl.style.color = '#f39c12';
 
+    // Snapshot pre-change values so we can flash only the inputs that actually moved
+    const before = {};
+    PRESET_INPUT_IDS.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) before[id] = el.value;
+    });
+
     // Update UI inputs
     updatePerceptionInputs(preset.perception);
     updateControllerInputs(preset.controller);
+
+    // Reveal the tuning sections so the user can see what changed
+    expandTuningSection('perception-params');
+    expandTuningSection('controller-params');
+
+    // Diff + flash; scroll the first changed field into view
+    const changed = PRESET_INPUT_IDS.filter(id => {
+        const el = document.getElementById(id);
+        return el && el.value !== before[id];
+    });
+    if (changed.length > 0) {
+        flashChangedInputs(changed);
+        const firstChanged = document.getElementById(changed[0]);
+        if (firstChanged) firstChanged.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
 
     // Apply parameters to ROS
     applyPerceptionParameters(preset.perception);
     applyControllerParameters(preset.controller);
 
     setTimeout(() => {
-        statusEl.textContent = `✅ ${preset.name} preset applied!`;
+        statusEl.textContent = `✅ ${preset.name} preset applied — ${changed.length} field(s) changed`;
         statusEl.style.color = '#27ae60';
         setTimeout(() => {
             statusEl.textContent = '';
-        }, 3000);
+        }, 4000);
     }, 500);
 
-    addLog(`Applied ${preset.name} preset`, 'info');
+    addLog(`Applied ${preset.name} preset (${changed.length} fields changed)`, 'info');
 }
 
 // Update Perception input fields from preset

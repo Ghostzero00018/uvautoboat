@@ -81,7 +81,7 @@
             </div>
 
             <!-- GPS Panel -->
-            <div class="panel">
+            <div class="panel collapsible">
                 <h2>GPS Position</h2>
                 <div class="info-grid">
                     <div class="info-item">
@@ -108,7 +108,7 @@
             </div>
 
             <!-- Obstacle Detection Panel -->
-            <div class="panel">
+            <div class="panel collapsible">
                 <h2>Obstacle Detection | Détection d'Obstacles (LiDAR v2.0)</h2>
                 <div class="info-grid">
                     <div class="info-item">
@@ -155,7 +155,7 @@
             </div>
 
             <!-- Thruster Control Panel -->
-            <div class="panel">
+            <div class="panel collapsible">
                 <h2>Thrusters | Propulseurs</h2>
                 <div class="info-grid">
                     <div class="info-item">
@@ -186,7 +186,7 @@
             </div>
 
             <!-- Simple Anti-Stuck System Panel -->
-            <div class="panel sass-panel">
+            <div class="panel sass-panel collapsible">
                 <h2>Simple Anti-Stuck | Système Anti-Blocage Simple</h2>
                 <div class="info-grid">
                     <div class="info-item full-width">
@@ -357,6 +357,8 @@
                     </div>
                 </div>
 
+                <div class="step-hint">➡️ Next | Ensuite: review the waypoints on the map, then click ✅ CONFIRM in Step 2 | vérifiez les points puis cliquez ✅ CONFIRMER</div>
+
                 <!-- Waypoint Validation Results -->
                 <div id="waypoint-validation-panel" class="mission-step validation-panel" style="display: none;">
                     <h3>📋 Waypoint Validation | Validation des Points</h3>
@@ -380,9 +382,12 @@
                     </div>
                 </div>
 
+                <div class="step-hint">➡️ Next | Ensuite: click 🚀 START in Step 3 to begin the mission | cliquez 🚀 DÉMARRER pour lancer</div>
+
                 <!-- Step 3: Start/Stop Mission -->
                 <div class="mission-step">
                     <h3>Step 3: Launch | Lancement</h3>
+                    <p class="step-help">During the mission: <strong>STOP</strong> pauses · <strong>RESUME</strong> continues · <strong>RESET</strong> clears waypoints · <strong>RETURN HOME</strong> heads back to spawn · <strong>EMERGENCY STOP</strong> halts instantly.</p>
                     <div class="mission-buttons-row">
                         <button id="btn-start-mission" class="mission-btn start" disabled>
                             🚀 START | DÉMARRER
@@ -736,7 +741,7 @@
                         </button>
                         <div id="controller-params" class="tuning-section-content" style="display: none;">
                             <p style="font-size: 0.9em; color: #666; margin: 0 0 15px 0; padding: 10px; background: #d4edda; border-left: 3px solid #28a745; border-radius: 4px;">
-                                <strong>⚙️ Control:</strong> Simple anti-stuck system (turn left until clear). Adjust PID gains in preset section above.
+                                <strong>⚙️ Control:</strong> Simple anti-stuck system (turn toward clearer side until path is safe). Adjust PID gains in preset section above.
                             </p>
 
                             <!-- Obstacle Response Section -->
@@ -868,32 +873,35 @@
                 </div>
             </div>
 
-            <!-- Map Panel -->
-            <div class="panel map-panel">
-                <h2>Map & Waypoints | Carte et Points</h2>
-                <div class="map-legend">
-                    <span class="legend-item"><span class="legend-color boat"></span> Boat | Navire</span>
-                    <span class="legend-item"><span class="legend-color waypoint"></span> Waypoint</span>
-                    <span class="legend-item"><span class="legend-color current-wp"></span> Current Target | Cible</span>
-                    <span class="legend-item"><span class="legend-color path"></span> Path | Trajet</span>
-                    <span class="legend-item"><span class="legend-color trajectory"></span> Trajectory | Trajectoire</span>
-                </div>
-                <div id="map"></div>
-            </div>
-
-            <!-- Camera Feed Panel -->
-            <div class="panel camera-panel">
-                <h2>Front Camera Feed | Flux Caméra Avant</h2>
-                <div class="camera-container">
-                    <div id="camera-feed">
-                        <img id="camera-image" src="data:," alt="Camera feed not available" style="width: 100%; height: auto; border-radius: 4px;">
-                        <div id="camera-status" class="camera-status">Waiting for camera feed... | En attente du flux...</div>
+            <!-- Map + Camera stacked so the live view always sits directly under the trajectory map -->
+            <div class="map-camera-group">
+                <!-- Map Panel -->
+                <div class="panel map-panel">
+                    <h2>Map & Waypoints | Carte et Points</h2>
+                    <div class="map-legend">
+                        <span class="legend-item"><span class="legend-color boat"></span> Boat | Navire</span>
+                        <span class="legend-item"><span class="legend-color waypoint"></span> Waypoint</span>
+                        <span class="legend-item"><span class="legend-color current-wp"></span> Current Target | Cible</span>
+                        <span class="legend-item"><span class="legend-color path"></span> Path | Trajet</span>
+                        <span class="legend-item"><span class="legend-color trajectory"></span> Trajectory | Trajectoire</span>
                     </div>
+                    <div id="map"></div>
                 </div>
-                <div class="camera-controls">
-                    <label for="camera-topic">Camera Topic:</label>
-                    <input type="text" id="camera-topic" value="/wamv/sensors/cameras/front_left_camera_sensor/image_raw" style="width: 250px; padding: 5px;">
-                    <button id="btn-refresh-camera" class="config-btn apply" style="margin-left: 10px;">Refresh | Actualiser</button>
+
+                <!-- Camera Feed Panel -->
+                <div class="panel camera-panel">
+                    <h2>Front Camera Feed | Flux Caméra Avant</h2>
+                    <div class="camera-container">
+                        <div id="camera-feed">
+                            <img id="camera-image" src="data:," alt="Camera feed not available" style="width: 100%; height: auto; border-radius: 4px;">
+                            <div id="camera-status" class="camera-status">Waiting for camera feed... | En attente du flux...</div>
+                        </div>
+                    </div>
+                    <div class="camera-controls">
+                        <label for="camera-topic">Camera Topic:</label>
+                        <input type="text" id="camera-topic" value="/wamv/sensors/cameras/front_left_camera_sensor/image_raw" title="/wamv/sensors/cameras/front_left_camera_sensor/image_raw">
+                        <button id="btn-refresh-camera" class="config-btn apply">Refresh | Actualiser</button>
+                    </div>
                 </div>
             </div>
 
