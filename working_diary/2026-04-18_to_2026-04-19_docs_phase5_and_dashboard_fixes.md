@@ -15,6 +15,8 @@ Two-day diary. Day 1 focused on wiki infrastructure and hardware-prep paperwork;
 1. Main-repo markdown fact-check against authoritative sources (launch YAML, Python, git log); small but real corrections committed.
 2. Live health-check run resolves the "45 vs 46 checks" count drift; six active-doc hits updated.
 3. Dashboard UX overhaul driven by live testing: Go Home returning-home label, anti-stuck direction plumbing, status-panel tooltips with ℹ️ affordances, speed unit labels, VFH default visual state.
+4. Preset system audit, target-aware VFH, Vostok1-era breadcrumb cleanup, Go Home progress overhaul, `ros2 daemon` staleness diagnosis.
+5. Tier-A/B/C dashboard sprint: safety guards (E-Stop header badge, Reset guard, toast tuning, waiting labels), structural reorg (panel reorder, Map+Camera grouping, collapsible info panels, preset feedback, step hints), first-run onboarding tour with replay button.
 
 ---
 
@@ -327,6 +329,82 @@ No code change this round — adding to the operational knowledge base. Worth re
 
 ---
 
+## 8. Dashboard Tier A / B / C UX Sprint (2026-04-19, late session)
+
+Three-tier UX audit mapped first-impression problems and interaction-logic gaps against the live dashboard. User picked Tier A + the logic-audit guards first (safety, low risk), then the full Tier B structural reorg, then only item 4 of Tier C — the first-run onboarding tour. Items 1–3 of Tier C (jargon renames: urgency → "Obstacle Alert %", VFH → "Navigation Gap", Kalman σ → "Drift Confidence", preset renames) were intentionally deferred until after the supervisor CCU conversation so labels are not renamed twice.
+
+### 8.1 Tier A — safety guards and Apply-button feedback
+
+Commit `f36be82`. Five items:
+
+- **Header E-Stop badge.** Red "🚨 E-STOP" pill in the header-right area; click scrolls to the real Emergency Stop button and flashes it with a yellow outline for ~1 s. When mission state is `EMERGENCY_STOP`, the header badge itself pulses to mirror the latched state. New CSS rules `.header-estop-badge`, `.header-estop-badge.latched`, `.mission-btn.emergency.estop-flash`.
+- **Toast durations by type.** `showFeedback()` previously used a binary 5 s (error/warning) vs 3 s. Replaced with a per-type object: error 6.5 s, warning 5.5 s, success 3 s, info 3.5 s. Rationale: "Rejected: Kp out of range (0-2000)" type messages were disappearing before a slow reader could parse them.
+- **Visible "Waiting for ROS sync…" label.** Three Apply buttons (Config, Perception, Controller) gained a `waiting-sync` class and a sibling `<span class="apply-waiting-label">` showing an italic "⏳ Waiting for ROS sync… | En attente de synchro". CSS adjacent-sibling selector `.waiting-sync + .apply-waiting-label` hides it once the class is removed in `updateConfigFromROS()` on first config sync. Replaces title-only tooltips that required hover to discover.
+- **Reset guarded during WAITING_CONFIRM.** Previously always enabled; a Reset could fire a `clear_mission` in-flight against a pending `confirm_waypoints` and leave the planner inconsistent. Now disabled when `awaitingDecision` is true or disconnected.
+- **Joystick enable/disable routed through `debounceCommand`.** The other mission buttons were already debounced (800 ms global cooldown); joystick toggle was not. Added for consistency — prevents rapid back-to-back mode flips during command latency.
+
+### 8.2 Latent `distance.toFixed is not a function` crash
+
+Same commit `f36be82`. User hit `TypeError: distance.toFixed is not a function` in `updateMissionStatus` at line 793 once the planner started publishing a valid distance. Root cause: the function used a bare `distance` identifier with no local declaration, so the browser resolved it to `window.distance` — which in HTML5 is automatically populated with any element whose `id` is a valid JS identifier, in this case the `<div id="distance">`. Calling `.toFixed()` on a DOM node throws.
+
+Fixed to read `currentState.mission.distance` with a `Number.isFinite()` guard. Then swept the eight other bare-identifier-eligible IDs in the file (`latitude`, `longitude`, `logs`, `map`, `state`, `urgency`, `waypoint`) — all are either explicitly declared (`let map`, `const logs`, `const distance` in other scopes) or used only as function parameters. No other instances.
+
+### 8.3 Tier B — structural reorg and preset feedback
+
+Commit `9f3f8d8`. Five items:
+
+- **Panel reorder via CSS `order`.** `.mission-control-panel { order: -3 }` pushes Mission Control to the first grid cell. New-user eye lands on actionable buttons instead of scrolling past five telemetry panels.
+- **Map + Camera grouped.** Wrapped both panels in `<div class="map-camera-group">` with `display: flex; flex-direction: column` so the camera feed always sits directly under the trajectory map, regardless of how the auto-fit grid reflows. The group itself is a grid child with `order: -2`. An earlier iteration tried individual `order: -2`/`-1` on the two panels, but grid auto-placement could split them across rows at some breakpoints.
+- **Collapsible info panels.** GPS / Obstacle / Thruster / Anti-Stuck panels gained a `collapsible` class. `initCollapsiblePanels()` wires a click handler on each `h2` that toggles a `.collapsed` class on the panel; CSS shows a ▾ caret that rotates to ▸ when collapsed and hides all non-h2 children. Start expanded so nothing is hidden by surprise.
+- **Preset feedback.** `applyPreset()` now snapshots all 26 tuning inputs before update, diffs after, expands the affected tuning sub-section(s), outlines changed inputs in orange with a 2-pulse animation, and scrolls the first changed field into view. Status line reports `"Buoy Field preset applied — N field(s) changed"`. A later commit (§8.6) refined the expand behaviour to only open a sub-section that actually changed.
+- **Step-transition hints.** Blue-left-border "➡️ Next: review waypoints and click CONFIRM" between Step 1 and Step 2; same pattern between Step 2 and Step 3. Step 3 gained a yellow help banner above the button rows describing STOP / RESUME / RESET / RETURN HOME / EMERGENCY STOP behaviour.
+
+Incidental while in the file: stale `"turn left until clear"` wording in the Controller tuning-section tip replaced with `"turn toward clearer side until path is safe"`, matching the current bidirectional escape.
+
+### 8.4 Camera layout polish and black-feed gotcha
+
+Same commit `9f3f8d8` for the layout fix. After the map-camera-group wrap, the camera topic `<input>` still had an inline `width: 250px` which left the Refresh button overflowing the panel boundary, and the long topic string `/wamv/sensors/cameras/front_left_camera_sensor/image_raw` was hard to read at 250 px. Fix:
+
+- Removed inline `width` and `margin-left` styles.
+- `.camera-controls` gained `flex-wrap: wrap`; input is `flex: 1 1 200px; min-width: 0`; button is `flex: 0 0 auto`.
+- Added a `title=` on the input so hovering shows the full path as a native tooltip.
+
+Separately during testing the user hit a black camera feed stuck on "Connecting to…". Diagnosed via a pipeline: topic publishes (confirmed with `ros2 topic hz` at ~3 Hz, low due to CPU-bound Gazebo), port 8080 already bound (Address already in use — the launcher's `web_video_server` was alive). So the dashboard was talking to an alive upstream, but the browser's MJPEG long-polling connection had gotten stuck on the previous session's socket. Full simulation restart resolved. Not a dashboard bug — operational gotcha worth remembering: Firefox in particular holds MJPEG long-polling beyond a hard refresh.
+
+### 8.5 First-run onboarding tour (Tier C item 4 only)
+
+Commit `bde743c`. User picked only the onboarding item from Tier C — not the jargon renames, because "this is a research project at least it needs to be a little bit scientific". Implementation:
+
+- **5-step guided tour:** Welcome → Generate → Confirm → Start → Emergency Stop.
+- Semi-transparent backdrop (`.onboarding-backdrop`, z-index 9998) plus a bilingual EN/FR callout card fixed at the bottom of the viewport. Each step (after the welcome card) highlights its target button with a green pulsing glow (`.onboarding-highlight` using `box-shadow` and an animated pulse keyframe, z-index 9999). The target is scrolled into view.
+- **Controls:** Back / Skip / Next buttons plus keyboard shortcuts — `Esc` skips, `→` or `Enter` advance, `←` goes back.
+- **Terminology:** the tour card copy uses the actual technical vocabulary (VFH gaps, PID gains, Kalman drift, mission state names like `WAITING_CONFIRM` / `READY`) rather than simplified labels. The per-field ℹ️ tooltips remain the authoritative explainers.
+- **Persistence:** `localStorage['autoboat_tutorial_seen_v1']` records dismissed/completed state. Auto-launches ~900 ms after first load; does not appear again on subsequent loads. Bumping the `_v1` suffix in a future iteration replays for returning users.
+- **Replay entry point:** a purple-gradient `?` button in the header (first attempt used `rgba(255,255,255,0.15)` on a white header background — invisible; corrected to a `#667eea → #764ba2` gradient circle with white text and a coloured box-shadow).
+
+### 8.6 Preset sub-section expand — per-side guard
+
+Commit `17c191c`. User observed during testing that every preset click unfolded both tuning sub-sections even when they had manually collapsed one. Refined `applyPreset()`:
+
+```js
+const changedPerception = changed.filter(id => id.startsWith('perception-'));
+const changedController = changed.filter(id => id.startsWith('controller-'));
+if (changedPerception.length > 0) expandTuningSection('perception-params');
+if (changedController.length > 0) expandTuningSection('controller-params');
+```
+
+Audited all four current presets afterward: each carries 12 perception + 10 controller params with distinct values. So in practice both sides always change → both sub-sections always auto-expand (today's behaviour unchanged). The guard is future-proofing: if a preset is later slimmed to a minimal-diff form (e.g. Open Water dropping perception entries that already match YAML defaults), or if a user has manually matched a preset's values beforehand, the guard will respect their collapse state.
+
+### Verification and process notes
+
+- All six changes were dashboard-only — zero Python / YAML / launch edits. No `colcon build` needed; browser hard-refresh is sufficient.
+- `node --check app.js` run after every change; syntax clean each time.
+- AI-tooling grep sweep clean before every commit.
+- Full mission smoke-test between Tier A and Tier B confirmed no regressions on Go Home, preset apply, or mission-state transitions.
+- Tier C items 1–3 (jargon / preset / tooltip renames) intentionally deferred pending supervisor CCU feedback so labels are not renamed twice.
+
+---
+
 ## Commit trail
 
 2026-04-18 (all pushed to `main`):
@@ -350,8 +428,14 @@ e58dc15 docs: Expand 18-04 diary to cover 19-04 fact-check and dashboard UX
 fbc8f89 docs: Expand 18-04 diary to cover 19-04 fact-check and dashboard UX
 d7dd869 refactor: Sync Python defaults, trim preset keys, drop CLI legacy mode
 62b4320 refactor: Target-aware VFH with tunable params and loosened polar gate; chore: Strip Vostok1-era breadcrumbs from active code
-<pending> fix: Dashboard Go Home progress + mission-state race + distance wiring
-<pending> docs: Append 2026-04-19 afternoon work (preset/VFH/Vostok1/Go Home) to diary
+4b2d132 fix: Dashboard Go Home progress + mission-state race + distance wiring
+8ec76a2 docs(wiki): Document ros2 daemon staleness in Common_Issues; append 2026-04-19 afternoon work to diary
+760b40a docs: Sweep docs for VFH, escape direction, preset names, LiDAR typo
+f36be82 feat(dashboard): Tier A UX fixes + fix latent distance.toFixed crash
+9f3f8d8 feat(dashboard): Tier B UX — reorder, collapsibles, preset feedback
+bde743c feat(dashboard): Add first-run onboarding tour with replay button
+17c191c refactor(dashboard): Expand only tuning sub-sections changed by preset
+<pending> docs: Append 2026-04-19 late session (Tier A/B/C onboarding) to diary
 ```
 
 On the wiki repo (separate `uvautoboat.wiki.git`):
