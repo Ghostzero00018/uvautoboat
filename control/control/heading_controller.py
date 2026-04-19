@@ -206,8 +206,8 @@ class HeadingController(Node):
         self.declare_parameter('max_avoidance_turn_deg', 45.0)  # Maximum turn angle during obstacle avoidance (degrees)
 
         # Simple anti-stuck parameters
-        self.declare_parameter('stuck_timeout', 3.0)
-        self.declare_parameter('stuck_threshold', 0.5)
+        self.declare_parameter('stuck_timeout', 12.0)
+        self.declare_parameter('stuck_threshold', 1.0)
         self.declare_parameter('drift_compensation_gain', 0.3)
         # Shoreline/bank protection: slow down when very close to obstacles (e.g., banks)
         self.declare_parameter('bank_slow_distance', 6.0)

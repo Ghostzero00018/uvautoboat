@@ -2226,14 +2226,10 @@ const TUNING_PRESETS = {
             bank_slow_distance: 7.0,
             obstacle_slow_factor: 0.35,
             bank_slow_factor: 0.22,
-            avoid_diff_gain: 18.0,
             use_vfh_bias: true,
-            max_avoidance_turn_deg: 45.0,
             stuck_timeout: 3.5,
             stuck_threshold: 0.9,
-            reverse_timeout: 4.0,
             max_reverse_distance: 20.0,
-            turn_deadband_deg: 0.5,
             slew_rate_limit: 90.0
         }
     },
@@ -2259,14 +2255,10 @@ const TUNING_PRESETS = {
             bank_slow_distance: 6.0,
             obstacle_slow_factor: 0.3,
             bank_slow_factor: 0.2,
-            avoid_diff_gain: 18.0,
             use_vfh_bias: true,
-            max_avoidance_turn_deg: 45.0,
             stuck_timeout: 3.0,
             stuck_threshold: 1.0,
-            reverse_timeout: 4.0,
             max_reverse_distance: 10.0,
-            turn_deadband_deg: 0.5,
             slew_rate_limit: 100.0
         }
     },
@@ -2292,14 +2284,10 @@ const TUNING_PRESETS = {
             bank_slow_distance: 8.0,
             obstacle_slow_factor: 0.3,
             bank_slow_factor: 0.2,
-            avoid_diff_gain: 18.0,
             use_vfh_bias: true,
-            max_avoidance_turn_deg: 45.0,
             stuck_timeout: 4.0,
             stuck_threshold: 0.8,
-            reverse_timeout: 4.0,
             max_reverse_distance: 25.0,
-            turn_deadband_deg: 0.5,
             slew_rate_limit: 80.0
         }
     },
@@ -2325,14 +2313,10 @@ const TUNING_PRESETS = {
             bank_slow_distance: 8.0,
             obstacle_slow_factor: 0.4,
             bank_slow_factor: 0.3,
-            avoid_diff_gain: 18.0,
             use_vfh_bias: false,
-            max_avoidance_turn_deg: 45.0,
             stuck_timeout: 4.0,
             stuck_threshold: 0.8,
-            reverse_timeout: 4.0,
             max_reverse_distance: 30.0,
-            turn_deadband_deg: 0.5,
             slew_rate_limit: 80.0
         }
     }
@@ -2444,23 +2428,32 @@ function updatePerceptionInputs(params) {
     document.getElementById('perception-hysteresis').value = params.hysteresis_distance;
 }
 
-// Update Controller input fields from preset
+// Update Controller input fields from preset.
+// Guards with `!== undefined` on keys that some presets may omit — presets only carry
+// the params that meaningfully differ from YAML defaults, so shared values (avoid_diff_gain,
+// reverse_timeout, turn_deadband_deg, max_avoidance_turn_deg) are intentionally absent.
 function updateControllerInputs(params) {
     document.getElementById('controller-critical-dist').value = params.critical_distance;
     document.getElementById('controller-safe-dist').value = params.min_safe_distance;
     document.getElementById('controller-bank-dist').value = params.bank_slow_distance;
     document.getElementById('controller-obstacle-slow').value = params.obstacle_slow_factor;
     document.getElementById('controller-bank-slow').value = params.bank_slow_factor;
-    document.getElementById('controller-avoid-gain').value = params.avoid_diff_gain;
+    if (params.avoid_diff_gain !== undefined) {
+        document.getElementById('controller-avoid-gain').value = params.avoid_diff_gain;
+    }
     document.getElementById('controller-use-vfh').value = params.use_vfh_bias.toString();
     if (params.max_avoidance_turn_deg !== undefined) {
         document.getElementById('controller-max-turn').value = params.max_avoidance_turn_deg;
     }
     document.getElementById('controller-stuck-timeout').value = params.stuck_timeout;
     document.getElementById('controller-stuck-threshold').value = params.stuck_threshold;
-    document.getElementById('controller-reverse-timeout').value = params.reverse_timeout;
+    if (params.reverse_timeout !== undefined) {
+        document.getElementById('controller-reverse-timeout').value = params.reverse_timeout;
+    }
     document.getElementById('controller-max-reverse').value = params.max_reverse_distance;
-    document.getElementById('controller-turn-deadband').value = params.turn_deadband_deg;
+    if (params.turn_deadband_deg !== undefined) {
+        document.getElementById('controller-turn-deadband').value = params.turn_deadband_deg;
+    }
     document.getElementById('controller-slew-rate').value = params.slew_rate_limit;
 }
 

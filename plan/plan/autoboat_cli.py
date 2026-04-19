@@ -2,37 +2,28 @@
 """
 Mission CLI - Terminal-based mission control for AutoBoat
 
-Use this when the web dashboard is unavailable.
+Use this when the web dashboard is unavailable. Targets the modular
+Waypoint Planner + Heading Controller pipeline.
 
-MODES:
-    --mode modular   (default) Use modular Waypoint Planner + Heading Controller
-    --mode vostok1   (deprecated) Legacy integrated navigation
-
-Usage (Modular - Waypoint Planner - Default):
+Usage:
     # Generate waypoints with default parameters
     ros2 run plan autoboat_cli generate
-    
+
     # Generate waypoints with custom parameters
     ros2 run plan autoboat_cli generate --lanes 8 --length 50 --width 20
-    
-    # Start mission
+
+    # Start / Stop / Resume / Reset mission
     ros2 run plan autoboat_cli start
-    
-    # Stop mission
     ros2 run plan autoboat_cli stop
-    
-    # Resume mission
     ros2 run plan autoboat_cli resume
-    
-    # Reset mission (clear waypoints)
     ros2 run plan autoboat_cli reset
-    
+
     # Go home (return to spawn)
     ros2 run plan autoboat_cli home
-    
+
     # Confirm waypoints
     ros2 run plan autoboat_cli confirm
-    
+
     # Set PID parameters
     ros2 run plan autoboat_cli pid --kp 400 --ki 20 --kd 100
 
@@ -53,24 +44,9 @@ Usage (Modular - Waypoint Planner - Default):
 
     # Show current status
     ros2 run plan autoboat_cli status
-    
+
     # Interactive mode
     ros2 run plan autoboat_cli interactive
-
-Usage (Integrated - Legacy):
-    # Generate waypoints
-    ros2 run plan autoboat_cli --mode vostok1 generate --lanes 8 --length 15 --width 5
-    
-    # Start mission
-    ros2 run plan autoboat_cli --mode vostok1 start
-    
-    # Stop / Resume / Reset
-    ros2 run plan autoboat_cli --mode vostok1 stop
-    ros2 run plan autoboat_cli --mode vostok1 resume
-    ros2 run plan autoboat_cli --mode vostok1 reset
-    
-    # Interactive mode
-    ros2 run plan autoboat_cli --mode vostok1 interactive
 """
 
 import rclpy
@@ -89,57 +65,39 @@ _LAUNCH_FILE = _REPO_ROOT / 'launch' / 'autoboat.launch.yaml'
 
 
 class MissionCLI(Node):
-    def __init__(self, mode='modular'):
+    def __init__(self):
         super().__init__('autoboat_cli')
-        
-        self.mode = mode
-        
-        # Set topic prefixes based on mode
-        if mode == 'modular':
-            config_topic = '/planning/set_config'
-            command_topic = '/planning/mission_command'
-            status_topic = '/planning/mission_status'
-            config_status_topic = '/planning/config'
-            self.get_logger().info("Mode: MODULAR (Waypoint Planner)")
-        else:
-            config_topic = '/vostok1/set_config'
-            command_topic = '/vostok1/mission_command'
-            status_topic = '/vostok1/mission_status'
-            config_status_topic = '/vostok1/config'
-            self.get_logger().warn("Mode: INTEGRATED (Vostok1) — deprecated, no active nodes listen on /vostok1/* topics")
-        
+
         # Publishers
-        self.config_pub = self.create_publisher(String, config_topic, 10)
-        self.command_pub = self.create_publisher(String, command_topic, 10)
-        
+        self.config_pub = self.create_publisher(String, '/planning/set_config', 10)
+        self.command_pub = self.create_publisher(String, '/planning/mission_command', 10)
+
         # Subscribers for status
         self.mission_status = None
         self.config_status = None
         self.controller_status = None
-        
+
         self.create_subscription(
             String,
-            status_topic,
+            '/planning/mission_status',
             self.mission_status_callback,
             10
         )
-        
+
         self.create_subscription(
             String,
-            config_status_topic,
+            '/planning/config',
             self.config_callback,
             10
         )
-        
-        # Also subscribe to controller status (modular mode)
-        if mode == 'modular':
-            self.create_subscription(
-                String,
-                '/control/status',
-                self.controller_status_callback,
-                10
-            )
-        
+
+        self.create_subscription(
+            String,
+            '/control/status',
+            self.controller_status_callback,
+            10
+        )
+
         # Wait for connection
         time.sleep(0.5)
 
@@ -258,10 +216,7 @@ class MissionCLI(Node):
                 print("✅ Navigation system ready!")
                 return True
         print("⚠️ Navigation system not responding. Is it running?")
-        if self.mode == 'modular':
-            print(f"   Start with: ros2 launch {_LAUNCH_FILE}")
-        else:
-            print("   Start with: ros2 run plan autoboat")
+        print(f"   Start with: ros2 launch {_LAUNCH_FILE}")
         return False
     
     def send_command(self, command):
@@ -500,8 +455,7 @@ class MissionCLI(Node):
         # Mission status (only available during RUNNING state)
         if self.mission_status:
             state = self.mission_status.get('state', 'Unknown')
-            # Support both key names (modular uses 'current_waypoint', integrated uses 'waypoint')
-            waypoint = self.mission_status.get('current_waypoint', self.mission_status.get('waypoint', '?'))
+            waypoint = self.mission_status.get('current_waypoint', '?')
             total = self.mission_status.get('total_waypoints', '?')
             progress = self.mission_status.get('progress_percent', '?')
             elapsed = self.mission_status.get('elapsed_time', '?')
@@ -528,10 +482,7 @@ class MissionCLI(Node):
             else:
                 print("⚠️ No status received")
                 print("   Check if the navigation system is running:")
-                if self.mode == 'modular':
-                    print(f"   ros2 launch {_LAUNCH_FILE}")
-                else:
-                    print("   ros2 run plan autoboat")
+                print(f"   ros2 launch {_LAUNCH_FILE}")
         
         # Planner config (waypoint generation settings)
         if self.config_status:
@@ -565,9 +516,8 @@ class MissionCLI(Node):
             print(f"  Heading: {self.controller_status.get('current_yaw', '?')}°")
         
         # Note about PID/Speed
-        if self.mode == 'modular':
-            print(f"\n💡 PID/Speed are set via CLI but not broadcast by controller")
-            print(f"   Use 'ros2 param get /heading_controller kp' to check current values")
+        print(f"\n💡 PID/Speed are set via CLI but not broadcast by controller")
+        print(f"   Use 'ros2 param get /heading_controller kp' to check current values")
         
         print("=" * 50)
         
@@ -668,11 +618,6 @@ Examples:
         """
     )
     
-    # Global mode argument
-    parser.add_argument('--mode', '-m', type=str, default='modular',
-                        choices=['vostok1', 'modular'],
-                        help='Mode: modular (default) or vostok1 (deprecated, legacy integrated system)')
-    
     subparsers = parser.add_subparsers(dest='command', help='Command to execute')
     
     # Generate command with optional PID/speed
@@ -736,7 +681,7 @@ Examples:
         return
     
     rclpy.init()
-    cli = MissionCLI(mode=args.mode)
+    cli = MissionCLI()
     
     try:
         if args.command == 'generate':

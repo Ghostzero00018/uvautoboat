@@ -76,21 +76,21 @@ class LidarPerception(Node):
         # --- PARAMETERS ---
         # Tuned for lake bank detection (LiDAR mounted high on WAM-V frame)
         # Lake banks appear BELOW the LiDAR (negative Z values)
-        self.declare_parameter('perception_min_safe_distance', 12.0)  # Detection threshold
-        self.declare_parameter('perception_critical_distance', 4.0)   # Emergency stop threshold
-        self.declare_parameter('hysteresis_distance', 1.5) # Prevent oscillation
-        self.declare_parameter('min_height', -15.0)  # Lake bank is ~2-3m below LiDAR
-        self.declare_parameter('max_height', 10.0)   # Include terrain above water
-        self.declare_parameter('min_range', 3.0)     # Ignore points closer than 2m
-        self.declare_parameter('max_range', 50.0)    # Focus on nearby obstacles
+        self.declare_parameter('perception_min_safe_distance', 10.0)  # Detection threshold
+        self.declare_parameter('perception_critical_distance', 5.5)   # Emergency stop threshold
+        self.declare_parameter('hysteresis_distance', 2.0) # Prevent oscillation
+        self.declare_parameter('min_height', -1.2)   # Lower threshold to detect low piers (LiDAR@1.8m: piers≈-1.0 to -0.3m)
+        self.declare_parameter('max_height', 1.5)    # Focus on navigation hazards, ignore tall structures
+        self.declare_parameter('min_range', 2.2)     # Keep closer returns, still filter hull
+        self.declare_parameter('max_range', 100.0)   # Extended range for early detection (LiDAR max: 130m)
         self.declare_parameter('sample_rate', 1)     # Process ALL points
         
         # Enhanced parameters (v2.0)
         self.declare_parameter('temporal_history_size', 3)    # Reduced: faster response
         self.declare_parameter('temporal_threshold', 2)       # Reduced: 2/3 detections to confirm
-        self.declare_parameter('cluster_distance', 2.0)       # Max distance between cluster points
-        self.declare_parameter('min_cluster_size', 3)         # Reduced: detect smaller obstacles
-        self.declare_parameter('water_plane_threshold', 0.5)  # Tolerance for water plane removal
+        self.declare_parameter('cluster_distance', 3.0)       # Cluster tolerance for high-density LiDAR (1875×16 samples)
+        self.declare_parameter('min_cluster_size', 8)         # Require more points due to higher point density
+        self.declare_parameter('water_plane_threshold', 0.32) # Balance water rejection vs dropouts
         self.declare_parameter('velocity_history_size', 5)    # Reduced: faster velocity estimate
 
         # Load initial parameter values
