@@ -92,8 +92,6 @@ launch:
       value: 8          # Require more points due to higher point density
     - name: water_plane_threshold
       value: 0.32       # Balance water rejection vs dropouts
-    - name: velocity_history_size
-      value: 5          # Frames for velocity estimation (v2.0: detect moving obstacles)
     # VFH / polar histogram tuning — only applies when use_vfh_bias is true on the controller
     - name: vfh_block_distance
       value: 15.0       # Distance at which a VFH bin is marked blocked (m)

@@ -760,7 +760,6 @@ function subscribeToTopics() {
             obstacle_count: data.obstacle_count || 0,
             best_gap: data.best_gap || null,
             clusters: data.clusters || [],
-            moving_obstacles: data.moving_obstacles || [],  // LiDAR v2.0: array of {id, vx, vy, speed}
             // LiDAR v2.1 enhanced fields
             vfh_gap: data.vfh_gap || null,           // VFH best direction
             polar_bias: data.polar_bias || 0.0,      // Steering bias [-1, 1]

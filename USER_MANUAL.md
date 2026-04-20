@@ -281,7 +281,6 @@ Local Y = (longitude - start_lon) × Earth_radius × cos(start_lat)
   "overall_urgency": 0.45,
   "clusters": [{"x": 8.2, "y": 1.5, "size": 25, "distance": 8.5, "angle_deg": 10.3}],
   "gaps": [{"angle_deg": -25.0, "width": 5.2, "distance": 15.0}],
-  "moving_obstacles": [{"id": "obs_0", "vx": 0.5, "vy": 0.1, "speed": 0.51}],
   "water_plane_z": -2.8,
   "temporal_confidence": 1.0
 }
@@ -713,7 +712,6 @@ ros2 launch ~/seal_ws/src/uvautoboat/launch/autoboat.launch.yaml
 | | `cluster_distance` | 3.0 | Max distance between cluster points (m) |
 | | `min_cluster_size` | 8 | Min points per cluster (detect obstacles) |
 | | `water_plane_threshold` | 0.32 | Tolerance for water plane removal (m) |
-| | `velocity_history_size` | 5 | Frames for velocity estimation |
 | **Planner** | `scan_length` | 15.0 | Lawnmower lane length (m) |
 | | `scan_width` | 30.0 | Lane spacing (m) |
 | | `lanes` | 10 | Number of lawnmower lanes |

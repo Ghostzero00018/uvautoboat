@@ -91,7 +91,6 @@ class LidarPerception(Node):
         self.declare_parameter('cluster_distance', 3.0)       # Cluster tolerance for high-density LiDAR (1875×16 samples)
         self.declare_parameter('min_cluster_size', 8)         # Require more points due to higher point density
         self.declare_parameter('water_plane_threshold', 0.32) # Balance water rejection vs dropouts
-        self.declare_parameter('velocity_history_size', 5)    # Reduced: faster velocity estimate
 
         # VFH / polar histogram tuning (opt-in via use_vfh_bias on controller)
         self.declare_parameter('vfh_block_distance', 15.0)    # Distance at which a bin is marked blocked (m)
@@ -137,12 +136,8 @@ class LidarPerception(Node):
         
         # 5. Ground plane
         self.water_plane_z = None  # Estimated water surface height
-        
-        # 6. Velocity estimation
-        self.obstacle_tracks = {}  # {id: deque of (x, y, timestamp)}
-        self.obstacle_velocities = {}  # {id: (vx, vy)}
 
-        # 7. Advanced steering state (polar histogram + VFH)
+        # 6. Advanced steering state (polar histogram + VFH)
         self.polar_bias = 0.0  # Left/right balance [-1:turn right, 0:balanced, +1:turn left]
         self.vfh_steer = 0.0   # VFH steering angle (radians)
         # Body-frame heading error from controller (radians) — used as VFH target direction
@@ -222,7 +217,6 @@ class LidarPerception(Node):
         self.cluster_distance = self.get_parameter('cluster_distance').value
         self.min_cluster_size = self.get_parameter('min_cluster_size').value
         self.water_plane_threshold = self.get_parameter('water_plane_threshold').value
-        self.velocity_history_size = self.get_parameter('velocity_history_size').value
 
         # VFH tuning
         self.vfh_block_distance = self.get_parameter('vfh_block_distance').value
@@ -239,7 +233,7 @@ class LidarPerception(Node):
             if param_name in ['perception_min_safe_distance', 'perception_critical_distance', 'hysteresis_distance',
                              'min_height', 'max_height', 'min_range', 'max_range', 'sample_rate',
                              'temporal_history_size', 'temporal_threshold', 'cluster_distance',
-                             'min_cluster_size', 'water_plane_threshold', 'velocity_history_size']:
+                             'min_cluster_size', 'water_plane_threshold']:
 
                 # Reload all parameters
                 self._load_parameters()
@@ -434,9 +428,6 @@ class LidarPerception(Node):
         # 2. Obstacle clustering
         self.clusters = self._cluster_obstacles(points_array)
         self.gaps = self._find_gaps(points_array)
-        
-        # 6. Velocity estimation - track clusters over time
-        self._update_obstacle_tracks(self.clusters, current_time)
 
         # POLAR HISTOGRAM: weighted left/right free-space balance
         self.polar_bias = self._calculate_polar_histogram(points_array)
@@ -668,71 +659,6 @@ class LidarPerception(Node):
         steer_deg = (best_bin * bin_width_deg - 180)
         return math.radians(steer_deg)
 
-    def _update_obstacle_tracks(self, clusters, current_time):
-        """Track obstacle positions over time for velocity estimation"""
-        # Simple nearest-neighbor tracking
-        for i, cluster in enumerate(clusters):
-            cx, cy = cluster['centroid']
-            cluster_id = f"obs_{i}"
-            
-            # Find closest existing track
-            best_match = None
-            best_dist = 3.0  # Max matching distance
-            
-            for track_id, track_history in self.obstacle_tracks.items():
-                if len(track_history) > 0:
-                    last_pos = track_history[-1]
-                    dist = math.sqrt((cx - last_pos[0])**2 + (cy - last_pos[1])**2)
-                    if dist < best_dist:
-                        best_dist = dist
-                        best_match = track_id
-            
-            if best_match:
-                # Update existing track
-                self.obstacle_tracks[best_match].append((cx, cy, current_time))
-                
-                # Calculate velocity if enough history
-                if len(self.obstacle_tracks[best_match]) >= 3:
-                    self._estimate_velocity(best_match)
-            else:
-                # Create new track
-                self.obstacle_tracks[cluster_id] = deque(maxlen=self.velocity_history_size)
-                self.obstacle_tracks[cluster_id].append((cx, cy, current_time))
-        
-        # Clean up old tracks
-        self._cleanup_old_tracks(current_time)
-
-    def _estimate_velocity(self, track_id):
-        """Estimate obstacle velocity from track history"""
-        track = self.obstacle_tracks[track_id]
-        if len(track) < 2:
-            return
-        
-        # Use last two positions
-        p1 = track[-2]
-        p2 = track[-1]
-        
-        dt = (p2[2] - p1[2]).nanoseconds / 1e9
-        if dt > 0:
-            vx = (p2[0] - p1[0]) / dt
-            vy = (p2[1] - p1[1]) / dt
-            self.obstacle_velocities[track_id] = (vx, vy)
-
-    def _cleanup_old_tracks(self, current_time):
-        """Remove tracks that haven't been updated recently"""
-        stale_tracks = []
-        for track_id, track_history in self.obstacle_tracks.items():
-            if len(track_history) > 0:
-                last_time = track_history[-1][2]
-                age = (current_time - last_time).nanoseconds / 1e9
-                if age > 1.0:  # 1 second timeout
-                    stale_tracks.append(track_id)
-        
-        for track_id in stale_tracks:
-            del self.obstacle_tracks[track_id]
-            if track_id in self.obstacle_velocities:
-                del self.obstacle_velocities[track_id]
-
     def _analyze_sectors_adaptive(self, points):
         """Adaptive sector analysis based on target direction"""
         front_points = []
@@ -824,18 +750,6 @@ class LidarPerception(Node):
                 'distance': round(gap['distance'], 2)
             })
         
-        # Prepare velocity info for moving obstacles
-        moving_obstacles = []
-        for track_id, velocity in self.obstacle_velocities.items():
-            speed = math.sqrt(velocity[0]**2 + velocity[1]**2)
-            if speed > 0.5:  # Only report if moving > 0.5 m/s
-                moving_obstacles.append({
-                    'id': track_id,
-                    'vx': round(velocity[0], 2),
-                    'vy': round(velocity[1], 2),
-                    'speed': round(speed, 2)
-                })
-        
         # best_gap for controller consumption (direction in degrees, width in degrees)
         best_gap = None
         if self.gaps:
@@ -874,7 +788,6 @@ class LidarPerception(Node):
             'overall_urgency': float(round(self.overall_urgency, 3)),
             'clusters': cluster_info,
             'gaps': gap_info,
-            'moving_obstacles': moving_obstacles,
             'water_plane_z': float(round(self.water_plane_z, 2)) if self.water_plane_z else None,
             'temporal_confidence': float(len(self.detection_history) / self.temporal_history_size),
             # Advanced steering signals (polar histogram + VFH)

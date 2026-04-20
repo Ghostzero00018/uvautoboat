@@ -279,32 +279,6 @@ else:
 
 ---
 
-### Step 9: Velocity Estimation (Moving Obstacles)
-
-**Purpose**: Track obstacles across frames to detect movement
-
-**Algorithm:**
-
-1. Match obstacles between consecutive scans (nearest neighbor)
-2. Calculate displacement over time
-3. Estimate velocity vector (vx, vy)
-
-**Parameters:**
-
-- `velocity_history_size`: 5 frames (default)
-
-**Output**: Moving obstacles with velocity:
-
-```json
-"moving_obstacles": [
-  {"id": "obs_0", "vx": 0.5, "vy": 0.1, "speed": 0.51}
-]
-```
-
-**Future Use**: Predictive avoidance for dynamic environments (other boats, wildlife).
-
----
-
 ## Output Message Format
 
 The Perception node publishes obstacle information to `/perception/obstacle_info` as JSON:
@@ -326,9 +300,6 @@ The Perception node publishes obstacle information to `/perception/obstacle_info
   ],
   "gaps": [
     {"angle_deg": -25.0, "width": 5.2, "distance": 15.0}
-  ],
-  "moving_obstacles": [
-    {"id": "obs_0", "vx": 0.5, "vy": 0.1, "speed": 0.51}
   ],
   "water_plane_z": -2.8,
   "temporal_confidence": 1.0
@@ -354,7 +325,6 @@ The Perception node publishes obstacle information to `/perception/obstacle_info
 | `cluster_distance` | 2.0 | DBSCAN eps (m) |
 | `min_cluster_size` | 3 | DBSCAN min samples |
 | `water_plane_threshold` | 0.5 | Water filtering tolerance (m) |
-| `velocity_history_size` | 5 | Frames for velocity tracking |
 
 ---
 
