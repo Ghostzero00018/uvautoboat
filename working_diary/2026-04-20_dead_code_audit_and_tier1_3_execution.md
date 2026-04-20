@@ -108,7 +108,7 @@ Fixed in two layers:
    `$WS_ROOT/src/` to exist as a sibling directory, rejecting the
    nested workspace case.
 2. **Common_Issues entry** with full symptoms + cause + diagnosis
-   + solution + prevention. Added an early-warning bullet: the
+   - solution + prevention. Added an early-warning bullet: the
    accidental wrong-cwd build is noticeably *slower* than a normal
    incremental build because it's compiling cold into a fresh install
    tree — a tell the operator can catch at build time and abort before
