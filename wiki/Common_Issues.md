@@ -401,6 +401,48 @@ sudo ufw allow 8080/tcp
 
 ---
 
+### `colcon build` Run From Wrong Directory (`src/src/` Path Errors)
+
+**Symptoms**:
+
+- Launcher prints paths like `/home/<user>/seal_ws/src/src/uvautoboat/...`
+- `bash: cd: .../src/src/uvautoboat/web_dashboard/autoboat: No such file or directory`
+- ROS 2 nodes abort at startup because `ros2 launch` can't find the launch YAML
+- Dashboard HTTP server starts but `GET /` returns 404 (wrong docroot)
+
+**Cause**: `colcon build` was run from **inside `~/seal_ws/src/`** instead of from the workspace root `~/seal_ws/`. This creates a *nested, spurious* workspace at `~/seal_ws/src/build/`, `~/seal_ws/src/install/`, and `~/seal_ws/src/log/`. The one-click launcher's `WS_ROOT` auto-detection walks upward from the script location looking for `install/setup.bash` and finds the spurious `src/install/` first (it's one directory closer). Every subsequent `$WS_ROOT/src/uvautoboat/...` path then resolves to `src/src/uvautoboat/...` which does not exist.
+
+**Diagnosis**:
+
+```bash
+# The legit workspace has install/build/log ONLY at the root.
+ls -la ~/seal_ws/install/setup.bash    # Should exist (this is correct)
+ls -la ~/seal_ws/src/install/setup.bash  # Should NOT exist
+```
+
+If `~/seal_ws/src/install/` exists, that is the smoking gun.
+
+**Solution**:
+
+1. **Delete the spurious nested workspace**:
+
+   ```bash
+   rm -rf ~/seal_ws/src/build ~/seal_ws/src/install ~/seal_ws/src/log
+   ```
+
+2. **Rebuild from the correct cwd** (the workspace root, the one containing `src/`):
+
+   ```bash
+   cd ~/seal_ws
+   colcon build --merge-install
+   ```
+
+3. **Relaunch** the one-click launcher. Paths should now resolve cleanly.
+
+**Prevention**: Always `cd ~/seal_ws` before running `colcon build`. Never run it from inside `src/` or from a package subdirectory — colcon will happily create a fresh workspace wherever you invoke it.
+
+---
+
 ### Missing Package Errors
 
 **Symptoms**: `ModuleNotFoundError` or `No module named 'X'`

@@ -46,7 +46,6 @@ MAX_THRUST = 2000.0          # Newtons - hardware limit (v2.1: increased from 10
 SAFE_THRUST = 800.0          # Newtons - operational limit
 INTEGRAL_LIMIT = 0.5         # radians - prevent integral windup
 TURN_POWER_LIMIT = 1600.0     # Newtons - max differential thrust (v2.1: increased from 800)
-SENSOR_TIMEOUT = 2.0         # seconds
 
 
 # =============================================================================
@@ -208,7 +207,6 @@ class HeadingController(Node):
         # Simple anti-stuck parameters
         self.declare_parameter('stuck_timeout', 12.0)
         self.declare_parameter('stuck_threshold', 1.0)
-        self.declare_parameter('drift_compensation_gain', 0.3)
         # Shoreline/bank protection: slow down when very close to obstacles (e.g., banks)
         self.declare_parameter('bank_slow_distance', 6.0)
         self.declare_parameter('bank_slow_factor', 0.25)
@@ -239,7 +237,6 @@ class HeadingController(Node):
         # Simple anti-stuck parameters
         self.stuck_timeout = self.get_parameter('stuck_timeout').value
         self.stuck_threshold = self.get_parameter('stuck_threshold').value
-        self.drift_compensation_gain = self.get_parameter('drift_compensation_gain').value
         self.bank_slow_distance = float(self.get_parameter('bank_slow_distance').value)
         self.bank_slow_factor = float(self.get_parameter('bank_slow_factor').value)
 
@@ -285,8 +282,8 @@ class HeadingController(Node):
         self.prev_left_thrust = 0.0
         self.prev_right_thrust = 0.0
 
-        # GPS for local coordinate conversion
-        self.start_gps = None
+        # GPS state
+        self.first_gps_seen = False
         self.current_gps = None
         
         # Simple anti-stuck state
@@ -294,7 +291,6 @@ class HeadingController(Node):
         self.stuck_check_time = None
         self.is_stuck = False
         self.escape_mode = False
-        self.escape_start_time = None
         self.consecutive_stuck_count = 0
         self.escape_direction = 'IDLE'  # 'IDLE' | 'LEFT' | 'RIGHT' — published for dashboard
 
@@ -394,8 +390,8 @@ class HeadingController(Node):
     def gps_callback(self, msg):
         """Handle GPS updates"""
         self.current_gps = (msg.latitude, msg.longitude)
-        if self.start_gps is None:
-            self.start_gps = (msg.latitude, msg.longitude)
+        if not self.first_gps_seen:
+            self.first_gps_seen = True
 
     def imu_callback(self, msg):
         """Extract yaw from IMU quaternion"""
@@ -1027,7 +1023,6 @@ class HeadingController(Node):
                 if not self.is_stuck:
                     self.is_stuck = True
                     self.escape_mode = True
-                    self.escape_start_time = self.get_clock().now()
                     self.consecutive_stuck_count += 1
 
                     self.get_logger().warn(

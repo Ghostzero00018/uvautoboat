@@ -31,8 +31,6 @@ import math
 import json
 import time
 import heapq
-import glob
-import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from sensor_msgs.msg import NavSatFix
@@ -1386,15 +1384,6 @@ class WaypointPlanner(Node):
                 ymax - origin_y,
             ))
         return local
-
-    def in_hazard_zone(self, x: float, y: float) -> bool:
-        """Check if position is inside any hazard zone."""
-        if not self.hazard_enabled or not self.hazard_boxes:
-            return False
-        for xmin, ymin, xmax, ymax in self.hazard_boxes:
-            if xmin <= x <= xmax and ymin <= y <= ymax:
-                return True
-        return False
 
     def _segment_intersects_hazard(self, x1, y1, x2, y2, margin=0.0) -> bool:
         """Check if a line segment intersects any hazard zone (with optional margin)."""

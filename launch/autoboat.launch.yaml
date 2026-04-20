@@ -189,8 +189,6 @@ launch:
       value: 12.0         # Time before declaring stuck (seconds)
     - name: stuck_threshold
       value: 1.0          # Distance threshold in meters
-    - name: drift_compensation_gain
-      value: 0.3          # Compensation gain for estimated drift/current
     - name: kalman_process_noise
       value: 0.01         # Kalman filter process noise (drift estimator)
     - name: kalman_measurement_noise

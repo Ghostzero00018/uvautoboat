@@ -3353,6 +3353,14 @@ function updateMissionProgress() {
             _prevProgress.visible = true;
         }
 
+        // Fraction of waypoints actually COMPLETED (not targeted). currentWaypoint is
+        // the 1-indexed target, so completed = currentWaypoint - 1 (e.g. heading to
+        // wp 14 of 14 means 13 done → ~93%, not 100%). Clamp to [0, 1] for ticks
+        // before mission start or just after final-waypoint capture.
+        const waypointsCompletedFraction = missionState.totalWaypoints > 0
+            ? Math.max(0, Math.min(1, (missionState.currentWaypoint - 1) / missionState.totalWaypoints))
+            : 0;
+
         // Calculate progress percentage
         let waypointProgress;
         if (missionState.goHomeMode) {
@@ -3366,7 +3374,7 @@ function updateMissionProgress() {
                 waypointProgress = 0;
             }
         } else {
-            waypointProgress = (missionState.currentWaypoint / missionState.totalWaypoints) * 100;
+            waypointProgress = waypointsCompletedFraction * 100;
         }
         const progressPct = waypointProgress.toFixed(0) + '%';
 
@@ -3399,7 +3407,7 @@ function updateMissionProgress() {
         // Update distance (simplified - would need actual path tracking)
         if (currentValidation) {
             const totalDist = currentValidation.estimates.distance;
-            const traveledDist = (missionState.currentWaypoint / missionState.totalWaypoints) * totalDist;
+            const traveledDist = waypointsCompletedFraction * totalDist;
             const distText = `${traveledDist.toFixed(0)}m / ${totalDist.toFixed(0)}m`;
             if (_prevProgress.dist !== distText) {
                 document.getElementById('progress-distance').textContent = distText;
@@ -3431,7 +3439,7 @@ function updateMissionProgress() {
         let timeText = '--:--';
         if (currentValidation && avgSpeed > 0.1) {
             const totalDist = currentValidation.estimates.distance;
-            const traveledDist = (missionState.currentWaypoint / missionState.totalWaypoints) * totalDist;
+            const traveledDist = waypointsCompletedFraction * totalDist;
             const remainingDist = totalDist - traveledDist;
             const remainingTime = remainingDist / avgSpeed;
             const mins = Math.floor(remainingTime / 60);

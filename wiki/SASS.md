@@ -144,7 +144,6 @@ When SASS alone cannot free the boat, the waypoint skip strategy takes over:
 |:----------|:--------|:------------|
 | `stuck_timeout` | 12.0 | Seconds without progress to trigger SASS |
 | `stuck_threshold` | 1.0 | Minimum movement (meters) to not be stuck |
-| `drift_compensation_gain` | 0.3 | Kalman drift correction strength |
 | `kalman_process_noise` | 0.01 | Drift estimation process noise |
 | `kalman_measurement_noise` | 0.5 | Drift estimation measurement noise |
 
