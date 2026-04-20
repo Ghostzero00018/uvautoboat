@@ -36,7 +36,7 @@ import json
 import numpy as np
 
 from sensor_msgs.msg import NavSatFix, Imu
-from std_msgs.msg import Float64, String
+from std_msgs.msg import Float64, String, Bool
 
 
 # =============================================================================
@@ -358,6 +358,16 @@ class HeadingController(Node):
             10
         )
 
+        # Dedicated safety-critical E-Stop channel. Bypasses mission_command path
+        # and its JSON parse step — Bool is atomic. RELIABLE QoS replaces the
+        # retry loops previously used by the CLI and dashboard.
+        self.create_subscription(
+            Bool,
+            '/planning/emergency_stop',
+            self.emergency_stop_latched_callback,
+            1
+        )
+
         # --- PUBLISHERS ---
         self.pub_left = self.create_publisher(Float64, '/wamv/thrusters/left/thrust', 10)
         self.pub_right = self.create_publisher(Float64, '/wamv/thrusters/right/thrust', 10)
@@ -481,12 +491,7 @@ class HeadingController(Node):
             return
 
         if command == 'emergency_stop':
-            self.stop_override = True
-            self.mission_active = False
-            self._reset_all_escape_state()
-            self.stop()
-            self.send_thrust(0.0, 0.0)
-            self.get_logger().warn("🚨 EMERGENCY STOP — override latched, escape state reset. Thrusters cut until resume/clear.")
+            self._latch_emergency_stop("command")
         elif command == 'stop_mission':
             self.stop_override = True
             self.mission_active = False
@@ -498,6 +503,23 @@ class HeadingController(Node):
                 self.get_logger().info(f"Clearing STOP override due to command: {command}")
             self.stop_override = False
     
+    def emergency_stop_latched_callback(self, msg):
+        """Safety-critical E-Stop entry point. Bool(data=True) latches stop_override."""
+        if msg.data:
+            self._latch_emergency_stop("latched topic")
+
+    def _latch_emergency_stop(self, source: str):
+        """Shared E-Stop action for both mission_command and latched-topic paths."""
+        self.stop_override = True
+        self.mission_active = False
+        self._reset_all_escape_state()
+        self.stop()
+        self.send_thrust(0.0, 0.0)
+        self.get_logger().warn(
+            f"🚨 EMERGENCY STOP via {source} — override latched, escape state reset. "
+            "Thrusters cut until resume/clear."
+        )
+
     def _reset_all_escape_state(self):
         """Reset all escape/stuck/avoidance state variables"""
         self.escape_mode = False

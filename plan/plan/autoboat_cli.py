@@ -51,7 +51,7 @@ Usage:
 
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import String
+from std_msgs.msg import String, Bool
 import json
 import sys
 import argparse
@@ -71,6 +71,8 @@ class MissionCLI(Node):
         # Publishers
         self.config_pub = self.create_publisher(String, '/planning/set_config', 10)
         self.command_pub = self.create_publisher(String, '/planning/mission_command', 10)
+        # Dedicated E-Stop channel — RELIABLE QoS delivers without retries.
+        self.estop_pub = self.create_publisher(Bool, '/planning/emergency_stop', 1)
 
         # Subscribers for status
         self.mission_status = None
@@ -365,10 +367,8 @@ class MissionCLI(Node):
     def emergency_stop(self):
         """Emergency stop — cuts thrust and latches stop override"""
         print("\n🚨 EMERGENCY STOP...")
-        for i in range(5):
-            self.send_command('emergency_stop')
-            time.sleep(0.1)
-            rclpy.spin_once(self, timeout_sec=0.1)
+        self.estop_pub.publish(Bool(data=True))
+        rclpy.spin_once(self, timeout_sec=0.1)
 
         time.sleep(0.3)
         self._spin_for_status(timeout=1.0)

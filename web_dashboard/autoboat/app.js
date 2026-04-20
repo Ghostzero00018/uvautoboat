@@ -2091,16 +2091,18 @@ function emergencyStop() {
         messageType: 'std_msgs/Float64'
     });
 
-    // Publish zero thrust multiple times to ensure it's received
-    for (let i = 0; i < 5; i++) {
-        setTimeout(() => {
-            leftThrustTopic.publish(zeroThrustMsg);
-            rightThrustTopic.publish(zeroThrustMsg);
-        }, i * 100); // 0ms, 100ms, 200ms, 300ms, 400ms
-    }
+    leftThrustTopic.publish(zeroThrustMsg);
+    rightThrustTopic.publish(zeroThrustMsg);
 
-    // 2. Send emergency_stop command to planner
-    sendMissionCommand('emergency_stop');
+    // 2. Latch e-stop on the dedicated safety-critical channel.
+    //    Bool on /planning/emergency_stop is received by both planner and
+    //    controller with RELIABLE QoS, so a single publish is sufficient.
+    const estopTopic = new ROSLIB.Topic({
+        ros: ros,
+        name: '/planning/emergency_stop',
+        messageType: 'std_msgs/Bool'
+    });
+    estopTopic.publish(new ROSLIB.Message({ data: true }));
 
     // 3. Visual feedback - flash the emergency stop button
     const emergencyBtn = document.getElementById('btn-emergency-stop');

@@ -34,7 +34,7 @@ import heapq
 from pathlib import Path
 
 from sensor_msgs.msg import NavSatFix
-from std_msgs.msg import String
+from std_msgs.msg import String, Bool
 
 
 class AStarSolver:
@@ -328,6 +328,17 @@ class WaypointPlanner(Node):
             10
         )
 
+        # Dedicated safety-critical E-Stop channel. RELIABLE QoS replaces the
+        # retry loops previously used on /planning/mission_command for e-stop;
+        # DDS guarantees delivery to any running subscriber without the caller
+        # needing to fire duplicates.
+        self.create_subscription(
+            Bool,
+            '/planning/emergency_stop',
+            self.emergency_stop_latched_callback,
+            1
+        )
+
         # --- PUBLISHERS ---
         self.pub_waypoints = self.create_publisher(String, '/planning/waypoints', 10)
         self.pub_current_target = self.create_publisher(String, '/planning/current_target', 10)
@@ -378,6 +389,16 @@ class WaypointPlanner(Node):
             self.get_logger().info(f"Base Point: {self.start_gps[0]:.6f}, {self.start_gps[1]:.6f}")
             self.get_logger().info("GPS acquired - run 'ros2 run plan autoboat_cli generate' to create waypoints")
             
+    def emergency_stop_latched_callback(self, msg):
+        """Safety-critical E-Stop entry point. Bool(data=True) latches EMERGENCY_STOP."""
+        if not msg.data:
+            return
+        prev_state = self.state
+        self.state = "EMERGENCY_STOP"
+        self.mission_armed = False
+        self.get_logger().error(f"🚨 EMERGENCY STOP via latched topic (was {prev_state} → now EMERGENCY_STOP)")
+        self.publish_mission_status_timer()
+
     def mission_command_callback(self, msg):
         """Handle mission commands from CLI/dashboard"""
         try:
