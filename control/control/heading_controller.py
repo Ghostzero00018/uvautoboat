@@ -501,6 +501,10 @@ class HeadingController(Node):
         elif command in ('resume_mission', 'joystick_enable', 'go_home', 'start_mission'):
             if self.stop_override:
                 self.get_logger().info(f"Clearing STOP override due to command: {command}")
+                # Drop the stale position window so the Kalman drift estimator
+                # doesn't absorb the E-Stop-period position delta as a spurious
+                # drift measurement on the first post-resume update.
+                self.position_history.clear()
             self.stop_override = False
     
     def emergency_stop_latched_callback(self, msg):
