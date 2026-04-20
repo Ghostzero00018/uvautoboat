@@ -24,6 +24,10 @@ Welcome to the **AutoBoat Wiki**! This documentation provides comprehensive guid
 - **[Glossary](Glossary)** — Plain-language definitions of every technical term
 - **[Node Naming Refactor Plan](Node_Naming_Refactor_Plan)** — Completed rename: OKO/SPUTNIK/BURAN → functional names (lidar_perception, waypoint_planner, heading_controller)
 
+### 🗺️ Roadmap
+
+- **[Project Roadmap](Roadmap)** — Phase 5 hardware-deployment summary + research extensions (water quality, cellular automata, digital twin); Phase A (mock water quality sensor) consulting scope; open questions for supervisor
+
 > **Note:** The former Vostok1 integrated and Atlantis architectures have been deprecated and moved to `legacy/`.
 
 ### 🔧 Module Deep Dives
