@@ -409,6 +409,7 @@ sudo ufw allow 8080/tcp
 - `bash: cd: .../src/src/uvautoboat/web_dashboard/autoboat: No such file or directory`
 - ROS 2 nodes abort at startup because `ros2 launch` can't find the launch YAML
 - Dashboard HTTP server starts but `GET /` returns 404 (wrong docroot)
+- **Early warning sign during `colcon build` itself**: the wrong-cwd build takes noticeably longer than a normal incremental build — colcon is doing a fresh cold compilation into an empty `install/` tree instead of reusing the cached artefacts from your usual `~/seal_ws/install/`. If your day-to-day incremental builds finish in seconds and this one is grinding on for minutes, interrupt it and check your cwd before it finishes laying down the spurious nested workspace.
 
 **Cause**: `colcon build` was run from **inside `~/seal_ws/src/`** instead of from the workspace root `~/seal_ws/`. This creates a *nested, spurious* workspace at `~/seal_ws/src/build/`, `~/seal_ws/src/install/`, and `~/seal_ws/src/log/`. The one-click launcher's `WS_ROOT` auto-detection walks upward from the script location looking for `install/setup.bash` and finds the spurious `src/install/` first (it's one directory closer). Every subsequent `$WS_ROOT/src/uvautoboat/...` path then resolves to `src/src/uvautoboat/...` which does not exist.
 

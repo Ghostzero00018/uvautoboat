@@ -39,12 +39,19 @@ info() { echo -e "  ${CYAN}[INFO]${NC} $1"; }
 section() { echo -e "\n${BLUE}========== $1 ==========${NC}"; }
 
 # Prime DDS discovery — the first ros2 node/topic list call after process
-# startup often returns incomplete results due to discovery lag. Throw away
-# one call, wait briefly, then capture a stable snapshot. The 3s wait covers
-# the case where the health check is run immediately after starting a mission.
-ros2 node list >/dev/null 2>&1
-ros2 topic list >/dev/null 2>&1
-sleep 3
+# startup often returns incomplete results due to discovery lag. Poll with
+# `--no-daemon` to sidestep any stale `ros2 daemon` cache (see Common_Issues
+# "ros2 node list empty"), exiting as soon as at least one node is visible.
+# Caps at 10 s; if the graph is still empty, downstream checks will report
+# the real state rather than a false pass.
+elapsed=0
+while [ "$elapsed" -lt 10 ]; do
+    if [ "$(ros2 node list --no-daemon 2>/dev/null | wc -l)" -gt 0 ]; then
+        break
+    fi
+    sleep 1
+    elapsed=$((elapsed + 1))
+done
 
 # ============================================================================
 # 1. NODE CHECK

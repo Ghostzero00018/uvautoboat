@@ -149,6 +149,23 @@ This section explains **why each key parameter has the value it does**. All valu
 | `min_safe_distance` (Controller) | 12 m | The Controller triggers reactive steering below this. Chosen slightly larger than Perception's 10 m to add a safety buffer — if Perception says "urgency 0.2", the Controller is already steering. |
 | `critical_distance` (Controller) | 6 m | The Controller triggers micro-reverse below this. Slightly larger than Perception's 5.5 m critical for the same buffer reason. |
 
+### PID & speed shaping
+
+| Parameter | Value | Rationale |
+|:----------|:------|:----------|
+| `kp` | 500 | Proportional gain on heading error. Tuned empirically on `sydney_regatta_DEFAULT` for prompt response without overshoot. Reduce if the boat hunts side-to-side; increase if it feels sluggish. |
+| `ki` | 20 | Integral gain — compensates for sustained heading bias (weak side-current, thruster asymmetry). Kept small by design: `INTEGRAL_LIMIT = 0.5 rad` is the windup cap. |
+| `kd` | 150 | Derivative gain — damps oscillation. Ratio `Kd/Kp = 0.3` gives a moderately-damped response. Larger looks over-damped; smaller causes zigzag. |
+| `base_speed` | 400 N | Cruise thrust at ≤20° heading error. |
+| `max_speed` | 800 N | Operator-tunable soft cap on forward thrust, applied in the control loop before the `SAFE_THRUST` hardware ceiling. Reduce to slow the boat in tight environments; raise up to `MAX_THRUST = 2000 N` for hardware with larger motors. |
+| `obstacle_slow_factor` | 0.5 | Speed multiplier when an obstacle is detected. 0.5 halves speed for smoother avoidance; tuning presets may override (e.g. `Universal` uses 0.3 for tighter environments). |
+| `approach_slow_distance` | 10 m | Distance from the target waypoint below which speed ramps down linearly. |
+| `approach_slow_factor` | 0.7 | Terminal speed fraction at distance 0 (70% of pre-approach speed). A 250 N minimum is clamped downstream to preserve steering authority through the approach. |
+| `bank_slow_distance` | 6 m | Obstacle distance below which shoreline/structure slowdown activates. |
+| `bank_slow_factor` | 0.25 | Speed multiplier at the closest end of the bank-slow ramp. Aggressive by design — hitting a pier damages the boat. |
+| `turn_deadband_deg` | 0.5° | Below this heading error, turn power is zeroed. Prevents chatter from GPS/IMU noise near the setpoint. |
+| `slew_rate_limit` | 80 N/cycle | Maximum thrust change per 50 ms control cycle (1600 N/s). Prevents sudden reversals that could damage thrusters. |
+
 ### Timing thresholds
 
 | Parameter | Value | Rationale |
@@ -173,12 +190,19 @@ This section explains **why each key parameter has the value it does**. All valu
 | `astar_safety_margin` | 12 m | Obstacle inflation radius. Roughly `min_safe_distance` — so A\* never produces a path that the Controller would then react against. |
 | `astar_max_expansions` | 20,000 | Node expansion cap. At 3 m resolution this covers ~180,000 m² of search space before timing out — more than enough for any realistic detour. |
 
-### Kalman filter
+### Drift compensation
+
+The Controller runs a 2D linear Kalman filter to estimate water-current and wind drift, then applies the estimate as feed-forward thrust compensation.
 
 | Parameter | Value | Rationale |
 |:----------|:------|:----------|
-| `kalman_process_noise` (Q) | 0.01 | Small Q = smooth drift estimates. Appropriate for environmental drift that changes over seconds, not milliseconds. |
-| `kalman_measurement_noise` (R) | 0.5 | Moderate R = partial trust in displacement-based drift measurement. Larger than Q because the measurement is noisy (GPS jitter + motion model error). The ratio `R/Q = 50` means the filter weights the prediction more heavily, smoothing short-term noise. |
+| `kalman_process_noise` (Q) | 0.01 | Small Q → smooth drift estimates. Appropriate for environmental drift that evolves over seconds, not milliseconds. |
+| `kalman_measurement_noise` (R) | 0.5 | Moderate R → partial trust in displacement-based measurement. Ratio `R/Q ≈ 50` means the filter leans on its prediction and smooths GPS jitter. |
+| `drift_compensation_gain` | 0.3 | Feed-forward gain scaling estimated drift velocity (m/s) to thrust (N), multiplied by 100 and capped at ±150 N. 0.3 gives ~30 N correction per m/s of along-track drift — enough to partially counter a moderate current without destabilising the PID. |
+
+**Filter-update gating.** The Kalman `update()` step fires only when the last commanded thrust sum is below 50 N — i.e., the boat is commanded-stationary (idle, stopped, or between escape pulses). This prevents the displacement measurement being dominated by commanded motion rather than environmental drift. During active navigation only `predict()` runs, so uncertainty grows until the next commanded-stationary window produces a fresh measurement.
+
+**Feed-forward application.** Each control cycle the estimated drift is projected onto the boat's current heading; the along-track component is subtracted from the forward `speed` command before thrust is split into left/right. A headwind or backward-current therefore adds forward thrust; a following current reduces it. The ±150 N cap ensures a bad filter tick cannot cause runaway.
 
 ### Temporal confirmation
 
@@ -196,6 +220,20 @@ This section explains **why each key parameter has the value it does**. All valu
 | `lanes` | 10 | Number of lanes. Produces ~15 m × 300 m coverage area — sized for the default demo. |
 | `waypoint_tolerance` | 3.5 m | Arrival radius. Balance between precision (small = accurate) and robustness to overshoot (large = forgiving). 3.5 m is ~1× boat length. |
 | `detour_distance` | 14 m | Lateral offset for inserted detour waypoints. Wide enough to clear the obstacle being detoured around; small enough to rejoin the mission path quickly. |
+
+### Hand-tuned constants (heading controller)
+
+These are Python constants in `control/control/heading_controller.py`, not YAML parameters. Documented here so the values can be understood without reading source.
+
+| Where | Value | Rationale |
+|:------|:------|:----------|
+| Speed multiplier at ≥45° heading error | 0.5× | Halve cruise speed when turning hard — reduces lateral skid on a boat without a keel. |
+| Speed multiplier at ≥20° heading error | 0.75× | Softer slowdown in the 20–45° band — avoids the jarring on/off of a single-threshold rule. |
+| Approach-phase minimum speed clamp | 250 N | Below this, differential thrust can't overcome the boat's turning inertia and heading commands stop taking effect. 250 N preserves steering authority through the final approach. |
+| Escape-mode turn power | 450 N | Fixed turn-power used while anti-stuck escape is active. Higher than normal differential because the boat is already near-stationary and we want a crisp pivot. |
+| `SAFE_THRUST` | 800 N | Operational per-thruster ceiling — matches VRX WAM-V default. Hardware ceiling `MAX_THRUST` lifts to 2000 N but is not the default. |
+| `TURN_POWER_LIMIT` | 1600 N | Maximum turn-power magnitude before per-side clamping to `SAFE_THRUST`. |
+| `INTEGRAL_LIMIT` | 0.5 rad | Hard anti-windup cap on the PID integral accumulator. |
 
 ---
 

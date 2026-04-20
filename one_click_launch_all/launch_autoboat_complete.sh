@@ -206,6 +206,63 @@ recheck() {
     fi
 }
 
+# Wait until a ROS 2 topic has at least one publisher. Uses `ros2 topic info`
+# rather than `ros2 topic echo --once` because the latter is sensitive to QoS
+# mismatches and message-type-resolution delays on sensor topics — info just
+# queries DDS discovery, which is enough to confirm "the publishing node is
+# alive and has advertised this topic".
+#
+# All three wait_for_* helpers always return 0. The warning is the failure
+# signal; returning non-zero would trip `set -e` and abort the whole launcher,
+# defeating the "continuing anyway" intent.
+wait_for_topic() {
+    local topic="$1"
+    local timeout="${2:-30}"
+    local elapsed=0
+    while [ "$elapsed" -lt "$timeout" ]; do
+        if ros2 topic info "$topic" 2>/dev/null | grep -q 'Publisher count: [1-9]'; then
+            return 0
+        fi
+        sleep 1
+        elapsed=$((elapsed + 1))
+    done
+    print_warning "Timed out waiting for $topic after ${timeout}s — continuing anyway"
+    return 0
+}
+
+# Wait until a local TCP port is listening. Used for rosbridge (:9090),
+# web_video_server (:8080), and the dashboard HTTP server (:8002).
+wait_for_port() {
+    local port="$1"
+    local timeout="${2:-30}"
+    local elapsed=0
+    while [ "$elapsed" -lt "$timeout" ]; do
+        if ss -tln 2>/dev/null | grep -q ":$port "; then
+            return 0
+        fi
+        sleep 1
+        elapsed=$((elapsed + 1))
+    done
+    print_warning "Timed out waiting for port $port after ${timeout}s — continuing anyway"
+    return 0
+}
+
+# Wait until a ROS 2 node is reachable via its parameter server. Any response
+# from `ros2 param list <node>` confirms the node is both alive and discoverable.
+wait_for_node() {
+    local node="$1"
+    local timeout="${2:-30}"
+    local elapsed=0
+    while [ "$elapsed" -lt "$timeout" ]; do
+        if timeout 2 ros2 param list "$node" >/dev/null 2>&1; then
+            return 0
+        fi
+        elapsed=$((elapsed + 2))
+    done
+    print_warning "Timed out waiting for node $node after ${timeout}s — continuing anyway"
+    return 0
+}
+
 # Check prerequisites
 print_header "Checking Prerequisites"
 
@@ -223,11 +280,15 @@ if ! command -v gz &> /dev/null; then
 fi
 print_status "Gazebo found"
 
-# Detect workspace root dynamically
+# Detect workspace root dynamically.
+# Require install/setup.bash AND a src/ sibling directory — the latter rejects
+# a spurious nested colcon workspace (e.g. ~/seal_ws/src/install/ created by
+# running `colcon build` from inside src/) which would otherwise capture this
+# walk-upward and produce src/src/... path errors downstream.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 WS_ROOT="$SCRIPT_DIR"
 while [ "$WS_ROOT" != "/" ]; do
-    if [ -f "$WS_ROOT/install/setup.bash" ]; then break; fi
+    if [ -f "$WS_ROOT/install/setup.bash" ] && [ -d "$WS_ROOT/src" ]; then break; fi
     WS_ROOT="$(dirname "$WS_ROOT")"
 done
 INSTALL_DIR="$WS_ROOT/install"
@@ -273,7 +334,9 @@ echo 'Note: GPS may take 10-30 seconds to initialize'
 ros2 launch vrx_gz competition.launch.py world:="$WORLD"
 " &
 GAZEBO_PID=$!
-sleep 28  # Wait for Gazebo to start and physics to initialize
+# Wait for Gazebo to load the world and for WAM-V sensors to start publishing.
+# First GPS fix is the earliest reliable "world + boat are up" signal.
+wait_for_topic /wamv/sensors/gps/gps/fix 60
 print_status "Gazebo launched (PID: $GAZEBO_PID)"
 recheck "$GAZEBO_PID" "Gazebo"
 
@@ -285,7 +348,7 @@ echo 'Starting ROS Bridge WebSocket server...'
 ros2 launch rosbridge_server rosbridge_websocket_launch.xml delay_between_messages:=0.0
 " &
 ROSBRIDGE_PID=$!
-sleep 8  # Wait for rosbridge to initialize
+wait_for_port 9090 30  # Rosbridge WebSocket
 print_status "ROS Bridge launched (PID: $ROSBRIDGE_PID)"
 recheck "$ROSBRIDGE_PID" "ROS Bridge"
 
@@ -298,7 +361,9 @@ echo 'Components: Perception | Planner | Controller'
 ros2 launch \"$WS_ROOT/src/uvautoboat/launch/autoboat.launch.yaml\"
 " &
 NAV_PID=$!
-sleep 8  # Wait for navigation stack to initialize
+# heading_controller_node is the last node to come up in the nav launch —
+# if it responds to a param list the whole pipeline is discoverable.
+wait_for_node /heading_controller_node 30
 print_status "Navigation stack launched (PID: $NAV_PID)"
 recheck "$NAV_PID" "Navigation stack"
 
@@ -312,7 +377,7 @@ echo 'Stream available at: http://localhost:8080'
 ros2 run web_video_server web_video_server
 " &
     CAMERA_PID=$!
-    sleep 8
+    wait_for_port 8080 30  # web_video_server MJPEG stream
     print_status "Web Video Server launched (PID: $CAMERA_PID)"
     recheck "$CAMERA_PID" "Web Video Server"
 fi
@@ -346,7 +411,7 @@ echo 'Note: Wait for GPS to initialize (~10-30s) before opening dashboard'
 python3 -m http.server 8002
 " &
     DASHBOARD_PID=$!
-    sleep 8
+    wait_for_port 8002 15  # Dashboard HTTP server
     print_status "Web Dashboard launched (PID: $DASHBOARD_PID)"
 fi
 
