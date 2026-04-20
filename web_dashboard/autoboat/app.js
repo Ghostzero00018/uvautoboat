@@ -1897,9 +1897,20 @@ function initMissionControl() {
 
     document.getElementById('btn-stop-mission').addEventListener('click', () => {
         debounceCommand(() => {
-            sendMissionCommand('stop_mission');
-            // Send a second stop shortly after to ensure controllers see it (helps during anti-stuck)
-            setTimeout(() => sendMissionCommand('stop_mission'), 200);
+            const stopService = new ROSLIB.Service({
+                ros: ros,
+                name: '/planning/stop_mission',
+                serviceType: 'std_srvs/Trigger'
+            });
+            stopService.callService(new ROSLIB.ServiceRequest({}), (result) => {
+                if (result.success) {
+                    addLog(`Mission stopped — ${result.message}`, 'info');
+                } else {
+                    addLog(`Stop rejected: ${result.message}`, 'warning');
+                }
+            }, (error) => {
+                addLog(`Stop service error: ${error}`, 'error');
+            });
             setTimeout(() => alert('⏸️ Mission Stopped\n\nNavigation paused. Use Resume to continue.\n\n⏸️ Mission Arrêtée\n\nNavigation en pause. Utilisez Reprendre pour continuer.'), 100);
         });
     });
@@ -2017,11 +2028,23 @@ function generateWaypoints() {
     });
     configPublisher.publish(configMsg);
 
-    // Wait for planner to process config before generating waypoints
-    // 500ms is conservative for local rosbridge; covers slow config parsing
-    setTimeout(() => {
-        sendMissionCommand('generate_waypoints');
-    }, 500);
+    // Call generate as a service; rosbridge forwards the config publish first,
+    // so by the time the service handler runs the new config is already applied.
+    // No hand-tuned sleep needed.
+    const generateService = new ROSLIB.Service({
+        ros: ros,
+        name: '/planning/generate_waypoints',
+        serviceType: 'std_srvs/Trigger'
+    });
+    generateService.callService(new ROSLIB.ServiceRequest({}), (result) => {
+        if (result.success) {
+            addLog(`Waypoints generated — ${result.message}`, 'info');
+        } else {
+            addLog(`Generate rejected: ${result.message}`, 'warning');
+        }
+    }, (error) => {
+        addLog(`Generate service error: ${error}`, 'error');
+    });
     
     // Calculate and display preview info
     const totalWaypoints = lanes * 2 - 1;

@@ -35,6 +35,7 @@ from pathlib import Path
 
 from sensor_msgs.msg import NavSatFix
 from std_msgs.msg import String, Bool
+from std_srvs.srv import Trigger
 
 
 class AStarSolver:
@@ -339,6 +340,13 @@ class WaypointPlanner(Node):
             1
         )
 
+        # --- SERVICES ---
+        # Replace retry/delay bandages on the client side with request/response ACK.
+        # stop_mission: CLI previously sent 3× with sleeps; dashboard sent 2× 200 ms apart.
+        # generate_waypoints: dashboard previously used 500 ms setTimeout after config publish.
+        self.srv_stop = self.create_service(Trigger, '/planning/stop_mission', self._srv_stop_mission)
+        self.srv_generate = self.create_service(Trigger, '/planning/generate_waypoints', self._srv_generate_waypoints)
+
         # --- PUBLISHERS ---
         self.pub_waypoints = self.create_publisher(String, '/planning/waypoints', 10)
         self.pub_current_target = self.create_publisher(String, '/planning/current_target', 10)
@@ -389,6 +397,33 @@ class WaypointPlanner(Node):
             self.get_logger().info(f"Base Point: {self.start_gps[0]:.6f}, {self.start_gps[1]:.6f}")
             self.get_logger().info("GPS acquired - run 'ros2 run plan autoboat_cli generate' to create waypoints")
             
+    def _srv_stop_mission(self, request, response):
+        """Service-based stop — ACK replaces the old retry loops."""
+        prev_state = self.state
+        self.state = "PAUSED"
+        self.mission_armed = False
+        self.get_logger().info(f"🛑 MISSION STOPPED via service (was {prev_state} → now PAUSED)")
+        self.publish_mission_status_timer()
+        response.success = True
+        response.message = f"stopped (was {prev_state})"
+        return response
+
+    def _srv_generate_waypoints(self, request, response):
+        """Service-based generate — ACK replaces dashboard's 500 ms setTimeout."""
+        if self.start_gps is None:
+            response.success = False
+            response.message = "GPS not available yet"
+            self.get_logger().warn("Generate rejected: GPS not available")
+            return response
+        self.generate_lawnmower_path()
+        self.state = "WAITING_CONFIRM"
+        self.get_logger().info(f"Waypoints generated via service: {len(self.waypoints)} points")
+        self.publish_waypoints()
+        self.publish_mission_status_timer()
+        response.success = True
+        response.message = f"generated {len(self.waypoints)} waypoints"
+        return response
+
     def emergency_stop_latched_callback(self, msg):
         """Safety-critical E-Stop entry point. Bool(data=True) latches EMERGENCY_STOP."""
         if not msg.data:

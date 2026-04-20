@@ -52,6 +52,7 @@ Usage:
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String, Bool
+from std_srvs.srv import Trigger
 import json
 import sys
 import argparse
@@ -73,6 +74,10 @@ class MissionCLI(Node):
         self.command_pub = self.create_publisher(String, '/planning/mission_command', 10)
         # Dedicated E-Stop channel — RELIABLE QoS delivers without retries.
         self.estop_pub = self.create_publisher(Bool, '/planning/emergency_stop', 1)
+
+        # Service clients — request/response replaces fire-and-hope retries.
+        self.stop_client = self.create_client(Trigger, '/planning/stop_mission')
+        self.generate_client = self.create_client(Trigger, '/planning/generate_waypoints')
 
         # Subscribers for status
         self.mission_status = None
@@ -309,9 +314,20 @@ class MissionCLI(Node):
             config['astar_max_expansions'] = astar_max
             
         self.send_config(config)
-        time.sleep(0.2)
-        self.send_command('generate_waypoints')
-        
+        # Config is a topic (no ACK), generate is a service. rclpy's single-threaded
+        # executor processes the config subscription before dispatching the service
+        # call, so no hand-tuned sleep is needed for config to be applied first.
+        if not self.generate_client.wait_for_service(timeout_sec=1.0):
+            print("⚠️ Generate service unavailable — planner not running?")
+            return False
+        future = self.generate_client.call_async(Trigger.Request())
+        rclpy.spin_until_future_complete(self, future, timeout_sec=3.0)
+        result = future.result()
+        if result is None or not result.success:
+            msg = result.message if result else "no response"
+            print(f"⚠️ Generate rejected: {msg}")
+            return False
+
         print(f"\n✅ Waypoints generated: {lanes} lanes × {length}m length × {width}m width")
         print(f"   Estimated waypoints: {lanes * 2 - 1}")
         print(f"   Estimated distance: {length * lanes + width * (lanes - 1):.0f}m")
@@ -345,24 +361,21 @@ class MissionCLI(Node):
         print("\n🚀 Mission START command sent!")
         
     def stop_mission(self):
-        """Stop the mission - send multiple times to ensure delivery"""
+        """Stop the mission via service — ACK confirms delivery."""
         print("\n🛑 Stopping mission...")
-        # Send stop command multiple times to ensure delivery
-        for i in range(3):
-            self.send_command('stop_mission')
-            time.sleep(0.1)
-            rclpy.spin_once(self, timeout_sec=0.1)
-
-        # Wait and verify state changed
-        time.sleep(0.3)
-        self._spin_for_status(timeout=1.0)
-        count, state = self._waypoint_info()
-
-        if state == "PAUSED":
-            print("✅ Mission STOPPED successfully! State: PAUSED")
+        if not self.stop_client.wait_for_service(timeout_sec=1.0):
+            print("⚠️ Stop service unavailable — planner not running?")
+            return
+        future = self.stop_client.call_async(Trigger.Request())
+        rclpy.spin_until_future_complete(self, future, timeout_sec=2.0)
+        result = future.result()
+        if result is None:
+            print("⚠️ Stop service did not respond within 2s")
+            return
+        if result.success:
+            print(f"✅ Mission STOPPED — {result.message}")
         else:
-            print(f"⚠️ Stop command sent. Current state: {state}")
-            print("   If boat is still moving, try 'stop' again or 'reset'")
+            print(f"⚠️ Stop rejected: {result.message}")
         
     def emergency_stop(self):
         """Emergency stop — cuts thrust and latches stop override"""
