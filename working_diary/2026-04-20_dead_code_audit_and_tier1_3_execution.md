@@ -432,12 +432,84 @@ fix: Clear drift position buffer on stop resume (prevent Kalman spike)
 refactor: Dedicated latched E-Stop channel, drop retry loops
 ```
 
+## Late-evening addition — TUNED health-check state
+
+After pushing the Tier 2 close-out commits, a post-hoc sweep of the
+active tree (Explore agent, guided against today's actual deletions
+and refactors) came back empty: no lingering references to deleted
+symbols, no now-dead Python identifiers, no AI-tooling leaks, no
+broken dashboard selectors. Two cosmetic `sleep 8` lines in
+`launch_autoboat_complete.sh` (post-RViz, pre-browser-open) were
+flagged then marked Tier 4 "defensible on review" — both are cushions
+for human-visible UI timing, not bandages masking ROS-level races, so
+left in place.
+
+### What triggered the feature
+
+Running the health check after a Buoy-Field dashboard preset produced
+six `[WARN] param = X (expected Y)` lines — all legitimate user
+tunings, none actually unhealthy. The WARN signal had drifted into
+noise: it was firing every time the operator pressed a preset button,
+so an operator couldn't distinguish "runtime intentionally differs
+from YAML" from "something actually went wrong with the node."
+
+### Fix — 4-state parameter check
+
+Added a boolean ROS parameter `config_tuned` to each of the three
+nodes (`waypoint_planner.py`, `heading_controller.py`,
+`lidar_perception.py`), declared `False` at startup and flipped to
+`True` in the node's `config_callback` after the first successful
+`/planning/set_config` parse. Idempotent via `if not
+self.get_parameter('config_tuned').value:` guard — one-shot flip,
+subsequent config updates don't touch it.
+
+Health check reads this flag once per node (`is_node_tuned` helper)
+and passes the result into each `check_param` call:
+
+| Runtime vs baseline | `config_tuned` | State |
+|:-------------------|:--------------:|:-----:|
+| equal | any | **PASS** — green, counted as healthy |
+| differs | `True` | **TUNED** — magenta, counted as healthy |
+| differs | `False` | **WARN** — yellow, *unexpected drift* (actionable) |
+| unreadable | any | **FAIL** — red |
+
+Summary line now reads `PASS: X  TUNED: Y  FAIL: Z  WARN: W`. WARN
+regains a meaningful signal: it fires only when runtime diverges from
+YAML *without* the user having applied a config — exactly the case an
+operator should investigate.
+
+Dashboard needed a small follow-up in the same commit: its
+`classifyHealthLine(line)` didn't know about the `[TUNED]` tag, so
+the lines rendered white (default fallthrough). Added the regex case
+in `app.js` and a matching `.terminal-line.tuned { color: #ba68c8; }`
+CSS rule mirroring the terminal ANSI magenta.
+
+### Live verification
+
+Health check after a Buoy-Field preset:
+`PASS: 40  TUNED: 6  FAIL: 0  WARN: 0`. Six TUNED lines rendered
+magenta in the dashboard terminal panel, e.g.:
+
+```text
+[TUNED] obstacle_slow_factor = 0.3 (baseline 0.5 — user-applied)
+[TUNED] critical_distance    = 3.0 (baseline 6.0 — user-applied)
+[TUNED] perception_critical_distance = 2.5 (baseline 5.5 — user-applied)
+```
+
+### Commits landed (late evening)
+
+```text
+feat: Health check distinguishes baseline vs user-tuned params (TUNED state)
+```
+
 ## Status after today
 
 All three Tier 2 items from the audit plan are now landed — the full
 plan (Tiers 1, 2, 3) is executed end-to-end. The only audit item
 *not* closed is Tier 4 (defensible-on-review), which by design needed
-no action.
+no action. One improvement added beyond the audit scope (health-check
+TUNED state) to keep the WARN signal actionable once preset-based
+tuning became a routine operator action.
 
 ## Next steps
 
