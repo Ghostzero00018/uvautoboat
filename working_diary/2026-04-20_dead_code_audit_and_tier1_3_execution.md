@@ -265,25 +265,190 @@ future directions: wider A\* safety margin near structures, tighter
 preset for structured-environment missions, or adding a dedicated
 near-structure mode. Logged for resumption.
 
+## Evening session — Tier 2 completion + UI cleanup
+
+The three remaining Tier 2 items were all executed end-to-end in the
+evening session; the pressure-test issue from earlier remains the only
+carry-over to a future day.
+
+### #9 — Dedicated latched E-Stop channel
+
+New `/planning/emergency_stop` (`std_msgs/Bool`) topic. Publishers:
+`autoboat_cli.py` and `app.js` (dashboard). Subscribers: both
+`waypoint_planner.py` and `heading_controller.py` — each node sets its
+own latched state rather than routing through the planner.
+
+Design call that split from the original audit plan: chose
+`RELIABLE + KEEP_LAST(depth=1)` **without** `TRANSIENT_LOCAL`.
+The audit itself flagged the cross-language QoS trap — a subscriber
+requesting `TRANSIENT_LOCAL` against a `VOLATILE` publisher silently
+drops messages — and roslib.js's advertise-QoS support is version-
+sensitive enough that matching both sides was a risk not worth taking
+for a safety path. `RELIABLE` alone is what the 5× retry loops were
+actually compensating for (UDP loss, not late-joining subscribers); the
+planner is always running when E-Stop fires, so
+`TRANSIENT_LOCAL`'s late-joiner benefit doesn't buy anything here.
+
+Controller-side refactor: extracted `_latch_emergency_stop(source)` so
+both the existing `mission_command` path and the new latched-topic
+path share the same latch-stop-cut-thrust sequence, with the logged
+source string distinguishing entry points ("command" vs. "latched
+topic").
+
+Verified live: `[ERROR] 🚨 EMERGENCY STOP via latched topic
+(was DRIVING → now EMERGENCY_STOP)` on the planner and
+`[WARN] 🚨 EMERGENCY STOP via latched topic — override latched,
+escape state reset.` on the controller. Single publish, both
+subscribers fire once. No retry duplicates in the log.
+
+### Position-history reset on resume (Kalman hazard avoidance)
+
+Surfaced while reviewing the Phase 5 prep scope plan
+(`2026-04-19_to_2026-04-20_phase5_prep_scope_plan.md`) against the
+afternoon's Kalman wire-in. The scope plan asked: "does `predict()`
+still run during E-Stop?" Answer after reading the code: **no** —
+`estimate_drift()` is gated behind the same `stop_override` early-
+return that blocks the control loop, so the filter is fully frozen
+during E-Stop.
+
+But a subtler concern surfaced from the same reading: `position_history`
+(the 100-sample buffer used by the measurement step) is only appended
+when the control loop runs. During E-Stop the buffer freezes; the boat
+may still drift physically; on resume the first `estimate_drift()` call
+sees a 20-sample window spanning pre-E-Stop and post-resume positions
+and — because the first post-resume ticks are commanded-stationary
+(PID ramping from zero) — the gated `update()` fires on that spurious
+giant delta, temporarily inflating `drift_vector`.
+
+Three-line fix: clear `self.position_history` on the
+`resume_mission` / `go_home` / `start_mission` branch of
+`mission_command_callback` when `stop_override` was active. Simple
+state-reset pattern, no heuristic needed.
+
+### #10 — `std_srvs/Trigger` ACK services
+
+Two new services on `waypoint_planner.py`:
+
+- `/planning/stop_mission` (`Trigger`) — replaces CLI's 3× retry loop
+  and dashboard's 2× 200 ms-apart retry.
+- `/planning/generate_waypoints` (`Trigger`) — replaces both CLI's
+  200 ms sleep between `send_config` and `send_command('generate')`
+  and dashboard's 500 ms `setTimeout` before the same.
+
+Key observation for the generate path: the "wait for planner to
+process config" sleep is redundant under rclpy's single-threaded
+executor. Sending a config publish followed immediately by a service
+call results in the config-subscription handler running first (ordered
+dispatch from rosbridge/DDS), so by the time the service handler
+executes the new config is already applied. No hand-tuned sleep.
+
+CLI-side client uses `spin_until_future_complete` at the main-thread
+top level (not inside a callback, where it deadlocks per Jazzy docs).
+Dashboard-side uses `ROSLIB.Service.callService` with success + error
+callbacks that feed back into `addLog` so operator sees ACK like
+"Mission stopped — stopped (was DRIVING)" or
+"Waypoints generated — generated 19 waypoints."
+
+Other mission commands (`start_mission`, `confirm_waypoints`,
+`resume_mission`, `reset_mission`, `go_home`, `joystick_enable`) stay
+on the existing `/planning/mission_command` topic — they weren't
+audit-scope bandages and the topic-based broadcast (planner +
+controller both subscribe) remains a reasonable fit.
+
+### #11 — JSON schema guards at publishers + visible dashboard errors
+
+Python side: each of the three status-publishing nodes
+(`waypoint_planner.py`, `heading_controller.py`, `lidar_perception.py`)
+gained a `_publish_json(publisher, payload, label)` helper that wraps
+`json.dumps(payload, allow_nan=False)` in a try and, on failure, logs
+a throttled error and skips the publish cycle. Nine raw `json.dumps`
+sites across the three files were refactored onto this helper. The
+`allow_nan=False` flag specifically catches NaN/Inf leaking in from
+a bad Kalman tick, an uninitialised float, or an empty-scan division
+— the sources most likely to reach the wire after today's Kalman
+wire-in.
+
+Dashboard side: added a module-scope `logBadJson(topicName, error)`
+helper with a 5-second-per-topic rate limit. It calls `addLog(..., 'error')`
+so the operator sees a visible red entry in the dashboard event log
+instead of the old silent `if (DEBUG_MODE) console.warn` swallow.
+Eight `JSON.parse` catch blocks were migrated from the silent pattern
+onto `logBadJson`.
+
+Stress-tested the visible-error path directly via
+
+```bash
+ros2 topic pub --once /planning/mission_status std_msgs/String "data: 'corrupted{garbage'"
+ros2 topic pub --once /control/status         std_msgs/String "data: 'bad'"
+ros2 topic pub --once /perception/obstacle_info std_msgs/String "data: 'bad'"
+```
+
+Each injection surfaced one red event-log entry of the form
+"Malformed JSON on /planning/mission_status: JSON.parse: unexpected
+character at line 1 column 1 of the JSON data", then the dashboard
+recovered on the next real publish from the Python node. Rate limit
+behaved as designed (rapid repeat suppressed).
+
+### Bonus: "Waiting for ROS sync" label drift cleanup
+
+Noticed during the #11 stress test: the
+`⏳ Waiting for ROS sync… | En attente de synchro` label was showing at
+the bottom of the Advanced Configuration panel even though the Apply
+Config button was enabled and clickable. DevTools diagnosis:
+
+```text
+button classList: config-btn apply waiting-sync
+button disabled?: false
+label computed display: block
+```
+
+The button's `disabled` attribute had been cleared but the
+`waiting-sync` CSS class had not — the two states (meant to mirror
+each other) had drifted. All code paths that clear `disabled` in
+`app.js` also remove the class; the drift source couldn't be
+reproduced from grep alone but the inconsistency was live.
+
+Faithful fix applied rather than patching the drift: dropped the
+redundant UI element entirely. Three existing cues already communicate
+the pre-sync state — greyed-out button, `cursor: not-allowed`, and the
+`title` tooltip `"Waiting for ROS config sync..."` — plus the
+rosbridge connection indicator as a separate panel. The explicit text
+label was a fourth, redundant signal.
+
+Deleted: three `<span class="apply-waiting-label">` elements from
+`index.html`, three `waiting-sync` class references from the Apply
+buttons, three CSS rules targeting the now-dead class/label pair, and
+the matching `classList.remove('waiting-sync')` line from
+`updateConfigFromROS` in `app.js`. Net: two states synchronised by one
+authoritative `disabled` attribute.
+
+## Commits landed (evening)
+
+```text
+refactor: Drop redundant Waiting-for-sync label (disabled + tooltip suffice)
+refactor: JSON schema guards at publishers + visible dashboard errors
+refactor: Stop/generate as Trigger services, drop CLI/dashboard bandages
+fix: Clear drift position buffer on stop resume (prevent Kalman spike)
+refactor: Dedicated latched E-Stop channel, drop retry loops
+```
+
+## Status after today
+
+All three Tier 2 items from the audit plan are now landed — the full
+plan (Tiers 1, 2, 3) is executed end-to-end. The only audit item
+*not* closed is Tier 4 (defensible-on-review), which by design needed
+no action.
+
 ## Next steps
 
-Remaining Tier 2 items from the audit plan, in the order they should
-be approached:
-
-1. **Latched e-stop** via `TRANSIENT_LOCAL` QoS topic — replaces the
-   5× retry e-stop in both CLI and dashboard. Phase 5 safety-critical;
-   do before hardware bring-up. Scope: ~30–50 LOC across
-   `heading_controller.py` + `autoboat_cli.py` + `app.js`. Must
-   match QoS on both ends or the subscription silently fails.
-2. **Command ACK services** via `std_srvs/Trigger` — replaces the
-   stop_mission retries (3×) and the 500 ms `setTimeout` before
-   `generate_waypoints`. Scope: ~80–120 LOC. Deferrable past
-   hardware.
-3. **Publisher-side JSON schema validation** — add
-   `json.dumps(..., allow_nan=False)` guards at the three Python
-   status publishers; drop 7 of 9 silent `try/catch` blocks in the
-   dashboard. Scope: ~20–30 LOC. Deferrable past hardware.
-4. **Pier / bank stuck behaviour** — reproduce first (the underlying
+1. **Pier / bank stuck behaviour** — reproduce first (the underlying
    code has shifted across several refactors), then explore the A\*
    safety-margin / bank-threshold / Pier-Detect-default options. See
-   the earlier obstacle-avoidance notes for context.
+   the earlier obstacle-avoidance notes for context. Carried over
+   from the afternoon session, still the top open issue.
+2. **Phase 5 prep scope plan review on Linux** — the
+   `2026-04-19_to_2026-04-20_phase5_prep_scope_plan.md` Part 1 line
+   numbers have drifted by ±1 to ±5 due to today's edits; the
+   file-level inventory is still correct. Part 3B bridge-node design
+   is unaffected by the Kalman wire-in. Worth a quick line-number
+   refresh next time `remap.launch.yaml` implementation starts.
