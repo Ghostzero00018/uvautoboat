@@ -167,6 +167,8 @@ class HeadingController(Node):
         # Simple Anti-Stuck System
         'stuck_timeout': (1.0, 120.0),
         'stuck_threshold': (0.1, 20.0),
+        # Drift compensation (feed-forward)
+        'drift_compensation_gain': (0.0, 2.0),
         # Control smoothness
         'turn_deadband_deg': (0.0, 10.0),
         'slew_rate_limit': (0.0, 5000.0),
@@ -214,6 +216,8 @@ class HeadingController(Node):
         # Kalman filter parameters
         self.declare_parameter('kalman_process_noise', 0.01)
         self.declare_parameter('kalman_measurement_noise', 0.5)
+        # Drift compensation: feed-forward gain scaling Kalman drift estimate to thrust (N per m/s × 100)
+        self.declare_parameter('drift_compensation_gain', 0.3)
 
         # Get parameters
         self.kp = self.get_parameter('kp').value
@@ -239,6 +243,7 @@ class HeadingController(Node):
         self.stuck_threshold = self.get_parameter('stuck_threshold').value
         self.bank_slow_distance = float(self.get_parameter('bank_slow_distance').value)
         self.bank_slow_factor = float(self.get_parameter('bank_slow_factor').value)
+        self.drift_compensation_gain = float(self.get_parameter('drift_compensation_gain').value)
 
         # --- STATE ---
         self.current_yaw = 0.0
@@ -858,6 +863,24 @@ class HeadingController(Node):
             frac = max(0.0, min(1.0, self.min_obstacle_distance / self.bank_slow_distance))
             speed *= (self.bank_slow_factor + (1.0 - self.bank_slow_factor) * frac)
 
+        # Feed-forward drift compensation: project world-frame Kalman drift onto the
+        # boat's heading to get the along-track component. A headwind/backward current
+        # (forward_drift < 0) adds thrust; a following current (forward_drift > 0)
+        # subtracts it. Cap at ±150 N so a bad filter tick can't cause runaway.
+        # drift_vector is only updated while commanded-stationary (see estimate_drift)
+        # so this is pure environmental — safe to apply during active nav.
+        forward_drift = (self.drift_vector[0] * math.cos(self.current_yaw)
+                         + self.drift_vector[1] * math.sin(self.current_yaw))
+        drift_comp = -forward_drift * self.drift_compensation_gain * 100.0
+        drift_comp = max(-150.0, min(150.0, drift_comp))
+        speed += drift_comp
+
+        # Operator-tunable forward-thrust ceiling. SAFE_THRUST below is the absolute
+        # hardware limit on the combined left/right thrust; max_speed is the softer
+        # cap applied here to the forward component only so turn authority is
+        # preserved (TURN_POWER_LIMIT still bounds differential independently).
+        speed = max(-self.max_speed, min(self.max_speed, speed))
+
         # Differential thrust
         left_thrust = speed - turn_power
         right_thrust = speed + turn_power
@@ -1105,14 +1128,17 @@ class HeadingController(Node):
         total_dy = recent[-1][1] - recent[0][1]
         time_diff = (recent[-1][2] - recent[0][2]).nanoseconds / 1e9
         
-        if time_diff > 0.5:
+        # Gate update on commanded-stationary: during active navigation the measured
+        # position delta is dominated by commanded motion, not environmental drift.
+        # Only absorb measurements when the last thrust command was near zero (idle,
+        # stopped, or between escape pulses) so drift_vector reflects current/wind
+        # alone and can be safely used as feed-forward thrust compensation.
+        commanded_thrust = abs(self.prev_left_thrust) + abs(self.prev_right_thrust)
+        if time_diff > 0.5 and commanded_thrust < 50.0:
             measured_drift_x = total_dx / time_diff
             measured_drift_y = total_dy / time_diff
-            
-            # Update step with Kalman filter
             self.drift_kalman.update([measured_drift_x, measured_drift_y])
-        
-        # Update legacy tuple for backward compatibility
+
         self.drift_vector = self.drift_kalman.get_drift()
     
     def request_waypoint_skip(self):

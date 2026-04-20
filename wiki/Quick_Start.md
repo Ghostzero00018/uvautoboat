@@ -11,7 +11,7 @@ The fastest way to get AutoBoat running.
 ### Terminal 1: Launch Simulation
 
 ```bash
-ros2 launch vrx_gz competition.launch.py world:=sydney_regatta
+ros2 launch vrx_gz competition.launch.py world:=sydney_regatta_DEFAULT
 ```
 
 **Wait for Gazebo to fully load** (you should see the WAM-V boat in the water).
@@ -54,7 +54,7 @@ For the complete experience with real-time monitoring:
 ### Terminal 1: Gazebo Simulation
 
 ```bash
-ros2 launch vrx_gz competition.launch.py world:=sydney_regatta
+ros2 launch vrx_gz competition.launch.py world:=sydney_regatta_DEFAULT
 ```
 
 ### Terminal 2: rosbridge (WebSocket)

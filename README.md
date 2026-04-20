@@ -230,7 +230,7 @@ uvautoboat/
 | GPS waypoint navigation (lawnmower pattern) | ✅ Working |
 | 3D LiDAR obstacle detection (Perception) | ✅ Working |
 | PID heading control (Controller) | ✅ Working |
-| Anti-stuck recovery (SASS) | 🧪 Needs testing |
+| Anti-stuck recovery (SASS) | ✅ Working |
 | A* detour planning | ✅ Working |
 | Web dashboard with live map | ✅ Working |
 | Health check (46 checks) | ✅ Working |

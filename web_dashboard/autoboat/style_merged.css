@@ -2051,6 +2051,13 @@ h2 {
     padding: 15px;
 }
 
+.history-empty {
+    padding: 12px;
+    color: #aaa;
+    font-style: italic;
+    text-align: center;
+}
+
 .history-entry {
     margin-bottom: 8px;
     padding: 10px 12px;

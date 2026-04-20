@@ -728,6 +728,7 @@ ros2 launch ~/seal_ws/src/uvautoboat/launch/autoboat.launch.yaml
 | | `critical_distance` | 6.0 | Stop distance (m) |
 | | `stuck_timeout` | 12.0 | Simple anti-stuck: stuck detection time (s) |
 | | `stuck_threshold` | 1.0 | Simple anti-stuck: min movement to not be stuck (m) |
+| | `drift_compensation_gain` | 0.3 | Feed-forward gain: Kalman drift → thrust compensation |
 
 ### Keyboard Teleop
 
@@ -884,6 +885,7 @@ The AutoBoat heading controller implements a straightforward anti-stuck strategy
 | :---------- | :-------- | :------------ |
 | `stuck_timeout` | 12.0s | Time before declaring stuck |
 | `stuck_threshold` | 1.0m | Minimum movement to avoid stuck detection |
+| `drift_compensation_gain` | 0.3 | Feed-forward gain: Kalman drift → thrust compensation |
 | `kalman_process_noise` | 0.01 | Drift estimation process noise |
 | `kalman_measurement_noise` | 0.5 | Drift estimation measurement noise |
 
