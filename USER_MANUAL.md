@@ -546,7 +546,10 @@ Detailed ROS 2 topic connections between the modular nodes:
 │       │  │ /planning/detour_request ◄──────────── Controller (pub_detour)        │
 │       │  │                                                                      │
 │       │  └─ /wamv/sensors/gps/gps/fix                                           │
-│       └──── /planning/mission_command ◄───────────────── CLI / Dashboard         │
+│       ├──── /planning/emergency_stop      ◄── CLI / Dashboard (latched Bool)    │
+│       ├──── /planning/stop_mission        ◄── CLI / Dashboard (Trigger service) │
+│       ├──── /planning/generate_waypoints  ◄── CLI / Dashboard (Trigger service) │
+│       └──── /planning/mission_command     ◄── CLI / Dashboard (other commands)  │
 │                                                                                 │
 │  ┌──────────┐  /wamv/thrusters/left/thrust  ────────► Gazebo Simulator          │
 │  │Controller│  /wamv/thrusters/right/thrust ────────► Gazebo Simulator          │
@@ -557,8 +560,11 @@ Detailed ROS 2 topic connections between the modular nodes:
 │       └──── /planning/set_config ◄────────────────────── Dashboard (runtime PID) │
 │                                                                                 │
 │  External Control:                                                              │
-│  ├─ /planning/set_config         ◄─────────── Dashboard (waypoint radius, etc.) │
-│  └─ /planning/mission_command    ◄─────────── CLI: start, pause, stop, go_home  │
+│  ├─ /planning/set_config          ◄─────────── Dashboard (waypoint radius, etc.)│
+│  ├─ /planning/emergency_stop      ◄─────────── Safety-critical E-Stop (latched) │
+│  ├─ /planning/stop_mission        ◄─────────── Stop service (ACK)               │
+│  ├─ /planning/generate_waypoints  ◄─────────── Generate service (ACK)           │
+│  └─ /planning/mission_command     ◄─────────── Other commands (start/resume/…)  │
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -1283,8 +1289,16 @@ Lane 3: End <────────────────────┘
 | :------ | :------------ |
 | `/wamv/sensors/gps/gps/fix` | GPS position |
 | `/perception/obstacle_info` | Obstacle detection from Perception |
-| `/planning/mission_command` | CLI/dashboard commands |
+| `/planning/mission_command` | CLI/dashboard commands (start/resume/go_home/etc.) |
+| `/planning/emergency_stop` | Safety-critical E-Stop (latched Bool, RELIABLE QoS) |
 | `/planning/detour_request` | Detour requests from Controller |
+
+**Services:**
+
+| Service | Type | Purpose |
+| :------ | :--- | :------ |
+| `/planning/stop_mission` | `std_srvs/Trigger` | ACK-based stop (replaces retry bandages) |
+| `/planning/generate_waypoints` | `std_srvs/Trigger` | ACK-based waypoint generation |
 
 **Publications:**
 
@@ -1340,7 +1354,7 @@ Lane 3: End <────────────────────┘
 | **Waypoints not generating** | Check GPS: ensure `/wamv/sensors/gps/gps/fix` is publishing |
 | **Mission stuck in INIT** | Run `ros2 run plan autoboat_cli generate` to create waypoints |
 | **LiDAR at world origin** | Run `bash one_click_launch_all/patch_vrx.sh` — fixes VRX `publish_model_pose` (issue #876) |
-| **Health check false FAILs** | DDS discovery lag — wait 5s after launch and re-run |
+| **Health check false FAILs** | Usually a `ros2 daemon` stale cache — run `ros2 daemon stop && ros2 daemon start` and re-run. The health check itself polls DDS discovery on startup so transient lag should self-heal. |
 
 ### Dashboard Connection Diagnostics
 
@@ -1715,7 +1729,7 @@ Open an issue on [GitHub](https://github.com/Ghostzero00018/uvautoboat/issues) w
 
 Project finished by IMT NORD EUROPE DNM DMI-2026
 
-Last updated at 19-04-2026
+Last updated at 21-04-2026
 
 ---
 

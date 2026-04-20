@@ -125,7 +125,7 @@ Other controls: **Stop**, **Resume**, **Emergency Stop**, **Go Home** (return to
 bash ~/seal_ws/src/uvautoboat/one_click_launch_all/health_check_autoboat.sh
 ```
 
-Runs 46 checks (nodes, topics, parameters, connectivity). Auto-detects IDLE/ACTIVE state. Also available from the dashboard Health Check panel with live-streaming output.
+Runs 46 checks (nodes, topics, parameters, connectivity). Parameter values are reported as `PASS` (matches YAML baseline) or `TUNED` (user-applied via preset/dashboard — counted as healthy); `WARN` means unexpected drift, `FAIL` means unreadable. Auto-detects IDLE/ACTIVE state. Also available from the dashboard Health Check panel with live-streaming output.
 
 ---
 

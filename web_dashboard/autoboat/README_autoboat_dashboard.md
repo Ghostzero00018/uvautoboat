@@ -163,7 +163,15 @@ Perception and Controller share the `/planning/set_config` topic. Parameters wit
 | Topic                      | Data                                           |
 | -------------------------- | ---------------------------------------------- |
 | `/planning/set_config`      | Parameter updates (JSON)                       |
-| `/planning/mission_command` | Mission commands (start, stop, generate, etc.) |
+| `/planning/mission_command` | Mission commands (start, resume, go_home, etc.) |
+| `/planning/emergency_stop`  | Safety-critical E-Stop (latched Bool)          |
+
+### Called (Service Clients)
+
+| Service                          | Type                 | Purpose                         |
+| -------------------------------- | -------------------- | ------------------------------- |
+| `/planning/stop_mission`         | `std_srvs/Trigger`   | ACK-based stop                  |
+| `/planning/generate_waypoints`   | `std_srvs/Trigger`   | ACK-based waypoint generation   |
 
 ## Files
 
@@ -237,4 +245,4 @@ Part of the uvautoboat project — Apache License 2.0.
 
 Built with [roslibjs](http://robotwebtools.org/), [Leaflet.js](https://leafletjs.com/), [OpenStreetMap](https://www.openstreetmap.org/).
 
-Last updated: 19-04-2026
+Last updated: 21-04-2026

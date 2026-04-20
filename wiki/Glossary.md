@@ -94,7 +94,7 @@ A file that describes how to start a set of ROS nodes together with their parame
 
 ### Health Check Service
 
-A background ROS node (`health_check_service`) that runs 46 automated checks to verify system integrity: node presence, topic publish/subscribe counts, parameter values matching YAML, port connectivity (9090/8002/8080). The dashboard has a "Health Check" panel that streams results live. 46/46 PASS means the entire system is correctly wired.
+A background ROS node (`health_check_service`) that runs 46 automated checks to verify system integrity: node presence, topic publish/subscribe counts, runtime parameter values, port connectivity (9090/8002/8080). Parameter values are reported in one of four states — `PASS` (matches YAML baseline), `TUNED` (differs because the user applied a preset or dashboard config, counted as healthy), `WARN` (differs without any user config having been applied — genuine drift worth investigating), `FAIL` (unreadable / node down). The dashboard has a "Health Check" panel that streams results live. `PASS + TUNED` with zero `FAIL` / `WARN` means the system is correctly wired and the runtime state is as intended.
 
 ### OSRF (Open Source Robotics Foundation)
 

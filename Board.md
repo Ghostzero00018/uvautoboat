@@ -8,7 +8,7 @@
 |---|---|
 | **Project** | AutoBoat Navigation System |
 | **Repository** | [Ghostzero00018/uvautoboat](https://github.com/Ghostzero00018/uvautoboat) |
-| **Last Updated** | 19-04-2026 |
+| **Last Updated** | 21-04-2026 |
 | **Status** | 🟢 Simulation ready (A* path planning + one-click launcher + wiki docs + dashboard config system). Real-hardware deployment begins next week. |
 
 ---
@@ -102,11 +102,18 @@
 | A* path planning (hybrid + runtime) | ✅ |
 | One-click launcher script | ✅ |
 | Emergency stop (dashboard + CLI + nodes) | ✅ |
+| Latched E-Stop channel (`/planning/emergency_stop` Bool, RELIABLE QoS) | ✅ |
+| ACK-based stop / generate as `std_srvs/Trigger` services | ✅ |
 | JSON log export (4 panels) | ✅ |
+| JSON schema guards at publishers + visible dashboard errors | ✅ |
 | Health check service (ROS 2 node + dashboard streaming) | ✅ |
+| Health check 4-state parameter validation (PASS/TUNED/WARN/FAIL) | ✅ |
 | Dashboard config system (dirty-params, sync, reset defaults) | ✅ |
 | Parameter collision resolution (`perception_` prefix) | ✅ |
 | VRX LiDAR patch script | ✅ |
+| `max_speed` cap wired as forward-thrust ceiling | ✅ |
+| Kalman drift compensation activated (gated update + feed-forward) | ✅ |
+| Launcher readiness polls (replace fixed sleeps) + `WS_ROOT` guard | ✅ |
 
 ### Pending ⬜
 
@@ -154,11 +161,11 @@ The whole repo is expected to run on the Pi 5.
 
 | Task | Status |
 |------|:------:|
-| Write `remap.launch.yaml` aliasing `/wamv/*` → neutral topics; verify stack still runs | ⬜ |
+| Write `remap.launch.yaml` aliasing `/wamv/*` → neutral topics; verify stack still runs | 🟡 paper design done; file not yet |
 | Profile `/perception/obstacle_info` Hz in VRX; document baseline | ⬜ |
-| Stub bridge node (inputs `/control/thrust_cmd`, outputs thrusters) with pass-through behaviour | ⬜ |
-| Inventory of every `/wamv/*` reference across Python, YAML, JS, HTML | ⬜ |
-| Supervisor conversation: confirm CCU architecture (is there a low-level controller? what chip? what firmware? any interface-control document?) | ⬜ |
+| Stub bridge node (inputs `/control/thrust_cmd`, outputs thrusters) with pass-through behaviour | 🟡 pseudocode drafted |
+| Inventory of every `/wamv/*` reference across Python, YAML, JS, HTML | ✅ done |
+| Supervisor conversation: confirm CCU architecture (is there a low-level controller? what chip? what firmware? any interface-control document?) | 🟡 checklist drafted |
 | Spec shore-comms plan (WiFi range test, fallback to 4G) | ⬜ |
 
 ### Hardware-arrival tasks (requires CCU on-bench)
@@ -254,6 +261,13 @@ The whole repo is expected to run on the Pi 5.
 | 19-04-2026 | Dashboard Go Home distance-based progress + `distance_to_target` wiring fix; latent `distance.toFixed` DOM-node crash fix | ✅ |
 | 19-04-2026 | Docs fact-check sweep (Kalman params, health-check count, Python version, VFH, escape direction, preset names); `ros2 daemon` staleness documented in Common_Issues | ✅ |
 | 19-04-2026 | Tier A/B/C dashboard UX sprint: E-Stop header badge, Reset guard, toast tuning, panel reorder, Map+Camera group, collapsible info panels, preset expand/flash/scroll, step hints, first-run onboarding tour | ✅ |
+| 20-04-2026 | Dead-code & bandage audit (50-item plan); Tier 1 safe deletes (`SENSOR_TIMEOUT`, `escape_start_time`, `in_hazard_zone`, unused imports); voyage-completion off-by-one fix; `Common_Issues` colcon-cwd entry | ✅ |
+| 20-04-2026 | `max_speed` cap wired + Kalman drift feed-forward activated (gated update, thrust compensation); `Design_Rationale` PID/speed-shaping + drift-compensation + hand-tuned-constants tables | ✅ |
+| 20-04-2026 | Launcher readiness polls (`wait_for_topic`/`wait_for_port`/`wait_for_node`) + `WS_ROOT` sibling-`src/` guard against nested workspaces | ✅ |
+| 20-04-2026 | Perception `moving_obstacles` velocity pipeline removed (-124 LOC, zero consumers) | ✅ |
+| 20-04-2026 | Tier 2 close-out: latched `/planning/emergency_stop` Bool channel; `std_srvs/Trigger` services for stop + generate (drops CLI/dashboard retry loops); `position_history` reset on stop resume (prevent Kalman spike); JSON schema guards at publishers + visible dashboard errors; drop redundant Waiting-for-sync label | ✅ |
+| 21-04-2026 | Health check 4-state parameter validation (PASS/TUNED/WARN/FAIL) via `config_tuned` flag on 3 nodes; dashboard `[TUNED]` magenta styling | ✅ |
+| 21-04-2026 | Markdown refresh post-Tier-2: Glossary health-check entry, USER_MANUAL topology + services table, dashboard README service-client section | ✅ |
 | TBD | Real-hardware deployment (Pi 5 as confirmed target; low-level CCU architecture TBD) | 🔜 |
 | TBD | Coverage Planning | ⏸️ |
 
@@ -329,7 +343,7 @@ Current position ──>└─────────────────�
 
 ## 📜 Acknowledgments
 
-**Document Version**: 9.5 | **Last Updated**: 19-04-2026
+**Document Version**: 9.6 | **Last Updated**: 21-04-2026
 
 **Maintained By**: AutoBoat Development Team
 
