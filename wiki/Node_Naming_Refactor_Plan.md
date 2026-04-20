@@ -62,7 +62,7 @@ The old node names (`oko_perception_node`, `sputnik_planner_node`, `buran_contro
 
 The original plan proposed a v3.0/v3.1 deprecation cycle with shim files, dual-publish topics, and parameter aliases. This was replaced with a one-shot atomic rename because:
 
-- The project has **no external consumers** (2-person team, no downstream packages).
+- The project has **no external consumers** (1 active maintainer + 2 occasional collaborators, no downstream packages).
 - No shim files, dual-publish, or alias code was needed — eliminating ~50% of the planned effort.
 - All changes were committed together, so the system was never in a partially-renamed state.
 

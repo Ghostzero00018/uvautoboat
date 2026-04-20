@@ -8,7 +8,7 @@
 |---|---|
 | **Project** | AutoBoat Navigation System |
 | **Repository** | [Ghostzero00018/uvautoboat](https://github.com/Ghostzero00018/uvautoboat) |
-| **Last Updated** | 18-04-2026 |
+| **Last Updated** | 19-04-2026 |
 | **Status** | 🟢 Simulation ready (A* path planning + one-click launcher + wiki docs + dashboard config system). Real-hardware deployment begins next week. |
 
 ---
@@ -250,6 +250,10 @@ The whole repo is expected to run on the Pi 5.
 | 17-04-2026 | Dashboard UX polish: 31 hover tooltips, nav-mode restyle, preset confirm dialog, map grid performance | ✅ |
 | 17-04-2026 | LiDAR smoke detection fully removed (-624 LOC across 10 files); FINISHED counter clamp; split-screen CSS hardening | ✅ |
 | 18-04-2026 | Hardware-deployment phase logged; docs audit (`distributed` → modular) across README + USER_MANUAL + Board | ✅ |
+| 19-04-2026 | Target-aware VFH via `/control/heading_error` + 4 `vfh_*` tunable params; preset cleanup (Python default sync, dead-weight key trim, CLI `--mode` legacy removal); Vostok1-era breadcrumb cleanup | ✅ |
+| 19-04-2026 | Dashboard Go Home distance-based progress + `distance_to_target` wiring fix; latent `distance.toFixed` DOM-node crash fix | ✅ |
+| 19-04-2026 | Docs fact-check sweep (Kalman params, health-check count, Python version, VFH, escape direction, preset names); `ros2 daemon` staleness documented in Common_Issues | ✅ |
+| 19-04-2026 | Tier A/B/C dashboard UX sprint: E-Stop header badge, Reset guard, toast tuning, panel reorder, Map+Camera group, collapsible info panels, preset expand/flash/scroll, step hints, first-run onboarding tour | ✅ |
 | TBD | Real-hardware deployment (Pi 5 as confirmed target; low-level CCU architecture TBD) | 🔜 |
 | TBD | Coverage Planning | ⏸️ |
 
@@ -325,7 +329,7 @@ Current position ──>└─────────────────�
 
 ## 📜 Acknowledgments
 
-**Document Version**: 9.4 | **Last Updated**: 18-04-2026
+**Document Version**: 9.5 | **Last Updated**: 19-04-2026
 
 **Maintained By**: AutoBoat Development Team
 
