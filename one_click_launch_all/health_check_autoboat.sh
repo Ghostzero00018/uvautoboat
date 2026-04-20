@@ -25,15 +25,18 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
+MAGENTA='\033[0;35m'
 NC='\033[0m' # No Color
 
 PASS=0
 FAIL=0
 WARN=0
+TUNED=0
 
 pass() { echo -e "  ${GREEN}[PASS]${NC} $1"; ((PASS++)); }
 fail() { echo -e "  ${RED}[FAIL]${NC} $1"; ((FAIL++)); }
 warn() { echo -e "  ${YELLOW}[WARN]${NC} $1"; ((WARN++)); }
+tuned() { echo -e "  ${MAGENTA}[TUNED]${NC} $1"; ((TUNED++)); }
 info() { echo -e "  ${CYAN}[INFO]${NC} $1"; }
 
 section() { echo -e "\n${BLUE}========== $1 ==========${NC}"; }
@@ -184,7 +187,7 @@ fi
 # Quick mode stops here
 if [ "$1" == "--quick" ]; then
     section "Summary (Quick Mode)"
-    echo -e "  ${GREEN}PASS: $PASS${NC}  ${RED}FAIL: $FAIL${NC}  ${YELLOW}WARN: $WARN${NC}"
+    echo -e "  ${GREEN}PASS: $PASS${NC}  ${MAGENTA}TUNED: $TUNED${NC}  ${RED}FAIL: $FAIL${NC}  ${YELLOW}WARN: $WARN${NC}"
     [ $FAIL -eq 0 ] && echo -e "\n${GREEN}System looks healthy.${NC}" || echo -e "\n${RED}Issues detected — check FAIL items above.${NC}"
     exit $FAIL
 fi
@@ -236,10 +239,20 @@ check_publisher "/control/status" "Controller control status" "true"
 # ============================================================================
 section "Parameter Check (Controller)"
 
+is_node_tuned() {
+    # Returns "true" if the node has processed at least one /planning/set_config
+    # message since launch (config_tuned flag flipped), "false" otherwise.
+    local node=$1
+    local raw
+    raw=$(ros2 param get "$node" "config_tuned" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | grep -oP 'value is: \K\w+' | tail -1)
+    [ "$raw" == "True" ] && echo "true" || echo "false"
+}
+
 check_param() {
     local node=$1
     local param=$2
     local expected=$3
+    local node_tuned=${4:-false}  # Result of is_node_tuned, passed in by caller
     local raw
     # Strip ANSI color codes and RTPS error noise, then extract the value from "X value is: Y"
     raw=$(ros2 param get "$node" "$param" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | grep -oP 'value is: \K[-\d.]+')
@@ -249,34 +262,39 @@ check_param() {
         fail "$param — cannot read (node down?)"
     elif [ "$actual" == "$expected" ]; then
         pass "$param = $actual"
+    elif [ "$node_tuned" == "true" ]; then
+        tuned "$param = $actual (baseline $expected — user-applied)"
     else
-        warn "$param = $actual (expected $expected)"
+        warn "$param = $actual (expected $expected — unexpected drift)"
     fi
 }
 
-check_param "/heading_controller_node" "kp" "500.0"
-check_param "/heading_controller_node" "kd" "150.0"
-check_param "/heading_controller_node" "base_speed" "400.0"
-check_param "/heading_controller_node" "obstacle_slow_factor" "0.5"
-check_param "/heading_controller_node" "turn_deadband_deg" "0.5"
-check_param "/heading_controller_node" "critical_distance" "6.0"
-check_param "/heading_controller_node" "min_safe_distance" "12.0"
-check_param "/heading_controller_node" "max_avoidance_turn_deg" "45.0"
+controller_tuned=$(is_node_tuned "/heading_controller_node")
+check_param "/heading_controller_node" "kp" "500.0" "$controller_tuned"
+check_param "/heading_controller_node" "kd" "150.0" "$controller_tuned"
+check_param "/heading_controller_node" "base_speed" "400.0" "$controller_tuned"
+check_param "/heading_controller_node" "obstacle_slow_factor" "0.5" "$controller_tuned"
+check_param "/heading_controller_node" "turn_deadband_deg" "0.5" "$controller_tuned"
+check_param "/heading_controller_node" "critical_distance" "6.0" "$controller_tuned"
+check_param "/heading_controller_node" "min_safe_distance" "12.0" "$controller_tuned"
+check_param "/heading_controller_node" "max_avoidance_turn_deg" "45.0" "$controller_tuned"
 
 section "Parameter Check (Planner)"
 
-check_param "/waypoint_planner_node" "scan_length" "15.0"
-check_param "/waypoint_planner_node" "scan_width" "30.0"
-check_param "/waypoint_planner_node" "lanes" "10"
-check_param "/waypoint_planner_node" "waypoint_tolerance" "3.5"
-check_param "/waypoint_planner_node" "max_block_time" "30.0"
+planner_tuned=$(is_node_tuned "/waypoint_planner_node")
+check_param "/waypoint_planner_node" "scan_length" "15.0" "$planner_tuned"
+check_param "/waypoint_planner_node" "scan_width" "30.0" "$planner_tuned"
+check_param "/waypoint_planner_node" "lanes" "10" "$planner_tuned"
+check_param "/waypoint_planner_node" "waypoint_tolerance" "3.5" "$planner_tuned"
+check_param "/waypoint_planner_node" "max_block_time" "30.0" "$planner_tuned"
 
 section "Parameter Check (Perception)"
 
-check_param "/lidar_perception_node" "perception_min_safe_distance" "10.0"
-check_param "/lidar_perception_node" "perception_critical_distance" "5.5"
-check_param "/lidar_perception_node" "min_height" "-1.2"
-check_param "/lidar_perception_node" "max_range" "100.0"
+perception_tuned=$(is_node_tuned "/lidar_perception_node")
+check_param "/lidar_perception_node" "perception_min_safe_distance" "10.0" "$perception_tuned"
+check_param "/lidar_perception_node" "perception_critical_distance" "5.5" "$perception_tuned"
+check_param "/lidar_perception_node" "min_height" "-1.2" "$perception_tuned"
+check_param "/lidar_perception_node" "max_range" "100.0" "$perception_tuned"
 
 # ============================================================================
 # 6. SERVICE / CONNECTIVITY CHECK
@@ -317,7 +335,7 @@ fi
 # ============================================================================
 section "Summary"
 echo -e "  State: ${CYAN}${BOAT_STATE}${NC}"
-echo -e "  ${GREEN}PASS: $PASS${NC}  ${RED}FAIL: $FAIL${NC}  ${YELLOW}WARN: $WARN${NC}"
+echo -e "  ${GREEN}PASS: $PASS${NC}  ${MAGENTA}TUNED: $TUNED${NC}  ${RED}FAIL: $FAIL${NC}  ${YELLOW}WARN: $WARN${NC}"
 echo ""
 if [ $FAIL -eq 0 ]; then
     echo -e "${GREEN}All checks passed. System is healthy.${NC}"

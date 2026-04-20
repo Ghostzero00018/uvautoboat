@@ -218,6 +218,9 @@ class HeadingController(Node):
         self.declare_parameter('kalman_measurement_noise', 0.5)
         # Drift compensation: feed-forward gain scaling Kalman drift estimate to thrust (N per m/s × 100)
         self.declare_parameter('drift_compensation_gain', 0.3)
+        # Flipped by config_callback on first successful /planning/set_config.
+        # Health check reads this to distinguish baseline-vs-user-tuned values.
+        self.declare_parameter('config_tuned', False)
 
         # Get parameters
         self.kp = self.get_parameter('kp').value
@@ -705,6 +708,8 @@ class HeadingController(Node):
 
             if updated:
                 self.get_logger().info(f"⚙️ Config updated: {', '.join(updated)}")
+                if not self.get_parameter('config_tuned').value:
+                    self.set_parameters([rclpy.parameter.Parameter('config_tuned', value=True)])
 
         except Exception as e:
             self.get_logger().error(f"Config parse error: {e}")

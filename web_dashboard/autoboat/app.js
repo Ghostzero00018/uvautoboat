@@ -3593,6 +3593,7 @@ function classifyHealthLine(line) {
     if (/\[PASS\]/.test(line)) return 'pass';
     if (/\[FAIL\]/.test(line)) return 'fail';
     if (/\[WARN\]/.test(line)) return 'warn-line';
+    if (/\[TUNED\]/.test(line)) return 'tuned';
     if (/\[INFO\]/.test(line)) return 'info';
     if (/\[DONE\]/.test(line)) return 'done';
     if (/\[SYSTEM\]/.test(line)) return 'info';

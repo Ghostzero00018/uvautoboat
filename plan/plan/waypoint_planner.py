@@ -260,6 +260,9 @@ class WaypointPlanner(Node):
         self.blocked_reason = ""  # Human-readable reason for blockage
         self.declare_parameter('max_block_time', 30.0)  # Max seconds to wait before auto-detour/skip
         self.max_block_time = float(self.get_parameter('max_block_time').value)
+        # Flipped by config_callback on first successful /planning/set_config.
+        # Health check reads this to distinguish baseline-vs-user-tuned values.
+        self.declare_parameter('config_tuned', False)
         self.last_obstacle_check = None
         self.go_home_mode = False  # Track if we're in return-home mode
         self.home_detour_timeout = 15.0  # Insert detour after this many seconds in home mode
@@ -769,7 +772,9 @@ class WaypointPlanner(Node):
                     self.get_logger().warn(f"Failed to parse hazard_world_boxes: {e}")
 
             self.get_logger().info(f"Config updated: lanes={self.lanes}, length={self.scan_length}, width={self.scan_width}")
-            
+            if not self.get_parameter('config_tuned').value:
+                self.set_parameters([rclpy.parameter.Parameter('config_tuned', value=True)])
+
         except Exception as e:
             self.get_logger().error(f"Config parse error: {e}")
             

@@ -97,6 +97,9 @@ class LidarPerception(Node):
         self.declare_parameter('vfh_bin_width_deg', 5.0)      # Angular bin width (degrees) — smaller = finer
         self.declare_parameter('vfh_clearance_deg', 10.0)     # Inflation around blocked bins (degrees)
         self.declare_parameter('vfh_polar_power', 1.0)        # Distance weighting exponent for polar histogram
+        # Flipped by config_callback on first successful /planning/set_config.
+        # Health check reads this to distinguish baseline-vs-user-tuned values.
+        self.declare_parameter('config_tuned', False)
 
         # Load initial parameter values
         self._load_parameters()
@@ -339,6 +342,8 @@ class LidarPerception(Node):
 
             if updated:
                 self.get_logger().info(f"⚙️ Perception config updated: {', '.join(updated)}")
+                if not self.get_parameter('config_tuned').value:
+                    self.set_parameters([rclpy.parameter.Parameter('config_tuned', value=True)])
 
         except Exception as e:
             self.get_logger().error(f"Perception config parse error: {e}")

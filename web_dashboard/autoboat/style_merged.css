@@ -2281,6 +2281,7 @@ h2 {
 .health-check-container .terminal-line.pass { color: #66bb6a; }
 .health-check-container .terminal-line.fail { color: #ef5350; font-weight: 600; }
 .health-check-container .terminal-line.warn-line { color: #ffa726; }
+.health-check-container .terminal-line.tuned { color: #ba68c8; }
 .health-check-container .terminal-line.info { color: #64b5f6; }
 .health-check-container .terminal-line.section {
     color: #81d4fa;
