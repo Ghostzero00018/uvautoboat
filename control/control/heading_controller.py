@@ -547,11 +547,28 @@ class HeadingController(Node):
         self.get_logger().warn(f"Rejected {name}={value} (valid range: {lo}–{hi})")
         return False
 
+    def _publish_json(self, publisher, payload, label):
+        """Safe JSON publish: refuses to emit NaN/Inf (bad Kalman tick, uninit
+        float) so downstream parse can't silently fail on malformed wire data."""
+        try:
+            encoded = json.dumps(payload, allow_nan=False)
+        except (TypeError, ValueError) as e:
+            self.get_logger().error(
+                f"Refused to publish malformed JSON ({label}): {e}",
+                throttle_duration_sec=1.0,
+            )
+            return
+        msg = String()
+        msg.data = encoded
+        publisher.publish(msg)
+
     def _publish_param_ranges(self):
         """Publish validation ranges so the dashboard can sync HTML min/max."""
-        msg = String()
-        msg.data = json.dumps({k: [lo, hi] for k, (lo, hi) in self.PARAM_RANGES.items()})
-        self.pub_param_ranges.publish(msg)
+        self._publish_json(
+            self.pub_param_ranges,
+            {k: [lo, hi] for k, (lo, hi) in self.PARAM_RANGES.items()},
+            'param_ranges',
+        )
 
     def config_callback(self, msg):
         """Handle runtime configuration changes for PID and speed"""
@@ -1009,21 +1026,23 @@ class HeadingController(Node):
 
     def publish_status(self, mode):
         """Publish controller status with perception v2.0 enhanced info"""
-        msg = String()
-        msg.data = json.dumps({
-            'mode': mode,
-            'stop_override': self.stop_override,
-            'avoidance_active': self.avoidance_mode,
-            'obstacle_detected': bool(self.obstacle_detected),
-            'obstacle_distance': round(float(self.min_obstacle_distance), 2),
-            'current_yaw': round(math.degrees(self.current_yaw), 1),
-            'integral_error': round(float(self.integral_error), 4),
-            # Perception v2.0 enhanced fields
-            'urgency': round(float(self.urgency), 2),
-            'obstacle_count': int(self.obstacle_count),
-            'is_critical': bool(self.is_critical)
-        })
-        self.pub_status.publish(msg)
+        self._publish_json(
+            self.pub_status,
+            {
+                'mode': mode,
+                'stop_override': self.stop_override,
+                'avoidance_active': self.avoidance_mode,
+                'obstacle_detected': bool(self.obstacle_detected),
+                'obstacle_distance': round(float(self.min_obstacle_distance), 2),
+                'current_yaw': round(math.degrees(self.current_yaw), 1),
+                'integral_error': round(float(self.integral_error), 4),
+                # Perception v2.0 enhanced fields
+                'urgency': round(float(self.urgency), 2),
+                'obstacle_count': int(self.obstacle_count),
+                'is_critical': bool(self.is_critical),
+            },
+            'control_status',
+        )
 
     # ==================== SIMPLE ANTI-STUCK SYSTEM ====================
     
@@ -1192,22 +1211,23 @@ class HeadingController(Node):
     def publish_anti_stuck_status(self):
         """Publish anti-stuck system status for dashboard"""
         drift_uncertainty = self.drift_kalman.get_uncertainty()
-
-        msg = String()
-        msg.data = json.dumps({
-            'is_stuck': self.is_stuck,
-            'escape_mode': self.escape_mode,
-            'escape_direction': self.escape_direction,
-            'consecutive_attempts': self.consecutive_stuck_count,
-            'front_clear': round(self.front_clear, 1),
-            'drift_vector': [round(self.drift_vector[0], 3), round(self.drift_vector[1], 3)],
-            'drift_uncertainty': [round(drift_uncertainty[0], 3), round(drift_uncertainty[1], 3)],
-            'drift_kalman_gain': [
-                round(float(self.drift_kalman.last_kalman_gain[0, 0]), 3),
-                round(float(self.drift_kalman.last_kalman_gain[1, 1]), 3)
-            ]
-        })
-        self.pub_anti_stuck.publish(msg)
+        self._publish_json(
+            self.pub_anti_stuck,
+            {
+                'is_stuck': self.is_stuck,
+                'escape_mode': self.escape_mode,
+                'escape_direction': self.escape_direction,
+                'consecutive_attempts': self.consecutive_stuck_count,
+                'front_clear': round(self.front_clear, 1),
+                'drift_vector': [round(self.drift_vector[0], 3), round(self.drift_vector[1], 3)],
+                'drift_uncertainty': [round(drift_uncertainty[0], 3), round(drift_uncertainty[1], 3)],
+                'drift_kalman_gain': [
+                    round(float(self.drift_kalman.last_kalman_gain[0, 0]), 3),
+                    round(float(self.drift_kalman.last_kalman_gain[1, 1]), 3),
+                ],
+            },
+            'anti_stuck_status',
+        )
 
 
 def main(args=None):

@@ -643,7 +643,7 @@ function subscribeToTopics() {
     missionStatusTopic.subscribe((message) => {
         let data;
         try { data = JSON.parse(message.data); }
-        catch (e) { if (DEBUG_MODE) console.warn('Bad /planning/mission_status JSON:', e); return; }
+        catch (e) { logBadJson('/planning/mission_status', e); return; }
         if (DEBUG_MODE) console.log('Mission status:', data);
         updateMissionStatus({
             state: data.state,
@@ -668,7 +668,7 @@ function subscribeToTopics() {
     controllerAntiStuckTopic.subscribe((message) => {
         let data;
         try { data = JSON.parse(message.data); }
-        catch (e) { if (DEBUG_MODE) console.warn('Bad /control/anti_stuck_status JSON:', e); return; }
+        catch (e) { logBadJson('/control/anti_stuck_status', e); return; }
         if (DEBUG_MODE) console.log('Controller anti-stuck status:', data);
         updateAntiStuckStatus(data);
     });
@@ -684,7 +684,7 @@ function subscribeToTopics() {
     modularTargetTopic.subscribe((message) => {
         let data;
         try { data = JSON.parse(message.data); }
-        catch (e) { if (DEBUG_MODE) console.warn('Bad /planning/current_target JSON:', e); return; }
+        catch (e) { logBadJson('/planning/current_target', e); return; }
         if (DEBUG_MODE) console.log('Modular current target:', data);
         // /planning/current_target is the authoritative source for distance-to-target;
         // /planning/mission_status does not carry it.
@@ -710,7 +710,7 @@ function subscribeToTopics() {
     modularWaypointsTopic.subscribe((message) => {
         let data;
         try { data = JSON.parse(message.data); }
-        catch (e) { if (DEBUG_MODE) console.warn('Bad /planning/waypoints JSON:', e); return; }
+        catch (e) { logBadJson('/planning/waypoints', e); return; }
         if (DEBUG_MODE) console.log('Modular waypoints received:', data);
         if (data.waypoints && data.waypoints.length > 0) {
             // Check if waypoints actually changed
@@ -737,7 +737,7 @@ function subscribeToTopics() {
     modularObstacleTopic.subscribe((message) => {
         let data;
         try { data = JSON.parse(message.data); }
-        catch (e) { if (DEBUG_MODE) console.warn('Bad /perception/obstacle_info JSON:', e); return; }
+        catch (e) { logBadJson('/perception/obstacle_info', e); return; }
         if (DEBUG_MODE) console.log('Modular obstacle status:', data);
         // Convert modular format to autoboat format with LiDAR v2.0/v2.1 enhancements
         // LiDAR v2.0: front_clear, left_clear, right_clear ARE the distances in meters
@@ -778,7 +778,7 @@ function subscribeToTopics() {
     modularControlTopic.subscribe((message) => {
         let data;
         try { data = JSON.parse(message.data); }
-        catch (e) { if (DEBUG_MODE) console.warn('Bad /control/status JSON:', e); return; }
+        catch (e) { logBadJson('/control/status', e); return; }
         if (DEBUG_MODE) console.log('Modular control status:', data);
         if (data.stop_override !== undefined) {
             missionState.stopOverride = !!data.stop_override;
@@ -816,7 +816,7 @@ function subscribeToTopics() {
     modularConfigTopic.subscribe((message) => {
         let data;
         try { data = JSON.parse(message.data); }
-        catch (e) { if (DEBUG_MODE) console.warn('Bad /planning/config JSON:', e); return; }
+        catch (e) { logBadJson('/planning/config', e); return; }
         if (DEBUG_MODE) console.log('Config received (planner):', data);
         updateConfigFromROS(data);
         updateWorldFromConfig(data);
@@ -834,7 +834,7 @@ function subscribeToTopics() {
                 const ranges = JSON.parse(message.data);
                 applyRangesToDashboard(ranges);
             } catch (e) {
-                if (DEBUG_MODE) console.warn(`Bad message on ${topicName}:`, e);
+                logBadJson(topicName, e);
             }
         });
     });
@@ -1198,6 +1198,20 @@ function updateAntiStuckStatus(data) {
 }
 
 // Add log entry
+// Rate-limited visible logger for JSON.parse failures on ROS status topics.
+// The Python publishers now guard with allow_nan=False, so this path should
+// only trigger on wire-level corruption (truncated rosbridge frames). When it
+// does, we want the operator to see it — not silent skip.
+const _jsonParseErrorLastLog = {};
+function logBadJson(topicName, error) {
+    const now = Date.now();
+    if (!_jsonParseErrorLastLog[topicName] || now - _jsonParseErrorLastLog[topicName] > 5000) {
+        _jsonParseErrorLastLog[topicName] = now;
+        addLog(`Malformed JSON on ${topicName}: ${error.message || error}`, 'error');
+    }
+    if (DEBUG_MODE) console.warn(`Bad ${topicName} JSON:`, error);
+}
+
 function addLog(message, type = 'info') {
     const logsContainer = document.getElementById('logs');
     const logEntry = document.createElement('div');
@@ -1485,7 +1499,6 @@ function updateConfigFromROS(data) {
         document.querySelectorAll('.apply-btn[disabled], .config-btn.apply[disabled]').forEach(btn => {
             btn.disabled = false;
             btn.title = '';
-            btn.classList.remove('waiting-sync');
         });
     }
     

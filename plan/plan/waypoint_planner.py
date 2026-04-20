@@ -676,11 +676,28 @@ class WaypointPlanner(Node):
         self.get_logger().warn(f"Rejected {name}={value} (valid range: {lo}–{hi})")
         return False
 
+    def _publish_json(self, publisher, payload, label):
+        """Safe JSON publish: refuses to emit NaN/Inf so dashboard parse can't
+        silently fail on malformed wire data."""
+        try:
+            encoded = json.dumps(payload, allow_nan=False)
+        except (TypeError, ValueError) as e:
+            self.get_logger().error(
+                f"Refused to publish malformed JSON ({label}): {e}",
+                throttle_duration_sec=1.0,
+            )
+            return
+        msg = String()
+        msg.data = encoded
+        publisher.publish(msg)
+
     def _publish_param_ranges(self):
         """Publish validation ranges so the dashboard can sync HTML min/max."""
-        msg = String()
-        msg.data = json.dumps({k: [lo, hi] for k, (lo, hi) in self.PARAM_RANGES.items()})
-        self.pub_param_ranges.publish(msg)
+        self._publish_json(
+            self.pub_param_ranges,
+            {k: [lo, hi] for k, (lo, hi) in self.PARAM_RANGES.items()},
+            'param_ranges',
+        )
 
     def config_callback(self, msg):
         """Handle runtime configuration changes"""
@@ -782,9 +799,7 @@ class WaypointPlanner(Node):
             'astar_max_expansions': self.astar.max_expansions,
             'world_name': self.world_name
         }
-        msg = String()
-        msg.data = json.dumps(config)
-        self.pub_config.publish(msg)
+        self._publish_json(self.pub_config, config, 'config')
 
     def latlon_to_meters(self, lat, lon):
         """Convert GPS coordinates to local meters"""
@@ -1306,27 +1321,28 @@ class WaypointPlanner(Node):
 
     def publish_waypoints(self):
         """Publish all waypoints"""
-        msg = String()
-        msg.data = json.dumps({
-            'waypoints': self.waypoints,
-            'total': len(self.waypoints)
-        })
-        self.pub_waypoints.publish(msg)
+        self._publish_json(
+            self.pub_waypoints,
+            {'waypoints': self.waypoints, 'total': len(self.waypoints)},
+            'waypoints',
+        )
 
     def publish_current_target(self, curr_x, curr_y, target_x, target_y, dist):
         """Publish current navigation target"""
-        msg = String()
-        msg.data = json.dumps({
-            'current_position': [round(curr_x, 2), round(curr_y, 2)],
-            'target_waypoint': [round(target_x, 2), round(target_y, 2)],
-            'waypoint_index': self.current_wp_index,
-            'total_waypoints': len(self.waypoints),
-            'distance_to_target': round(dist, 2),
-            'target_heading': round(math.degrees(math.atan2(
-                target_y - curr_y, target_x - curr_x
-            )), 1)
-        })
-        self.pub_current_target.publish(msg)
+        self._publish_json(
+            self.pub_current_target,
+            {
+                'current_position': [round(curr_x, 2), round(curr_y, 2)],
+                'target_waypoint': [round(target_x, 2), round(target_y, 2)],
+                'waypoint_index': self.current_wp_index,
+                'total_waypoints': len(self.waypoints),
+                'distance_to_target': round(dist, 2),
+                'target_heading': round(math.degrees(math.atan2(
+                    target_y - curr_y, target_x - curr_x
+                )), 1),
+            },
+            'current_target',
+        )
 
     def publish_mission_status(self, curr_x, curr_y):
         """Publish mission status"""
@@ -1354,22 +1370,24 @@ class WaypointPlanner(Node):
                     )
                     self.gps_timeout_warned = True
 
-        msg = String()
-        msg.data = json.dumps({
-            'state': self.state,
-            'current_waypoint': min(self.current_wp_index + 1, len(self.waypoints)),
-            'total_waypoints': len(self.waypoints),
-            'progress_percent': round(100 * min(self.current_wp_index, len(self.waypoints)) / max(1, len(self.waypoints)), 1),
-            'elapsed_time': round(elapsed, 1),
-            'position': [round(curr_x, 2), round(curr_y, 2)],
-            'mission_armed': self.mission_armed,
-            'gps_ready': gps_ready,
-            'detour_active': self.detour_waypoint_inserted,
-            'go_home_mode': self.go_home_mode,
-            'joystick_override': self.state == "JOYSTICK",
-            'blocked_reason': self.blocked_reason
-        })
-        self.pub_mission_status.publish(msg)
+        self._publish_json(
+            self.pub_mission_status,
+            {
+                'state': self.state,
+                'current_waypoint': min(self.current_wp_index + 1, len(self.waypoints)),
+                'total_waypoints': len(self.waypoints),
+                'progress_percent': round(100 * min(self.current_wp_index, len(self.waypoints)) / max(1, len(self.waypoints)), 1),
+                'elapsed_time': round(elapsed, 1),
+                'position': [round(curr_x, 2), round(curr_y, 2)],
+                'mission_armed': self.mission_armed,
+                'gps_ready': gps_ready,
+                'detour_active': self.detour_waypoint_inserted,
+                'go_home_mode': self.go_home_mode,
+                'joystick_override': self.state == "JOYSTICK",
+                'blocked_reason': self.blocked_reason,
+            },
+            'mission_status',
+        )
 
     def publish_mission_status_timer(self):
         """Timer callback to publish mission status continuously (even when not DRIVING)"""

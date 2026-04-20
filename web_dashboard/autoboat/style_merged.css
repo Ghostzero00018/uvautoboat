@@ -1780,25 +1780,6 @@ h2 {
     cursor: not-allowed;
 }
 
-.apply-waiting-label {
-    display: none;
-    margin: 6px 0 0;
-    font-size: 0.85em;
-    color: #b45309;
-    font-style: italic;
-    font-weight: 500;
-}
-
-.waiting-sync + .apply-waiting-label,
-.tuning-btn-row .waiting-sync + .apply-waiting-label {
-    display: inline-block;
-}
-
-.tuning-btn-row .apply-waiting-label {
-    flex-basis: 100%;
-    margin-left: 2px;
-}
-
 .tuning-btn-row {
     display: flex;
     gap: 8px;

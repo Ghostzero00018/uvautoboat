@@ -573,10 +573,9 @@
                     <button id="btn-reset-config" class="config-btn reset">
                         🔄 Reset Defaults | Réinitialiser
                     </button>
-                    <button id="btn-apply-config" class="config-btn apply waiting-sync" disabled title="Waiting for ROS config sync...">
+                    <button id="btn-apply-config" class="config-btn apply" disabled title="Waiting for ROS config sync...">
                         ✅ Apply Config | Appliquer
                     </button>
-                    <span class="apply-waiting-label">⏳ Waiting for ROS sync… | En attente de synchro</span>
                 </div>
                 <p class="btn-hint">Reset Defaults only changes the fields. Click Apply to send to ROS. | Reset ne change que les champs. Cliquez Appliquer pour envoyer.</p>
                 <input type="hidden" id="cfg-lanes" value="10">
@@ -728,8 +727,7 @@
 
                             <div class="tuning-btn-row">
                                 <button id="btn-reset-perception" class="reset-btn">🔄 Reset Defaults</button>
-                                <button id="btn-apply-perception" class="apply-btn waiting-sync" disabled title="Waiting for ROS config sync...">Apply Perception Params | Appliquer</button>
-                                <span class="apply-waiting-label">⏳ Waiting for ROS sync… | En attente de synchro</span>
+                                <button id="btn-apply-perception" class="apply-btn" disabled title="Waiting for ROS config sync...">Apply Perception Params | Appliquer</button>
                             </div>
                             <p class="btn-hint">Reset Defaults only changes the fields. Click Apply to send to ROS.</p>
                         </div>
@@ -867,8 +865,7 @@
                             </div>
                             <div class="tuning-btn-row">
                                 <button id="btn-reset-controller" class="reset-btn">🔄 Reset Defaults</button>
-                                <button id="btn-apply-controller" class="apply-btn waiting-sync" disabled title="Waiting for ROS config sync...">Apply Controller Params | Appliquer</button>
-                                <span class="apply-waiting-label">⏳ Waiting for ROS sync… | En attente de synchro</span>
+                                <button id="btn-apply-controller" class="apply-btn" disabled title="Waiting for ROS config sync...">Apply Controller Params | Appliquer</button>
                             </div>
                             <p class="btn-hint">Reset Defaults only changes the fields. Click Apply to send to ROS.</p>
                         </div>

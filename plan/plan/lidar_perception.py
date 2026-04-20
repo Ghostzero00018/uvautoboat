@@ -275,11 +275,28 @@ class LidarPerception(Node):
         except Exception:
             pass
 
+    def _publish_json(self, publisher, payload, label):
+        """Safe JSON publish: refuses to emit NaN/Inf (e.g. empty-scan divisions)
+        so the dashboard parse can't silently fail on malformed wire data."""
+        try:
+            encoded = json.dumps(payload, allow_nan=False)
+        except (TypeError, ValueError) as e:
+            self.get_logger().error(
+                f"Refused to publish malformed JSON ({label}): {e}",
+                throttle_duration_sec=1.0,
+            )
+            return
+        msg = String()
+        msg.data = encoded
+        publisher.publish(msg)
+
     def _publish_param_ranges(self):
         """Publish validation ranges so the dashboard can sync HTML min/max."""
-        msg = String()
-        msg.data = json.dumps({k: [lo, hi] for k, (lo, hi) in self.PARAM_RANGES.items()})
-        self.pub_param_ranges.publish(msg)
+        self._publish_json(
+            self.pub_param_ranges,
+            {k: [lo, hi] for k, (lo, hi) in self.PARAM_RANGES.items()},
+            'param_ranges',
+        )
 
     def config_callback(self, msg):
         """Handle runtime configuration changes from web dashboard"""
@@ -797,9 +814,7 @@ class LidarPerception(Node):
             'force_avoid_active': bool(self.obstacle_detected)
         }
         
-        info_msg = String()
-        info_msg.data = json.dumps(obstacle_info)
-        self.pub_obstacle_info.publish(info_msg)
+        self._publish_json(self.pub_obstacle_info, obstacle_info, 'obstacle_info')
         
         # Bilingual logging (throttled)
         if self.obstacle_detected:
