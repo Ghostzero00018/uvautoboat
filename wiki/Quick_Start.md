@@ -35,7 +35,7 @@ ros2 launch ~/seal_ws/src/uvautoboat/launch/autoboat.launch.yaml
 You should see terminal output like:
 
 ```text
-[INFO] PROJET-17 — AutoBoat Navigation System
+[INFO] AutoBoat Navigation System
 [INFO] Waiting for GPS signal...
 [INFO] GPS initialized: lat=XX.XXXX, lon=XX.XXXX
 [INFO] MISSION DÉMARRÉE ! | MISSION STARTED!

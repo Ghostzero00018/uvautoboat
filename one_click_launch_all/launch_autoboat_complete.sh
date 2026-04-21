@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ============================================================================
-# PROJET-17 — AutoBoat Complete One-Click Launch Script
+# AutoBoat — Complete One-Click Launch Script
 # ============================================================================
 #
 # ℹ️  DASHBOARD PORT: This dashboard runs on PORT 8002
@@ -146,7 +146,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         --help)
             cat << 'EOF'
-PROJET-17 AutoBoat Complete Launch Script
+AutoBoat — Complete Launch Script
 
 Usage: ./launch_autoboat_complete.sh [OPTIONS]
 

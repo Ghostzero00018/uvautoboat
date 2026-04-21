@@ -5,7 +5,7 @@
 [![Gazebo](https://img.shields.io/badge/Gazebo-Harmonic-orange)](https://gazebosim.org/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-> **PROJET-17** — Autonomous navigation research using the Virtual RobotX (VRX) simulation platform.
+> Autonomous navigation research using the Virtual RobotX (VRX) simulation platform.
 > GPS waypoint navigation with 3D LiDAR obstacle avoidance on the WAM-V platform.
 
 ---
@@ -268,6 +268,6 @@ uvautoboat/
 
 Apache License 2.0 — see [LICENSE](LICENSE).
 
-**AutoBoat** — IMT Nord Europe, PROJET-17
+**AutoBoat** — IMT Nord Europe research project
 
 [Report Bug](https://github.com/Ghostzero00018/uvautoboat/issues) · [Full Manual](USER_MANUAL.md)
