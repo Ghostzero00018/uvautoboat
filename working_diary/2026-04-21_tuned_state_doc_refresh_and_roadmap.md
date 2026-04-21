@@ -429,3 +429,218 @@ bb20c38 docs: Refresh Board timeline + post-Tier-2 doc sync to 21-04-2026
 5. **Phase 5 prep residuals** — `remap.launch.yaml` as a runnable file
    (paper design already in the scope plan), and the perception-rate
    profiling that still shows `⬜` on the Board.
+
+## Supplementary audit (late evening, post-doc-polish round)
+
+Following the closing-polish commits above, ran a broader read-only
+inspection across the active code tree to surface issues not yet on
+any backlog. Two-part sweep: concrete investigation of the two
+deferred Next-steps items (residual `IDLE` alignment + Phase 5 prep
+residuals), plus a wider code-level + cross-file consistency audit.
+
+No code edits made in this round — all findings documented here for
+triage on 22/04.
+
+### Residual `IDLE` alignment — complete site inventory
+
+Actual count: **16 dashboard sites + 2 CLI sites = 18 total** (this
+morning's diary estimate of "~12 + 2" was rounded; real total is
+slightly higher).
+
+**Dashboard sites (16):**
+
+- `README_autoboat_dashboard.md:78` — Anti-Stuck panel direction docs
+  (LEFT/RIGHT/**IDLE**)
+- `index.html:203` — Escape-direction tooltip text
+- `app.js:43, 66` — initial `missionState.state` default on two
+  parallel objects (pre-first-message)
+- `app.js:802` — reset path via
+  `updateMissionControlUI({state: 'IDLE', ...})`
+- `app.js:1126, 1185` — `data.escape_direction || 'IDLE'` fallback
+- `app.js:1129` — `'IDLE | Attente'` display text for IDLE direction
+- `app.js:1522, 2251` — inline comments mentioning `INIT/IDLE`
+- `app.js:1531, 2253` — `['INIT', 'IDLE'].includes(state)` guards
+- `app.js:2162` — `(state.state || 'IDLE').toString()...` fallback
+- `app.js:2201` — `'IDLE': 'Idle | En attente'` in `stateLabels` map
+- `app.js:2262, 2267` — state lists for Start / Go-Home button enables
+
+**CLI sites (2):**
+
+- `autoboat_cli.py:241` — `needs_confirm` check includes `IDLE`
+  alongside WAITING_CONFIRM / INIT / None / UNKNOWN
+- `autoboat_cli.py:528` — `self.config_status.get('state', 'IDLE')`
+  fallback
+
+**Semantic interpretation:** `waypoint_planner.py` state transitions
+emit 8 real states — `INIT`, `WAITING_CONFIRM`, `READY`, `DRIVING`,
+`PAUSED`, `JOYSTICK`, `EMERGENCY_STOP`, `FINISHED`. Never emits
+`IDLE`. The dashboard and CLI use `IDLE` as a "no data yet" client-
+side sentinel before the first `/planning/mission_status` lands. This
+is distinct from `INIT` ("planner is up but mission not yet
+configured"). Coherent as-is.
+
+**Decision options** (none required):
+
+1. Keep as-is (current approach). Cost: reader must know IDLE is
+   dashboard-side only.
+2. Rename all 18 sites → `INIT`. Cost: coordinated cross-file edit,
+   no behaviour gain, still need a pre-data sentinel concept.
+3. Introduce `UNKNOWN` as the pre-data sentinel (semantically
+   cleanest — the CLI's fallback list already treats `UNKNOWN`
+   equivalently). Cost: same 18 edits + threading `UNKNOWN` display
+   label.
+
+Option 1 remains the morning recommendation. Nothing to change.
+
+### Phase 5 prep residuals — concrete status
+
+**A. `remap.launch.yaml` as a runnable file.**
+
+- Paper design exists in
+  `working_diary/2026-04-19_to_2026-04-20_phase5_prep_scope_plan.md`
+  Part 2 (~100 lines: skeleton, neutral namespace, 4-phase rollout,
+  rollback path, 3 QoS risks).
+- Actual runnable file does NOT exist. `launch/` contains only
+  `autoboat.launch.yaml`.
+- 6 files reference `remap.launch` by name — all are design /
+  roadmap docs (Roadmap, Board, 3 diary entries, scope plan itself).
+  Zero implementations.
+- **To land:** create `launch/remap.launch.yaml` from the scope
+  plan's skeleton — 6 `topic_tools/relay` nodes + 1 conditional
+  bridge stub. Verify `ros-jazzy-topic-tools` is installed. Dry-run
+  with `use_real_hardware:=false` should produce identical behaviour
+  to the current launcher. Estimated 1 focused session (~1 h).
+- **Blocked on:** nothing. Bridge-node layer depends on supervisor
+  CCU confirmation, but Layer A relays do not.
+
+**B. Perception-rate profiling.**
+
+- Board.md Prep Tasks table line 165: `Profile /perception/obstacle
+  _info Hz in VRX; document baseline` — still `⬜`.
+- **To land:** full launch → Buoy Field preset → `ros2 topic hz
+  /perception/obstacle_info` for 2 min under mission load → record
+  mean / std / dropouts → write baseline row into Board.md for
+  future Pi-5 comparison.
+- Estimated 30 min on Linux.
+- **Blocked on:** nothing.
+
+### Broader code audit — prioritised findings
+
+Two parallel read-only inspection passes covered: dead code, silent
+error handling, stale legacy refs, TODO/FIXME markers, magic
+numbers, fire-and-hope patterns, state-name consistency, orphan
+params, Python↔YAML default drift, dashboard four-place sync,
+docstring↔implementation drift, topic / message type consistency.
+
+#### Critical (possible real bugs — verify before acting)
+
+| # | File:line | Finding |
+|:--|:----------|:--------|
+| C1 | `plan/plan/lidar_perception.py:278` | Bare `except Exception: pass` in the target-subscriber callback; parse failures silently fall back to static ±45° sectors without log |
+| C2 | `plan/plan/waypoint_planner.py:552` | Bare `except: pass` in obstacle callback; cluster-parse failures may feed stale data into A\* detour planning |
+| C3 | `control/control/heading_controller.py:753-791` | Critical-obstacle reverse sequence — `reverse_start_time` can be `None` from another reset path; `elapsed > reverse_timeout` comparison may misfire |
+| C4 | `one_click_launch_all/health_check_autoboat.sh` vs docs | One inspection pass counted ~34 emission sites in the script; docs + Board claim 49. Likely the difference is loop-expansion (`check_param` inside a loop emits N runtime checks from 1 static site), but a sanity count is warranted |
+
+#### Important (tech debt, not unsafe)
+
+| # | File:line | Finding |
+|:--|:----------|:--------|
+| I1 | `plan/plan/autoboat_cli.py:153` | `# TODO(tier2-option-a)` for start/resume/go_home — still topic-based; could migrate to `std_srvs/Trigger` like stop/generate did 20/04 |
+| I2 | `control/control/heading_controller.py:45-50` | `MAX_THRUST=2000`, `SAFE_THRUST=800`, `TURN_POWER_LIMIT=1600`, `REVERSE_BURST_THRUST=-1200`, `ESCAPE_TURN_POWER=450` — module-level constants not exposed as ROS parameters; no runtime or dashboard tuning |
+| I3 | `plan/plan/lidar_perception.py:563` | `math.radians(15)` hardcoded for minimum gap width in VFH — candidate for a 5th `vfh_*` parameter |
+| I4 | `plan/plan/lidar_perception.py:401, 406` | Boat-hull self-filter hardcoded to WAM-V (`abs(y) < 1.3` + `x ∈ (-4.5, 1.0)`) — would need adjustment for a different USV body |
+| I5 | `control/control/heading_controller.py:876-888` | Angle-dependent speed-reduction thresholds (45°, 20°) hardcoded — no angle-axis mirror of the existing `approach_slow_distance` |
+| I6 | All 3 node module-level docstrings | Missing newer pub/sub lines. `lidar_perception.py` missing `/planning/set_config` sub + `/control/heading_error` sub + `/perception/param_ranges` pub; `heading_controller.py` missing `/planning/mission_status` sub + `/control/heading_error` pub; `waypoint_planner.py` state-machine docstring omits PAUSED / JOYSTICK / EMERGENCY_STOP |
+| I7 | `plan/plan/waypoint_planner.py:245, 899` | `self.detour_start_time` cleared only in `advance_to_next_waypoint`; paths that skip that method may leave `None` and silently break the detour-timeout check around line 899 |
+
+#### Cosmetic (low priority)
+
+| # | File:line | Finding |
+|:--|:----------|:--------|
+| K1 | `waypoint_planner.py:1079, 1133, 1177` | Local `import time` inside three methods — inconsistent with the module-level import at line 32; Python caches so no perf impact, pure style drift |
+| K2 | `waypoint_planner.py:804` | `hasattr(self, 'obstacle_clusters')` guard where the attribute is always initialised in `__init__` line 224 — defensive dead branch |
+| K3 | `lidar_perception.py:100-102` | Some `vfh_*` params read via `get_parameter()` at every tick rather than cached to `self.<attr>` at init — micro-overhead at 10 Hz |
+| K4 | `heading_controller.py:857` | `/control/heading_error` published at 20 Hz unconditionally, even when `use_vfh_bias: false` and perception not subscribing — a few bytes per tick, harmless |
+
+#### False alarms (flagged but verified correct)
+
+| # | Where | Why correct |
+|:--|:------|:-----------|
+| F1 | `waypoint_planner.py` cooldown uses `time.time()` | Cooldown timer, not a fire-and-hope. Backward-jumping system clock is not a realistic concern in this deployment |
+| F2 | `heading_controller.py` Kalman update gate (`commanded_thrust < 50.0`) | Sound design — documented in 20/04 diary; prevents drift estimator absorbing commanded motion |
+| F3 | Dashboard `IDLE` label | Intentional "no data yet" sentinel — see inventory above |
+| F4 | Python ↔ YAML default drift | Cross-audit pass found zero drift across all 3 nodes; the 19/04 sync work has held |
+| F5 | Dashboard four-place sync | Verified params all sync across YAML / HTML / JS / Python; the 17/04 `avoid_diff_gain` regression does not recur |
+| F6 | Topic message-type consistency | Publishers and subscribers agree on types across `/perception/*`, `/planning/*`, `/control/*` |
+
+**Totals:** 4 Critical (pending spot-read verification), 7 Important,
+4 Cosmetic, 6 False alarms. 21 items surfaced, filtered down from
+~40 raw findings across the two inspection passes.
+
+## Guide for 22/04/2026
+
+Priority-ordered triage derived from the supplementary audit above.
+High-yield / low-risk first; blocked-on-external items last.
+
+1. **Spot-read C1 / C2 / C3 / C4** (~30 min, either machine, Read-
+   only). Decide whether each is a real bug before committing to a
+   fix cycle.
+   - `lidar_perception.py:278` — is the bare-except truly silent, or
+     does the fall-back log somewhere?
+   - `waypoint_planner.py:552` — same question.
+   - `heading_controller.py:753-791` — read the reverse state
+     machine as a connected block; check all `reverse_start_time`
+     reset points.
+   - `health_check_autoboat.sh` — count actual `pass`/`fail`/`warn`
+     emission sites to resolve the 49 vs ~34 discrepancy.
+
+2. **Phase 5 residuals land today** (~1.5 h total on Linux):
+   - Create `launch/remap.launch.yaml` from the scope plan's Part 2
+     skeleton. Commit as `feat:` with a `use_real_hardware:=false`
+     smoke-test showing identical mission behaviour.
+   - `ros2 topic hz /perception/obstacle_info` 2-minute sample under
+     Buoy Field preset. Record baseline in Board.md Prep Tasks row
+     165 (flip `⬜` → `✅` with the measured value).
+
+3. **I6 docstring refresh** (~15 min, either machine, pure markdown-
+   in-Python). Update the three module-level docstrings to list all
+   current pub/sub + the full state machine. Zero behaviour change.
+   One `docs:` commit.
+
+4. **If C1 / C2 / C3 confirmed real** — apply the same pattern the
+   CLI got on 21/04: replace bare-except with a
+   `_log_bad_json(topic, exc)` helper that throttle-logs visibly. A
+   single fix-and-commit cycle closes all three. Linux-only (Python
+   edits).
+
+5. **C4 resolution:**
+   - If 49 is wrong, fix the number in README + USER_MANUAL + Board
+     - dashboard README + wiki Glossary in one `docs:` commit.
+   - If 49 is correct but emission-site count is ~34, add a short
+     comment near the health-check summary block explaining the
+     loop-expansion so future readers don't re-open this question.
+
+6. **Deferred / blocked:**
+   - IDLE alignment — no behavioural benefit; bundle only if doing a
+     broader dashboard-JS cleanup pass for another reason.
+   - I1, I2, I3, I4, I5, I7, K1-K4 — backlog; land opportunistically
+     when touching the same file for another purpose.
+   - Phase A mock water quality sensor — still blocked on supervisor
+     parameter-set confirmation (pH / turbidity / DO / temperature /
+     conductivity — which subset?).
+   - Phase 5 bridge node beyond the pass-through stub — still
+     blocked on supervisor CCU architecture (separate low-level
+     controller or direct Pi GPIO?).
+   - Pier / bank stuck behaviour from 20/04 pressure test — open
+     navigation issue; can be tackled in parallel but not scoped
+     here.
+
+**Machine assignments:**
+
+| Item | Machine | Why |
+|:-----|:--------|:----|
+| 1. C1-C4 spot-read | Either | Pure Read / Grep |
+| 2. Phase 5 residuals | Linux | Needs full VRX launch |
+| 3. I6 docstrings | Either | Pure markdown |
+| 4. Bare-except fixes | Linux | Python edits (launch tests after) |
+| 5. C4 docs fix | Either | Pure markdown |
