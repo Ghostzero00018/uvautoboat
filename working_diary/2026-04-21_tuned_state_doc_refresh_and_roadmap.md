@@ -577,6 +577,47 @@ docstring↔implementation drift, topic / message type consistency.
 4 Cosmetic, 6 False alarms. 21 items surfaced, filtered down from
 ~40 raw findings across the two inspection passes.
 
+#### C1-C4 spot-read verdict (21/04 late evening revision)
+
+Completed a Read-only spot-check of the four Critical items. Results
+supersede the "pending spot-read verification" qualifier on the totals
+line above.
+
+| # | Original concern | Verdict | Detail |
+|:--|:-----------------|:--------|:-------|
+| **C1** | `lidar_perception.py:278` target-subscriber bare except | **Real bug (mild)** | Lines 267-279: `try/except Exception: pass` around `json.loads` + field access. Silent fallback — `self.target_angle` and `self.front_half_width` keep their previous values, no logger call. Fix is the `_log_bad_json` helper pattern the CLI JSON callbacks got 21/04. |
+| **C2** | `waypoint_planner.py:552` obstacle-subscriber bare except | **Real bug (medium)** | Lines 537-553: same pattern as C1 but more consequential — `self.obstacle_clusters` is consumed by A*detour planning. On parse failure, A* operates on stale cluster data. Same `_log_bad_json` fix applies. |
+| **C3** | `heading_controller.py:753-797` reverse state machine | **Real bug (medium)** | Line 782 sets `force_turn_after_reverse = True` when reverse-timeout or reverse-distance is hit (intent: latch into "turn instead of reverse again" for the next tick). But the fall-through block at lines 793-797 unconditionally resets the flag to `False` in the same tick. Net effect: the latch never persists across control ticks. On the next tick with `is_critical == True`, the flow re-enters the reverse branch, re-initialises `reverse_start_time`, and starts another reverse cycle. Not an infinite loop (each reverse cycle does move the boat ~0.8 m further from the obstacle, eventually clearing `is_critical`), but the boat performs ~2 reverse cycles (~8 s total) where 1 reverse + turn-to-avoid was intended. Fix: move the `force_turn_after_reverse = False` reset out of the unconditional fall-through; reset it only when exiting `is_critical` (the `else` branch at line 798-801 already does this correctly). |
+| **C4** | Health check `49` vs one pass's "~34 emission sites" | **False alarm / verified correct** | Manually enumerated runtime emissions under the "full launch, active mission" assumption: 5 main-node passes + 1 `health_check_service` + 2 optional nodes (when both running) + 5 always topics + 5 mission topics + 1 orphan check + 6 `check_publisher` calls + 8+8+4 `check_param` calls + 4 connectivity = **49 exactly**. Matches what the README, USER_MANUAL, and Board all claim. The "~34" count was static call sites (loops counted as 1 instead of N), not a runtime-emission count; no error in the script or docs. No fix needed. |
+
+**Updated category totals** (rebalancing after spot-read):
+
+| Category | Before | After |
+|:---------|:------:|:-----:|
+| Critical — real bug confirmed | 4 pending | **3** (C1, C2, C3) |
+| Important | 7 | 7 (unchanged) |
+| Cosmetic | 4 | 4 (unchanged) |
+| False alarms verified | 6 | **7** (C4 moved here) |
+| **Grand total** | **21** | **21** (unchanged) |
+
+**Implication for 22/04 Block 2:** C1, C2, C3 are real and cluster into
+two fix patterns:
+
+1. **`_log_bad_json` helper** for C1 + C2 — the same treatment the CLI's
+   three JSON callbacks got on 21/04. Add a module-level helper to each
+   of the two perception/planner files (or a shared one), replace the
+   `except Exception: pass` bodies with a throttled warn log, keep the
+   fall-back-to-previous-value behaviour.
+2. **`force_turn_after_reverse` latch fix** for C3 — single-file edit in
+   `heading_controller.py`. Remove or gate the unconditional reset at
+   line 796 so the flag persists until `is_critical == False` resets it
+   via the `else` branch.
+
+All three fixes fit in one Python-edit commit cycle with `py_compile`
+
+- `colcon build --packages-select plan control` as the verification
+loop. Estimated 45-60 min on Linux.
+
 ## Guide for 22/04/2026
 
 Priority-ordered triage derived from the supplementary audit above.
