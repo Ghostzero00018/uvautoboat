@@ -571,9 +571,11 @@ class MissionCLI(Node):
             print(f"  Avoidance: {'🔄 Active' if avoidance else 'Inactive'}")
             print(f"  Heading: {self.controller_status.get('current_yaw', '?')}°")
         
-        # Note about PID/Speed
-        print(f"\n💡 PID/Speed are set via CLI but not broadcast by controller")
-        print(f"   Use 'ros2 param get /heading_controller kp' to check current values")
+        # Tip: PID/Speed and other controller params are synced to the ROS
+        # parameter server on every /planning/set_config, so direct param
+        # queries are authoritative.
+        print(f"\n💡 Verify runtime param values with e.g.:")
+        print(f"   ros2 param get /heading_controller_node kp")
         
         print("=" * 50)
         
