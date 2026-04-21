@@ -56,8 +56,8 @@ class KeyboardTeleop(Node):
         self.rudder = 0.0            # Current rudder: -1.0 (full left) to 1.0 (full right)
         self.rudder_step = 0.12      # How much rudder changes per keypress
         self.rudder_decay = 0.02     # Slower decay = smoother steering
-        self.rudder_held = False     # Track if rudder key is being held
-        
+
+
         # Thrust power (scales the output)
         self.max_thrust = 800.0      # Maximum thrust in Newtons
         self.thrust_step = 100.0     # Increment for +/- keys

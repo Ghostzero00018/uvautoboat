@@ -763,7 +763,4 @@ If your problem isn't listed here:
 
 ## Related Pages
 
-- **[FAQ](FAQ)** — Frequently asked questions
-- **[Debug Commands](Debug-Commands)** — Advanced diagnostic tools
-- **[Configuration & Tuning](Configuration-and-Tuning)** — Parameter reference
 - **[Installation Guide](Installation_Guide)** — Setup troubleshooting

@@ -508,7 +508,7 @@ class MissionCLI(Node):
         print("AUTOBOAT STATUS")
         print("=" * 50)
         
-        # Mission status (only available during RUNNING state)
+        # Mission status (only available during DRIVING state)
         if self.mission_status:
             state = self.mission_status.get('state', 'Unknown')
             waypoint = self.mission_status.get('current_waypoint', '?')
@@ -534,7 +534,7 @@ class MissionCLI(Node):
                 print(f"Waypoints: {waypoint_count} defined")
                 print(f"GPS: {'✅ Ready' if gps_ready else '⏳ Waiting...'}")
                 print(f"Armed: {'✅ Yes' if mission_armed else '❌ No (use confirm command)'}")
-                print("\n💡 Mission status updates during RUNNING state only")
+                print("\n💡 Mission status updates during DRIVING state only")
             else:
                 print("⚠️ No status received")
                 print("   Check if the navigation system is running:")

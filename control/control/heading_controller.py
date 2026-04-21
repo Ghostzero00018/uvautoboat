@@ -45,7 +45,9 @@ from std_msgs.msg import Float64, String, Bool
 MAX_THRUST = 2000.0          # Newtons - hardware limit (v2.1: increased from 1000)
 SAFE_THRUST = 800.0          # Newtons - operational limit
 INTEGRAL_LIMIT = 0.5         # radians - prevent integral windup
-TURN_POWER_LIMIT = 1600.0     # Newtons - max differential thrust (v2.1: increased from 800)
+TURN_POWER_LIMIT = 1600.0    # Newtons - max differential thrust (v2.1: increased from 800)
+REVERSE_BURST_THRUST = -1200.0  # Newtons - CQB micro-reverse pulse during critical-distance escape
+ESCAPE_TURN_POWER = 450.0    # Newtons - differential thrust for stuck-escape spin-in-place
 
 
 # =============================================================================
@@ -397,9 +399,8 @@ class HeadingController(Node):
         self.create_timer(0.5, self.publish_anti_stuck_status)
 
         self.get_logger().info("=" * 50)
-        self.get_logger().info("Heading Controller - Motion Control System")
-        self.get_logger().info("Heading Controller - PID Heading Control")
-        self.get_logger().info("+ Simple Anti-Stuck (turn left until clear)")
+        self.get_logger().info("Heading Controller — PID motion control")
+        self.get_logger().info("+ Simple Anti-Stuck (turn toward clearer side)")
         self.get_logger().info(f"PID Gains: Kp={self.kp}, Ki={self.ki}, Kd={self.kd}")
         self.get_logger().info(f"Speed: {self.base_speed} (max: {self.max_speed})")
         self.get_logger().info(f"Anti-Stuck: timeout={self.stuck_timeout}s, threshold={self.stuck_threshold}m")
@@ -485,7 +486,13 @@ class HeadingController(Node):
             self.get_logger().warn(f"Invalid mission status: {e}")
 
     def mission_command_callback(self, msg):
-        """Handle mission commands with highest priority STOP latch"""
+        """Clear STOP override when a resume-family command arrives.
+
+        The safety STOP latch itself lives on the /planning/emergency_stop
+        latched Bool (see emergency_stop_latched_callback); this callback only
+        drops the override so the next start / resume / go_home / joystick_enable
+        actually drives.
+        """
         try:
             data = json.loads(msg.data)
             command = data.get('command', '').lower()
@@ -778,7 +785,7 @@ class HeadingController(Node):
                     cycle = 0.6  # seconds
                     on_time = 0.2
                     phase = elapsed % cycle
-                    thrust_cmd = -1200.0 if phase < on_time else 0.0
+                    thrust_cmd = REVERSE_BURST_THRUST if phase < on_time else 0.0
                     self.send_thrust(thrust_cmd, thrust_cmd)
                     self.publish_status("REVERSING")
                     return
@@ -1139,7 +1146,7 @@ class HeadingController(Node):
             self.stuck_check_time = self.get_clock().now()
         else:
             # Turn toward clearer side
-            turn_power = 450.0
+            turn_power = ESCAPE_TURN_POWER
             if self.right_clear > self.left_clear:
                 self.send_thrust(turn_power, -turn_power)
                 direction = "RIGHT"

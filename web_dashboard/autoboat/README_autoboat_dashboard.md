@@ -20,7 +20,7 @@ Real-time web-based monitoring and control dashboard for the AutoBoat autonomous
 - **Obstacle detection** with Front/Left/Right clearance, urgency scores, clusters, gaps
 - **Anti-stuck status** with Kalman drift uncertainty indicator
 - **Embedded camera feed** via web_video_server (MJPEG)
-- **State badges** for: INIT, IDLE, WAITING_CONFIRM, WAYPOINTS_PREVIEW, READY, DRIVING, PAUSED, FINISHED, EMERGENCY_STOP, JOYSTICK
+- **State badges** for: INIT, WAITING_CONFIRM, READY, DRIVING, PAUSED, FINISHED, EMERGENCY_STOP, JOYSTICK
 
 ## Prerequisites
 
