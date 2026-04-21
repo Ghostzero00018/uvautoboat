@@ -16,7 +16,7 @@ Welcome to the **AutoBoat Wiki**! This documentation provides comprehensive guid
 
 - **[Installation Guide](Installation_Guide)** — Set up ROS 2, Gazebo, and AutoBoat
 - **[Quick Start](Quick_Start)** — Get your first mission running in 5 minutes
-- **[User Manual](../USER_MANUAL.md)** — Full operator reference (topics, services, parameters, troubleshooting)
+- **[User Manual](https://github.com/Ghostzero00018/uvautoboat/blob/main/USER_MANUAL.md)** — Full operator reference (topics, services, parameters, troubleshooting)
 
 ### 🏗️ Architecture
 
