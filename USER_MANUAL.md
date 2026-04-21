@@ -6,7 +6,7 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 ![Status](https://img.shields.io/badge/Status-Active-green)
 
-> **PROJET-17 — Autonomous Navigation System for the Virtual RobotX (VRX) course**  
+> **PROJET-17 — Autonomous Navigation System built on the Virtual RobotX (VRX) simulation platform**  
 > A comprehensive ROS 2 framework for GPS-based waypoint navigation with 3D LIDAR obstacle avoidance
 
 ---
@@ -48,7 +48,7 @@
 
 ## Abstract
 
-AutoBoat is an autonomous navigation system for unmanned surface vehicles (USVs) developed for the Virtual RobotX ([VRX](https://github.com/osrf/vrx)) competition. The system integrates advanced path planning, real-time obstacle avoidance, and precise trajectory tracking algorithms optimized for the WAM-V maritime platform. Built on **[ROS 2 Jazzy](https://docs.ros.org/en/jazzy/)** and **[Gazebo Harmonic](https://gazebosim.org/docs/harmonic/)**, the framework provides a robust foundation for autonomous maritime navigation in simulated environments.
+AutoBoat is an autonomous navigation system for unmanned surface vehicles (USVs) developed as a research project using the Virtual RobotX ([VRX](https://github.com/osrf/vrx)) simulation platform. The system integrates advanced path planning, real-time obstacle avoidance, and precise trajectory tracking algorithms optimized for the WAM-V maritime platform. Built on **[ROS 2 Jazzy](https://docs.ros.org/en/jazzy/)** and **[Gazebo Harmonic](https://gazebosim.org/docs/harmonic/)**, the framework provides a robust foundation for autonomous maritime navigation in simulated environments.
 
 The project implements a hierarchical autonomous navigation framework combining perception, planning, and control subsystems to enable intelligent waypoint navigation while dynamically responding to environmental constraints. By processing sensor data streams and mission objectives in real-time, the architecture generates collision-free trajectories that account for static obstacles, operational boundaries, and vehicle dynamics, ensuring safe and efficient autonomous operation.
 
@@ -69,10 +69,11 @@ The project implements a hierarchical autonomous navigation framework combining 
 
 | Phase | Description | Status |
 | :------ | :------------ | :------: |
-| Phase 1 | Architecture & MVP | DONE |
-| Phase 2 | Obstacle Avoidance | DONE |
-| Phase 3 | Coverage & Search | ⏸️ Planned |
-| Phase 4 | Integration & Testing | 🔄 80% |
+| Phase 1 | Architecture & MVP | ✅ DONE |
+| Phase 2 | Autonomous Navigation | ✅ DONE |
+| Phase 3 | Coverage Planning | ⏸️ Planned |
+| Phase 4 | Integration & Testing | 🔄 90% |
+| Phase 5 | Real-Hardware Deployment | 🔜 Planned |
 
 See [Board.md](Board.md) for detailed milestones and progress tracking.
 
@@ -112,8 +113,13 @@ uvautoboat/
 │   ├── Installation_Guide.md        # Setup instructions
 │   ├── Quick_Start.md               # 5-minute quick start
 │   ├── System_Overview.md           # Architecture deep-dive
+│   ├── Design_Rationale.md          # Why these design/parameter choices
+│   ├── Glossary.md                  # Plain-language term definitions
+│   ├── Roadmap.md                   # Phase 5 + research extensions scope
 │   ├── SASS.md                      # Simple Anti-Stuck System
 │   ├── 3D_LIDAR_Processing.md       # LiDAR perception details
+│   ├── Dashboard_Security.md        # Security posture and mitigations
+│   ├── Node_Naming_Refactor_Plan.md # Record of the functional-naming rename
 │   └── Common_Issues.md             # Troubleshooting guide
 ├── one_click_launch_all/       # Automated launcher scripts
 │   ├── launch_autoboat_complete.sh   # One-click full system launch
@@ -168,8 +174,13 @@ uvautoboat/
 | [Installation Guide](wiki/Installation_Guide.md) | Step-by-step setup instructions |
 | [Quick Start](wiki/Quick_Start.md) | 5-minute quick start guide |
 | [System Overview](wiki/System_Overview.md) | Architecture and design philosophy |
-| [Simple Anti-Stuck](wiki/SASS.md) | Simple anti-stuck recovery system (deprecated wiki, see README) |
+| [Design Rationale](wiki/Design_Rationale.md) | Why these architecture, algorithm, and parameter choices were made |
+| [Glossary](wiki/Glossary.md) | Plain-language definitions of every technical term |
+| [Roadmap](wiki/Roadmap.md) | Phase 5 hardware deployment + research-extensions scope |
+| [Simple Anti-Stuck](wiki/SASS.md) | Simple anti-stuck recovery system |
 | [3D LIDAR Processing](wiki/3D_LIDAR_Processing.md) | LiDAR perception system details |
+| [Dashboard Security](wiki/Dashboard_Security.md) | Security posture, known vulnerabilities, mitigations |
+| [Node Naming Refactor Plan](wiki/Node_Naming_Refactor_Plan.md) | Record of the functional-naming rename |
 | [Common Issues](wiki/Common_Issues.md) | Comprehensive troubleshooting guide |
 
 ### System Requirements
@@ -240,30 +251,28 @@ Local Y = (longitude - start_lon) × Earth_radius × cos(start_lat)
 
 **LIDAR** (Light Detection and Ranging) uses laser pulses to create a 3D map of the environment. The WAM-V's 3D LIDAR returns thousands of points per scan.
 
-**Processing Pipeline (Perception v2.0):**
+**Processing Pipeline (LiDAR Perception):**
 
 | Step | Filter | Purpose |
 | :----- | :------- | :-------- |
-| 1 | Height: -15m to +10m | Exclude water/sky, catch lake banks |
-| 2 | Range: 5m to 50m | Ignore dock at spawn, focus on obstacles |
-| 3 | Water Plane Removal | Filter water surface reflections (5th percentile Z) |
+| 1 | Height: -1.2m to +1.5m | Exclude water/sky, keep navigation-level hazards |
+| 2 | Range: 2.2m to 100m | Ignore boat hull, cap detection range |
+| 3 | Water Plane Removal | Filter water surface reflections (5th percentile Z, 0.32 m tolerance) |
 | 4 | Sector Analysis | Front/Left/Right clearance (adaptive width) |
-| 5 | Temporal Filtering | Require 3/5 scans to confirm detection |
+| 5 | Temporal Filtering | Require 2/3 scans to confirm detection |
 | 6 | Obstacle Clustering | Group points into distinct obstacles |
 | 7 | Gap Detection | Find passable gaps between obstacles |
-| 8 | Velocity Estimation | Track moving obstacles over time |
 
-**Enhanced Features (Perception v2.0):**
+**Enhanced Features:**
 
 | Feature | Description |
 | :-------- | :------------ |
-| **Temporal Filtering** | 5-scan history, requires 3/5 detections to confirm (reduces flickering) |
+| **Temporal Filtering** | 3-scan history, requires 2/3 detections to confirm (reduces flickering) |
 | **Distance-Weighted Urgency** | Score 0.0 (safe) to 1.0 (critical) for smoother control |
-| **Obstacle Clustering** | Groups nearby points (2m eps) to identify individual obstacles |
+| **Obstacle Clustering** | Groups nearby points (3 m max distance, min 8 points) into individual obstacles |
 | **Gap Detection** | Finds passable gaps (>3m width) between obstacles |
 | **Adaptive Sectors** | Front sector width adjusts based on target heading |
 | **Water Plane Removal** | Estimates water surface Z, filters reflections |
-| **Velocity Estimation** | Tracks obstacles across frames to detect movement |
 
 **Enhanced `/perception/obstacle_info` JSON:**
 
@@ -1120,7 +1129,7 @@ ros2 run plan autoboat_cli resume
 ros2 run plan autoboat_cli home
 ```
 
-> **Auto-Ready Check:** The `generate` command automatically waits up to 5 seconds for the navigation system to respond. If not ready, it will show which command to run to start the navigation system.
+> **Auto-Ready Check:** The `generate` command waits for the `/planning/generate_waypoints` service to become available before sending the request. If the navigation system isn't running, it will show which command to launch.
 
 ### Modular Mission Flow (Dashboard + Planner/Controller)
 
@@ -1164,12 +1173,12 @@ Interrupts:
 
 | Metric | Value | Notes |
 | :------- | :------ | :------ |
-| **Control Loop Frequency** | 30 Hz | Heading controller update rate |
+| **Control Loop Frequency** | 20 Hz | Heading controller update rate (50 ms period) |
 | **LIDAR Processing Rate** | 10-20 Hz | Depends on Gazebo simulation speed |
 | **GPS Update Rate** | 10 Hz | VRX default sensor rate |
 | **IMU Update Rate** | 100 Hz | VRX default sensor rate |
 | **WebSocket Latency** | < 50 ms | rosbridge to dashboard |
-| **Obstacle Detection Range** | 5-50 m | Configurable via `min_range`/`max_range` |
+| **Obstacle Detection Range** | 2.2–100 m | Configurable via `min_range`/`max_range` |
 | **Waypoint Arrival Tolerance** | 3.5 m | Default `waypoint_tolerance` |
 | **Thrust Range** | -1000 to +1000 N | Per thruster |
 
@@ -1184,7 +1193,7 @@ Local Y = (lon - start_lon) × 6,371,000m × cos(start_lat)
 
 ### 3D LIDAR Processing
 
-**Height Reference (LiDAR mounted ~2-3m above water):**
+**Height Reference (LiDAR at `z=1.8` on the WAM-V base_link, ~2–3 m above water surface; Z values are expressed relative to the LiDAR sensor frame):**
 
 | Surface | Z Value |
 | :-------- | :-------- |
@@ -1479,7 +1488,7 @@ chmod +x one_click_launch_all/launch_autoboat_complete.sh
 | Component | Description |
 | :---------- | :------------ |
 | VRX Patch | Applies `patch_vrx.sh` to fix LiDAR model pose |
-| Gazebo Simulation | VRX competition environment |
+| Gazebo Simulation | VRX simulation world |
 | rosbridge WebSocket | Dashboard communication (port 9090) |
 | web_video_server | Camera MJPEG stream (port 8080) |
 | Navigation System | AutoBoat modular navigation |
@@ -1741,7 +1750,7 @@ See [LICENSE](LICENSE) for details.
 
 ---
 
-**AutoBoat** — Autonomous Navigation for VRX Competition
+**AutoBoat** — Autonomous USV Navigation on the VRX Simulation Platform
 
 Built with [ROS 2 Jazzy](https://docs.ros.org/en/jazzy/) + [Gazebo Harmonic](https://gazebosim.org/docs/harmonic)
 

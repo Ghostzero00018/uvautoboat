@@ -11,7 +11,7 @@ High-level architecture and design philosophy of the AutoBoat autonomous navigat
 
 ## Abstract
 
-AutoBoat is an autonomous navigation system for unmanned surface vehicles (USVs) developed for the Virtual RobotX ([VRX](https://github.com/osrf/vrx)) competition. The system integrates advanced path planning, real-time obstacle avoidance, and precise trajectory tracking algorithms optimized for the WAM-V maritime platform.
+AutoBoat is an autonomous navigation system for unmanned surface vehicles (USVs) developed as a research project on the Virtual RobotX ([VRX](https://github.com/osrf/vrx)) simulation platform. The system integrates advanced path planning, real-time obstacle avoidance, and precise trajectory tracking algorithms optimized for the WAM-V maritime platform.
 
 Built on **ROS 2 Jazzy** and **Gazebo Harmonic**, the framework provides a robust foundation for autonomous maritime navigation in simulated environments.
 

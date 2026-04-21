@@ -6,7 +6,7 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 ![Status](https://img.shields.io/badge/Status-Active-green)
 
-Welcome to the **AutoBoat Wiki**! This documentation provides comprehensive guides for using and developing the autonomous navigation system for the Virtual RobotX (VRX) competition.
+Welcome to the **AutoBoat Wiki**! This documentation provides comprehensive guides for using and developing the autonomous navigation system, built on the Virtual RobotX (VRX) simulation platform.
 
 ---
 
