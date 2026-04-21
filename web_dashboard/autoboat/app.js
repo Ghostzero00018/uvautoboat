@@ -1332,7 +1332,6 @@ function initConfigPanel() {
         const config = {
             astar_enabled: (navMode === 'runtime' || navMode === 'hybrid'),
             astar_hybrid_mode: (navMode === 'hybrid'),
-            hazard_enabled: (navMode === 'hybrid'),
             astar_resolution: readInput('cfg-astar-resolution', 3.0),
             astar_safety_margin: readInput('cfg-astar-safety', 12.0),
             astar_max_expansions: readInput('cfg-astar-max', 20000)
@@ -1696,7 +1695,6 @@ function sendConfig(pidOnly = false) {
             // A* detour options based on selected navigation mode
             astar_enabled: (navMode === 'runtime' || navMode === 'hybrid'),
             astar_hybrid_mode: (navMode === 'hybrid'),
-            hazard_enabled: (navMode === 'hybrid'),
             astar_resolution: readInput('cfg-astar-resolution', 3.0),
             astar_safety_margin: readInput('cfg-astar-safety', 12.0),
             astar_max_expansions: readInput('cfg-astar-max', 20000)
@@ -1726,7 +1724,6 @@ function sendConfig(pidOnly = false) {
         if (navModeDirty) {
             config.astar_enabled = fullConfig.astar_enabled;
             config.astar_hybrid_mode = fullConfig.astar_hybrid_mode;
-            config.hazard_enabled = fullConfig.hazard_enabled;
         }
 
         addLog('Sending config... | Envoi configuration...', 'info');
@@ -2030,7 +2027,6 @@ function generateWaypoints() {
         // Carry A* settings to Planner with waypoint generation
         astar_enabled: navMode !== 'simple',
         astar_hybrid_mode: navMode === 'hybrid',
-        hazard_enabled: navMode === 'hybrid',
         astar_resolution: readInput('cfg-astar-resolution', 3.0),
         astar_safety_margin: readInput('cfg-astar-safety', 12.0),
         astar_max_expansions: readInput('cfg-astar-max', 20000)

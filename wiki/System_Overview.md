@@ -92,7 +92,6 @@ The **Modular (Perception–Planner–Controller)** three-node pipeline is the a
 - **GPS Waypoint Navigation** (Waypoint Planner)
 - Lawnmower pattern generation
 - A* path planning for obstacles
-- Hazard zone avoidance
 - Waypoint skip logic
 - Detour insertion
 
@@ -148,7 +147,6 @@ The **Modular (Perception–Planner–Controller)** three-node pipeline is the a
 
 - Grid-based pathfinding (default: 3m cells)
 - Obstacle inflation for safe clearance
-- Pre-defined hazard zones
 - Hybrid mode: pre-plan routes at generation
 - Runtime mode: plan detours when stuck
 

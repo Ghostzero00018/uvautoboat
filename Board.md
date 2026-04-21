@@ -155,7 +155,7 @@ The whole repo is expected to run on the Pi 5.
 | 3 | Low-level bridge (new node, only needed *if* a separate low-level controller exists) | Translate thrust commands + ingest telemetry; protocol (UART/CAN/micro-ROS/GPIO PWM) depends on whatever the low-level controller runs — or is a non-issue if the Pi drives thrusters directly | **Ask supervisor: is there a low-level controller at all, and if yes what runs on it?** — this answer determines whether a bridge node is needed |
 | 4 | Headless comms to shore | Dashboard range ≈ Pi's WiFi (30-50 m typical) | Walk-test WiFi range; 4G modem or directional antenna if > 50 m mission box; static IP or mDNS |
 | 5 | Power-loss robustness | SD cards corrupt on sudden power-off — default boat failure mode | USB 3 SSD boot or read-only root FS with tmpfs overlay for logs |
-| 6 | Safety integration | Real boat can damage property | Hardware watchdog (location depends on CCU architecture) + physical E-stop + geofence (enable `hazard_enabled: true` with test-lake polygon); end-to-end verify dashboard E-stop cuts thrusters |
+| 6 | Safety integration | Real boat can damage property | Hardware watchdog (location depends on CCU architecture) + physical E-stop + a geofence mechanism TBD (cheapest option: a new dedicated check in the planner; re-introducing hazard polygons is also on the table); end-to-end verify dashboard E-stop cuts thrusters |
 
 ### Prep tasks (no hardware required)
 
@@ -309,10 +309,9 @@ The whole repo is expected to run on the Pi 5.
 
 ```text
 /perception/obstacles ────>┌─────────────────────┐
-                    │  AStarSolver        │
-Hazard boxes ──────>│  (in Planner)       │────> Detour waypoints inserted into /planning/waypoints
-                    │                     │
-Current position ──>└─────────────────────┘
+                    │  AStarSolver        │────> Detour waypoints inserted into /planning/waypoints
+Current position ──>│  (in Planner)       │
+                    └─────────────────────┘
 ```
 
 - Occupancy grid (3m cells) with 8-connected A*

@@ -73,7 +73,6 @@ These pages are referenced in the wiki but not yet created:
 
 - [ ] `Waypoint-Skip-Strategy.md` — Skip logic
 - [ ] `Obstacle-Avoidance-Loop.md` — Continuous control
-- [ ] `Hazard-Zone-Management.md` — No-go areas
 - [ ] `First-Mission-Tutorial.md` — Step-by-step walkthrough
 
 ### Priority 5 (Development)

@@ -123,7 +123,7 @@ uvautoboat/
 │   └── Common_Issues.md             # Troubleshooting guide
 ├── one_click_launch_all/       # Automated launcher scripts
 │   ├── launch_autoboat_complete.sh   # One-click full system launch
-│   ├── health_check_autoboat.sh      # System health check (46 checks)
+│   ├── health_check_autoboat.sh      # System health check (49 checks)
 │   └── patch_vrx.sh                 # VRX xacro fix (publish_model_pose)
 ├── working_diary/              # Daily development logs
 ├── legacy/                     # Deprecated code (for reference only)
@@ -198,10 +198,10 @@ uvautoboat/
 | **Bilingual Interface** | French/English terminal output |
 | **Path Priority Logic** | Feature that prioritizes GPS trajectory over obstacle panic when the direct path is clear |
 | **Z-Node Interpolation** | Feature that prioritizes GPS trajectory over obstacle panic when the direct path is clear |
-| **A\* Path Planning** | Grid-based pathfinding algorithm with obstacle inflation and pre-defined hazard zones |
+| **A\* Path Planning** | Grid-based pathfinding algorithm with obstacle inflation |
 | **Emergency Stop** | Latching emergency stop from dashboard or CLI — cuts thrust immediately |
 | **JSON Log Export** | Export panel contents (health check, logs, terminal, mission) as JSON files |
-| **Health Check Service** | ROS 2 node streaming 46 system checks to the dashboard with live output |
+| **Health Check Service** | ROS 2 node streaming 49 system checks to the dashboard with live output |
 
 ---
 
@@ -807,7 +807,7 @@ sudo apt install ros-jazzy-rosbridge-suite ros-jazzy-web-video-server
 | **Configuration** | Path, PID, Speed parameter controls (with Apply) |
 | **Perception Configuration** | Perception parameters (height, range, clustering) |
 | **Controller Configuration** | Control parameters (safety distances, avoidance, anti-stuck) |
-| **Health Check** | Live-streaming system health check (46 checks) with elapsed time |
+| **Health Check** | Live-streaming system health check (49 checks) with elapsed time |
 | **System Logs** | Live ROS log feed |
 | **ROS2 Terminal** | Direct ROS2 command output |
 | **Mission Control** | Generate, confirm, start, stop, resume, emergency stop, go home, reset |
@@ -1316,8 +1316,8 @@ Lane 3: End <────────────────────┘
 | :-------- | :------------ |
 | **Autonomous Navigation** | GPS-based waypoint following with lawnmower pattern generation |
 | **3D Obstacle Avoidance** | Real-time LIDAR point cloud processing with sector analysis |
-| **A\* Path Planning** | Integrated A* algorithm dynamically plans detours around obstacle clusters and hazard zones |
-| **Hybrid Route Generation** | Pre-calculates A* paths between waypoints to avoid known static hazards |
+| **A\* Path Planning** | Integrated A* algorithm dynamically plans detours around obstacle clusters |
+| **Hybrid Route Generation** | Pre-calculates A* paths between waypoints to avoid known obstacles |
 | **Simple Anti-Stuck** | Turn toward clearer side (bidirectional) recovery maneuver (Heading Controller) |
 | **XTE Path Correction** | "Lookahead" steering logic that actively pulls the boat back to the ideal path line |
 | **Waypoint Skip** | Automatic skip for blocked waypoints after timeout |
@@ -1444,7 +1444,7 @@ ros2 topic echo /control/anti_stuck_status
 ### Health Check
 
 ```bash
-# Run system health check (46 checks: nodes, topics, params, connectivity)
+# Run system health check (49 checks: nodes, topics, params, connectivity)
 bash one_click_launch_all/health_check_autoboat.sh
 
 # Quick mode (nodes + topics only)
@@ -1572,7 +1572,6 @@ gz service -s /world/sydney_regatta/set_pose \
 | :-------- | :--------- | :------------ |
 | **A-Star Path Planning** | Implemented | Grid-based pathfinding in Waypoint Planner |
 | **Hybrid Mode** | Implemented | Pre-compute routes between waypoints with lawnmower algorithm |
-| **Hazard Zone Avoidance** | Implemented | Pre determined rectangular no-go zones |
 | **Dynamic Replanning** | High | Replan path when new obstacles detected |
 | **Coverage Planning** | Medium | Boustrophedon pattern for area coverage |
 | **Multi-Goal Navigation** | Medium | Navigate through sequence of random points |
@@ -1586,20 +1585,18 @@ The Waypoint Planner now has A* path planning algorithm for navigating to points
 ```text
 1. Create occupancy grid (3m cells by default) from LIDAR/obstacle data
 2. Inflate obstacles by safety margin + hull radius for clearance
-3. Block rectangular hazard zones (no-go areas)
-4. A* algorithm use 8-connected A*(8 directions to go) to find optimal path
-5. Insert detour waypoints or pre-plan routes between lawnmower points
+3. A* algorithm use 8-connected A*(8 directions to go) to find optimal path
+4. Insert detour waypoints or pre-plan routes between lawnmower points
 ```
 
 **Proposed Architecture:**
 
 ```text
 
-/perception/obstacles ────>┌─────────────────────┐                                   
-                    │  AStarSolver        │ 
-Hazard boxes ──────>│  (in Planner)       │────> Detour waypoints inserted into /planning/waypoints
-                    │                     │
-Current position ──>└─────────────────────┘
+/perception/obstacles ────>┌─────────────────────┐
+                    │  AStarSolver        │────> Detour waypoints inserted into /planning/waypoints
+Current position ──>│  (in Planner)       │
+                    └─────────────────────┘
 
 ```
 
@@ -1625,7 +1622,6 @@ Current position ──>└─────────────────�
 - No circling behavior
 - Efficient paths through complex environments
 - Integrated directly in the Waypoint Planner (no separate node needed)
-- Handles both circular obstacles (buoys) and rectangular hazard zones
 - 8-direction movement for smoother paths
 - Automatic obstacle inflation for safe clearance
 - Fails gracefully if no path found (falls back to waypoint skip)

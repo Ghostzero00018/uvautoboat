@@ -244,9 +244,8 @@ class MissionCLI(Node):
                             kp=None, ki=None, kd=None, base_speed=None, max_speed=None, max_turn=None,
                             stuck_timeout=None, stuck_threshold=None,
                             min_height=None, safe_dist=None, perception_safe_dist=None, approach_dist=None, approach_factor=None,
-                            hazard=False, hazard_boxes=None, hazard_origin_x=None, hazard_origin_y=None,
                             astar=False, astar_hybrid=False, astar_resolution=None, astar_safety=None, astar_max=None):
-        """Generate waypoints with specified parameters and optional PID/speed/turn/hazard/A* config"""
+        """Generate waypoints with specified parameters and optional PID/speed/turn/A* config"""
         # Wait for navigation system to be ready
         if not self.wait_for_ready():
             return False
@@ -293,15 +292,7 @@ class MissionCLI(Node):
         if approach_factor is not None:
             config['approach_slow_factor'] = approach_factor
 
-        # Hazard/A* options
-        if hazard:
-            config['hazard_enabled'] = True
-        if hazard_boxes:
-            config['hazard_world_boxes'] = hazard_boxes
-        if hazard_origin_x is not None:
-            config['hazard_origin_world_x'] = hazard_origin_x
-        if hazard_origin_y is not None:
-            config['hazard_origin_world_y'] = hazard_origin_y
+        # A* options
         if astar:
             config['astar_enabled'] = True
         if astar_hybrid:
@@ -634,7 +625,7 @@ Examples:
     subparsers = parser.add_subparsers(dest='command', help='Command to execute')
     
     # Generate command with optional PID/speed
-    gen_parser = subparsers.add_parser('generate', help='Generate waypoints (with optional PID/speed/hazard/A*)')
+    gen_parser = subparsers.add_parser('generate', help='Generate waypoints (with optional PID/speed/A*)')
     gen_parser.add_argument('--lanes', '-l', type=int, default=8, help='Number of lanes')
     gen_parser.add_argument('--length', '-L', type=float, default=50.0, help='Lane length in meters')
     gen_parser.add_argument('--width', '-w', type=float, default=20.0, help='Lane width in meters')
@@ -654,11 +645,7 @@ Examples:
     gen_parser.add_argument('--perception-safe-dist', type=float, help='Perception detection safe distance in meters (optional, perception)')
     gen_parser.add_argument('--approach-dist', type=float, help='Approach slow-down distance in meters (optional, controller)')
     gen_parser.add_argument('--approach-factor', type=float, help='Approach slow-down speed factor 0-1 (optional, controller)')
-    # Hazard/A* options (forwarded to planner)
-    gen_parser.add_argument('--hazard', action='store_true', help='Enable hazard avoidance (planner)')
-    gen_parser.add_argument('--hazard-boxes', type=str, help='Hazard world boxes string \"xmin,ymin,xmax,ymax;...\"')
-    gen_parser.add_argument('--hazard-origin-x', type=float, help='Hazard origin world X')
-    gen_parser.add_argument('--hazard-origin-y', type=float, help='Hazard origin world Y')
+    # A* options (forwarded to planner)
     gen_parser.add_argument('--astar', action='store_true', help='Enable runtime A* detours (planner)')
     gen_parser.add_argument('--astar-hybrid', action='store_true', help='Enable A* hybrid mode (pre-plan routes)')
     gen_parser.add_argument('--astar-resolution', type=float, help='A* grid resolution (m)')
@@ -707,8 +694,6 @@ Examples:
                 safe_dist=args.safe_dist, perception_safe_dist=args.perception_safe_dist,
                 approach_dist=args.approach_dist,
                 approach_factor=args.approach_factor,
-                hazard=args.hazard, hazard_boxes=args.hazard_boxes,
-                hazard_origin_x=args.hazard_origin_x, hazard_origin_y=args.hazard_origin_y,
                 astar=args.astar, astar_hybrid=args.astar_hybrid,
                 astar_resolution=args.astar_resolution,
                 astar_safety=args.astar_safety, astar_max=args.astar_max

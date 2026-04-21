@@ -245,9 +245,9 @@ The dashboard exposes three planning strategies via radio buttons:
 |:-----|:----------------|:--------------------|:---------|
 | **Simple Lawnmower** | `false` | `false` | Debugging the lawnmower pattern itself, or running in a completely obstacle-free world. |
 | **Runtime A\*** (YAML default) | `true` | `false` | Standard demos. Lawnmower path by default; A\* kicks in only when a waypoint is blocked for 45+ s. **Cheapest mode that still handles unexpected obstacles.** |
-| **Hybrid Mode** | `true` | `true` | When a hazard map is known in advance (e.g., labelled no-go zones). A\* pre-plans routes between lawnmower waypoints before the mission starts. |
+| **Hybrid Mode** | `true` | `true` | When the obstacle field is known in advance. A\* pre-plans routes between lawnmower waypoints before the mission starts. |
 
-**Why "Runtime A\*" is the default:** Hybrid mode's pre-planning is expensive and only beneficial when the hazard map is accurate upfront — which requires either human labelling or a prior mapping pass. For the typical demo where we just want the boat to cover an area and react to obstacles it encounters, Runtime A\* strikes the best balance: zero pre-compute, and A\* only runs when actually needed.
+**Why "Runtime A\*" is the default:** Hybrid mode's pre-planning is expensive and only beneficial when the obstacle field is accurate upfront — which requires either human labelling or a prior mapping pass. For the typical demo where we just want the boat to cover an area and react to obstacles it encounters, Runtime A\* strikes the best balance: zero pre-compute, and A\* only runs when actually needed.
 
 The HTML shows "Simple Lawnmower" as checked on page load (a cosmetic default), but the dashboard syncs from ROS config within ~1 second and updates to "Runtime A\*" to match the YAML truth.
 

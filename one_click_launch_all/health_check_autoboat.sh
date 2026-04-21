@@ -287,6 +287,9 @@ check_param "/waypoint_planner_node" "scan_width" "30.0" "$planner_tuned"
 check_param "/waypoint_planner_node" "lanes" "10" "$planner_tuned"
 check_param "/waypoint_planner_node" "waypoint_tolerance" "3.5" "$planner_tuned"
 check_param "/waypoint_planner_node" "max_block_time" "30.0" "$planner_tuned"
+check_param "/waypoint_planner_node" "astar_resolution" "3.0" "$planner_tuned"
+check_param "/waypoint_planner_node" "astar_safety_margin" "12.0" "$planner_tuned"
+check_param "/waypoint_planner_node" "astar_max_expansions" "20000" "$planner_tuned"
 
 section "Parameter Check (Perception)"
 

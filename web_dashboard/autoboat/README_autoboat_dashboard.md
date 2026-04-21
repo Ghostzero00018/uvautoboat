@@ -80,7 +80,7 @@ Then open **<http://localhost:8002>**.
 | **Main Configuration**     | PID gains, speed, safe distance, waypoint tolerance, A* settings                |
 | **Perception Configuration**      | 12 perception params with 4 presets (Universal, Buoy Field, Pier Detect, Open Water) |
 | **Controller Configuration**    | 14 control params (safety distances, avoidance, anti-stuck, slew rate)          |
-| **Health Check**           | Live streaming 46-check system diagnostic with elapsed time                     |
+| **Health Check**           | Live streaming 49-check system diagnostic with elapsed time                     |
 | **System Logs**            | Timestamped, color-coded log entries                                            |
 | **ROS2 Terminal**          | Direct ROS2 command output                                                      |
 | **Camera Feed**            | MJPEG stream with configurable topic                                            |

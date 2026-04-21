@@ -94,7 +94,7 @@ A file that describes how to start a set of ROS nodes together with their parame
 
 ### Health Check Service
 
-A background ROS node (`health_check_service`) that runs 46 automated checks to verify system integrity: node presence, topic publish/subscribe counts, runtime parameter values, port connectivity (9090/8002/8080). Parameter values are reported in one of four states — `PASS` (matches YAML baseline), `TUNED` (differs because the user applied a preset or dashboard config, counted as healthy), `WARN` (differs without any user config having been applied — genuine drift worth investigating), `FAIL` (unreadable / node down). The dashboard has a "Health Check" panel that streams results live. `PASS + TUNED` with zero `FAIL` / `WARN` means the system is correctly wired and the runtime state is as intended.
+A background ROS node (`health_check_service`) that runs 49 automated checks to verify system integrity: node presence, topic publish/subscribe counts, runtime parameter values, port connectivity (9090/8002/8080). Parameter values are reported in one of four states — `PASS` (matches YAML baseline), `TUNED` (differs because the user applied a preset or dashboard config, counted as healthy), `WARN` (differs without any user config having been applied — genuine drift worth investigating), `FAIL` (unreadable / node down). The dashboard has a "Health Check" panel that streams results live. `PASS + TUNED` with zero `FAIL` / `WARN` means the system is correctly wired and the runtime state is as intended.
 
 ### OSRF (Open Source Robotics Foundation)
 
@@ -414,7 +414,7 @@ The dashboard lets the operator choose between 3 planning strategies, controlled
 
 - **Simple Lawnmower** — `astar_enabled: false`, `astar_hybrid_mode: false`. Pure zigzag coverage, no A\* involvement. If blocked, the mission falls back to skipping waypoints only.
 - **Runtime A\*** — `astar_enabled: true`, `astar_hybrid_mode: false`. Lawnmower path by default; A\* is called **reactively** only when a waypoint stays blocked for 45+ seconds. **This is the YAML default and the mode used in demos.**
-- **Hybrid Mode** — `astar_enabled: true`, `astar_hybrid_mode: true`. A\* **pre-plans** routes between lawnmower waypoints before the mission starts, accounting for known hazard zones. More expensive, only useful when the hazard map is available up front.
+- **Hybrid Mode** — `astar_enabled: true`, `astar_hybrid_mode: true`. A\* **pre-plans** routes between lawnmower waypoints before the mission starts. More expensive than Runtime A\*, and only beneficial when the obstacle field is known up front; otherwise the runtime detour path reacts to whatever the LiDAR actually sees.
 
 The HTML initially shows "Simple Lawnmower" as checked on page load, but the dashboard syncs from ROS config within ~1 second and updates the radio to match the actual runtime value (Runtime A\* by default).
 

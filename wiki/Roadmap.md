@@ -29,7 +29,7 @@ Scientific community fit: RMC2 — modeling, control, and communication of compl
 | Control (PID + Kalman drift compensation + micro-reverse escape) | ✅ |
 | Dashboard (Leaflet map + telemetry + 3-panel config + health check) | ✅ |
 | Simulation (VRX, `sydney_regatta_DEFAULT` world) | ✅ |
-| Safety (latched E-Stop, `std_srvs/Trigger` ACK services, geofence via hazard polygons) | ✅ |
+| Safety (latched E-Stop, `std_srvs/Trigger` ACK services) | ✅ |
 
 ### Research layers — not yet started
 
@@ -274,7 +274,7 @@ These are recorded here to pre-empt scope drift and to make dependencies visible
 ### Phase B — Cellular-automata propagation node
 
 - Subscribes to `/water_quality/readings` + GPS.
-- Maintains a 2D spatial grid over the survey area (extent TBD — likely from the hazard polygon, or a dedicated survey-area polygon parameter).
+- Maintains a 2D spatial grid over the survey area (extent TBD — likely from a dedicated survey-area polygon parameter, or inferred from the lawnmower bounding box).
 - Per-parameter update rule: assimilate the new reading at the boat's current cell; propagate outward via a simple CA update (diffusion; optionally advection from a supplied current vector field).
 - Publishes the grid as `/water_quality/field` at, say, 0.5 Hz.
 - Open questions: cell size (1 m? 5 m? 10 m?); update rule (pure diffusion? diffusion + decay? coupling between parameters?); handling of never-observed cells (NaN? default? interpolated?).

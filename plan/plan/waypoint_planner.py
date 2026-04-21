@@ -62,30 +62,17 @@ class AStarSolver:
                 if dx * dx + dy * dy <= radius_steps * radius_steps:
                     blocked.add((cx + dx, cy + dy))
 
-    def _add_blocked_box(self, blocked, box, min_x, min_y):
-        xmin, ymin, xmax, ymax = box
-        gx0, gy0 = self.world_to_grid(xmin, ymin, min_x, min_y)
-        gx1, gy1 = self.world_to_grid(xmax, ymax, min_x, min_y)
-        for gx in range(min(gx0, gx1), max(gx0, gx1) + 1):
-            for gy in range(min(gy0, gy1), max(gy0, gy1) + 1):
-                blocked.add((gx, gy))
-
-    def plan(self, start, goal, obstacles, hazard_boxes, inflate_radius):
+    def plan(self, start, goal, obstacles, inflate_radius):
         """
-        Plan from start->goal avoiding circular obstacles and rectangular hazards.
+        Plan from start->goal avoiding circular obstacles.
         obstacles: list of (x, y)
-        hazard_boxes: list of (xmin, ymin, xmax, ymax) in local frame
-        inflate_radius: extra meters to inflate obstacles/hazards
+        inflate_radius: extra meters to inflate obstacles
         """
         sx, sy = start
         gx, gy = goal
 
-        # Bounds from start/goal/obstacles/hazards with padding
         xs = [sx, gx] + [o[0] for o in obstacles]
         ys = [sy, gy] + [o[1] for o in obstacles]
-        for xmin, ymin, xmax, ymax in hazard_boxes:
-            xs += [xmin, xmax]
-            ys += [ymin, ymax]
 
         if not xs or not ys:
             return None
@@ -110,10 +97,6 @@ class AStarSolver:
         for ox, oy in obstacles:
             ogx, ogy = self.world_to_grid(ox, oy, min_x, min_y)
             self._add_blocked_disc(blocked, (ogx, ogy), radius_steps)
-
-        # Block hazard boxes (already inflated when passed in)
-        for box in hazard_boxes:
-            self._add_blocked_box(blocked, box, min_x, min_y)
 
         # If start/goal blocked, fail fast
         if start_node in blocked or goal_node in blocked:
@@ -193,12 +176,6 @@ class WaypointPlanner(Node):
         # World metadata (for dashboards)
         self.declare_parameter('world_name', 'unknown')
 
-        # v2.1: Hazard zone parameters (from AllInOneStack)
-        self.declare_parameter('hazard_enabled', False)
-        self.declare_parameter('hazard_boxes', '')  # Local frame boxes: "xmin,ymin,xmax,ymax;..."
-        self.declare_parameter('hazard_world_boxes', '')  # World frame boxes
-        self.declare_parameter('hazard_origin_world_x', 0.0)
-        self.declare_parameter('hazard_origin_world_y', 0.0)
         self.declare_parameter('plan_avoid_margin', 5.0)  # Planning detour margin
         self.declare_parameter('hull_radius', 1.5)  # Boat hull radius for clearance
 
@@ -210,13 +187,6 @@ class WaypointPlanner(Node):
         self.waypoint_skip_timeout = self.get_parameter('waypoint_skip_timeout').value
         self.world_name = str(self.get_parameter('world_name').value)
 
-        # v2.1: Hazard zone parameters
-        self.hazard_enabled = self.get_parameter('hazard_enabled').value
-        hazard_local = self._parse_hazard_boxes(str(self.get_parameter('hazard_boxes').value))
-        hazard_world = self._parse_hazard_boxes(str(self.get_parameter('hazard_world_boxes').value))
-        self.hazard_origin_world_x = float(self.get_parameter('hazard_origin_world_x').value)
-        self.hazard_origin_world_y = float(self.get_parameter('hazard_origin_world_y').value)
-        self.hazard_boxes = hazard_local + self._world_boxes_to_local(hazard_world, self.hazard_origin_world_x, self.hazard_origin_world_y)
         self.plan_avoid_margin = float(self.get_parameter('plan_avoid_margin').value)
         self.hull_radius = float(self.get_parameter('hull_radius').value)
 
@@ -375,11 +345,6 @@ class WaypointPlanner(Node):
         self.get_logger().info("=" * 50)
         self.get_logger().info(f"Zone de balayage | Scan Area: {self.scan_length}m × {self.scan_width * self.lanes}m")
         self.get_logger().info(f"Lanes: {self.lanes}, Width: {self.scan_width}m")
-        if self.hazard_enabled:
-            self.get_logger().info(f"Hazard Zones: {len(self.hazard_boxes)} boxes loaded")
-            self.get_logger().info(f"Planning Margin: {self.plan_avoid_margin}m, Hull: {self.hull_radius}m")
-        else:
-            self.get_logger().info("Hazard Zones: Disabled")
         if self.astar_hybrid_mode:
             self.get_logger().info(f"A* Hybrid Mode: ENABLED (pre-plan routes between waypoints)")
         elif self.astar_enabled:
@@ -558,11 +523,7 @@ class WaypointPlanner(Node):
                         curr_x, curr_y = 0.0, 0.0
                     home_x, home_y = self.latlon_to_meters(self.start_gps[0], self.start_gps[1])
 
-                    # v2.1: Use hazard-aware planning for go_home
-                    if self.hazard_enabled:
-                        self.waypoints = self.plan_detour_around_hazard(curr_x, curr_y, home_x, home_y)
-                    else:
-                        self.waypoints = [(home_x, home_y)]
+                    self.waypoints = [(home_x, home_y)]
                     self.current_wp_index = 0
                     
                     # CRITICAL FIX: If already DRIVING, need to force state transition
@@ -751,25 +712,25 @@ class WaypointPlanner(Node):
                 if self._validate('astar_max_expansions', v):
                     self.astar.max_expansions = v
 
-            # v2.1: Hazard zone runtime config
-            if 'hazard_enabled' in config:
-                self.hazard_enabled = bool(config['hazard_enabled'])
-                self.get_logger().info(f"Hazard zone avoidance: {'ENABLED' if self.hazard_enabled else 'DISABLED'}")
-            if 'hazard_origin_world_x' in config:
-                self.hazard_origin_world_x = float(config['hazard_origin_world_x'])
-            if 'hazard_origin_world_y' in config:
-                self.hazard_origin_world_y = float(config['hazard_origin_world_y'])
-            if 'hazard_world_boxes' in config:
-                try:
-                    hazard_world = self._parse_hazard_boxes(str(config['hazard_world_boxes']))
-                    self.hazard_boxes = self._world_boxes_to_local(
-                        hazard_world,
-                        self.hazard_origin_world_x,
-                        self.hazard_origin_world_y
+            # Sync updated values to ROS parameter server
+            params_to_sync = []
+            for key in config:
+                if hasattr(self, key):
+                    params_to_sync.append(
+                        rclpy.parameter.Parameter(key, value=getattr(self, key))
                     )
-                    self.get_logger().info(f"Loaded {len(self.hazard_boxes)} hazard boxes from config")
-                except Exception as e:
-                    self.get_logger().warn(f"Failed to parse hazard_world_boxes: {e}")
+            # A* solver attrs live on self.astar, so the hasattr loop misses them
+            for cfg_key, solver_attr in (
+                ('astar_resolution', 'resolution'),
+                ('astar_safety_margin', 'safety_margin'),
+                ('astar_max_expansions', 'max_expansions'),
+            ):
+                if cfg_key in config:
+                    params_to_sync.append(
+                        rclpy.parameter.Parameter(cfg_key, value=getattr(self.astar, solver_attr))
+                    )
+            if params_to_sync:
+                self.set_parameters(params_to_sync)
 
             self.get_logger().info(f"Config updated: lanes={self.lanes}, length={self.scan_length}, width={self.scan_width}")
             if not self.get_parameter('config_tuned').value:
@@ -793,9 +754,6 @@ class WaypointPlanner(Node):
             'start_lon': self.start_gps[1] if self.start_gps else None,
             'mission_armed': self.mission_armed,
             'joystick_override': self.state == "JOYSTICK",
-            # v2.1: Hazard zone status
-            'hazard_enabled': self.hazard_enabled,
-            'hazard_boxes_count': len(self.hazard_boxes),
             # v2.2: A* detour planning status
             'astar_enabled': self.astar_enabled,
             'astar_hybrid_mode': self.astar_hybrid_mode,
@@ -867,14 +825,6 @@ class WaypointPlanner(Node):
         hybrid_path = []
         inflate = self.plan_avoid_margin + self.hull_radius
 
-        # Inflate hazard boxes for planning
-        hazard_blocks = []
-        for xmin, ymin, xmax, ymax in self.hazard_boxes:
-            hazard_blocks.append((
-                xmin - inflate, ymin - inflate,
-                xmax + inflate, ymax + inflate
-            ))
-
         # Use obstacle clusters if available (from perception), otherwise empty
         obstacles = self.obstacle_clusters if hasattr(self, 'obstacle_clusters') and self.obstacle_clusters else []
 
@@ -884,7 +834,6 @@ class WaypointPlanner(Node):
             (start_x, start_y),
             first_wp,
             obstacles,
-            hazard_blocks,
             inflate_radius=inflate
         )
 
@@ -907,7 +856,6 @@ class WaypointPlanner(Node):
                 wp_start,
                 wp_end,
                 obstacles,
-                hazard_blocks,
                 inflate_radius=inflate
             )
 
@@ -1258,21 +1206,12 @@ class WaypointPlanner(Node):
         if self.detour_count >= self.max_detours_per_waypoint:
             return None  # Cap reached — caller will skip
 
-        # Inflate hazards by margin+hull to keep clearance
         inflate = self.plan_avoid_margin + self.hull_radius
-        hazard_blocks = []
-        for xmin, ymin, xmax, ymax in self.hazard_boxes:
-            hazard_blocks.append((
-                xmin - inflate, ymin - inflate,
-                xmax + inflate, ymax + inflate
-            ))
-
         obstacles = self.obstacle_clusters if self.obstacle_clusters else []
         path = self.astar.plan(
             (curr_x, curr_y),
             (target_x, target_y),
             obstacles,
-            hazard_blocks,
             inflate_radius=inflate
         )
 
@@ -1419,130 +1358,6 @@ class WaypointPlanner(Node):
         dist = math.hypot(target_x - curr_x, target_y - curr_y)
         self.publish_current_target(curr_x, curr_y, target_x, target_y, dist)
         self.get_logger().info(f"📍 Target published: ({target_x:.1f}, {target_y:.1f}) - {dist:.1f}m away")
-
-    # ==================== v2.1: HAZARD ZONE METHODS ====================
-
-    def _parse_hazard_boxes(self, spec: str):
-        """Parse hazard box specification: "xmin,ymin,xmax,ymax;..." """
-        boxes = []
-        if not spec:
-            return boxes
-        parts = spec.split(';')
-        skipped = 0
-        for i, p in enumerate(parts):
-            p = p.strip()
-            if not p:
-                continue
-            vals = p.split(',')
-            if len(vals) != 4:
-                skipped += 1
-                continue
-            try:
-                xmin, ymin, xmax, ymax = map(float, vals)
-                if xmin > xmax:
-                    xmin, xmax = xmax, xmin
-                if ymin > ymax:
-                    ymin, ymax = ymax, ymin
-                boxes.append((xmin, ymin, xmax, ymax))
-            except ValueError as e:
-                self.get_logger().warn(f"Invalid hazard box #{i}: '{p}' - {e}")
-                skipped += 1
-                continue
-        if skipped > 0:
-            self.get_logger().warn(f"Skipped {skipped} invalid hazard box entries")
-        return boxes
-
-    def _world_boxes_to_local(self, boxes, origin_x: float, origin_y: float):
-        """Convert world-frame hazard boxes to local ENU by subtracting origin."""
-        local = []
-        for xmin, ymin, xmax, ymax in boxes:
-            local.append((
-                xmin - origin_x,
-                ymin - origin_y,
-                xmax - origin_x,
-                ymax - origin_y,
-            ))
-        return local
-
-    def _segment_intersects_hazard(self, x1, y1, x2, y2, margin=0.0) -> bool:
-        """Check if a line segment intersects any hazard zone (with optional margin)."""
-        if not self.hazard_enabled or not self.hazard_boxes:
-            return False
-
-        def _expand_box(box, m):
-            xmin, ymin, xmax, ymax = box
-            return (xmin - m, ymin - m, xmax + m, ymax + m)
-
-        def _point_in_box(px, py, box):
-            xmin, ymin, xmax, ymax = box
-            return xmin <= px <= xmax and ymin <= py <= ymax
-
-        def _segments_intersect(p1, p2, p3, p4):
-            def orient(a, b, c):
-                return (b[0]-a[0])*(c[1]-a[1]) - (b[1]-a[1])*(c[0]-a[0])
-            o1 = orient(p1, p2, p3)
-            o2 = orient(p1, p2, p4)
-            o3 = orient(p3, p4, p1)
-            o4 = orient(p3, p4, p2)
-            if o1 == 0 and o2 == 0 and o3 == 0 and o4 == 0:
-                def between(a,b,c):
-                    return min(a,b) <= c <= max(a,b)
-                return (between(p1[0], p2[0], p3[0]) or between(p1[0], p2[0], p4[0]) or
-                        between(p1[1], p2[1], p3[1]) or between(p1[1], p2[1], p4[1]))
-            return (o1 * o2 <= 0) and (o3 * o4 <= 0)
-
-        for box in self.hazard_boxes:
-            exp_box = _expand_box(box, margin)
-            if _point_in_box(x1, y1, exp_box) or _point_in_box(x2, y2, exp_box):
-                return True
-            xmin, ymin, xmax, ymax = exp_box
-            corners = [(xmin, ymin), (xmax, ymin), (xmax, ymax), (xmin, ymax)]
-            edges = [(corners[i], corners[(i+1) % 4]) for i in range(4)]
-            for e1, e2 in edges:
-                if _segments_intersect((x1, y1), (x2, y2), e1, e2):
-                    return True
-        return False
-
-    def plan_detour_around_hazard(self, start_x, start_y, goal_x, goal_y):
-        """
-        Plan a detour path if direct segment intersects hazard zones.
-        Returns list of waypoints including detours, or just [goal] if clear.
-        (Ported from AllInOneStack)
-        """
-        margin = max(self.plan_avoid_margin, self.hull_radius * 2.0)
-
-        # If direct path is clear, return just the goal
-        if not self._segment_intersects_hazard(start_x, start_y, goal_x, goal_y, margin):
-            return [(goal_x, goal_y)]
-
-        # Calculate perpendicular direction for offset
-        dx = goal_x - start_x
-        dy = goal_y - start_y
-        dist = math.hypot(dx, dy)
-        if dist < 1e-3:
-            return [(goal_x, goal_y)]
-
-        nx = -dy / dist  # Perpendicular unit vector
-        ny = dx / dist
-
-        # Try both sides to find a clear detour
-        for side in (1.0, -1.0):
-            cand1 = (start_x + side * margin * nx, start_y + side * margin * ny)
-            cand2 = (goal_x + side * margin * nx, goal_y + side * margin * ny)
-
-            # Check if detour path is clear
-            if (not self._segment_intersects_hazard(start_x, start_y, cand1[0], cand1[1], margin) and
-                not self._segment_intersects_hazard(cand1[0], cand1[1], cand2[0], cand2[1], margin) and
-                not self._segment_intersects_hazard(cand2[0], cand2[1], goal_x, goal_y, margin)):
-
-                self.get_logger().info(
-                    f"Hazard detour: {'left' if side > 0 else 'right'} offset by {margin:.1f}m"
-                )
-                return [cand1, cand2, (goal_x, goal_y)]
-
-        # If no clear detour found, return direct path anyway (rely on real-time avoidance)
-        self.get_logger().warn("No clear hazard detour found, using direct path")
-        return [(goal_x, goal_y)]
 
 
 def main(args=None):

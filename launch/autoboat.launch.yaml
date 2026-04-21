@@ -125,15 +125,9 @@ launch:
       value: 45.0       # Allow more time to clear obstacles before skipping
     - name: max_block_time
       value: 30.0       # Max seconds blocked by obstacle before auto-detour/skip
-    # Hazard Zone Avoidance (v2.1)
-    - name: hazard_enabled
-      value: false      # Disabled by default (enable via CLI/param if needed)
-    - name: hazard_origin_world_x
-      value: -532.0     # World frame origin X coordinate (matches competition.launch spawn)
-    - name: hazard_origin_world_y
-      value: 162.0      # World frame origin Y coordinate (matches competition.launch spawn)
+    # A* detour planning clearance
     - name: plan_avoid_margin
-      value: 5.0        # Detour margin (m) around hazard boxes
+      value: 5.0        # Extra metres added to A* safety margin
     - name: hull_radius
       value: 1.5        # Boat hull radius for clearance (m)
     # A* Detour Planning (v2.2)
@@ -147,7 +141,6 @@ launch:
       value: 12.0       # Safety margin around obstacles (m)
     - name: astar_max_expansions
       value: 20000      # Max node expansions for A* search
-    # Note: hazard_world_boxes removed - not used when hazard_enabled=false (see line 125)
 
 # ============================================================================
 # Heading Controller Node (PID Control with Obstacle Avoidance)
