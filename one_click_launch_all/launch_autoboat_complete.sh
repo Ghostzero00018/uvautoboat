@@ -59,17 +59,6 @@
 #   - web_video_server: sudo apt install ros-jazzy-web-video-server (Install if not already)
 #   - GNOME Terminal installed (required for multi-tab launch)
 #
-# 3d lidar macro used in the AutoBoat URDF model:
-# ----------------------------------------------------------------------------
-# <xacro:macro name="wamv_3d_lidar" params="name
-#                                            x:=0.7 y:=0 z:=1.8
-#                                            R:=0 P:=0 Y:=0
-#                                            post_Y:=0 post_z_from:=1.2965
-#                                            update_rate:=10 vertical_lasers:=16 samples:=1875 resolution:=1
-#                                            min_angle:=-2.6 max_angle:=2.6
-#                                            min_vertical_angle:=${-pi/12} max_vertical_angle:=${pi/12}
-#                                            max_range:=130 noise_stddev:=0.01">
-#
 # ============================================================================
 
 set -e  # Exit on error
