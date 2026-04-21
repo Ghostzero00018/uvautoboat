@@ -119,7 +119,7 @@ if echo "$RUNNING_TOPICS" | grep -q "^/planning/mission_status$"; then
     PLANNER_STATE=$(echo "$MISSION_MSG" | grep -oP '"state":\s*"\K[^"]+')
     if [ -n "$PLANNER_STATE" ]; then
         # INIT/IDLE/FINISHED/JOYSTICK = not actively navigating
-        ACTIVE_STATES="DRIVING RUNNING PAUSED READY WAYPOINTS_PREVIEW WAITING_CONFIRM EMERGENCY_STOP"
+        ACTIVE_STATES="DRIVING PAUSED READY WAITING_CONFIRM EMERGENCY_STOP"
         if echo "$ACTIVE_STATES" | grep -qw "$PLANNER_STATE"; then
             BOAT_STATE="ACTIVE"
         fi

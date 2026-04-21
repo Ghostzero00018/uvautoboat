@@ -424,7 +424,6 @@ fi
 print_header "AutoBoat System Launched Successfully!"
 echo ""
 echo -e "${GREEN}System Status:${NC}"
-echo "  Gazebo:          http://localhost:11345 (Gazebo GUI)"
 echo "  ROS Bridge:      ws://localhost:9090"
 if [ "$LAUNCH_CAMERA" = true ]; then
     echo "  Camera Stream:   http://localhost:8080"
