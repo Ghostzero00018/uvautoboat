@@ -187,6 +187,9 @@ print_error() {
 recheck() {
     local pid="$1"
     local label="$2"
+    # Short delay so the child has time to actually exec — kill -0 against a
+    # still-forking process would otherwise false-positive "running" before
+    # the real failure surfaces.
     sleep 2
     if kill -0 "$pid" 2>/dev/null; then
         print_status "$label is running (PID: $pid)"
@@ -309,6 +312,9 @@ echo ""
 # Kill any old processes (reuse the cleanup function defined above)
 print_status "Cleaning up old processes..."
 cleanup
+# Drain window: pkill -9 on Gazebo/bridge is async — give the kernel time to
+# reap PIDs before relaunch, otherwise the new Gazebo fights the old one for
+# the same socket/shared-memory resources.
 sleep 4
 
 # T1: Launch Gazebo (VRX Simulation)

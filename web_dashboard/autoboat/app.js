@@ -161,7 +161,12 @@ function initOnboarding() {
 
     // Auto-launch for first-time visitors, after the rest of the dashboard has settled
     if (!localStorage.getItem(ONBOARDING_STORAGE_KEY)) {
-        setTimeout(() => startOnboarding(false), 900);
+        const launch = () => startOnboarding(false);
+        if (document.readyState === 'complete') {
+            launch();
+        } else {
+            window.addEventListener('load', launch, { once: true });
+        }
     }
 }
 
@@ -2195,9 +2200,7 @@ function updateMissionControlUI(state) {
             'INIT': 'Init | Initialisation',
             'IDLE': 'Idle | En attente',
             'WAITING_CONFIRM': 'Confirm | Confirmation',
-            'WAYPOINTS_PREVIEW': 'Preview | Aperçu',
             'READY': 'Ready | Prêt',
-            'RUNNING': 'Running | En cours',
             'DRIVING': 'Driving | Navigation',
             'PAUSED': 'Paused | Pause',
             'JOYSTICK': 'Joystick',
@@ -2227,7 +2230,7 @@ function updateMissionControlUI(state) {
     const btnGoHome = document.getElementById('btn-go-home');
     const hasWaypoints = (missionState.totalWaypoints || 0) > 0 || (missionState.waypoints && missionState.waypoints.length > 0);
     const resumableStates = ['PAUSED', 'EMERGENCY_STOP'];
-    const awaitingDecision = ['WAITING_CONFIRM', 'WAYPOINTS_PREVIEW'].includes(missionState.state);
+    const awaitingDecision = missionState.state === 'WAITING_CONFIRM';
 
     // Reset all buttons
     [btnGenerate, btnConfirm, btnCancel, btnStart, btnStop, btnResume, btnReset, btnGoHome, btnJoyEnable, btnJoyDisable].forEach(btn => {
@@ -3379,7 +3382,7 @@ function updateMissionProgress() {
     const progressSection = document.getElementById('mission-progress-section');
 
     // Show progress bar when mission is running
-    const runningStates = ['RUNNING', 'DRIVING', 'PAUSED'];
+    const runningStates = ['DRIVING', 'PAUSED'];
     if (runningStates.includes(missionState.state) && missionState.totalWaypoints > 0) {
         if (_prevProgress.visible !== true) {
             progressSection.style.display = 'block';
@@ -3554,7 +3557,7 @@ updateGPS = function(message) {
     };
 
     // Update progress display
-    if (missionState.state === 'RUNNING' || missionState.state === 'DRIVING') {
+    if (missionState.state === 'DRIVING') {
         updateMissionProgress();
     }
 };

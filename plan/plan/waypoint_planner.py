@@ -410,17 +410,7 @@ class WaypointPlanner(Node):
             
             self.get_logger().info(f"MISSION COMMAND: {command}")
             
-            if command == 'generate_waypoints':
-                if self.start_gps is not None:
-                    self.generate_lawnmower_path()
-                    self.state = "WAITING_CONFIRM"
-                    self.get_logger().info(f"Waypoints generated: {len(self.waypoints)} points")
-                    self.publish_waypoints()
-                    self.publish_mission_status_timer()
-                else:
-                    self.get_logger().warn("GPS not available - cannot generate waypoints")
-                    
-            elif command == 'confirm_waypoints':
+            if command == 'confirm_waypoints':
                 if self.waypoints:
                     self.state = "READY"
                     self.get_logger().info("Waypoints confirmed - ready to start")
@@ -447,21 +437,6 @@ class WaypointPlanner(Node):
                 else:
                     self.get_logger().warn(f"Cannot start - state={self.state}, waypoints={len(self.waypoints)}")
                     
-            elif command == 'emergency_stop':
-                prev_state = self.state
-                self.state = "EMERGENCY_STOP"
-                self.mission_armed = False
-                self.get_logger().error(f"🚨 EMERGENCY STOP (was {prev_state} → now EMERGENCY_STOP)")
-                self.publish_mission_status_timer()
-
-            elif command == 'stop_mission':
-                prev_state = self.state
-                self.state = "PAUSED"
-                self.mission_armed = False
-                self.get_logger().info(f"🛑 MISSION STOPPED (was {prev_state} → now PAUSED)")
-                self.publish_mission_status_timer()
-                self.get_logger().info("📡 Publishing PAUSED state - controller should stop immediately")
-                
             elif command == 'resume_mission':
                 resumable_states = {"PAUSED", "JOYSTICK", "EMERGENCY_STOP", "WAITING_CONFIRM", "READY"}
                 if self.waypoints and self.state in resumable_states:

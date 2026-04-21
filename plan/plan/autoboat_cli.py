@@ -47,6 +47,25 @@ Usage:
 
     # Interactive mode
     ros2 run plan autoboat_cli interactive
+
+Interactive vs one-shot mode
+----------------------------
+
+Interactive mode (`ros2 run plan autoboat_cli interactive`) is the recommended
+way to run multi-step command sequences. Each command runs in a single
+long-lived node whose subscriptions stay warm across commands, so the
+`_wait_for_state` observer reliably catches state transitions.
+
+One-shot commands (e.g. `autoboat_cli start`) create a fresh node per
+invocation. Between node creation and the observer's 2 s window closing, DDS
+late-joiner discovery plus the planner's 5 Hz publish cadence mean the
+first fresh `/planning/mission_status` message may not arrive in time —
+you'll see `state did not reach DRIVING within 2 s (current: ...)` even when
+the planner actually transitioned fine. The observer is being honest about
+what it saw in its window; it is not a missed transition on the planner
+side. Use interactive mode for sequences, or verify with
+`ros2 topic echo /planning/mission_status --once` when one-shot timing
+matters.
 """
 
 import rclpy
@@ -105,8 +124,19 @@ class MissionCLI(Node):
             10
         )
 
+        # Per-topic last-warn timestamps for _log_bad_json throttle.
+        self._bad_json_last_warn: dict = {}
+
         # Wait for connection
         time.sleep(0.5)
+
+    def _log_bad_json(self, topic: str, exc: Exception, throttle_sec: float = 5.0) -> None:
+        """Warn once per `throttle_sec` when a status topic delivers unparseable JSON."""
+        now = time.monotonic()
+        last = self._bad_json_last_warn.get(topic, 0.0)
+        if now - last >= throttle_sec:
+            self.get_logger().warn(f"Failed to parse {topic}: {exc}")
+            self._bad_json_last_warn[topic] = now
 
     def _spin_for_status(self, timeout: float = 1.5) -> Tuple[Optional[dict], Optional[dict]]:
         """
@@ -119,6 +149,27 @@ class MissionCLI(Node):
             if self.mission_status or self.config_status:
                 break
         return self.mission_status, self.config_status
+
+    # TODO(tier2-option-a): start/resume/go_home are still topic-based commands
+    # on /planning/mission_command. If multi-operator coordination becomes a
+    # requirement, migrate them to std_srvs/Trigger services matching the
+    # stop/generate pattern already in place. Until then, the observer below
+    # gives us deterministic state confirmation without a protocol change.
+    def _wait_for_state(self, expected: set, timeout: float = 2.0) -> Tuple[bool, str]:
+        """
+        Spin until mission_status.state is in `expected`, or timeout expires.
+        Returns (reached, observed_state). `observed_state` is the last state
+        seen (may be None-stringified 'unknown' if no status ever arrived).
+        """
+        start = time.time()
+        observed = 'unknown'
+        while time.time() - start < timeout:
+            rclpy.spin_once(self, timeout_sec=0.1)
+            if self.mission_status:
+                observed = self.mission_status.get('state', 'unknown') or 'unknown'
+                if observed in expected:
+                    return True, observed
+        return False, observed
 
     def _waypoint_info(self) -> Tuple[int, str]:
         """
@@ -170,7 +221,7 @@ class MissionCLI(Node):
         elif self.mission_status and 'mission_armed' in self.mission_status:
             armed = bool(self.mission_status.get('mission_armed'))
 
-        if state in ["RUNNING", "DRIVING"]:
+        if state == "DRIVING":
             if for_command == 'start':
                 print("ℹ️ Mission already running.")
             return armed  # Only proceed if actually armed
@@ -187,7 +238,7 @@ class MissionCLI(Node):
             return True
 
         # States that still need confirmation
-        needs_confirm = state in ["WAITING_CONFIRM", "WAYPOINTS_PREVIEW", "INIT", "IDLE", None, "UNKNOWN"]
+        needs_confirm = state in ["WAITING_CONFIRM", "INIT", "IDLE", None, "UNKNOWN"]
         if needs_confirm:
             print("✅ Auto-confirming waypoints before start...")
             self.confirm_waypoints()
@@ -198,20 +249,20 @@ class MissionCLI(Node):
     def mission_status_callback(self, msg):
         try:
             self.mission_status = json.loads(msg.data)
-        except Exception:
-            pass
+        except Exception as e:
+            self._log_bad_json('/planning/mission_status', e)
 
     def config_callback(self, msg):
         try:
             self.config_status = json.loads(msg.data)
-        except Exception:
-            pass
+        except Exception as e:
+            self._log_bad_json('/planning/config', e)
 
     def controller_status_callback(self, msg):
         try:
             self.controller_status = json.loads(msg.data)
-        except Exception:
-            pass
+        except Exception as e:
+            self._log_bad_json('/control/status', e)
     
     def wait_for_ready(self, timeout=5.0):
         """Wait for navigation system to be ready"""
@@ -347,9 +398,11 @@ class MissionCLI(Node):
         if not self._auto_confirm_if_needed(for_command='start'):
             return
         self.send_command('start_mission')
-        time.sleep(0.2)
-        rclpy.spin_once(self, timeout_sec=0.1)
-        print("\n🚀 Mission START command sent!")
+        reached, observed = self._wait_for_state({"DRIVING"})
+        if reached:
+            print("\n🚀 Mission STARTED — state: DRIVING")
+        else:
+            print(f"\n⚠️ Mission start sent, but state did not reach DRIVING within 2 s (current: {observed})")
         
     def stop_mission(self):
         """Stop the mission via service — ACK confirms delivery."""
@@ -372,25 +425,22 @@ class MissionCLI(Node):
         """Emergency stop — cuts thrust and latches stop override"""
         print("\n🚨 EMERGENCY STOP...")
         self.estop_pub.publish(Bool(data=True))
-        rclpy.spin_once(self, timeout_sec=0.1)
-
-        time.sleep(0.3)
-        self._spin_for_status(timeout=1.0)
-        count, state = self._waypoint_info()
-
-        if state == "EMERGENCY_STOP":
+        reached, observed = self._wait_for_state({"EMERGENCY_STOP"})
+        if reached:
             print("🚨 EMERGENCY STOP confirmed. Use 'resume' or 'reset' to recover.")
         else:
-            print(f"⚠️ Emergency stop sent. Current state: {state}")
+            print(f"⚠️ Emergency stop sent, but state did not reach EMERGENCY_STOP within 2 s (current: {observed})")
 
     def resume_mission(self):
         """Resume the mission"""
         if not self._auto_confirm_if_needed(for_command='resume'):
             return
         self.send_command('resume_mission')
-        time.sleep(0.2)
-        rclpy.spin_once(self, timeout_sec=0.1)
-        print("\n▶️ Mission RESUME command sent!")
+        reached, observed = self._wait_for_state({"DRIVING"})
+        if reached:
+            print("\n▶️ Mission RESUMED — state: DRIVING")
+        else:
+            print(f"\n⚠️ Resume sent, but state did not reach DRIVING within 2 s (current: {observed})")
         
     def reset_mission(self):
         """Reset the mission"""
@@ -409,9 +459,11 @@ class MissionCLI(Node):
             return
 
         self.send_command('go_home')
-        time.sleep(0.2)
-        rclpy.spin_once(self, timeout_sec=0.1)
-        print("\n🏠 GO HOME command sent - Returning to spawn point!")
+        reached, observed = self._wait_for_state({"DRIVING"})
+        if reached:
+            print("\n🏠 GO HOME — state: DRIVING, returning to spawn point")
+        else:
+            print(f"\n⚠️ Go home sent, but state did not reach DRIVING within 2 s (current: {observed})")
         print("   Note: After arriving home, run 'generate' to create new waypoints.")
         
     def confirm_waypoints(self):

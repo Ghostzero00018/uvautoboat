@@ -65,8 +65,7 @@ class KeyboardTeleop(Node):
         # Timing
         self.last_rudder_key_time = 0.0
         self.rudder_key_timeout = 0.15  # Rudder starts returning to center after this
-        self.last_throttle_key_time = 0.0
-        
+
         # Store original terminal settings
         self.old_settings = termios.tcgetattr(sys.stdin)
         
@@ -240,12 +239,11 @@ class KeyboardTeleop(Node):
                 # ===========================================
                 if key.lower() == 'w' or key == '\x1b[A':  # W or Up arrow
                     self.target_throttle = min(1.0, self.target_throttle + self.throttle_step)
-                    self.last_throttle_key_time = time.time()
-                    
+
                 elif key.lower() == 's' or key == '\x1b[B':  # S or Down arrow
                     self.target_throttle = max(-1.0, self.target_throttle - self.throttle_step)
-                    self.last_throttle_key_time = time.time()
-                    
+
+
                 elif key == ' ':  # Space - All stop
                     self.target_throttle = 0.0
                     self.throttle = 0.0

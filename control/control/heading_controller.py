@@ -493,15 +493,7 @@ class HeadingController(Node):
             self.get_logger().warn(f"Invalid mission command: {e}")
             return
 
-        if command == 'emergency_stop':
-            self._latch_emergency_stop("command")
-        elif command == 'stop_mission':
-            self.stop_override = True
-            self.mission_active = False
-            self.stop()
-            self.send_thrust(0.0, 0.0)
-            self.get_logger().warn("🛑 STOP override latched (command). Thrusters cut until resume/clear.")
-        elif command in ('resume_mission', 'joystick_enable', 'go_home', 'start_mission'):
+        if command in ('resume_mission', 'joystick_enable', 'go_home', 'start_mission'):
             if self.stop_override:
                 self.get_logger().info(f"Clearing STOP override due to command: {command}")
                 # Drop the stale position window so the Kalman drift estimator
