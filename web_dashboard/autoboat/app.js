@@ -1358,14 +1358,16 @@ function initConfigPanel() {
 
     // Apply all config button (applies all parameters including PID, speed, and scan settings)
     document.getElementById('btn-apply-config').addEventListener('click', () => {
-        const success = sendConfig(false);  // Send ALL parameters (PID, speed, scan settings)
-        if (success) {
-            addLog('Config sent - waiting for confirmation...', 'info');
-        }
+        debounceApply(() => {
+            const success = sendConfig(false);  // Send ALL parameters (PID, speed, scan settings)
+            if (success) {
+                addLog('Config sent - waiting for confirmation...', 'info');
+            }
+        });
     });
 
     // A* Apply button (sends only A* params)
-    document.getElementById('btn-apply-astar').addEventListener('click', () => {
+    document.getElementById('btn-apply-astar').addEventListener('click', () => debounceApply(() => {
         if (!connected || !configPublisher) {
             showFeedback('Not connected to ROS', 'error');
             return;
@@ -1391,7 +1393,7 @@ function initConfigPanel() {
         const msg = `✅ A* applied: mode="${modeLabel}" + 3 params (resolution, safety_margin, max_expansions)`;
         addLog(msg, 'info');
         showFeedback(msg, 'success');
-    });
+    }));
 
     // A* Reset button
     document.getElementById('btn-reset-astar').addEventListener('click', () => {
@@ -1915,6 +1917,49 @@ function debounceCommand(fn) {
     fn();
 }
 
+// Tuning-panel debouncers — two independent 1 s cooldowns, one for Apply
+// actions and one for Preset switches. Kept separate (not a single shared
+// timer) so the natural "click Preset, then click Apply" flow still works
+// within the 1 s window. Goal: stop /planning/set_config spam and stacked
+// toasts when the user rapid-clicks an Apply button or thrashes between presets.
+let lastApplyTime = 0;
+let lastPresetTime = 0;
+const TUNING_DEBOUNCE_MS = 1000;
+
+const APPLY_BTN_IDS = ['btn-apply-config', 'btn-apply-astar', 'btn-apply-perception', 'btn-apply-controller'];
+const PRESET_BTN_IDS = ['btn-preset-universal', 'btn-preset-buoy-field', 'btn-preset-pier', 'btn-preset-open-water'];
+
+// Grey out a group of buttons for the cooldown window — mirrors the camera-
+// refresh button's visual feedback so the user can SEE the debounce firing
+// rather than just hearing about it in the log.
+function setGroupCooldown(ids, durationMs) {
+    const els = ids.map(id => document.getElementById(id)).filter(el => el);
+    els.forEach(el => el.classList.add('cooldown'));
+    setTimeout(() => els.forEach(el => el.classList.remove('cooldown')), durationMs);
+}
+
+function debounceApply(fn) {
+    const now = Date.now();
+    if (now - lastApplyTime < TUNING_DEBOUNCE_MS) {
+        addLog('Apply ignored (too fast) | Apply ignoré (trop rapide)', 'warning');
+        return;
+    }
+    lastApplyTime = now;
+    setGroupCooldown(APPLY_BTN_IDS, TUNING_DEBOUNCE_MS);
+    fn();
+}
+
+function debouncePreset(fn) {
+    const now = Date.now();
+    if (now - lastPresetTime < TUNING_DEBOUNCE_MS) {
+        addLog('Preset switch ignored (too fast) | Changement de preset ignoré (trop rapide)', 'warning');
+        return;
+    }
+    lastPresetTime = now;
+    setGroupCooldown(PRESET_BTN_IDS, TUNING_DEBOUNCE_MS);
+    fn();
+}
+
 // Initialize mission control panel
 function initMissionControl() {
     if (DEBUG_MODE) console.log('Initializing mission control...');
@@ -1999,7 +2044,9 @@ function initMissionControl() {
         }
     });
 
-    // Emergency Stop - Immediately halt the boat (no debounce — safety critical)
+    // Emergency Stop — no debounce (safety-critical, no artificial delay).
+    // The confirm() inside emergencyStop() acts as the accidental-click guard,
+    // mirroring the physical mushroom-head barrier on a hardware E-Stop button.
     document.getElementById('btn-emergency-stop').addEventListener('click', () => {
         emergencyStop();
     });
@@ -2019,18 +2066,22 @@ function initMissionControl() {
         });
     });
 
-    // Header E-Stop shortcut — scrolls to and flashes the real Emergency Stop button
-    const headerEstop = document.getElementById('header-estop-badge');
-    if (headerEstop) {
-        headerEstop.addEventListener('click', () => {
-            const target = document.getElementById('btn-emergency-stop');
-            if (!target) return;
-            target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            target.focus({ preventScroll: true });
-            target.classList.add('estop-flash');
-            setTimeout(() => target.classList.remove('estop-flash'), 1200);
-        });
-    }
+    // E-Stop shortcuts (header badge + floating bottom-right) — both scroll
+    // the real Emergency Stop button into view and flash it. Shared handler
+    // so new shortcut sites (e.g., a keyboard shortcut) only need to register
+    // to the same ID list.
+    const scrollToEmergencyStop = () => {
+        const target = document.getElementById('btn-emergency-stop');
+        if (!target) return;
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        target.focus({ preventScroll: true });
+        target.classList.add('estop-flash');
+        setTimeout(() => target.classList.remove('estop-flash'), 1200);
+    };
+    ['header-estop-badge', 'footer-estop-badge'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('click', scrollToEmergencyStop);
+    });
 
     if (DEBUG_MODE) console.log('Mission control initialized');
 }
@@ -2249,11 +2300,11 @@ function updateMissionControlUI(state) {
         stateBadge.className = `mission-badge ${missionState.state.toLowerCase()}`;
     }
 
-    // Header E-Stop badge pulses while the latch is active
-    const headerEstopBadge = document.getElementById('header-estop-badge');
-    if (headerEstopBadge) {
-        headerEstopBadge.classList.toggle('latched', missionState.state === 'EMERGENCY_STOP');
-    }
+    // Header + footer E-Stop badges pulse while the latch is active
+    ['header-estop-badge', 'footer-estop-badge'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.toggle('latched', missionState.state === 'EMERGENCY_STOP');
+    });
 
     // Update button states based on mission state
     const btnGenerate = document.getElementById('btn-generate-waypoints');
@@ -2668,14 +2719,14 @@ function initTuningPanel() {
     });
 
     // Preset buttons
-    document.getElementById('btn-preset-universal').addEventListener('click', () => applyPreset('universal'));
-    document.getElementById('btn-preset-buoy-field').addEventListener('click', () => applyPreset('buoyField'));
-    document.getElementById('btn-preset-pier').addEventListener('click', () => applyPreset('pier'));
-    document.getElementById('btn-preset-open-water').addEventListener('click', () => applyPreset('openWater'));
+    document.getElementById('btn-preset-universal').addEventListener('click', () => debouncePreset(() => applyPreset('universal')));
+    document.getElementById('btn-preset-buoy-field').addEventListener('click', () => debouncePreset(() => applyPreset('buoyField')));
+    document.getElementById('btn-preset-pier').addEventListener('click', () => debouncePreset(() => applyPreset('pier')));
+    document.getElementById('btn-preset-open-water').addEventListener('click', () => debouncePreset(() => applyPreset('openWater')));
 
     // Apply buttons
-    document.getElementById('btn-apply-perception').addEventListener('click', () => applyPerceptionParameters());
-    document.getElementById('btn-apply-controller').addEventListener('click', () => applyControllerParameters());
+    document.getElementById('btn-apply-perception').addEventListener('click', () => debounceApply(() => applyPerceptionParameters()));
+    document.getElementById('btn-apply-controller').addEventListener('click', () => debounceApply(() => applyControllerParameters()));
 
     // Reset defaults buttons
     document.getElementById('btn-reset-perception').addEventListener('click', () => {

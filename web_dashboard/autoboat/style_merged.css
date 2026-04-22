@@ -441,6 +441,16 @@ h2 {
     cursor: not-allowed;
 }
 
+/* Tuning-panel cooldown — transient grey-out while a debounced group is on
+   cool-down. Kept separate from :disabled so it layers cleanly over the
+   operator-controlled disabled state without clobbering it. pointer-events:
+   none ensures clicks are swallowed during the window. */
+.cooldown {
+    opacity: 0.4;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
 .mission-btn.generate {
     background: linear-gradient(135deg, #667eea, #764ba2);
     color: white;
@@ -589,6 +599,41 @@ h2 {
     outline: 4px solid #ffeb3b;
     outline-offset: 4px;
     animation: emergency-btn-glow 0.4s ease-in-out 3;
+}
+
+/* Floating bottom-right E-Stop shortcut — z-index 1000 stays above dashboard
+   panels but below the onboarding layer (9998+) so first-run tour isn't
+   obscured. Mirrors .header-estop-badge palette + interactions. */
+.footer-estop-badge {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 1000;
+    background: linear-gradient(135deg, #ff0000, #cc0000);
+    color: #fff;
+    font-weight: 700;
+    font-size: 0.9rem;
+    letter-spacing: 0.5px;
+    padding: 10px 18px;
+    border: 2px solid #ff0000;
+    border-radius: 8px;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(255, 0, 0, 0.5);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.footer-estop-badge:hover {
+    transform: scale(1.05);
+    box-shadow: 0 6px 16px rgba(255, 0, 0, 0.7);
+    background: linear-gradient(135deg, #ff3333, #ff0000);
+}
+
+.footer-estop-badge:active {
+    transform: scale(0.97);
+}
+
+.footer-estop-badge.latched {
+    animation: emergency-btn-glow 1.2s ease-in-out infinite;
 }
 
 /* Header help button — replays the first-run tour */

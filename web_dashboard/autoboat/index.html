@@ -959,6 +959,13 @@
         </div>
     </div>
 
+    <!-- Floating bottom-right E-Stop shortcut — mirrors the header badge
+         for users scrolled into logs / diagnostics / camera panels. Same
+         scroll-to-and-flash pattern, stays pinned to the viewport corner. -->
+    <button id="footer-estop-badge" class="footer-estop-badge" title="Jump to Emergency Stop | Aller à l'arrêt d'urgence" aria-label="Emergency Stop shortcut (bottom)">
+        🚨 E-STOP
+    </button>
+
     <script>
         // Cache-bust: always load the latest app.js
         const s = document.createElement('script');
