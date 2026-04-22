@@ -21,15 +21,18 @@ Enhanced Features (v2.0):
 - Obstacle clustering (gap detection)
 - Adaptive sector analysis (target-aware)
 - Ground plane removal (water surface filtering)
-- Velocity estimation (moving obstacle tracking)
+- VFH polar histogram with target-aware gap selection (uses /control/heading_error)
 
 Topics:
     Subscribes:
-        /wamv/sensors/lidars/lidar_wamv_sensor/points (PointCloud2)
-        /planning/current_target (String) - For adaptive sectors
-    
+        /wamv/sensors/lidars/lidar_wamv_sensor/points (PointCloud2) - raw LiDAR scan
+        /planning/current_target (String) - for adaptive front-sector width
+        /planning/set_config (String) - runtime parameter updates from dashboard
+        /control/heading_error (Float64) - body-frame angle-to-target for VFH targeting
+
     Publishes:
         /perception/obstacle_info (String) - JSON with obstacle distances per sector
+        /perception/param_ranges (String) - JSON parameter validation ranges for dashboard HTML min/max sync
 """
 
 import rclpy

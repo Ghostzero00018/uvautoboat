@@ -11,18 +11,36 @@ Generates lawnmower pattern waypoints, publishes navigation path.
 
 Features:
 - Lawnmower pattern generation for systematic coverage
-- State machine: INIT -> WAITING_CONFIRM -> READY -> DRIVING -> FINISHED
-- Waypoint timeout with skip-to-next fallback
+- State machine (8 states):
+    INIT -> WAITING_CONFIRM -> READY -> DRIVING -> FINISHED (happy path)
+    PAUSED (via stop/resume), JOYSTICK (manual override), EMERGENCY_STOP (latched)
+- Multi-level obstacle handling:
+    (a) opportunistic side detour if lateral gap >= 8 m (planner-side, no waypoint insertion)
+    (b) auto-detour waypoint insertion after 30 s blocked (14 m lateral offset)
+    (c) A* reroute or waypoint skip after 45 s blocked
+- Runtime A* path planning (default on): 3 m grid, 12 m safety margin, 20k max expansions
+- Optional Hybrid Mode (astar_hybrid_mode=false by default): pre-plan full path once vs tick-by-tick replan
 - Return home mode with detour insertion
 
 Topics:
     Subscribes:
         /wamv/sensors/gps/gps/fix (NavSatFix) - GPS position
-    
+        /perception/obstacle_info (String) - obstacle detection for skip / detour logic
+        /planning/mission_command (String) - dashboard / CLI commands (start, resume, confirm, go_home, reset, joystick)
+        /planning/set_config (String) - runtime parameter updates from dashboard
+        /planning/emergency_stop (Bool, latched RELIABLE depth=1) - dedicated E-Stop channel
+        /control/replan_request (String) - reroute trigger from controller when blocked
+
     Publishes:
         /planning/waypoints (String) - JSON list of waypoints
         /planning/current_target (String) - JSON current target waypoint
         /planning/mission_status (String) - JSON mission state
+        /planning/config (String) - runtime parameter snapshot
+        /planning/param_ranges (String) - JSON parameter validation ranges for dashboard HTML min/max sync
+
+    Services:
+        /planning/stop_mission (std_srvs/Trigger) - ACK-based stop (replaces retry-over-topic)
+        /planning/generate_waypoints (std_srvs/Trigger) - ACK-based lawnmower generation
 """
 
 import rclpy

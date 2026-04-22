@@ -11,9 +11,17 @@ Subscribes to planner targets and perception data, outputs thruster commands.
 
 Features:
 - PID heading control with anti-windup
-- Simple anti-stuck system (turn left until clear)
-- Kalman-filtered drift compensation
+- Simple Anti-Stuck: turn toward the clearer side (left/right based on sector clearance) until front is clear
+- 2D linear Kalman filter for water/wind drift estimation, applied as feed-forward thrust compensation
 - LiDAR Perception v2.1 VFH/polar histogram obstacle avoidance integration
+
+Control constants (module-scope, not ROS parameters — change by code edit + rebuild):
+- MAX_THRUST        = 2000 N   - hardware limit
+- SAFE_THRUST       = 800 N    - operational cap on forward thrust
+- TURN_POWER_LIMIT  = 1600 N   - max differential thrust during avoidance
+- REVERSE_BURST_THRUST = -1200 N - CQB micro-reverse pulse magnitude
+- ESCAPE_TURN_POWER = 450 N    - stuck-escape spin-in-place magnitude
+- INTEGRAL_LIMIT    = 0.5 rad  - PID anti-windup bound
 
 Topics:
     Subscribes:
@@ -21,12 +29,17 @@ Topics:
         /wamv/sensors/imu/imu/data (Imu) - Heading orientation
         /planning/current_target (String) - Current navigation target
         /perception/obstacle_info (String) - Obstacle detection data
-    
+        /planning/mission_status (String) - Mission state (for E-Stop gate)
+        /planning/set_config (String) - runtime parameter updates from dashboard
+        /planning/emergency_stop (Bool, latched RELIABLE depth=1) - dedicated E-Stop channel
+
     Publishes:
         /wamv/thrusters/left/thrust (Float64) - Left thruster command
         /wamv/thrusters/right/thrust (Float64) - Right thruster command
         /control/status (String) - Controller status
         /control/anti_stuck_status (String) - Anti-stuck system status
+        /control/heading_error (Float64) - body-frame angle-to-target, published per control tick for perception VFH targeting
+        /control/param_ranges (String) - JSON parameter validation ranges for dashboard HTML min/max sync
 """
 
 import rclpy
