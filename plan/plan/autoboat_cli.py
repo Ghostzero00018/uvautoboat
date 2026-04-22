@@ -238,7 +238,7 @@ class MissionCLI(Node):
             return True
 
         # States that still need confirmation
-        needs_confirm = state in ["WAITING_CONFIRM", "INIT", "IDLE", None, "UNKNOWN"]
+        needs_confirm = state in ["WAITING_CONFIRM", "INIT", None, "UNKNOWN"]
         if needs_confirm:
             print("✅ Auto-confirming waypoints before start...")
             self.confirm_waypoints()
@@ -525,7 +525,7 @@ class MissionCLI(Node):
         else:
             # Check if we at least have config (system is running but mission not active)
             if self.config_status:
-                state = self.config_status.get('state', 'IDLE')
+                state = self.config_status.get('state', 'UNKNOWN')
                 waypoint_count = self.config_status.get('waypoint_count', 0)
                 gps_ready = self.config_status.get('gps_ready', False)
                 mission_armed = self.config_status.get('mission_armed', False)

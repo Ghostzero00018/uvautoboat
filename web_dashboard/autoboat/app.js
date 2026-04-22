@@ -40,7 +40,7 @@ let cameraTopicInput = null;
 
 // Mission state
 let missionState = {
-    state: 'IDLE',
+    state: 'UNKNOWN',
     gpsReady: false,
     waypointsGenerated: false,
     missionArmed: false,
@@ -63,7 +63,7 @@ let currentState = {
     gps: { lat: 0, lon: 0, local_x: 0, local_y: 0 },
     obstacles: { min: Infinity, front: true, left: true, right: true },
     thrusters: { left: 0, right: 0 },
-    mission: { state: 'IDLE', waypoint: 0, distance: 0 },
+    mission: { state: 'UNKNOWN', waypoint: 0, distance: 0 },
     config: {
         scan_length: 15.0,
         scan_width: 30.0,
@@ -567,11 +567,20 @@ function initCameraFeed() {
     updateCameraStream();
 }
 
+// ROS topic name pattern: must start with /, contain only letters/digits/_//.
+// Rejects URL-special chars (?, #, &, spaces, etc.) so we can't construct a
+// malformed web_video_server query via user typo or hostile clipboard paste.
+const ROS_TOPIC_PATTERN = /^\/[a-zA-Z0-9_/]+$/;
+
 function updateCameraStream() {
     if (!cameraImageEl || !cameraTopicInput || !cameraStatusEl) {
         return;
     }
     const topic = cameraTopicInput.value.trim() || '/wamv/sensors/cameras/front_left_camera_sensor/image_raw';
+    if (!ROS_TOPIC_PATTERN.test(topic)) {
+        cameraStatusEl.textContent = `Invalid topic — must start with / and contain only letters, digits, _, / (got: ${topic})`;
+        return;
+    }
     cameraStatusEl.textContent = `Connecting to ${topic}...`;
     const streamUrl = buildCameraUrl(topic);
     // Cache-bust each refresh to force a reconnect
@@ -799,7 +808,7 @@ function subscribeToTopics() {
     addLog('Subscribed to topics (AutoBoat + Modular)', 'info');
     
     // Enable mission control UI when connected (before config received)
-    updateMissionControlUI({ state: 'IDLE', gps_ready: true });
+    updateMissionControlUI({ state: 'UNKNOWN', gps_ready: true });
     
     // Create publisher for configuration updates (Planner modular mode only)
     configPublisher = new ROSLIB.Topic({
@@ -1519,7 +1528,7 @@ function updateConfigFromROS(data) {
         'cfg-safe-dist': data.min_safe_distance
     };
     
-    // Also update mission control inputs (only during active mission — in INIT/IDLE
+    // Also update mission control inputs (only during active mission — in INIT/UNKNOWN
     // the user is configuring a new mission and their inputs should not be overwritten)
     const wpInputs = {
         'wp-lanes': data.lanes,
@@ -1527,8 +1536,8 @@ function updateConfigFromROS(data) {
         'wp-width': data.scan_width
     };
 
-    // Don't overwrite route config inputs when boat is idle/init (user is editing for next mission)
-    const isConfiguring = ['INIT', 'IDLE'].includes(missionState.state);
+    // Don't overwrite route config inputs when boat is in INIT/UNKNOWN (user is editing for next mission)
+    const isConfiguring = ['INIT', 'UNKNOWN'].includes(missionState.state);
 
     for (const [id, value] of Object.entries(inputs)) {
         const el = document.getElementById(id);
@@ -2159,7 +2168,7 @@ function emergencyStop() {
 // Update mission control UI based on state
 function updateMissionControlUI(state) {
     if (DEBUG_MODE) console.log('updateMissionControlUI called with state:', state);
-    missionState.state = (state.state || 'IDLE').toString().toUpperCase();
+    missionState.state = (state.state || 'UNKNOWN').toString().toUpperCase();
     // If no gps_ready field, assume true when connected (for testing)
     missionState.gpsReady = (state.gps_ready !== undefined) ? state.gps_ready : connected;
     missionState.missionArmed = state.mission_armed || false;
@@ -2198,7 +2207,7 @@ function updateMissionControlUI(state) {
     if (stateBadge) {
         const stateLabels = {
             'INIT': 'Init | Initialisation',
-            'IDLE': 'Idle | En attente',
+            'UNKNOWN': 'Waiting | En attente',
             'WAITING_CONFIRM': 'Confirm | Confirmation',
             'READY': 'Ready | Prêt',
             'DRIVING': 'Driving | Navigation',
@@ -2248,9 +2257,9 @@ function updateMissionControlUI(state) {
         if (btnJoyDisable) btnJoyDisable.disabled = !(connected && missionState.joystickOverride);
     }
 
-    // Generate allowed when connected, GPS ready, not in joystick override, and either no waypoints yet or we're in INIT/IDLE
+    // Generate allowed when connected, GPS ready, not in joystick override, and either no waypoints yet or we're in INIT/UNKNOWN
     const canGenerate = connected && missionState.gpsReady && !missionState.joystickOverride &&
-        (!hasWaypoints || ['INIT', 'IDLE'].includes(missionState.state));
+        (!hasWaypoints || ['INIT', 'UNKNOWN'].includes(missionState.state));
     if (btnGenerate) btnGenerate.disabled = !canGenerate;
 
     // Confirm/Cancel only during preview/confirm stage (waypoints exist, no joystick override)
@@ -2259,12 +2268,12 @@ function updateMissionControlUI(state) {
     if (btnCancel) btnCancel.disabled = !canDecide;
 
     // Start allowed when waypoints exist, not in joystick override, not awaiting decision, and state is ready/paused/stop family
-    const startAllowedStates = ['READY', 'PAUSED', 'EMERGENCY_STOP', 'FINISHED', 'IDLE', 'INIT'];
+    const startAllowedStates = ['READY', 'PAUSED', 'EMERGENCY_STOP', 'FINISHED', 'UNKNOWN', 'INIT'];
     const canStart = hasWaypoints && !missionState.joystickOverride && !awaitingDecision && startAllowedStates.includes(missionState.state);
     if (btnStart) btnStart.disabled = !canStart;
 
     // Go Home creates its own waypoint (spawn point) — doesn't need existing waypoints, just GPS and connected
-    const goHomeAllowedStates = ['READY', 'PAUSED', 'EMERGENCY_STOP', 'FINISHED', 'IDLE', 'INIT', 'DRIVING'];
+    const goHomeAllowedStates = ['READY', 'PAUSED', 'EMERGENCY_STOP', 'FINISHED', 'UNKNOWN', 'INIT', 'DRIVING'];
     const canGoHome = connected && missionState.gpsReady && !missionState.joystickOverride && !awaitingDecision && goHomeAllowedStates.includes(missionState.state);
     if (btnGoHome) btnGoHome.disabled = !canGoHome;
 
