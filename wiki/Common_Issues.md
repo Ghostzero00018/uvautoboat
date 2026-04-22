@@ -19,10 +19,10 @@ ros2 topic echo /wamv/sensors/gps/gps/fix --once
 
 **Solutions**:
 
-1. **GPS not initialized**: Wait 5-10 seconds after Gazebo launches
-2. **Mission not started**: Run `ros2 run plan autoboat_cli start`
+1. **Sim readiness still in progress**: the launcher runs bounded-retry readiness polls for each stage (Gazebo topics, rosbridge port, nav-node discovery). Typical cold-start is ~20-40 s on a warm machine. Let the 6 launcher terminals finish their spinner output before issuing commands.
+2. **Mission not started**: Run `ros2 run plan autoboat_cli start` (or use the dashboard Start button — interactive mode preferred over one-shot CLI commands, which can race DDS late-joiner discovery)
 3. **Waypoints not generated**: Run `ros2 run plan autoboat_cli generate`
-4. **Node not running**: Check `ros2 node list | grep autoboat`
+4. **Node not running**: Check `ros2 node list | grep -E 'heading_controller|lidar_perception|waypoint_planner'`
 
 ---
 
@@ -35,11 +35,7 @@ ros2 topic echo /wamv/sensors/gps/gps/fix --once
 **Solution**: Reduce PID proportional gain
 
 ```bash
-# For AutoBoat
 ros2 param set /heading_controller_node kp 300.0
-
-# For Modular (Controller)
-ros2 param set /heading_controller kp 300.0
 ```
 
 **Alternative**: Increase derivative gain for damping
@@ -95,7 +91,7 @@ ros2 param set /heading_controller_node kd 150.0
 ```yaml
 # In autoboat.launch.yaml
 - name: min_range
-  value: 7.0  # Increase from default 5.0
+  value: 4.0  # Increase from default 2.2 (gives more slack around dock / spawn structures)
 ```
 
 **Alternative**: Teleport boat away from dock
@@ -116,16 +112,16 @@ gz service -s /world/sydney_regatta/set_pose \
 
 **Solutions**:
 
-1. Increase timeout:
+1. Increase timeout (less sensitive — boat must stay still longer before triggering; default 12.0 s):
 
    ```bash
-   ros2 param set /heading_controller stuck_timeout 5.0
+   ros2 param set /heading_controller_node stuck_timeout 20.0
    ```
 
-2. Increase movement threshold:
+2. Increase movement threshold (larger unblocked-motion required to count as "moving"; default 1.0 m):
 
    ```bash
-   ros2 param set /heading_controller stuck_threshold 1.0
+   ros2 param set /heading_controller_node stuck_threshold 2.0
    ```
 
 ---
@@ -155,21 +151,26 @@ gz service -s /world/sydney_regatta/set_pose \
 **Diagnosis**:
 
 ```bash
-# Check LIDAR data rate
-ros2 topic hz /wamv/sensors/lidars/lidar_wamv_sensor/points
+# Check obstacle detection rate — perception publishes once per LiDAR scan (~20 Hz)
+ros2 topic hz /perception/obstacle_info
 
-# Check obstacle info
-ros2 topic echo /perception/obstacle_info
+# Check raw LiDAR: `ros2 topic hz` with default reliable QoS can't match VRX's
+# best_effort publisher — the probe returns misleadingly low numbers. Check
+# publisher presence and subscription count instead:
+ros2 topic info /wamv/sensors/lidars/lidar_wamv_sensor/points   # expect Publisher count: 1
+
+# Sample current obstacle-info JSON once
+ros2 topic echo /perception/obstacle_info --once
 ```
 
 **Solutions**:
 
 1. **LIDAR not publishing**: Restart Gazebo
-2. **Height filter too restrictive**: Adjust range
+2. **Height filter too restrictive**: Widen slightly around YAML defaults (`min_height: -1.2`, `max_height: 1.5`). Going far outside this range picks up sky / water reflections and makes detections *worse*, not better.
 
    ```yaml
-   min_height: -20.0
-   max_height: 15.0
+   min_height: -2.0
+   max_height: 3.0
    ```
 
 3. **Range filter too restrictive**: Increase max_range
@@ -308,10 +309,10 @@ sudo ufw allow 8080/tcp
    ```
 
 2. **Check camera topic**: Default is `/wamv/sensors/cameras/front_left_camera_sensor/image_raw`
-3. **Verify topic exists**:
+3. **Verify topic exists** (matches both the VRX `/wamv/sensors/cameras/*` name and the neutral `/sensors/camera/*` relay from `remap.launch.yaml` if it's running):
 
    ```bash
-   ros2 topic list | grep camera
+   ros2 topic list | grep -E 'camera|image'
    ```
 
 4. **Refresh stream**: Click "Refresh Stream" button in dashboard
@@ -493,7 +494,7 @@ If `~/seal_ws/src/install/` exists, that is the smoking gun.
 
 **Solutions**:
 
-1. **Install Python packages**:
+1. **Install Python packages** (skip if your workspace Python is managed via conda — `pip3` into the system Python can shadow conda packages and create hard-to-debug import races):
 
    ```bash
    pip3 install numpy scipy matplotlib
@@ -514,10 +515,11 @@ If `~/seal_ws/src/install/` exists, that is the smoking gun.
 
 **Solutions**:
 
-1. **Source Gazebo setup**:
+1. **Source ROS 2 environment** (Gazebo Harmonic ships its env variables through `ros_gz` and the ROS 2 workspace overlay — no separate gazebo setup script):
 
    ```bash
-   source /usr/share/gazebo/setup.sh
+   source /opt/ros/jazzy/setup.bash
+   source ~/seal_ws/install/setup.bash
    ```
 
 2. **Check plugin paths**:
@@ -550,7 +552,7 @@ If `~/seal_ws/src/install/` exists, that is the smoking gun.
 4. **Disable GUI**:
 
    ```bash
-   ros2 launch vrx_gz competition.launch.py world:=sydney_regatta gui:=false
+   ros2 launch vrx_gz competition.launch.py world:=sydney_regatta_DEFAULT gui:=false
    ```
 
 ---
@@ -645,17 +647,13 @@ If `~/seal_ws/src/install/` exists, that is the smoking gun.
 
 ### "use_sim_time" Warnings
 
-**Symptoms**: TF warnings about time synchronization
+**Symptoms**: Time-synchronization warnings at startup
 
-**Solution**: Ensure all nodes use simulation time
+**Cause**: A node is running in wall-clock mode while the rest of the stack is on simulation time. `launch/autoboat.launch.yaml` sets `use_sim_time: true` for all three pipeline nodes, so launching via the one-click launcher should never hit this. If you do, you're likely running a node manually (e.g., via `ros2 run ...`) without passing the override:
 
-```yaml
-# In launch file
-- name: use_sim_time
-  value: true
+```bash
+ros2 run plan waypoint_planner_node --ros-args -p use_sim_time:=true
 ```
-
-**Note**: `launch/autoboat.launch.yaml` sets this for all active nodes in the modular pipeline.
 
 ---
 
@@ -666,8 +664,10 @@ If `~/seal_ws/src/install/` exists, that is the smoking gun.
 **Diagnosis**:
 
 ```bash
-# Check node logs
-ros2 run plan autoboat --ros-args --log-level debug
+# Check the specific node that crashed — pick whichever matches your symptom
+ros2 run plan waypoint_planner_node --ros-args --log-level debug
+ros2 run plan lidar_perception_node --ros-args --log-level debug
+ros2 run control heading_controller --ros-args --log-level debug
 ```
 
 **Solutions**:
@@ -735,8 +735,8 @@ Returns a direct-discovery snapshot without the daemon cache. Typically a smalle
 # Kill all Gazebo
 pkill -9 -f "gz sim" && pkill -9 -f "gzserver" && pkill -9 -f "gzclient"
 
-# Kill ROS nodes
-pkill -9 -f autoboat && pkill -9 -f rosbridge
+# Kill the three pipeline nodes + CLI + rosbridge
+pkill -9 -f "heading_controller|lidar_perception|waypoint_planner|autoboat_cli|rosbridge"
 
 # Kill everything (last resort)
 pkill -9 -f ros && pkill -9 -f gz && pkill -9 -f gazebo
@@ -770,11 +770,13 @@ ros2 param list /heading_controller_node
 ros2 param get /heading_controller_node kp
 ```
 
-### Check Transforms
+### Check Pose (TF tree is not used)
+
+This project does **not** use `/tf` — each of the three pipeline nodes does its own GPS → local conversion in Python. `ros2 run tf2_tools view_frames` returns an empty tree. To inspect pose, subscribe directly to the raw sensors:
 
 ```bash
-ros2 run tf2_tools view_frames
-evince frames.pdf
+ros2 topic echo /wamv/sensors/gps/gps/fix --once
+ros2 topic echo /wamv/sensors/imu/imu/data --once
 ```
 
 ### Monitor System Resources
@@ -791,10 +793,12 @@ nvidia-smi  # If using GPU
 If your problem isn't listed here:
 
 1. **Check logs**: Look for ERROR or WARN messages
-2. **Enable debug logging**:
+2. **Enable debug logging** — run the specific node manually rather than via the launcher:
 
    ```bash
-   ros2 run plan autoboat --ros-args --log-level debug
+   ros2 run plan waypoint_planner_node --ros-args --log-level debug
+   ros2 run plan lidar_perception_node --ros-args --log-level debug
+   ros2 run control heading_controller --ros-args --log-level debug
    ```
 
 3. **Report issue**: [GitHub Issues](https://github.com/Ghostzero00018/uvautoboat/issues)
@@ -807,3 +811,5 @@ If your problem isn't listed here:
 ## Related Pages
 
 - **[Installation Guide](Installation_Guide)** — Setup troubleshooting
+- **[System Overview](System_Overview)** — Architecture, topic flow, node responsibilities
+- **[Glossary](Glossary)** — Terminology (TUNED state, SASS, VFH, etc.)
