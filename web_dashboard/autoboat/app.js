@@ -547,7 +547,16 @@ function initCameraFeed() {
     const refreshBtn = document.getElementById('btn-refresh-camera');
 
     if (refreshBtn) {
-        refreshBtn.addEventListener('click', updateCameraStream);
+        // Debounce — rapid Refresh clicks otherwise deadlock web_video_server
+        // upstream (CPU spins to 100 %, port 8080 accepts TCP but returns no
+        // bytes, recovery requires killing the server process). 2 s gives the
+        // server time to cleanly recycle the previous MJPEG connection.
+        refreshBtn.addEventListener('click', () => {
+            if (refreshBtn.disabled) return;
+            refreshBtn.disabled = true;
+            updateCameraStream();
+            setTimeout(() => { refreshBtn.disabled = false; }, 2000);
+        });
     }
 
     if (!cameraImageEl || !cameraStatusEl || !cameraTopicInput) {
@@ -555,6 +564,10 @@ function initCameraFeed() {
     }
 
     cameraImageEl.addEventListener('load', () => {
+        // MJPEG fires 'load' on every frame. Don't overwrite a sticky user-input
+        // validation error — otherwise the "Invalid topic" message vanishes in
+        // ~30 ms when the old stream's next frame arrives.
+        if (cameraStatusEl.dataset.userError === 'true') return;
         cameraStatusEl.textContent = 'Streaming | Flux en cours';
         cameraStatusEl.classList.remove('error');
     });
@@ -576,15 +589,31 @@ function updateCameraStream() {
     if (!cameraImageEl || !cameraTopicInput || !cameraStatusEl) {
         return;
     }
-    const topic = cameraTopicInput.value.trim() || '/wamv/sensors/cameras/front_left_camera_sensor/image_raw';
+    const DEFAULT_TOPIC = '/wamv/sensors/cameras/front_left_camera_sensor/image_raw';
+    const topic = cameraTopicInput.value.trim() || DEFAULT_TOPIC;
     if (!ROS_TOPIC_PATTERN.test(topic)) {
         cameraStatusEl.textContent = `Invalid topic — must start with / and contain only letters, digits, _, / (got: ${topic})`;
+        cameraStatusEl.classList.add('error');
+        cameraStatusEl.dataset.userError = 'true';
         return;
     }
+    // If the field was blank, surface the default we're actually using.
+    if (!cameraTopicInput.value.trim()) {
+        cameraTopicInput.value = topic;
+    }
+    // Valid topic — clear any sticky user-input error so load handler can resume updates.
+    cameraStatusEl.dataset.userError = '';
+    cameraStatusEl.classList.remove('error');
     cameraStatusEl.textContent = `Connecting to ${topic}...`;
     const streamUrl = buildCameraUrl(topic);
-    // Cache-bust each refresh to force a reconnect
-    cameraImageEl.src = `${streamUrl}&t=${Date.now()}`;
+    // Tear the old stream down explicitly before opening the new one. Without
+    // this interval, rapid img.src swaps race web_video_server's per-client
+    // cleanup and can deadlock the server (Common_Issues.md). 200 ms lets the
+    // browser issue the TCP close before initiating the next connection.
+    cameraImageEl.removeAttribute('src');
+    setTimeout(() => {
+        cameraImageEl.src = `${streamUrl}&t=${Date.now()}`;
+    }, 200);
 }
 
 function buildCameraUrl(topic) {
