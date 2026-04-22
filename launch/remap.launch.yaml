@@ -1,0 +1,140 @@
+# ============================================================================
+# AutoBoat — Topic Remap Layer (Phase 5 preparation)
+# ============================================================================
+#
+# Purpose: decouple the active navigation stack from VRX's /wamv/* topic
+# names, so the same Python nodes can run against real hardware later
+# without code changes. Two-layer translation:
+#
+#   Layer A — relay nodes translate between /wamv/* (VRX / simulation) and
+#             neutral /sensors /actuators namespaces.
+#   Layer B — optional bridge node for real-hardware deployment; handles
+#             translation between neutral names and whatever the physical
+#             control unit speaks (details TBD after hardware arrives).
+#
+# Rollout phases (see working_diary/2026-04-19_to_2026-04-20_phase5_prep_scope_plan.md):
+#
+#   Phase 5.0 (this week):
+#     Deploy this file with use_real_hardware:=false.
+#     Relays publish neutral names alongside /wamv/* — no behaviour change
+#     for the existing stack (three pipeline nodes still subscribe /wamv/*).
+#     This is a dry-run: ship the relay layer so it's exercised under VRX
+#     before real hardware is on the bench.
+#
+#   Phase 5.1 (once hardware is on bench):
+#     Flip use_real_hardware:=true. Relays off; bridge stub publishes /wamv/*
+#     on behalf of the real control unit so the three pipeline nodes still see
+#     their expected topic names.
+#
+#   Phase 5.2 (after first on-water mission):
+#     Rename subscriptions in the three Python nodes from /wamv/* to the
+#     neutral names. Delete Layer A relays. Bridge (Layer B) stays.
+#
+#   Phase 5.3 (cleanup):
+#     Update documentation strings, health-check script, launcher echo text.
+#
+# Usage (from workspace root):
+#
+#   ros2 launch ~/seal_ws/src/uvautoboat/launch/remap.launch.yaml
+#   ros2 launch ~/seal_ws/src/uvautoboat/launch/remap.launch.yaml use_real_hardware:=true
+#
+# This file complements (does not replace) autoboat.launch.yaml. Launch both:
+#
+#   T3a: ros2 launch autoboat.launch.yaml
+#   T3b: ros2 launch remap.launch.yaml
+#
+# ============================================================================
+
+launch:
+
+  # --- Arguments ----------------------------------------------------------
+
+  - arg:
+      name: use_real_hardware
+      default: "false"
+      description: "false = VRX simulation (default). true = real boat hardware."
+
+  - arg:
+      name: log_level
+      default: "info"
+      description: "Relay logging verbosity (debug | info | warn | error)."
+
+  # --- LAYER A — Sensor remaps (VRX → neutral) ---------------------------
+  #
+  # When use_real_hardware:=false, Gazebo publishes /wamv/* and these relays
+  # mirror the data onto the neutral /sensors/* namespace. Downstream code
+  # that subscribes either namespace sees identical data (with sub-ms relay
+  # latency; see Known Unknowns below for QoS caveats).
+
+  - node:
+      pkg: topic_tools
+      exec: relay
+      name: gps_relay
+      args: "/wamv/sensors/gps/gps/fix /sensors/gps/fix"
+      output: screen
+      unless: $(var use_real_hardware)
+
+  - node:
+      pkg: topic_tools
+      exec: relay
+      name: imu_relay
+      args: "/wamv/sensors/imu/imu/data /sensors/imu/data"
+      output: screen
+      unless: $(var use_real_hardware)
+
+  - node:
+      pkg: topic_tools
+      exec: relay
+      name: lidar_relay
+      args: "/wamv/sensors/lidars/lidar_wamv_sensor/points /sensors/lidar/points"
+      output: screen
+      unless: $(var use_real_hardware)
+
+  - node:
+      pkg: topic_tools
+      exec: relay
+      name: camera_relay
+      args: "/wamv/sensors/cameras/front_left_camera_sensor/image_raw /sensors/camera/image_raw"
+      output: screen
+      unless: $(var use_real_hardware)
+
+  # --- LAYER A — Actuator remaps (neutral → VRX) -------------------------
+  #
+  # Symmetrically, relay neutral /actuators/* thrust commands into the /wamv/*
+  # names Gazebo expects. The three-node stack still publishes to /wamv/*
+  # directly today, so these relays are effectively idle in the normal path;
+  # they become relevant in Phase 5.2 when the stack is renamed to publish
+  # neutral names natively.
+
+  - node:
+      pkg: topic_tools
+      exec: relay
+      name: thrust_left_relay
+      args: "/actuators/thrusters/left/cmd /wamv/thrusters/left/thrust"
+      output: screen
+      unless: $(var use_real_hardware)
+
+  - node:
+      pkg: topic_tools
+      exec: relay
+      name: thrust_right_relay
+      args: "/actuators/thrusters/right/cmd /wamv/thrusters/right/thrust"
+      output: screen
+      unless: $(var use_real_hardware)
+
+  # --- LAYER B — Real-hardware bridge (stub) -----------------------------
+  #
+  # This stanza only activates when use_real_hardware:=true. The `bridge`
+  # package does not exist yet — it will be scaffolded once the supervisor
+  # CCU conversation resolves the low-level protocol. Shape sketched in
+  # working_diary/2026-04-19_to_2026-04-20_phase5_prep_scope_plan.md Part 3B.
+  #
+  # Do NOT flip use_real_hardware:=true in simulation — ros2 launch will
+  # fail to find the package and abort the whole launch.
+
+  - node:
+      pkg: bridge
+      exec: low_level_bridge_node
+      name: low_level_bridge
+      output: screen
+      if: $(var use_real_hardware)
