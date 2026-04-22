@@ -318,6 +318,49 @@ sudo ufw allow 8080/tcp
 
 ---
 
+### Camera Stuck on "Connecting…" after Full Tab Close + Hard Refresh
+
+**Symptoms**: Camera panel shows black + `Connecting to …` even after closing the dashboard tab entirely and reopening; other panels (Gazebo, RViz, nav stack) work normally.
+
+**Root cause**: `web_video_server` (upstream) can deadlock under rapid MJPEG connection churn. CPU pegs near 100 %, port 8080 accepts TCP but returns no HTTP bytes. Most easily triggered by clicking "Refresh Stream" many times in quick succession.
+
+**Diagnose**:
+
+```bash
+# Expect one row, <20 % CPU when healthy
+ps aux | grep web_video_server | grep -v grep
+
+# Expect HTTP 200 within 3 s
+curl -I --max-time 3 http://localhost:8080/
+```
+
+If CPU is pegged or `curl` times out, the server is deadlocked.
+
+**Fix**:
+
+1. Kill the hung `web_video_server` process (it runs in one of the launcher's 6 terminal tabs — titled "camera"):
+
+   ```bash
+   # In the camera tab:
+   Ctrl+C
+   # If unresponsive:
+   kill -9 <PID>   # from the ps aux output above
+   ```
+
+2. Restart it in the same tab:
+
+   ```bash
+   ros2 run web_video_server web_video_server
+   ```
+
+3. Hard-refresh the dashboard (`Ctrl+Shift+R`). Camera should flip from "Connecting…" to "Streaming | Flux en cours" within ~1 s.
+
+Full sim restart via the launcher also works, but is overkill — only the camera server is affected.
+
+**Prevention**: The dashboard has a 2 s Refresh-button debounce and explicit stream tear-down (since 22/04/2026). Avoid clicking Refresh faster than ~once per 3 s to stay well clear of the server's recycle window.
+
+---
+
 ### Dashboard Shows Old Data or Old Names After Pulling Updates
 
 **Symptoms**: Dashboard not updating, stale information, old node names still showing, parameter changes not taking effect
