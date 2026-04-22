@@ -2,7 +2,7 @@
 
 Renamed OKO / SPUTNIK / BURAN / Vostok1 module code-names to functional `lowercase_snake_case` names that follow ROS community conventions.
 
-**Status:** Done (2026-04-16)
+**Status:** Done (16/04/2026)
 **Approach:** One-shot atomic rename (no deprecation cycle)
 **Actual effort:** ~1 session, all layers in one pass
 **Files touched:** 26 active files (~1,100+ branded references replaced)

@@ -8,7 +8,7 @@
 |---|---|
 | **Project** | AutoBoat Navigation System |
 | **Repository** | [Ghostzero00018/uvautoboat](https://github.com/Ghostzero00018/uvautoboat) |
-| **Last Updated** | 22-04-2026 |
+| **Last Updated** | 22/04/2026 |
 | **Status** | 🟢 Simulation ready (A* path planning + one-click launcher + wiki docs + dashboard config system). Real-hardware deployment begins next week. |
 
 ---
@@ -35,7 +35,7 @@
 
 ## Phase 1: Architecture & MVP ✅
 
-**Completed**: 27-11-2025
+**Completed**: 27/11/2025
 
 | Task | Status |
 |------|:------:|
@@ -50,7 +50,7 @@
 
 ## Phase 2: Autonomous Navigation ✅
 
-**Completed**: 28-11-2025
+**Completed**: 28/11/2025
 
 ### AutoBoat Navigation System
 
@@ -137,7 +137,7 @@
 
 ## Phase 5: Real-Hardware Deployment 🔜
 
-**Status**: Planned | **Expected kickoff**: Week of 20-04-2026 | **Priority**: High
+**Status**: Planned | **Expected kickoff**: Week of 20/04/2026 | **Priority**: High
 
 Supervisor has signalled imminent access to the real AutoBoat central control unit (CCU). Expected two-tier control architecture:
 
@@ -228,50 +228,50 @@ The whole repo is expected to run on the Pi 5.
 
 | Date | Milestone | Status |
 |------|-----------|:------:|
-| 25-11-2025 | Project Kickoff | ✅ |
-| 26-11-2025 | Basic Navigation | ✅ |
-| 27-11-2025 | End-to-End Pipeline | ✅ |
-| 28-11-2025 | AutoBoat Navigation Complete | ✅ |
-| 01-12-2025 | Simple Anti-Stuck + Mission CLI | ✅ |
-| 03-12-2025 | Waypoint Skip + Runtime Config | ✅ |
-| 03-12-2025 | Go Home Optimization (detour insertion) | ✅ |
-| 03-12-2025 | README Consolidation + Cleanup | ✅ |
-| 08-12-2025 | A* Path Planning (Hybrid + Runtime modes) | ✅ |
-| 09-12-2025 | One-Click Launcher Script | ✅ |
-| 11-12-2025 | Wiki Documentation + README Update | ✅ |
-| 14-12-2025 | LiDAR Smoke Detection (Spatial Density Filtering) | ✅ |
-| 03-04-2026 | Code review + repo cleanup rounds | ✅ |
-| 08-04-2026 | Obstacle avoidance partial fixes + dashboard cleanup | ✅ |
-| 12-04-2026 | Pre-meeting sprint: VRX patch, repo audit, README rewrite, dashboard polish | ✅ |
-| 13-04-2026 | Dashboard config system: dirty-params, param sync, reset defaults, collision fixes | ✅ |
-| 13-04-2026 | USER_MANUAL + dashboard README rewrite | ✅ |
-| 15-04-2026 | PPT fact-check (16 items), bilingual presentation script, logo SVG | ✅ |
-| 15-04-2026 | Supervisor meeting delivered; wiki backfill (Glossary + Design_Rationale); Node Naming Refactor Plan | ✅ |
-| 13-04-2026 | Teammate onboarding fix: bashrc guide, dashboard diagnostics, dynamic WebSocket URL, COLCON_IGNORE tracked, health check audit (46/46) | ✅ |
-| 15-04-2026 | Pre-meeting dry-run after ROS 2 Jazzy apt upgrade — no regression, 46/46 PASS | ✅ |
-| 16-04-2026 | One-shot node rename: OKO/SPUTNIK/BURAN/Vostok1 → functional names (26 files, ~1100+ refs) | ✅ |
-| 16-04-2026 | Dashboard security: XSS fix, SRI hashes, server-side param validation, security wiki page | ✅ |
-| 16-04-2026 | Dashboard UX: reject-not-clamp validation, orange/red toasts, range tooltips, copy buttons, A* panel fixes | ✅ |
-| 17-04-2026 | Param-range single source of truth: Python nodes publish `PARAM_RANGES`, dashboard auto-syncs HTML min/max | ✅ |
-| 17-04-2026 | Dashboard `JSON.parse` hardening: 8 subscribers wrapped in try/catch to tolerate malformed messages | ✅ |
-| 17-04-2026 | Dashboard UX polish: 31 hover tooltips, nav-mode restyle, preset confirm dialog, map grid performance | ✅ |
-| 17-04-2026 | LiDAR smoke detection fully removed (-624 LOC across 10 files); FINISHED counter clamp; split-screen CSS hardening | ✅ |
-| 18-04-2026 | Hardware-deployment phase logged; docs audit (`distributed` → modular) across README + USER_MANUAL + Board | ✅ |
-| 19-04-2026 | Target-aware VFH via `/control/heading_error` + 4 `vfh_*` tunable params; preset cleanup (Python default sync, dead-weight key trim, CLI `--mode` legacy removal); Vostok1-era breadcrumb cleanup | ✅ |
-| 19-04-2026 | Dashboard Go Home distance-based progress + `distance_to_target` wiring fix; latent `distance.toFixed` DOM-node crash fix | ✅ |
-| 19-04-2026 | Docs fact-check sweep (Kalman params, health-check count, Python version, VFH, escape direction, preset names); `ros2 daemon` staleness documented in Common_Issues | ✅ |
-| 19-04-2026 | Tier A/B/C dashboard UX sprint: E-Stop header badge, Reset guard, toast tuning, panel reorder, Map+Camera group, collapsible info panels, preset expand/flash/scroll, step hints, first-run onboarding tour | ✅ |
-| 20-04-2026 | Dead-code & bandage audit (50-item plan); Tier 1 safe deletes (`SENSOR_TIMEOUT`, `escape_start_time`, `in_hazard_zone`, unused imports); voyage-completion off-by-one fix; `Common_Issues` colcon-cwd entry | ✅ |
-| 20-04-2026 | `max_speed` cap wired + Kalman drift feed-forward activated (gated update, thrust compensation); `Design_Rationale` PID/speed-shaping + drift-compensation + hand-tuned-constants tables | ✅ |
-| 20-04-2026 | Launcher readiness polls (`wait_for_topic`/`wait_for_port`/`wait_for_node`) + `WS_ROOT` sibling-`src/` guard against nested workspaces | ✅ |
-| 20-04-2026 | Perception `moving_obstacles` velocity pipeline removed (-124 LOC, zero consumers) | ✅ |
-| 20-04-2026 | Tier 2 close-out: latched `/planning/emergency_stop` Bool channel; `std_srvs/Trigger` services for stop + generate (drops CLI/dashboard retry loops); `position_history` reset on stop resume (prevent Kalman spike); JSON schema guards at publishers + visible dashboard errors; drop redundant Waiting-for-sync label | ✅ |
-| 21-04-2026 | Health check 4-state parameter validation (PASS/TUNED/WARN/FAIL) via `config_tuned` flag on 3 nodes; dashboard `[TUNED]` magenta styling | ✅ |
-| 21-04-2026 | Markdown refresh post-Tier-2: Glossary health-check entry, USER_MANUAL topology + services table, dashboard README service-client section | ✅ |
-| 22-04-2026 | C1/C2/C3 bug fixes (`3389554`): `_log_bad_json` helper propagated from CLI to perception + planner callbacks (drops `except Exception: pass` silent fallbacks); `force_turn_after_reverse` latch now persists across control ticks — removed the unconditional same-tick reset that made the flag dead | ✅ |
-| 22-04-2026 | I6 docstring refresh on 3 nodes (`cd009c0`): pub/sub surfaces match code; 8-state planner machine documented; Trigger services section added; `/control/heading_error`, `/planning/emergency_stop`, `/planning/set_config`, `/perception/param_ranges`, `/control/param_ranges` now in docstrings | ✅ |
-| 22-04-2026 | Perception publish-rate baseline recorded (`65709a0`, RTF caveat `816be9d`): 20.00 Hz mean, 4 ms stdev, 120 s Buoy Field mission at RTF ≈ 1.0; rate tracks Gazebo RTF, Pi 5 on-water remains the real Phase 5 comparison target | ✅ |
-| 22-04-2026 | `launch/remap.launch.yaml` deployed (`816be9d`): 6 `topic_tools/relay` nodes (GPS / IMU / LiDAR / camera / thrust L+R) gated on `use_real_hardware:=false`, plus conditional bridge-node stub for Phase 5.1; YAML `if:`/`unless:` syntax used (draft's nested `condition:` rejected by Jazzy launch schema) | ✅ |
+| 25/11/2025 | Project Kickoff | ✅ |
+| 26/11/2025 | Basic Navigation | ✅ |
+| 27/11/2025 | End-to-End Pipeline | ✅ |
+| 28/11/2025 | AutoBoat Navigation Complete | ✅ |
+| 01/12/2025 | Simple Anti-Stuck + Mission CLI | ✅ |
+| 03/12/2025 | Waypoint Skip + Runtime Config | ✅ |
+| 03/12/2025 | Go Home Optimization (detour insertion) | ✅ |
+| 03/12/2025 | README Consolidation + Cleanup | ✅ |
+| 08/12/2025 | A* Path Planning (Hybrid + Runtime modes) | ✅ |
+| 09/12/2025 | One-Click Launcher Script | ✅ |
+| 11/12/2025 | Wiki Documentation + README Update | ✅ |
+| 14/12/2025 | LiDAR Smoke Detection (Spatial Density Filtering) | ✅ |
+| 03/04/2026 | Code review + repo cleanup rounds | ✅ |
+| 08/04/2026 | Obstacle avoidance partial fixes + dashboard cleanup | ✅ |
+| 12/04/2026 | Pre-meeting sprint: VRX patch, repo audit, README rewrite, dashboard polish | ✅ |
+| 13/04/2026 | Dashboard config system: dirty-params, param sync, reset defaults, collision fixes | ✅ |
+| 13/04/2026 | USER_MANUAL + dashboard README rewrite | ✅ |
+| 15/04/2026 | PPT fact-check (16 items), bilingual presentation script, logo SVG | ✅ |
+| 15/04/2026 | Supervisor meeting delivered; wiki backfill (Glossary + Design_Rationale); Node Naming Refactor Plan | ✅ |
+| 13/04/2026 | Teammate onboarding fix: bashrc guide, dashboard diagnostics, dynamic WebSocket URL, COLCON_IGNORE tracked, health check audit (46/46) | ✅ |
+| 15/04/2026 | Pre-meeting dry-run after ROS 2 Jazzy apt upgrade — no regression, 46/46 PASS | ✅ |
+| 16/04/2026 | One-shot node rename: OKO/SPUTNIK/BURAN/Vostok1 → functional names (26 files, ~1100+ refs) | ✅ |
+| 16/04/2026 | Dashboard security: XSS fix, SRI hashes, server-side param validation, security wiki page | ✅ |
+| 16/04/2026 | Dashboard UX: reject-not-clamp validation, orange/red toasts, range tooltips, copy buttons, A* panel fixes | ✅ |
+| 17/04/2026 | Param-range single source of truth: Python nodes publish `PARAM_RANGES`, dashboard auto-syncs HTML min/max | ✅ |
+| 17/04/2026 | Dashboard `JSON.parse` hardening: 8 subscribers wrapped in try/catch to tolerate malformed messages | ✅ |
+| 17/04/2026 | Dashboard UX polish: 31 hover tooltips, nav-mode restyle, preset confirm dialog, map grid performance | ✅ |
+| 17/04/2026 | LiDAR smoke detection fully removed (-624 LOC across 10 files); FINISHED counter clamp; split-screen CSS hardening | ✅ |
+| 18/04/2026 | Hardware-deployment phase logged; docs audit (`distributed` → modular) across README + USER_MANUAL + Board | ✅ |
+| 19/04/2026 | Target-aware VFH via `/control/heading_error` + 4 `vfh_*` tunable params; preset cleanup (Python default sync, dead-weight key trim, CLI `--mode` legacy removal); Vostok1-era breadcrumb cleanup | ✅ |
+| 19/04/2026 | Dashboard Go Home distance-based progress + `distance_to_target` wiring fix; latent `distance.toFixed` DOM-node crash fix | ✅ |
+| 19/04/2026 | Docs fact-check sweep (Kalman params, health-check count, Python version, VFH, escape direction, preset names); `ros2 daemon` staleness documented in Common_Issues | ✅ |
+| 19/04/2026 | Tier A/B/C dashboard UX sprint: E-Stop header badge, Reset guard, toast tuning, panel reorder, Map+Camera group, collapsible info panels, preset expand/flash/scroll, step hints, first-run onboarding tour | ✅ |
+| 20/04/2026 | Dead-code & bandage audit (50-item plan); Tier 1 safe deletes (`SENSOR_TIMEOUT`, `escape_start_time`, `in_hazard_zone`, unused imports); voyage-completion off-by-one fix; `Common_Issues` colcon-cwd entry | ✅ |
+| 20/04/2026 | `max_speed` cap wired + Kalman drift feed-forward activated (gated update, thrust compensation); `Design_Rationale` PID/speed-shaping + drift-compensation + hand-tuned-constants tables | ✅ |
+| 20/04/2026 | Launcher readiness polls (`wait_for_topic`/`wait_for_port`/`wait_for_node`) + `WS_ROOT` sibling-`src/` guard against nested workspaces | ✅ |
+| 20/04/2026 | Perception `moving_obstacles` velocity pipeline removed (-124 LOC, zero consumers) | ✅ |
+| 20/04/2026 | Tier 2 close-out: latched `/planning/emergency_stop` Bool channel; `std_srvs/Trigger` services for stop + generate (drops CLI/dashboard retry loops); `position_history` reset on stop resume (prevent Kalman spike); JSON schema guards at publishers + visible dashboard errors; drop redundant Waiting-for-sync label | ✅ |
+| 21/04/2026 | Health check 4-state parameter validation (PASS/TUNED/WARN/FAIL) via `config_tuned` flag on 3 nodes; dashboard `[TUNED]` magenta styling | ✅ |
+| 21/04/2026 | Markdown refresh post-Tier-2: Glossary health-check entry, USER_MANUAL topology + services table, dashboard README service-client section | ✅ |
+| 22/04/2026 | C1/C2/C3 bug fixes (`3389554`): `_log_bad_json` helper propagated from CLI to perception + planner callbacks (drops `except Exception: pass` silent fallbacks); `force_turn_after_reverse` latch now persists across control ticks — removed the unconditional same-tick reset that made the flag dead | ✅ |
+| 22/04/2026 | I6 docstring refresh on 3 nodes (`cd009c0`): pub/sub surfaces match code; 8-state planner machine documented; Trigger services section added; `/control/heading_error`, `/planning/emergency_stop`, `/planning/set_config`, `/perception/param_ranges`, `/control/param_ranges` now in docstrings | ✅ |
+| 22/04/2026 | Perception publish-rate baseline recorded (`65709a0`, RTF caveat `816be9d`): 20.00 Hz mean, 4 ms stdev, 120 s Buoy Field mission at RTF ≈ 1.0; rate tracks Gazebo RTF, Pi 5 on-water remains the real Phase 5 comparison target | ✅ |
+| 22/04/2026 | `launch/remap.launch.yaml` deployed (`816be9d`): 6 `topic_tools/relay` nodes (GPS / IMU / LiDAR / camera / thrust L+R) gated on `use_real_hardware:=false`, plus conditional bridge-node stub for Phase 5.1; YAML `if:`/`unless:` syntax used (draft's nested `condition:` rejected by Jazzy launch schema) | ✅ |
 | TBD | Real-hardware deployment (Pi 5 as confirmed target; low-level CCU architecture TBD) | 🔜 |
 | TBD | Coverage Planning | ⏸️ |
 
@@ -340,13 +340,13 @@ Current position ──>│  (in Planner)       │
 | **ROS 2 Parameter Migration** | ✅ Done | Parameters now configurable via `autoboat.launch.yaml` |
 | **Multi-Terminal Launch** | ✅ Done | `one_click_launch_all/launch_autoboat_complete.sh` available |
 | **Debugging Required** | 🔄 In Progress | Complex planning and obstacle detection still need debugging |
-| **Node Naming Refactor** | ✅ Done | One-shot atomic rename completed 16-04-2026 (OKO → `lidar_perception`, SPUTNIK → `waypoint_planner`, BURAN → `heading_controller`, Vostok1 → `AutoBoat`, vostok1_cli → `autoboat_cli`). See [wiki/Node_Naming_Refactor_Plan](wiki/Node_Naming_Refactor_Plan.md) for the full record. |
+| **Node Naming Refactor** | ✅ Done | One-shot atomic rename completed 16/04/2026 (OKO → `lidar_perception`, SPUTNIK → `waypoint_planner`, BURAN → `heading_controller`, Vostok1 → `AutoBoat`, vostok1_cli → `autoboat_cli`). See [wiki/Node_Naming_Refactor_Plan](wiki/Node_Naming_Refactor_Plan.md) for the full record. |
 
 ---
 
 ## 📜 Acknowledgments
 
-**Document Version**: 9.7 | **Last Updated**: 22-04-2026
+**Document Version**: 9.7 | **Last Updated**: 22/04/2026
 
 **Maintained By**: AutoBoat Development Team
 

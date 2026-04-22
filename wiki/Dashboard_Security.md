@@ -2,7 +2,7 @@
 
 Security posture, known vulnerabilities, and recommended mitigations for the AutoBoat web dashboard.
 
-**Status:** Assessment completed 2026-04-16. No code fixes applied yet — documentation only.
+**Status:** Assessment completed 16/04/2026. No code fixes applied yet — documentation only.
 
 ---
 
