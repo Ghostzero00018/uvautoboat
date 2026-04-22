@@ -251,6 +251,46 @@ Block D landed on the same 3 files as Block A. Used `git add -p` hunk-split to s
    git push
    ```
 
+## Post-Block-E — afternoon hardening pass
+
+After the Block-E wrap-up (`114759f` — diary fill + Board timeline row + wiki sync) the day continued with a UX + doc-polish sprint driven by live-testing of the morning's deliverables. Five additional commits landed.
+
+### `2d34847` — IDLE → UNKNOWN sentinel + camera-topic URL pattern guard
+
+Two thematically distinct items bundled because they touched the same two files (`autoboat_cli.py` + `app.js`). Resolves the "Residual IDLE alignment" item carried from 21/04's diary — that item is now closed.
+
+**IDLE rename** (13 mission-state sites renamed across dashboard + CLI; 5 escape-direction sites deliberately preserved). The pre-data mission-state sentinel was `IDLE`, but the planner never emits that state — it emits the 8-state set (`INIT` / `WAITING_CONFIRM` / `READY` / `DRIVING` / `PAUSED` / `JOYSTICK` / `EMERGENCY_STOP` / `FINISHED`). Renamed to `UNKNOWN` so the "no data yet" sentinel is semantically distinct from the planner's `INIT` ("planner up, mission not configured"). Escape-direction `IDLE` ("not escaping") kept as-is — natural value in that enum, not a pre-data sentinel.
+
+**Camera-topic URL pattern guard** (`app.js`): the camera panel's topic input previously passed any string verbatim into a `web_video_server` URL. Added a regex guard (`/^\/[a-zA-Z0-9_/]+$/`) that rejects URL-special chars (`?`, `#`, `&`, spaces, etc.) with a clear error message. Security impact near-zero (web_video_server just returns junk for non-image topics) but protects against user typos and clipboard-paste accidents.
+
+### `6f9f5ac` — camera Refresh hardening
+
+Live stress-testing of the camera panel after `2d34847` surfaced three coordinated issues:
+
+1. **Validation error flashed then disappeared.** MJPEG fires a `load` event on every frame, and the existing load handler unconditionally reset status to "Streaming | Flux en cours", overwriting the user-input validation error within ~30 ms.
+2. **Rapid Refresh clicks** triggered an upstream bug in `web_video_server` — the server CPU-pegs near 100 %, port 8080 accepts TCP but returns zero HTTP bytes. Full tab-close + hard-refresh does NOT recover the stuck state; process restart required.
+3. **Blank field stayed blank after Refresh** used the default fallback — UX gap, user couldn't tell what topic was actually streaming.
+
+All three mitigated in one `fix:` commit: **2 s Refresh debounce** (initially tried 1 s, bumped after a second stress test triggered the server deadlock even at 1 s rate); **explicit stream tear-down** (`removeAttribute('src')` + 200 ms gap before new URL, so the browser issues a clean TCP close before the next reconnect); **sticky validation-error flag** via `dataset.userError` that the load handler checks before overwriting; **auto-populate the input field** when fallback kicks in.
+
+### `9a66b97` + `bd4e6e3` — `wiki/Common_Issues.md` sweep
+
+Documenting the `web_video_server` deadlock pattern (`9a66b97`) prompted a broader read of `Common_Issues.md`. Audit found 10 Critical + 4 Important + 2 Cosmetic staleness issues — mostly accumulated drift from the 16/04 rename wave + 21/04 hazard-zone removal + "TF tree is not used" decision that was never propagated to the troubleshooting doc.
+
+Representative criticals: `ros2 node list | grep autoboat` pointing at a node name that doesn't exist (grep should hit `heading_controller|lidar_perception|waypoint_planner`); advice to set `stuck_timeout` to 5.0 s "to increase" when default is 12.0 s (wrong direction); `min_range` default claimed as 5.0 m when actual is 2.2; `min_height: -20.0 / max_height: 15.0` recommended when actual YAML is `-1.2 / 1.5` (far-wider range makes detections *worse* by picking up sky/water reflections); Gazebo Classic `source /usr/share/gazebo/setup.sh` (project uses Harmonic via `ros_gz`); `world:=sydney_regatta` (should be `sydney_regatta_DEFAULT`); `ros2 run plan autoboat --ros-args …` (no such executable); a full `view_frames` section despite TF not being used anywhere.
+
+All 16 items fixed in `bd4e6e3` — single-file change, +48 / -42.
+
+### `c92c80d` — Apply/Preset debounce grey-out + bottom E-Stop shortcut
+
+Three dashboard-UX items in one `feat:` commit:
+
+- **Apply/Preset 1 s debounce.** The tuning-panel buttons (4 Apply + 4 Preset) had no debounce. Spam-clicking Apply Config fired N full `/planning/set_config` broadcasts; rapid preset thrashing churned params through N passes. Added two independent 1-second timers (one for Apply group, one for Preset group) so the natural "click Preset → click Apply" flow still works within 1 s, but same-group spam is dropped with a log warning. Separate mechanism from the existing 800 ms `debounceCommand` that covers mission-control buttons.
+- **Group grey-out via `.cooldown` CSS class.** During the 1 s window, all 4 buttons in the active group fade (opacity 0.4, `pointer-events: none`). Mirrors the camera Refresh button's visual-feedback pattern so the user can *see* the debounce firing. Uses a separate class (not the `disabled` attribute) so the existing "disabled until first ROS sync" external logic isn't clobbered by the timeout-based re-enable.
+- **Floating bottom-right `🚨 E-STOP` shortcut.** Mirrors the existing header badge. Fixed-position FAB, z-index 1000 (below onboarding's 9998). Same scroll-to-and-flash behaviour — takes the user to the real `btn-emergency-stop` and flashes it for 1.2 s, **does not fire** E-Stop directly (safer than a second direct-fire button). Both header and footer badges pulse (`latched` class) while the real E-Stop latch is active. Pattern extracted into a shared handler so future shortcut sites (e.g., a keyboard binding) register with one-liner.
+
+Also in the same commit: reworded the `btn-emergency-stop` click-handler comment to explain that the `confirm()` inside `emergencyStop()` is intentional, not a contradiction of the "no debounce — safety critical" statement. GUI E-Stop has no physical mushroom-head barrier against accidental clicks, so the `confirm()` dialog is the software equivalent.
+
 ## Commits landed
 
 ```text
@@ -258,9 +298,15 @@ Block D landed on the same 3 files as Block A. Used `git add -p` hunk-split to s
 cd009c0 docs: refresh node docstrings to match current pub/sub + state machine
 65709a0 docs: record perception publish-rate baseline for Phase 5 Pi-5 comparison
 816be9d feat: add remap.launch.yaml and qualify perception-Hz baseline with RTF note
+114759f docs: 22/04 wrap — fill diary + sync Board + wiki
+2d34847 refactor: IDLE→UNKNOWN mission-state sentinel + camera-topic URL pattern guard
+6f9f5ac fix(dashboard): harden camera refresh — debounce, stream tear-down, sticky validation error, blank-field autofill
+9a66b97 docs: Common_Issues — document web_video_server deadlock + prevention
+bd4e6e3 docs: Common_Issues — correct stale defaults, node names, Gazebo env, TF refs
+c92c80d feat(dashboard): Apply/Preset debounce grey-out + bottom E-Stop shortcut
 ```
 
-4 commits (not 5 as planned) — the RTF caveat for the perception row got bundled with the `remap.launch.yaml` `feat:` commit (`816be9d`) because both arose from the same sim-load observation. The diary + Board-timeline + wiki-sync commit(s) follow this section.
+10 commits landed (vs 5 originally scaffolded). The extra five are the afternoon hardening pass — none of them would have been forced by the morning plan, but each one was surfaced by testing the morning's work under real sim load. The biggest single diff was `bd4e6e3` (48+/42- on `Common_Issues.md`) which was pure doc; the longest-value change was `6f9f5ac` (camera Refresh UX, catches a real upstream deadlock). This diary-append commit (the one carrying this text) will make it 11.
 
 ## Rollover checkpoints
 
@@ -283,18 +329,24 @@ Use this section to capture anything surprising during the day — file state dr
 - **`ros2 topic hz` has no QoS flags in Jazzy.** `ros2 topic echo` accepts `--qos-reliability`, `--qos-durability`, etc.; `ros2 topic hz` does not. Best-effort topics (VRX sensor data) can't be rate-probed directly — either echo with matching QoS and count, or measure a downstream consumer (we used `/perception/obstacle_info` as a proxy for LiDAR rate).
 - **C3 unreachable in VRX.** Planner-side 8 m opportunistic side-detour + controller's aggressive avoidance turn resolve head-on encounters before the `is_critical` guard (`front_distance < 6 m`) fires. The latch-persistence fix matters in a narrow edge case the wider system mostly prevents from occurring. Shipped as a 3-line no-regression fix; verify on Pi 5 bench if any real-hardware run ever does catch a double-reverse symptom.
 - **Bundle vs split decision for commit `816be9d`.** Planned as `feat:` alone; bundled with Board.md RTF caveat because the caveat arose from the same sim observation that also deferred the no-regression test. Clear enough authorship link for a reader reviewing history; avoids two near-empty commits.
+- **`web_video_server` deadlocks under connection churn.** Rapid client reconnect cycles — triggered initially by undebounced dashboard Refresh clicks — lock the server into a CPU-pegged state where port 8080 accepts TCP but returns zero HTTP bytes. Full tab-close + hard-refresh does NOT recover; process restart required. Documented in `wiki/Common_Issues.md` with diagnose + recovery steps. Dashboard-side prevention: 2 s debounce + explicit tear-down.
+- **GUI E-Stop `confirm()` contradicts the "safety-critical, no debounce" comment.** `app.js:btn-emergency-stop` click handler had a comment asserting no artificial delay, but `emergencyStop()` opens a `confirm()` prompt first. Not a bug — the prompt is the software equivalent of a physical mushroom-head barrier against accidental clicks (GUI has no physical prominence, `confirm()` supplies it). Reworded the comment to make the intent explicit. Phase 5.1 field deployment should revisit: on real water with a time-critical obstacle, the confirm click could cost a second.
+- **Dashboard button debounce was already partial.** `debounceCommand()` (800 ms) existed and wrapped all mission-control buttons; missed it in an initial audit because it's a shared-timer function not a per-button `disabled` toggle. Tuning-panel buttons (Apply / Preset) had no protection; `c92c80d` adds that. Two distinct debounce mechanisms now coexist — `debounceCommand` 800 ms for mission-control + `debounceApply` / `debouncePreset` 1000 ms + visual `.cooldown` grey-out for tuning. Plus per-button `disabled + setTimeout` on the camera Refresh. Three patterns; worth knowing before adding a fourth.
 
 ## Next steps (for 23/04)
 
 Carrying from 21/04 (unchanged):
 
-1. **Supervisor conversation** — confirm water quality parameter set for Phase A (pH / turbidity / DO / temperature / conductivity — which subset?); confirm CCU low-level architecture for Phase 5 (is there a separate controller board, or direct Pi GPIO?). Single-conversation blockers on otherwise-scoped work.
+1. **Supervisor conversation** — confirm water quality parameter set for Phase A (pH / turbidity / DO / temperature / conductivity — which subset?); confirm CCU low-level architecture for Phase 5 (separate controller board, or direct Pi GPIO?). Single-conversation blockers on otherwise-scoped work.
 2. **Phase A implementation** — mock `water_quality` sensor node publishing synthetic readings tied to GPS position at 1 Hz. Blocked on 1.
 3. **Pier / bank stuck behaviour** — open navigation issue from 20/04 pressure test. Parallel-able with research-extensions track.
-4. **Residual `IDLE` alignment** — 16 dashboard + 2 CLI sites; no behaviour benefit, bundle opportunistically.
+
+*(Item 4 from the morning draft — "Residual IDLE alignment" — closed by `2d34847` this afternoon.)*
 
 New from 22/04:
 
-5. **Real no-regression test for `remap.launch.yaml`** — needs a host that can hold RTF 1.0 under load. Migrates to Phase 5.1 bench hardware (Pi 5) or a spare workstation.
-6. **`ros2 topic hz` best-effort alternative** — investigate `ros2 topic bw` / Python rate probe / `ros2 bag record` + post-processing for best-effort rate measurement. Minor unless we keep hitting sensor-rate probing needs.
-7. **C3 bench verification** — if Phase 5.1 testing ever produces a double-reverse symptom, the latch fix needs scenario-specific verification. Otherwise, no-regression + build + normal-avoidance healthy is sufficient.
+4. **Real no-regression test for `launch/remap.launch.yaml`** — needs a host that can hold Gazebo RTF 1.0 under load. Migrates to Phase 5.1 bench hardware (Pi 5) or a spare workstation.
+5. **`ros2 topic hz` best-effort alternative** — investigate `ros2 topic bw` / Python rate probe / `ros2 bag record` + post-processing for best-effort rate measurement. Minor unless we keep hitting sensor-rate probing needs.
+6. **C3 bench verification** — if Phase 5.1 testing ever produces a double-reverse symptom, the latch fix needs scenario-specific verification. Otherwise the no-regression + build + normal-avoidance-healthy evidence is sufficient.
+7. **E-Stop `confirm()` revisit for field deployment.** Keep as-is for sim (accidental-click guard pays off during dev); revisit when moving to real boat on real water. Options if the confirm click becomes a liability: press-and-hold pattern (keeps single-gesture UX, still protects against phantom clicks) or a guarded latch-style trigger.
+8. **Shared debounce-pattern consolidation** (low priority). The codebase now has three distinct debounce mechanisms (`debounceCommand` 800 ms, `debounceApply` / `debouncePreset` 1000 ms + `.cooldown` class, and the per-button `disabled + setTimeout` on camera Refresh). Worth a small refactor to unify on one helper the next time anyone touches the dashboard JS.

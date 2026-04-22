@@ -1451,7 +1451,7 @@ bash one_click_launch_all/health_check_autoboat.sh
 bash one_click_launch_all/health_check_autoboat.sh --quick
 ```
 
-The health check auto-detects the boat's mission state (IDLE/ACTIVE) and adjusts expectations — mission-dependent topics show as INFO instead of FAIL when no mission is running.
+The health check auto-detects whether a mission is currently running (planner state == `DRIVING` / `PAUSED`) versus not (any other state, including pre-mission `INIT` / `UNKNOWN`) and adjusts expectations — mission-dependent topics show as INFO instead of FAIL when no mission is running.
 
 ### One-Click Launch
 
@@ -1725,7 +1725,7 @@ Open an issue on [GitHub](https://github.com/Ghostzero00018/uvautoboat/issues) w
 
 Project finished by IMT NORD EUROPE DNM DMI-2026
 
-Last updated at 21-04-2026
+Last updated at 22-04-2026
 
 ---
 

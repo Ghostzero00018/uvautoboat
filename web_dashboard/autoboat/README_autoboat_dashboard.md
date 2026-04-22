@@ -137,7 +137,7 @@ Perception and Controller share the `/planning/set_config` topic. Parameters wit
 | ------------------ | --------------------------------------------------------------- |
 | **Stop**           | Pause mission, zero thrust                                      |
 | **Resume**         | Continue from current waypoint                                  |
-| **Emergency Stop** | Cut thrust, latch stop (red pulsing badge). Resume to recover.  |
+| **Emergency Stop** | Cut thrust, latch stop. Two shortcut badges pulse red while latched: header (`🚨 E-STOP`) and floating bottom-right FAB — both scroll to the real button and flash it (they don't fire E-Stop directly). Resume to recover. |
 | **Go Home**        | Navigate back to spawn point                                    |
 | **Reset**          | Clear waypoints, return to INIT                                 |
 
@@ -245,4 +245,4 @@ Part of the uvautoboat project — Apache License 2.0.
 
 Built with [roslibjs](http://robotwebtools.org/), [Leaflet.js](https://leafletjs.com/), [OpenStreetMap](https://www.openstreetmap.org/).
 
-Last updated: 21-04-2026
+Last updated: 22-04-2026
