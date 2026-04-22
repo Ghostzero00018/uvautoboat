@@ -355,6 +355,17 @@ class WaypointPlanner(Node):
         self.get_logger().info("Commands: ros2 run plan autoboat_cli --help")
         self.get_logger().info("=" * 50)
 
+        # Per-topic last-warn timestamps for _log_bad_json throttle.
+        self._bad_json_last_warn: dict = {}
+
+    def _log_bad_json(self, topic: str, exc: Exception, throttle_sec: float = 5.0) -> None:
+        """Warn once per `throttle_sec` when a subscribed topic delivers unparseable JSON."""
+        now = time.monotonic()
+        last = self._bad_json_last_warn.get(topic, 0.0)
+        if now - last >= throttle_sec:
+            self.get_logger().warn(f"Failed to parse {topic}: {exc}")
+            self._bad_json_last_warn[topic] = now
+
     def gps_callback(self, msg):
         """Handle GPS updates"""
         self.current_gps = (msg.latitude, msg.longitude)
@@ -549,8 +560,8 @@ class WaypointPlanner(Node):
             # Note: detour_waypoint_inserted is only reset on waypoint reach,
             # advance, or detour timeout — NOT on momentary obstacle clears,
             # which caused a feedback loop inserting 300+ detour waypoints.
-        except Exception:
-            pass
+        except Exception as e:
+            self._log_bad_json('/perception/obstacle_info', e)
     
     def detour_request_callback(self, msg):
         """Handle detour waypoint request from heading controller"""

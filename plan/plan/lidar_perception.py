@@ -38,6 +38,7 @@ from rcl_interfaces.msg import SetParametersResult
 import math
 import struct
 import json
+import time
 import numpy as np
 from collections import deque
 
@@ -202,6 +203,17 @@ class LidarPerception(Node):
         self.get_logger().info(f"Clustering: {self.cluster_distance}m eps, {self.min_cluster_size} min points")
         self.get_logger().info("=" * 60)
 
+        # Per-topic last-warn timestamps for _log_bad_json throttle.
+        self._bad_json_last_warn: dict = {}
+
+    def _log_bad_json(self, topic: str, exc: Exception, throttle_sec: float = 5.0) -> None:
+        """Warn once per `throttle_sec` when a subscribed topic delivers unparseable JSON."""
+        now = time.monotonic()
+        last = self._bad_json_last_warn.get(topic, 0.0)
+        if now - last >= throttle_sec:
+            self.get_logger().warn(f"Failed to parse {topic}: {exc}")
+            self._bad_json_last_warn[topic] = now
+
     def _load_parameters(self):
         """Load/reload all parameters from parameter server"""
         # Basic parameters
@@ -275,8 +287,8 @@ class LidarPerception(Node):
             # Narrower when heading straight, wider when turning
             heading_diff = abs(self.target_angle)
             self.front_half_width = math.pi/6 + (math.pi/12) * min(1.0, heading_diff / (math.pi/2))
-        except Exception:
-            pass
+        except Exception as e:
+            self._log_bad_json('/planning/current_target', e)
 
     def _publish_json(self, publisher, payload, label):
         """Safe JSON publish: refuses to emit NaN/Inf (e.g. empty-scan divisions)

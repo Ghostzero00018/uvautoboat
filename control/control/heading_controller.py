@@ -790,10 +790,11 @@ class HeadingController(Node):
                     self.publish_status("REVERSING")
                     return
 
-            # After reverse cap, fall through to avoidance turning
+            # After reverse cap, fall through to avoidance turning.
+            # Keep force_turn_after_reverse set by L782 — the `else` branch
+            # below clears it on critical→non-critical transition.
             self.reverse_start_time = None
             self.reverse_start_pos = None
-            self.force_turn_after_reverse = False
             self.avoidance_mode = True
         else:
             self.reverse_start_time = None
