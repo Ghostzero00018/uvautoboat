@@ -354,9 +354,20 @@ Priority-ordered based on what's actionable on the Linux workstation tomorrow (s
    *Plan:* re-check `ros2 topic hz --help` + `ros2 topic bw --help` for any missed flags in Jazzy; if none, write a small `tools/rate_probe.py` that takes topic + QoS profile + duration and prints mean / stdev / dropped count; verify against `/wamv/sensors/lidars/lidar_wamv_sensor/points` — expect ~20 Hz vs today's misleading ~3 Hz.
    *Rollover cost:* low — only bites when we need another sensor-rate baseline.
 
+4. **Extract `resetGroupToDefaults()` helper** (~15 min, Priority 4).
+   `resetPerceptionToDefaults()` and `resetControllerToDefaults()` in `app.js:1469-1488` are ~98% identical — only the controller variant additionally clears the VFH `<select>`. Extract a shared helper that takes the defaults dict + an optional extra-reset callback. Saves ~15-20 LOC.
+   *Plan:* single `app.js` edit; visual diff review; load dashboard and click each reset button to confirm both defaults dicts still apply.
+   *Rollover cost:* zero — pure tech debt.
+
+5. **`scrollToEmergencyStop()` debounce polish** (~10 min, optional).
+   Header + footer E-Stop badges currently have no rate limit; rapid clicks cause visual thrash on `scrollIntoView()`. Wrap the handler with a 300 ms debounce. Not safety-relevant — badges are shortcuts to the real E-Stop button, they don't fire E-Stop themselves.
+   *Plan:* single `app.js` edit; click header badge rapidly and confirm no visual thrash; confirm real `btn-emergency-stop` still flashes correctly on first click.
+   *Rollover cost:* zero.
+
 ### Filler / if-time
 
 - **Health check under low RTF** (~15 min). Today the laptop dropped to 30-40 % RTF under load. Does the health check correctly surface this? If perception publishes at 6 Hz instead of 20 Hz, is the result `FAIL` / `WARN` / `TUNED` / `PASS`? Quick verification; may surface a 4-state refinement.
+- **Health-check count verification** (~5 min). `README.md:128` + `README.md:236` claim "49 checks"; static `pass` / `fail` / `warn` / `tuned` call sites in `one_click_launch_all/health_check_autoboat.sh` total ~27, but `for node` / `for topic` loops + `check_param` helper mean the runtime count differs from the static count. Run the script once, count actual output lines, then update the doc claim (or adjust the script) to agree. Do not change either side from speculation.
 - **Dashboard UX audit pass 2** (~1 h). Today polished camera + tuning; mission-control edge cases still unexamined (e.g., Reset during Confirm window, Go Home while already home, multi-click Joystick toggle during mid-mission). Reproduce + flag, don't necessarily fix.
 
 ### Blocked / deferred (not on 23/04)
