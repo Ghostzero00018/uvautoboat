@@ -333,20 +333,40 @@ Use this section to capture anything surprising during the day — file state dr
 - **GUI E-Stop `confirm()` contradicts the "safety-critical, no debounce" comment.** `app.js:btn-emergency-stop` click handler had a comment asserting no artificial delay, but `emergencyStop()` opens a `confirm()` prompt first. Not a bug — the prompt is the software equivalent of a physical mushroom-head barrier against accidental clicks (GUI has no physical prominence, `confirm()` supplies it). Reworded the comment to make the intent explicit. Phase 5.1 field deployment should revisit: on real water with a time-critical obstacle, the confirm click could cost a second.
 - **Dashboard button debounce was already partial.** `debounceCommand()` (800 ms) existed and wrapped all mission-control buttons; missed it in an initial audit because it's a shared-timer function not a per-button `disabled` toggle. Tuning-panel buttons (Apply / Preset) had no protection; `c92c80d` adds that. Two distinct debounce mechanisms now coexist — `debounceCommand` 800 ms for mission-control + `debounceApply` / `debouncePreset` 1000 ms + visual `.cooldown` grey-out for tuning. Plus per-button `disabled + setTimeout` on the camera Refresh. Three patterns; worth knowing before adding a fourth.
 
-## Next steps (for 23/04)
+## Next steps — concrete plan for 23/04
 
-Carrying from 21/04 (unchanged):
+Priority-ordered based on what's actionable on the Linux workstation tomorrow (supervisor + Phase A are blocked pending that conversation; remap no-regression migrates to Phase 5.1 bench hardware). Each item with rough time estimate for rollover planning.
 
-1. **Supervisor conversation** — confirm water quality parameter set for Phase A (pH / turbidity / DO / temperature / conductivity — which subset?); confirm CCU low-level architecture for Phase 5 (separate controller board, or direct Pi GPIO?). Single-conversation blockers on otherwise-scoped work.
-2. **Phase A implementation** — mock `water_quality` sensor node publishing synthetic readings tied to GPS position at 1 Hz. Blocked on 1.
-3. **Pier / bank stuck behaviour** — open navigation issue from 20/04 pressure test. Parallel-able with research-extensions track.
+### Actionable tomorrow
 
-*(Item 4 from the morning draft — "Residual IDLE alignment" — closed by `2d34847` this afternoon.)*
+1. **Pier / bank stuck behaviour** (~2-3 h, Priority 1).
+   Open from 20/04 pressure test. Reproduce the scenario in sim, diagnose which subsystem holds its own — perception (LiDAR not seeing the bank cleanly), planner (detour logic loops / auto-detour fails), or controller (avoidance turn insufficient) — then fix in the narrowest scope.
+   *Plan:* refresh context via `working_diary/2026-04-20_*.md`; launch `sydney_regatta_DEFAULT`; drive toward a pier until the stuck-detection window fires (12 s no movement / 1 m); capture per-subsystem terminal output; targeted fix + build + re-test.
+   *Rollover cost if not done:* low — open since 20/04, can stay open.
 
-New from 22/04:
+2. **Shared debounce-pattern consolidation** (~1 h, Priority 2).
+   Three debounce mechanisms now coexist in `app.js`: `debounceCommand` 800 ms (8 mission-control buttons), `debounceApply` / `debouncePreset` 1000 ms + `.cooldown` class (8 tuning buttons), per-button `disabled + setTimeout` on camera Refresh (1 button, 2 s). Three patterns for one problem.
+   *Plan:* extract a single `debounceGroup(ids, ms, options)` helper that covers group + per-button + optional-log-warning cases; migrate the three callers; sanity-test each button group via the test pipelines already in the 22/04 diary above.
+   *Rollover cost:* zero — pure tech debt.
 
-1. **Real no-regression test for `launch/remap.launch.yaml`** — needs a host that can hold Gazebo RTF 1.0 under load. Migrates to Phase 5.1 bench hardware (Pi 5) or a spare workstation.
-2. **`ros2 topic hz` best-effort alternative** — investigate `ros2 topic bw` / Python rate probe / `ros2 bag record` + post-processing for best-effort rate measurement. Minor unless we keep hitting sensor-rate probing needs.
-3. **C3 bench verification** — if Phase 5.1 testing ever produces a double-reverse symptom, the latch fix needs scenario-specific verification. Otherwise the no-regression + build + normal-avoidance-healthy evidence is sufficient.
-4. **E-Stop `confirm()` revisit for field deployment.** Keep as-is for sim (accidental-click guard pays off during dev); revisit when moving to real boat on real water. Options if the confirm click becomes a liability: press-and-hold pattern (keeps single-gesture UX, still protects against phantom clicks) or a guarded latch-style trigger.
-5. **Shared debounce-pattern consolidation** (low priority). The codebase now has three distinct debounce mechanisms (`debounceCommand` 800 ms, `debounceApply` / `debouncePreset` 1000 ms + `.cooldown` class, and the per-button `disabled + setTimeout` on camera Refresh). Worth a small refactor to unify on one helper the next time anyone touches the dashboard JS.
+3. **`ros2 topic hz` best-effort probe** (~45 min, Priority 3).
+   Known-unknown #3 from today — the default probe can't match best-effort QoS, returns misleading low Hz for sensor topics.
+   *Plan:* re-check `ros2 topic hz --help` + `ros2 topic bw --help` for any missed flags in Jazzy; if none, write a small `tools/rate_probe.py` that takes topic + QoS profile + duration and prints mean / stdev / dropped count; verify against `/wamv/sensors/lidars/lidar_wamv_sensor/points` — expect ~20 Hz vs today's misleading ~3 Hz.
+   *Rollover cost:* low — only bites when we need another sensor-rate baseline.
+
+### Filler / if-time
+
+- **Health check under low RTF** (~15 min). Today the laptop dropped to 30-40 % RTF under load. Does the health check correctly surface this? If perception publishes at 6 Hz instead of 20 Hz, is the result `FAIL` / `WARN` / `TUNED` / `PASS`? Quick verification; may surface a 4-state refinement.
+- **Dashboard UX audit pass 2** (~1 h). Today polished camera + tuning; mission-control edge cases still unexamined (e.g., Reset during Confirm window, Go Home while already home, multi-click Joystick toggle during mid-mission). Reproduce + flag, don't necessarily fix.
+
+### Blocked / deferred (not on 23/04)
+
+- **Supervisor conversation** — confirm water quality parameter set for Phase A (pH / turbidity / DO / temperature / conductivity — which subset?); confirm CCU low-level architecture for Phase 5 (separate controller board, or direct Pi GPIO?). Blocking on supervisor availability.
+- **Phase A implementation** — mock `water_quality` sensor node publishing synthetic readings tied to GPS position at 1 Hz. Blocked on supervisor answer to above.
+- **Real no-regression test for `launch/remap.launch.yaml`** — needs a host that can hold Gazebo RTF 1.0 under load. Migrates to Phase 5.1 bench (Pi 5) or a spare workstation.
+- **C3 bench verification** — only meaningful if a double-reverse symptom actually appears on real hardware; passive wait.
+- **E-Stop `confirm()` revisit for field deployment** — keep as-is for sim (accidental-click guard pays off during dev); decision for Phase 5.1 when real-water operator workflow is known. Options: press-and-hold pattern (single-gesture UX, phantom-click protection) or guarded latch-style trigger.
+
+### Closed this afternoon
+
+- ✅ **Residual IDLE alignment** (carried from 21/04) — mission-state sentinel renamed `UNKNOWN` in `2d34847`; 13 sites migrated, 5 escape-direction sites deliberately preserved.
