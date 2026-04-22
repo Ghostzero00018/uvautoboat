@@ -162,7 +162,7 @@ The whole repo is expected to run on the Pi 5.
 | Task | Status |
 |------|:------:|
 | Write `remap.launch.yaml` aliasing `/wamv/*` → neutral topics; verify stack still runs | 🟡 paper design done; file not yet |
-| Profile `/perception/obstacle_info` Hz in VRX; document baseline | ⬜ |
+| Profile `/perception/obstacle_info` Hz in VRX; document baseline | ✅ 20.00 Hz mean, 4 ms stdev over 120 s under Buoy Field mission (22/04/2026, Linux workstation) |
 | Stub bridge node (inputs `/control/thrust_cmd`, outputs thrusters) with pass-through behaviour | 🟡 pseudocode drafted |
 | Inventory of every `/wamv/*` reference across Python, YAML, JS, HTML | ✅ done |
 | Supervisor conversation: confirm CCU architecture (is there a low-level controller? what chip? what firmware? any interface-control document?) | 🟡 checklist drafted |
