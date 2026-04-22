@@ -345,8 +345,8 @@ Carrying from 21/04 (unchanged):
 
 New from 22/04:
 
-4. **Real no-regression test for `launch/remap.launch.yaml`** — needs a host that can hold Gazebo RTF 1.0 under load. Migrates to Phase 5.1 bench hardware (Pi 5) or a spare workstation.
-5. **`ros2 topic hz` best-effort alternative** — investigate `ros2 topic bw` / Python rate probe / `ros2 bag record` + post-processing for best-effort rate measurement. Minor unless we keep hitting sensor-rate probing needs.
-6. **C3 bench verification** — if Phase 5.1 testing ever produces a double-reverse symptom, the latch fix needs scenario-specific verification. Otherwise the no-regression + build + normal-avoidance-healthy evidence is sufficient.
-7. **E-Stop `confirm()` revisit for field deployment.** Keep as-is for sim (accidental-click guard pays off during dev); revisit when moving to real boat on real water. Options if the confirm click becomes a liability: press-and-hold pattern (keeps single-gesture UX, still protects against phantom clicks) or a guarded latch-style trigger.
-8. **Shared debounce-pattern consolidation** (low priority). The codebase now has three distinct debounce mechanisms (`debounceCommand` 800 ms, `debounceApply` / `debouncePreset` 1000 ms + `.cooldown` class, and the per-button `disabled + setTimeout` on camera Refresh). Worth a small refactor to unify on one helper the next time anyone touches the dashboard JS.
+1. **Real no-regression test for `launch/remap.launch.yaml`** — needs a host that can hold Gazebo RTF 1.0 under load. Migrates to Phase 5.1 bench hardware (Pi 5) or a spare workstation.
+2. **`ros2 topic hz` best-effort alternative** — investigate `ros2 topic bw` / Python rate probe / `ros2 bag record` + post-processing for best-effort rate measurement. Minor unless we keep hitting sensor-rate probing needs.
+3. **C3 bench verification** — if Phase 5.1 testing ever produces a double-reverse symptom, the latch fix needs scenario-specific verification. Otherwise the no-regression + build + normal-avoidance-healthy evidence is sufficient.
+4. **E-Stop `confirm()` revisit for field deployment.** Keep as-is for sim (accidental-click guard pays off during dev); revisit when moving to real boat on real water. Options if the confirm click becomes a liability: press-and-hold pattern (keeps single-gesture UX, still protects against phantom clicks) or a guarded latch-style trigger.
+5. **Shared debounce-pattern consolidation** (low priority). The codebase now has three distinct debounce mechanisms (`debounceCommand` 800 ms, `debounceApply` / `debouncePreset` 1000 ms + `.cooldown` class, and the per-button `disabled + setTimeout` on camera Refresh). Worth a small refactor to unify on one helper the next time anyone touches the dashboard JS.
