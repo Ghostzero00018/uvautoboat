@@ -54,16 +54,16 @@ Scientific community fit: RMC2 — modeling, control, and communication of compl
 - **Low-level CCU (TBD):** Either the Pi drives thrusters directly via GPIO PWM, or a separate microcontroller (STM32 / ESP32 / commercial motor controller) is present. This is the single largest schedule risk — the supervisor conversation decides whether a bridge node is needed at all.
 - **Transition path:** paper design is a two-layer remap — `topic_tools/relay` from VRX `/wamv/*` names to neutral `/sensors` / `/actuators` names (layer A), plus an optional bridge node for real-hardware protocol translation (layer B). The three pipeline nodes continue to subscribe to VRX names during Phase 5.0; no code churn required until layer A is proven.
 
-### Status of prep tasks (as of 21/04/2026)
+### Status of prep tasks (as of 22/04/2026)
 
 | Task | Status |
 |:-----|:------:|
 | `/wamv/*` reference inventory across Python / YAML / JS / HTML | ✅ done (in scope plan) |
-| `remap.launch.yaml` paper design | ✅ done; runnable file not yet written |
+| `remap.launch.yaml` paper design + runnable file | ✅ deployed 22/04/2026; 6 relays + conditional bridge stub |
 | Bridge-node pseudocode with pass-through behaviour | ✅ drafted |
 | Supervisor CCU checklist (24 questions) | ✅ drafted |
 | Launcher readiness polls (pre-requisite for Pi 5 slower-CPU timing) | ✅ landed 20/04/2026 |
-| Profile `/perception/obstacle_info` Hz in VRX; baseline for Pi 5 comparison | ❌ |
+| Profile `/perception/obstacle_info` Hz in VRX; baseline for Pi 5 comparison | ✅ 20.00 Hz at RTF ≈ 1.0 (22/04/2026); rate tracks Gazebo RTF |
 | Shore-comms plan (WiFi range test, 4G fallback) | ❌ |
 
 ### Blockers

@@ -104,13 +104,35 @@ git commit -m "fix: log bad JSON on subscribers and fix reverse-to-turn latch"
 git push
 ```
 
-**[To fill]** — final file list, commit SHA, any surprises during build.
+**Outcome.** Files modified: `plan/plan/lidar_perception.py`, `plan/plan/waypoint_planner.py`, `control/control/heading_controller.py`. Commit `3389554`. No surprises during build — `py_compile` clean per-file, `colcon build --packages-select plan control --merge-install` finished 2/2 in 1.39 s.
+
+Implementation matched the existing CLI helper from `9155cdf` exactly (attribute name `_bad_json_last_warn`, signature `_log_bad_json(self, topic, exc, throttle_sec=5.0)`, `time.monotonic()` timing, message format `"Failed to parse {topic}: {exc}"`). `lidar_perception.py` needed `import time` added; `waypoint_planner.py` already had it.
+
+**Live verification** (with full stack running):
+
+- **C1** — injected garbage via `ros2 topic pub --once /planning/current_target std_msgs/msg/String "data: 'not json'"` × 5 in rapid succession; saw exactly **one** `[WARN] Failed to parse /planning/current_target: …` per 5 s window in the LiDAR Perception terminal — throttle working. Previously silent.
+- **C2** — same injection pattern on `/perception/obstacle_info`; one WARN at the planner, valid obstacle traffic continued at ~5 Hz alongside.
+- **C3** — scenario genuinely unreachable in VRX under `sydney_regatta_DEFAULT`. The planner's opportunistic **8 m side-detour** (L23 `📍 Side detour 1/3 (RIGHT)` log) plus the controller's aggressive avoidance turn (`diff_bias` up to 18 at urgency > 40%) resolve head-on buoy/pier encounters before `front_distance` drops below the 6 m critical threshold. Joystick attempts to force head-on approach to a pier got side-turned by avoidance the moment control was released. Shipped on no-regression grounds — fix is 3 lines in a state machine, `py_compile` + build clean, normal mission avoidance healthy. If regressing, symptom is unmistakable (double-reverse cycle, ~8 s where ~4 s is expected).
 
 ## Block B — `launch/remap.launch.yaml` runnable
 
 Follow the Deploy Workflow in `working_diary/2026-04-21_to_2026-04-22_remap_launch_draft.md`. All 7 steps are pre-specified there with exact commands and expected outputs.
 
-**[To fill]** — verification checkboxes from the draft (8 items), commit SHA, any QoS / rate surprises.
+**Outcome.** File created at `launch/remap.launch.yaml` (140 lines, 9 launch items). Commit `816be9d` — bundled with the Board.md RTF caveat on the perception-rate row to collapse what would otherwise have been a separate docs commit (day's total landed as 4 commits instead of 5 planned).
+
+**Draft bug surfaced.** Jazzy's YAML launch frontend rejects the nested `condition: "..."` key inside `node:` with `ValueError: Unexpected key(s) found in 'node': {'condition'}`. Correct syntax is `if:` / `unless:` as direct siblings of `pkg` / `exec`. Fixed 6× `condition: "unless $(var use_real_hardware)"` → `unless: $(var use_real_hardware)` and 1× `condition: "if $(var use_real_hardware)"` → `if: $(var use_real_hardware)`. Draft markdown untouched (diary history, not tracked as authoritative).
+
+**Verification checkboxes** (from the draft's step-7 block):
+
+- ✅ File created at `launch/remap.launch.yaml` with relay layer A + bridge stub B
+- ✅ `topic_tools` package confirmed installed (`/opt/ros/jazzy`)
+- ✅ YAML parses via `python3 -c "import yaml; yaml.safe_load(...)"` — 9 items
+- ✅ `ros2 launch remap.launch.yaml` starts 6 relay nodes in <3 s (bridge stanza correctly skipped)
+- 🟡 `ros2 topic list | grep /sensors/` shows **4** neutral topics, not 6. The 2 actuator relays (`/actuators/thrusters/*/cmd`) are lazy — `topic_tools/relay` auto-detects type from input publisher, and nothing publishes on `/actuators/*` yet (that's Phase 5.2 work). Expected and correct.
+- ✅ `/sensors/gps/fix` rate matches source: ~8.7 Hz on both `/wamv/…/gps/fix` and `/sensors/gps/fix` — relay is healthy for GPS.
+- 🟡 `/sensors/lidar/points` rate comparison **deferred**. `ros2 topic hz` default QoS (reliable) can't match the best-effort LiDAR publisher, so the probe returns misleading ~3 Hz on both sides. Jazzy's `ros2 topic hz` has no `--qos-*` flag (only `ros2 topic echo` does). Confirmed relay publishes by `ros2 topic echo --qos-reliability best_effort --once /sensors/lidar/points` returning a message.
+- 🟡 Full VRX mission no-regression **deferred to Phase 5.1 bench hardware**. Laptop Gazebo RTF drops to 30-40% once VRX + nav stack + 6 relays + probes all compete for CPU, so can't hold 1.0 RTF long enough to establish a clean no-regression baseline. The relay is structurally correct and operationally flowing messages; functional verification under load needs a real-time-capable host.
+- ✅ Commit + push landed as `816be9d`.
 
 ## Block C — Perception publish-rate profiling
 
@@ -150,7 +172,17 @@ git commit -m "docs: record perception publish-rate baseline for Phase 5 Pi-5 co
 git push
 ```
 
-**[To fill]** — measured rate, stdev, any drops, Board.md row updated.
+**Outcome.** `ros2 topic hz /perception/obstacle_info` for 120 s under Buoy Field mission:
+
+- Mean: **20.000 Hz** (2353 samples)
+- Min interval: 0.010 s (100 Hz instantaneous — single outlier, likely DDS reconnect)
+- Max interval: 0.091 s (11 Hz instantaneous — worst dropout)
+- Std dev: **0.00400 s** (~4 ms jitter on 50 ms period — negligible)
+- Zero sustained dropouts, no bimodal distribution
+
+Measurement taken in a fresh-session window before RTF degradation. Later in the day, after launching the relay layer + running multiple probes, Gazebo RTF dropped to 30-40% on this host — perception rate tracks RTF proportionally (saw 0.6-0.7 Hz under that load). That behaviour is expected and means the 20 Hz number is the Gazebo-sim-time rate, not a steady-state wall-clock guarantee on this laptop.
+
+Board.md row 165 flipped ⬜ → ✅ in commit `65709a0`; RTF caveat appended in follow-up commit `816be9d` so a reader doesn't misinterpret the number as hardware-independent. Pi 5 on-water is the real Phase 5 baseline to compare against.
 
 ## Block D — I6 docstring refresh
 
@@ -195,7 +227,13 @@ git commit -m "docs: refresh node docstrings to match current pub/sub + state ma
 git push
 ```
 
-**[To fill]** — three docstrings updated, commit SHA.
+**Outcome.** Three module-level docstrings refreshed per the 21/04 draft. Commit `cd009c0`.
+
+- `plan/plan/lidar_perception.py` — added `/planning/set_config` + `/control/heading_error` subs, added `/perception/param_ranges` pub, replaced stale "Velocity estimation (moving obstacle tracking)" line with "VFH polar histogram with target-aware gap selection (uses /control/heading_error)".
+- `control/control/heading_controller.py` — added `/planning/mission_status` / `/planning/set_config` / `/planning/emergency_stop` subs, added `/control/heading_error` + `/control/param_ranges` pubs, added an inline **Control constants** subsection listing 6 module-scope values (MAX_THRUST, SAFE_THRUST, TURN_POWER_LIMIT, REVERSE_BURST_THRUST, ESCAPE_TURN_POWER, INTEGRAL_LIMIT), rewrote the "turn left until clear" anti-stuck line to "turn toward the clearer side", expanded the Kalman line to mention feed-forward application.
+- `plan/plan/waypoint_planner.py` — state machine expanded 5→8 states (happy path + PAUSED / JOYSTICK / EMERGENCY_STOP), Features expanded 4→6 items (multi-level obstacle handling with thresholds + Runtime A* + Hybrid Mode toggle), added 5 new subs (`/perception/obstacle_info`, `/planning/mission_command`, `/planning/set_config`, `/planning/emergency_stop`, `/control/replan_request`), 2 new pubs (`/planning/config`, `/planning/param_ranges`), and a Services section for the two `std_srvs/Trigger` services.
+
+Block D landed on the same 3 files as Block A. Used `git add -p` hunk-split to separate the runtime hunks (init dict, helper method, except-block replacement, latch fix) under the `fix:` commit from the top-docstring hunks under the `docs:` commit. Split verified via `git diff --cached` / `git diff` between commits.
 
 ## Block E — Wrap + diary fill-in
 
@@ -213,17 +251,16 @@ git push
    git push
    ```
 
-## Commits trail (fill as commits land)
+## Commits landed
 
 ```text
-<SHA> fix: log bad JSON on subscribers and fix reverse-to-turn latch
-<SHA> feat: add remap.launch.yaml for Phase 5 topic namespace translation
-<SHA> docs: record perception publish-rate baseline for Phase 5 Pi-5 comparison
-<SHA> docs: refresh node docstrings to match current pub/sub + state machine
-<SHA> docs: fill 22/04 working diary with day's outcomes
+3389554 fix: log bad JSON on subscribers and fix reverse-to-turn latch
+cd009c0 docs: refresh node docstrings to match current pub/sub + state machine
+65709a0 docs: record perception publish-rate baseline for Phase 5 Pi-5 comparison
+816be9d feat: add remap.launch.yaml and qualify perception-Hz baseline with RTF note
 ```
 
-Expected: 5 commits total. Each is independently revertable if post-commit review finds issues.
+4 commits (not 5 as planned) — the RTF caveat for the perception row got bundled with the `remap.launch.yaml` `feat:` commit (`816be9d`) because both arose from the same sim-load observation. The diary + Board-timeline + wiki-sync commit(s) follow this section.
 
 ## Rollover checkpoints
 
@@ -241,10 +278,23 @@ Natural stopping points if time runs short:
 
 Use this section to capture anything surprising during the day — file state drift, QoS effects, unexpected behaviour. Each entry: file:line or command + observation + fix or follow-up.
 
-- [To fill]
+- **Draft YAML launch-condition syntax bug.** `working_diary/2026-04-21_to_2026-04-22_remap_launch_draft.md` used `condition: "unless $(var …)"` nested inside `node:`; Jazzy rejects with `ValueError: Unexpected key(s) found in 'node': {'condition'}`. Correct syntax is `if:` / `unless:` as siblings of `pkg` / `exec`. Fixed in the landed `launch/remap.launch.yaml`; draft left untouched (it's working-diary history, not an authoritative reference). Follow-up: any future YAML launch drafts should be syntax-checked against Jazzy's parser (`python3 -c "import yaml; yaml.safe_load(...)"` catches indentation but not schema-level rejections — the real check is `ros2 launch <file>` or reading the current `launch.yaml` frontend schema).
+- **Laptop RTF ceiling.** This workstation can't hold Gazebo RTF 1.0 once VRX + 3 nav nodes + 6 relay nodes + 2-3 ROS 2 probing tools are all live. Drops to 30-40%. Affects any no-regression test requiring steady-state wall-clock rate comparison. Phase 5.1 will target Pi 5 on-water; the no-regression test for `remap.launch.yaml` migrates there.
+- **`ros2 topic hz` has no QoS flags in Jazzy.** `ros2 topic echo` accepts `--qos-reliability`, `--qos-durability`, etc.; `ros2 topic hz` does not. Best-effort topics (VRX sensor data) can't be rate-probed directly — either echo with matching QoS and count, or measure a downstream consumer (we used `/perception/obstacle_info` as a proxy for LiDAR rate).
+- **C3 unreachable in VRX.** Planner-side 8 m opportunistic side-detour + controller's aggressive avoidance turn resolve head-on encounters before the `is_critical` guard (`front_distance < 6 m`) fires. The latch-persistence fix matters in a narrow edge case the wider system mostly prevents from occurring. Shipped as a 3-line no-regression fix; verify on Pi 5 bench if any real-hardware run ever does catch a double-reverse symptom.
+- **Bundle vs split decision for commit `816be9d`.** Planned as `feat:` alone; bundled with Board.md RTF caveat because the caveat arose from the same sim observation that also deferred the no-regression test. Clear enough authorship link for a reader reviewing history; avoids two near-empty commits.
 
 ## Next steps (for 23/04)
 
-Fill at end of day based on what actually landed and what got deferred.
+Carrying from 21/04 (unchanged):
 
-- [To fill]
+1. **Supervisor conversation** — confirm water quality parameter set for Phase A (pH / turbidity / DO / temperature / conductivity — which subset?); confirm CCU low-level architecture for Phase 5 (is there a separate controller board, or direct Pi GPIO?). Single-conversation blockers on otherwise-scoped work.
+2. **Phase A implementation** — mock `water_quality` sensor node publishing synthetic readings tied to GPS position at 1 Hz. Blocked on 1.
+3. **Pier / bank stuck behaviour** — open navigation issue from 20/04 pressure test. Parallel-able with research-extensions track.
+4. **Residual `IDLE` alignment** — 16 dashboard + 2 CLI sites; no behaviour benefit, bundle opportunistically.
+
+New from 22/04:
+
+5. **Real no-regression test for `remap.launch.yaml`** — needs a host that can hold RTF 1.0 under load. Migrates to Phase 5.1 bench hardware (Pi 5) or a spare workstation.
+6. **`ros2 topic hz` best-effort alternative** — investigate `ros2 topic bw` / Python rate probe / `ros2 bag record` + post-processing for best-effort rate measurement. Minor unless we keep hitting sensor-rate probing needs.
+7. **C3 bench verification** — if Phase 5.1 testing ever produces a double-reverse symptom, the latch fix needs scenario-specific verification. Otherwise, no-regression + build + normal-avoidance healthy is sufficient.

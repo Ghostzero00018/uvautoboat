@@ -8,7 +8,7 @@
 |---|---|
 | **Project** | AutoBoat Navigation System |
 | **Repository** | [Ghostzero00018/uvautoboat](https://github.com/Ghostzero00018/uvautoboat) |
-| **Last Updated** | 21-04-2026 |
+| **Last Updated** | 22-04-2026 |
 | **Status** | 🟢 Simulation ready (A* path planning + one-click launcher + wiki docs + dashboard config system). Real-hardware deployment begins next week. |
 
 ---
@@ -161,7 +161,7 @@ The whole repo is expected to run on the Pi 5.
 
 | Task | Status |
 |------|:------:|
-| Write `remap.launch.yaml` aliasing `/wamv/*` → neutral topics; verify stack still runs | 🟡 paper design done; file not yet |
+| Write `remap.launch.yaml` aliasing `/wamv/*` → neutral topics; verify stack still runs | 🟡 file deployed 22/04/2026 (`816be9d`); 6 relays up + GPS matches source 1:1, but no-regression mission test deferred to Phase 5.1 bench (laptop RTF too low to hold a clean baseline) |
 | Profile `/perception/obstacle_info` Hz in VRX; document baseline | ✅ 20.00 Hz at RTF ≈ 1.0, 4 ms stdev, 120 s under Buoy Field mission (22/04/2026 Linux workstation). Rate tracks Gazebo RTF — this host drops to 30-40% under heavier load; Pi 5 on-water is the real Phase 5 baseline to compare against. |
 | Stub bridge node (inputs `/control/thrust_cmd`, outputs thrusters) with pass-through behaviour | 🟡 pseudocode drafted |
 | Inventory of every `/wamv/*` reference across Python, YAML, JS, HTML | ✅ done |
@@ -268,6 +268,10 @@ The whole repo is expected to run on the Pi 5.
 | 20-04-2026 | Tier 2 close-out: latched `/planning/emergency_stop` Bool channel; `std_srvs/Trigger` services for stop + generate (drops CLI/dashboard retry loops); `position_history` reset on stop resume (prevent Kalman spike); JSON schema guards at publishers + visible dashboard errors; drop redundant Waiting-for-sync label | ✅ |
 | 21-04-2026 | Health check 4-state parameter validation (PASS/TUNED/WARN/FAIL) via `config_tuned` flag on 3 nodes; dashboard `[TUNED]` magenta styling | ✅ |
 | 21-04-2026 | Markdown refresh post-Tier-2: Glossary health-check entry, USER_MANUAL topology + services table, dashboard README service-client section | ✅ |
+| 22-04-2026 | C1/C2/C3 bug fixes (`3389554`): `_log_bad_json` helper propagated from CLI to perception + planner callbacks (drops `except Exception: pass` silent fallbacks); `force_turn_after_reverse` latch now persists across control ticks — removed the unconditional same-tick reset that made the flag dead | ✅ |
+| 22-04-2026 | I6 docstring refresh on 3 nodes (`cd009c0`): pub/sub surfaces match code; 8-state planner machine documented; Trigger services section added; `/control/heading_error`, `/planning/emergency_stop`, `/planning/set_config`, `/perception/param_ranges`, `/control/param_ranges` now in docstrings | ✅ |
+| 22-04-2026 | Perception publish-rate baseline recorded (`65709a0`, RTF caveat `816be9d`): 20.00 Hz mean, 4 ms stdev, 120 s Buoy Field mission at RTF ≈ 1.0; rate tracks Gazebo RTF, Pi 5 on-water remains the real Phase 5 comparison target | ✅ |
+| 22-04-2026 | `launch/remap.launch.yaml` deployed (`816be9d`): 6 `topic_tools/relay` nodes (GPS / IMU / LiDAR / camera / thrust L+R) gated on `use_real_hardware:=false`, plus conditional bridge-node stub for Phase 5.1; YAML `if:`/`unless:` syntax used (draft's nested `condition:` rejected by Jazzy launch schema) | ✅ |
 | TBD | Real-hardware deployment (Pi 5 as confirmed target; low-level CCU architecture TBD) | 🔜 |
 | TBD | Coverage Planning | ⏸️ |
 
@@ -342,7 +346,7 @@ Current position ──>│  (in Planner)       │
 
 ## 📜 Acknowledgments
 
-**Document Version**: 9.6 | **Last Updated**: 21-04-2026
+**Document Version**: 9.7 | **Last Updated**: 22-04-2026
 
 **Maintained By**: AutoBoat Development Team
 

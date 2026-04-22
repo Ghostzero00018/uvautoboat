@@ -85,7 +85,7 @@ The **Modular (Perception–Planner–Controller)** three-node pipeline is the a
 - Sector-based obstacle detection
 - Temporal filtering for reliability
 - Obstacle clustering and gap detection
-- Moving obstacle tracking
+- VFH polar histogram with target-aware gap selection
 
 ### 2. Planning
 

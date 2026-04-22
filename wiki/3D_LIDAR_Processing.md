@@ -55,8 +55,8 @@ The Perception node v2.0 uses an 8-step processing pipeline:
 │  7. OBSTACLE CLUSTERING (DBSCAN, eps=2m)                │
 │     ↓ Groups points into distinct obstacles            │
 ├─────────────────────────────────────────────────────────┤
-│  8. GAP DETECTION & VELOCITY ESTIMATION                 │
-│     ↓ Finds passable gaps, tracks moving obstacles     │
+│  8. GAP DETECTION & VFH POLAR HISTOGRAM                 │
+│     ↓ Finds passable gaps, picks target-aware free gap │
 └─────────────────────────────────────────────────────────┘
 ```
 
