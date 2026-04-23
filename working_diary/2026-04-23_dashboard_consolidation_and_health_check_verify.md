@@ -52,7 +52,7 @@ Three outcomes:
 - **Runtime count ≠ 49 but stable across two consecutive runs** → update both README lines to the real number. Commit: `docs: correct health-check count claim`.
 - **Runtime count varies between runs (e.g., depends on IDLE vs ACTIVE mission state)** → document the state dependency as a range in the README (e.g., "37-49 checks depending on mission state"); note the condition.
 
-**Outcome.** [To fill — runtime count, whether README was updated, commit hash if applicable.]
+**Outcome.** Runtime count **= 49 in both IDLE and ACTIVE** (IDLE: 49 PASS + 0 TUNED; ACTIVE: 41 PASS + 8 TUNED from previously applied presets, plus 1 FAIL on `/web_video_server` — unrelated, stuck MJPEG socket from prior refresh-click testing). `README.md:128` and `:236` claim of "49 checks" is accurate. Outcome 1 — no docs change. No commit. One minor observation logged under Known unknowns.
 
 ## Block B — `scrollToEmergencyStop()` debounce polish
 
@@ -85,7 +85,7 @@ git commit -m "fix(dashboard): debounce e-stop shortcut handler to prevent visua
 git push
 ```
 
-**Outcome.** [To fill — verification result, commit hash.]
+**Outcome.** Applied 300 ms debounce — `let scrollEstopTimer = 0;` above the arrow function + `Date.now()` gate at body entry. Verified: rapid header-badge clicks collapse to a single scroll+flash; footer-badge after cooldown fires normally; real `btn-emergency-stop` unaffected (confirm modal opens). Commit `03e5c2d`.
 
 ## Block C — `resetGroupToDefaults()` helper extraction
 
@@ -130,7 +130,7 @@ git commit -m "refactor(dashboard): extract shared reset-to-defaults helper"
 git push
 ```
 
-**Outcome.** [To fill — LOC delta, commit hash, any wrinkle.]
+**Outcome.** Extracted `resetGroupToDefaults(defaults, label, extraReset)` helper; kept `resetPerceptionToDefaults` / `resetControllerToDefaults` as 2-line thin wrappers to preserve callsite API (same pattern as the later Block D migration). Diff: 13 insertions / 13 deletions — LOC flat. The win is deduplication, not shaving lines; diary's 15–20 LOC estimate was optimistic. Wrinkle: diary verification step read "`input-dirty` class cleared" after reset, but current (and pre-refactor) behaviour marks fields dirty — values revert, Apply still required to push. Behaviour preserved, diary text was slightly off. Commit `11c5f95`.
 
 ## Block D — `debounceGroup` consolidation
 
@@ -176,7 +176,7 @@ git commit -m "refactor(dashboard): unify button-debounce patterns into single h
 git push
 ```
 
-**Outcome.** [To fill — number of callers migrated, LOC delta, any surprise migration issue.]
+**Outcome.** Unified `debounceGroup(name, ms, fn, options)` helper with `options.greyoutIds` (`.cooldown` class toggle) and `options.logOnBlock` (warning-level addLog message). Thin-wrapper strategy: `debounceCommand` / `debounceApply` / `debouncePreset` kept as 2-line wrappers so all 18 existing callsites stay untouched — same pattern as Block C. Camera Refresh and Block B's `scrollToEmergencyStop` absorbed into the shared helper. Deleted symbols: `lastCommandTime`, `lastApplyTime`, `lastPresetTime`, `scrollEstopTimer`, `setGroupCooldown`, `COMMAND_DEBOUNCE_MS`, `TUNING_DEBOUNCE_MS`. Diff: 27 insertions / 53 deletions = **net –26 LOC**. One minor visual change: camera Refresh cooldown migrated from `disabled` attr to `.cooldown` class (`opacity: 0.4; pointer-events: none`) — architecturally consistent with the `.cooldown` design intent documented in `style_merged.css:445-447`. User confirmed the new visual looks fine. Commit `336fb28`.
 
 ## Block E — Wrap + diary fill-in
 
@@ -207,11 +207,11 @@ git push
 
 Use this section to capture anything surprising during the day — file state drift, unexpected behaviour, migration caveats. Each entry: file:line or command + observation + fix or follow-up.
 
-- [To fill]
+- **Health-check IDLE caveat may be vestigial.** Script output line `"Some checks were skipped (IDLE state). Start a mission for full validation."` implies IDLE has a smaller check pool than ACTIVE, but runtime totals are identical (49 each). Either nothing is actually skipped and the note is dead text, or the skipping is offset by equal-count ACTIVE-only checks. Worth auditing `one_click_launch_all/health_check_autoboat.sh` state-branching next time the script is touched.
+- **Most mission-control debounce is belt-and-braces.** Observed during Block D testing: Generate Waypoints / Confirm / Start etc. already self-protect against rapid duplicate clicks via UI state transitions (button greys out until Cancel) and `confirm()` modals. The 800 ms `debounceCommand` is a redundant safety net. Keep the infrastructure for now — the unified `debounceGroup` makes per-callsite removal a one-line delete if/when we decide to prune it. Not on 24/04's plan.
+- **Camera 2 s debounce insufficient under extreme rapid clicking.** Confirmed during Block D testing — MJPEG stream can still deadlock under sustained abuse (stuck socket, camera feed goes black, needs sim restart). The 2 s constant was a guess back when the debounce was first added; the real deadlock mechanism is `web_video_server`'s per-client cleanup race, which doesn't scale linearly with click interval. Options for a future fix: extend to 3–5 s (diminishing returns), layer an `img.load`-completion gate (only allow Refresh when previous stream is healthy), or accept the current behaviour and document the limit in `Common_Issues.md`. Separate tuning question from today's refactor.
 
 ## Next steps — concrete plan for 24/04
-
-[To fill at end of day. Likely candidates carried forward:]
 
 ### Actionable on 24/04
 

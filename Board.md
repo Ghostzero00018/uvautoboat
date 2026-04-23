@@ -8,7 +8,7 @@
 |---|---|
 | **Project** | AutoBoat Navigation System |
 | **Repository** | [Ghostzero00018/uvautoboat](https://github.com/Ghostzero00018/uvautoboat) |
-| **Last Updated** | 22/04/2026 |
+| **Last Updated** | 23/04/2026 |
 | **Status** | 🟢 Simulation ready (A* path planning + one-click launcher + wiki docs + dashboard config system). Real-hardware deployment begins next week. |
 
 ---
@@ -272,6 +272,8 @@ The whole repo is expected to run on the Pi 5.
 | 22/04/2026 | I6 docstring refresh on 3 nodes (`cd009c0`): pub/sub surfaces match code; 8-state planner machine documented; Trigger services section added; `/control/heading_error`, `/planning/emergency_stop`, `/planning/set_config`, `/perception/param_ranges`, `/control/param_ranges` now in docstrings | ✅ |
 | 22/04/2026 | Perception publish-rate baseline recorded (`65709a0`, RTF caveat `816be9d`): 20.00 Hz mean, 4 ms stdev, 120 s Buoy Field mission at RTF ≈ 1.0; rate tracks Gazebo RTF, Pi 5 on-water remains the real Phase 5 comparison target | ✅ |
 | 22/04/2026 | `launch/remap.launch.yaml` deployed (`816be9d`): 6 `topic_tools/relay` nodes (GPS / IMU / LiDAR / camera / thrust L+R) gated on `use_real_hardware:=false`, plus conditional bridge-node stub for Phase 5.1; YAML `if:`/`unless:` syntax used (draft's nested `condition:` rejected by Jazzy launch schema) | ✅ |
+| 23/04/2026 | Health-check count verify: runtime total **= 49 in both IDLE and ACTIVE** (IDLE: 49 PASS; ACTIVE: 41 PASS + 8 TUNED from applied presets). Matches `README.md:128` and `:236` claim exactly; no docs change needed | ✅ |
+| 23/04/2026 | Dashboard shared-helpers consolidation: `scrollToEmergencyStop` 300 ms debounce (`03e5c2d`); `resetGroupToDefaults` helper extraction with thin wrappers (`11c5f95`); unified `debounceGroup(name, ms, fn, options)` helper absorbs `debounceCommand`/`debounceApply`/`debouncePreset` + camera refresh + E-Stop shortcut into single mechanism (`336fb28`, net –26 LOC) | ✅ |
 | TBD | Real-hardware deployment (Pi 5 as confirmed target; low-level CCU architecture TBD) | 🔜 |
 | TBD | Coverage Planning | ⏸️ |
 
@@ -346,7 +348,7 @@ Current position ──>│  (in Planner)       │
 
 ## 📜 Acknowledgments
 
-**Document Version**: 9.7 | **Last Updated**: 22/04/2026
+**Document Version**: 9.8 | **Last Updated**: 23/04/2026
 
 **Maintained By**: AutoBoat Development Team
 
