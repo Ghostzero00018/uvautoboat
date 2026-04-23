@@ -193,6 +193,34 @@ git push
    git push
    ```
 
+## Block F — Camera same-topic Refresh no-op (unplanned)
+
+Post-wrap addition. Triggered by follow-up investigation of the "Camera 2 s debounce insufficient" Known-unknown (below). Root cause identified by analysing the deadlock mechanism in `Common_Issues.md:326` against the dashboard's existing defences: `web_video_server` deadlocks accumulate under **sustained** 2 s-boundary clicking (Mode B — one click per 2 s for 30+ s), not just burst-clicking within the debounce window (Mode A — which was already defended by `debounceGroup`). Each "fire" through the Refresh button produces a full close+open MJPEG churn cycle; doing this at 0.5 Hz for long enough pushes `web_video_server`'s per-client cleanup state machine into a deadlock regardless of debounce interval.
+
+**Fix.** Introduced `let currentStreamingTopic = null;` module-level state and an early-return in `updateCameraStream()` when the validated topic matches `currentStreamingTopic` AND `cameraStatusEl` doesn't carry the `error` class. Same-topic Refresh becomes a no-op with a `"Already streaming this topic | Flux déjà actif"` toast; the tear-down + reconnect is skipped entirely. Retry path preserved: if the stream has errored out (server killed, network glitch, etc.), the `error` class gate fails and Refresh still fires a full tear-down as expected.
+
+**Additional tuning.** Bumped the stream tear-down gap from 200 ms → 500 ms (original 200 ms was a guess back when the debounce was first added; under sustained churn the browser occasionally failed to complete TCP FIN before reconnecting).
+
+**Verification.** User tested steps 1-6 of the proposed pipeline — baseline streaming, Mode B reproduction (30 s of 1-click-per-2s hammering) no longer deadlocks, topic-switch still works, error-path retry still works. Commit `560f9fe`.
+
+## Block G — Camera topic combobox with rosbridge auto-discovery (unplanned)
+
+Triggered by user observation that RViz exposes 3 camera sensors (`front_left`, `front_right`, `middle_right`) but the dashboard only had `front_left` in the camera topic field (free-text input, no discovery mechanism). Two associated findings surfaced during the investigation: (1) `web_video_server` leaks `sensor_msgs/Image`-typed subscriptions on non-image topics (from a user's earlier "type LiDAR topic into camera field" test), verified via `ros2 topic info --verbose` on `/scan`; (2) `/wamv/sensors/lidars/lidar_wamv_sensor/scan` is published as `LaserScan` alongside the existing `/points` PointCloud2 — no current consumer, documented under Known-unknowns below.
+
+**Feature design.** Custom combobox with ▼ toggle button — **not** native `<datalist>`. The datalist approach was tried first (commit pre-push) but user-test rejected it on two UX grounds: no visible trigger glyph, and browsers only show options matching the already-typed text, so the default-filled input always yielded a 1-entry "dropdown". Replaced with: `<input>` + `<button class="combobox-toggle">▼` + `<ul class="combobox-options" role="listbox">` inside a `.combobox-wrapper` span, positioned via CSS.
+
+**Auto-discovery via rosbridge.** `populateCameraTopicList()` calls `/rosapi/topics_for_type` (type `rosapi_msgs/srv/TopicsForType`) for both `sensor_msgs/msg/Image` and `sensor_msgs/msg/CompressedImage`, merges results into a `Set`, filters by topic-name regex (`/\/image_(raw|rect|color|compressed)(\/|$)/`) to drop `web_video_server`'s zombie Image-typed subscriptions on LiDAR topics (see finding 1 above). Populates the `<ul>` via `replaceChildren`. Hardcoded 3-option fallback in `index.html` covers the pre-connection window and rosbridge-unavailable case.
+
+**UX niceties added during iteration.**
+
+- Option click auto-refreshes the stream — no need to click Refresh separately (Block F's same-topic no-op still guards redundant cases).
+- Currently-streaming option highlighted (blue background, bold) in the list.
+- Outside-click and Escape dismiss the dropdown. Escape listener attached to `document` (not `input`) so focus-state doesn't matter — first iteration had the listener on `input` and Escape didn't close the list when focus had shifted.
+- Input `title` attribute syncs to current value on every `input` event — hovering the (often truncated) field surfaces the full topic string.
+- Each `<li>` has `title=` matching its `data-topic` — hovering a truncated option in the dropdown surfaces the full name (not just the ellipsized head).
+
+**Verification.** User tested — toggle opens full list, current-topic highlight correct, auto-switch works, Esc + outside-click dismiss, per-option tooltips work, manual typing still works, Block F no-op regression passes. Commit `8c215e5`.
+
 ## Rollover checkpoints
 
 | After | State | Rollover cost |
@@ -201,7 +229,9 @@ git push
 | Block B | E-Stop shortcut debounced | 24/04 on Block C |
 | Block C | Reset helper extracted | 24/04 on Block D |
 | Block D | Debounce helper unified | 24/04 on P3 rate_probe or Dashboard UX pass 2 |
-| Block E | Full day closed | 23/04 fully wrapped |
+| Block E | Full day closed (planned scope) | 23/04 wrapped; F+G optional |
+| Block F | Camera same-topic Refresh no-op landed | 23/04 wrapped + Mode B deadlock eliminated |
+| Block G | Camera topic combobox + auto-discovery landed | 23/04 fully wrapped (F + G applied) |
 
 ## Known unknowns surfaced during the day
 
@@ -209,7 +239,10 @@ Use this section to capture anything surprising during the day — file state dr
 
 - **Health-check IDLE caveat may be vestigial.** Script output line `"Some checks were skipped (IDLE state). Start a mission for full validation."` implies IDLE has a smaller check pool than ACTIVE, but runtime totals are identical (49 each). Either nothing is actually skipped and the note is dead text, or the skipping is offset by equal-count ACTIVE-only checks. Worth auditing `one_click_launch_all/health_check_autoboat.sh` state-branching next time the script is touched.
 - **Most mission-control debounce is belt-and-braces.** Observed during Block D testing: Generate Waypoints / Confirm / Start etc. already self-protect against rapid duplicate clicks via UI state transitions (button greys out until Cancel) and `confirm()` modals. The 800 ms `debounceCommand` is a redundant safety net. Keep the infrastructure for now — the unified `debounceGroup` makes per-callsite removal a one-line delete if/when we decide to prune it. Not on 24/04's plan.
-- **Camera 2 s debounce insufficient under extreme rapid clicking.** Confirmed during Block D testing — MJPEG stream can still deadlock under sustained abuse (stuck socket, camera feed goes black, needs sim restart). The 2 s constant was a guess back when the debounce was first added; the real deadlock mechanism is `web_video_server`'s per-client cleanup race, which doesn't scale linearly with click interval. Options for a future fix: extend to 3–5 s (diminishing returns), layer an `img.load`-completion gate (only allow Refresh when previous stream is healthy), or accept the current behaviour and document the limit in `Common_Issues.md`. Separate tuning question from today's refactor.
+- **Camera 2 s debounce insufficient under extreme rapid clicking.** Confirmed during Block D testing — MJPEG stream can still deadlock under sustained abuse. **Resolved by Block F (`560f9fe`):** root cause was Mode B (sustained 1-click-per-2s hammering), not burst-clicking. Same-topic Refresh is now a no-op, so click frequency on the same topic is moot; cross-topic Refresh is still rate-limited by the unified `debounceGroup` + 500 ms tear-down gap. The 2 s debounce itself was not the weak point — the churn semantics were.
+- **`web_video_server` leaks Image-typed subscriptions on non-image topics.** When a user types e.g. `/wamv/sensors/lidars/lidar_wamv_sensor/scan` into the camera field and clicks Refresh, `web_video_server` subscribes assuming the topic is `sensor_msgs/Image`. Real publisher type is `LaserScan` → DDS type mismatch → zero messages flow, but the subscription **persists** silently — visible in `ros2 topic info --verbose` as a second "type" on the topic. Survives until the `web_video_server` process restarts. Pollutes `/rosapi/topics_for_type` (sensor_msgs/Image) responses with stale entries. Block G works around it client-side via a topic-name regex filter (`/\/image_(raw|rect|color|compressed)(\/|$)/`). Upstream issue in `web_video_server`; not fixable from our side.
+- **LiDAR has a `/scan` topic that nothing consumes.** `/wamv/sensors/lidars/lidar_wamv_sensor/scan` is published as `sensor_msgs/LaserScan` by `ros_gz_bridge` alongside the existing `/points` PointCloud2. Perception pipeline is deliberately 3D (water plane removal, multi-height clustering), so `/scan` being unused is consistent with the design. Worth knowing it exists — could support a lightweight fallback or secondary obstacle source if we ever want graceful degradation. Not today.
+- **`wiki/Common_Issues.md:361` guidance now partially outdated.** The "Avoid clicking Refresh faster than ~once per 3 s" advice predates Block F; same-topic Refresh is now a no-op at any frequency. Cross-topic Refresh still respects the 2 s debounce. Small follow-up: update the Prevention note to reflect the new mechanism. Deferred — not blocking.
 
 ## Next steps — concrete plan for 24/04
 

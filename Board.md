@@ -274,6 +274,7 @@ The whole repo is expected to run on the Pi 5.
 | 22/04/2026 | `launch/remap.launch.yaml` deployed (`816be9d`): 6 `topic_tools/relay` nodes (GPS / IMU / LiDAR / camera / thrust L+R) gated on `use_real_hardware:=false`, plus conditional bridge-node stub for Phase 5.1; YAML `if:`/`unless:` syntax used (draft's nested `condition:` rejected by Jazzy launch schema) | ✅ |
 | 23/04/2026 | Health-check count verify: runtime total **= 49 in both IDLE and ACTIVE** (IDLE: 49 PASS; ACTIVE: 41 PASS + 8 TUNED from applied presets). Matches `README.md:128` and `:236` claim exactly; no docs change needed | ✅ |
 | 23/04/2026 | Dashboard shared-helpers consolidation: `scrollToEmergencyStop` 300 ms debounce (`03e5c2d`); `resetGroupToDefaults` helper extraction with thin wrappers (`11c5f95`); unified `debounceGroup(name, ms, fn, options)` helper absorbs `debounceCommand`/`debounceApply`/`debouncePreset` + camera refresh + E-Stop shortcut into single mechanism (`336fb28`, net –26 LOC) | ✅ |
+| 23/04/2026 | Camera panel hardening (unplanned F+G blocks): same-topic Refresh no-op eliminates Mode B `web_video_server` deadlock vector (`560f9fe`, tear-down gap 200→500 ms); custom combobox with ▼ toggle + rosbridge `/rosapi/topics_for_type` auto-discovery replaces free-text topic input (`8c215e5`, hardcoded 3-camera fallback preserved; name-pattern filter drops zombie Image-typed LiDAR subscriptions) | ✅ |
 | TBD | Real-hardware deployment (Pi 5 as confirmed target; low-level CCU architecture TBD) | 🔜 |
 | TBD | Coverage Planning | ⏸️ |
 
@@ -348,7 +349,7 @@ Current position ──>│  (in Planner)       │
 
 ## 📜 Acknowledgments
 
-**Document Version**: 9.8 | **Last Updated**: 23/04/2026
+**Document Version**: 9.9 | **Last Updated**: 23/04/2026
 
 **Maintained By**: AutoBoat Development Team
 
