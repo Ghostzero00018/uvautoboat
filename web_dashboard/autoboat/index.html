@@ -899,7 +899,15 @@
                     </div>
                     <div class="camera-controls">
                         <label for="camera-topic">Camera Topic:</label>
-                        <input type="text" id="camera-topic" value="/wamv/sensors/cameras/front_left_camera_sensor/image_raw" title="/wamv/sensors/cameras/front_left_camera_sensor/image_raw">
+                        <span class="combobox-wrapper">
+                            <input type="text" id="camera-topic" value="/wamv/sensors/cameras/front_left_camera_sensor/image_raw" autocomplete="off">
+                            <button type="button" id="camera-topic-toggle" class="combobox-toggle" aria-label="Show available camera topics" tabindex="-1">▼</button>
+                            <ul id="camera-topic-options" class="combobox-options" role="listbox" hidden>
+                                <li role="option" data-topic="/wamv/sensors/cameras/front_left_camera_sensor/image_raw" title="/wamv/sensors/cameras/front_left_camera_sensor/image_raw">/wamv/sensors/cameras/front_left_camera_sensor/image_raw</li>
+                                <li role="option" data-topic="/wamv/sensors/cameras/front_right_camera_sensor/image_raw" title="/wamv/sensors/cameras/front_right_camera_sensor/image_raw">/wamv/sensors/cameras/front_right_camera_sensor/image_raw</li>
+                                <li role="option" data-topic="/wamv/sensors/cameras/middle_right_camera_sensor/image_raw" title="/wamv/sensors/cameras/middle_right_camera_sensor/image_raw">/wamv/sensors/cameras/middle_right_camera_sensor/image_raw</li>
+                            </ul>
+                        </span>
                         <button id="btn-refresh-camera" class="config-btn apply">Refresh | Actualiser</button>
                     </div>
                 </div>

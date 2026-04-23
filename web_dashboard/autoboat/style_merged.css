@@ -286,6 +286,83 @@ h2 {
     font-size: 12px;
 }
 
+/* Custom combobox — replaces native <datalist>, which had no visible trigger
+   glyph and required clearing the input before showing the full option list
+   (unintuitive when the field already carries the default topic). Toggle
+   button opens a positioned <ul> that reliably shows every discovered option. */
+.camera-controls .combobox-wrapper {
+    position: relative;
+    flex: 1 1 200px;
+    min-width: 0;
+    display: flex;
+}
+.camera-controls .combobox-wrapper input[type="text"] {
+    flex: 1 1 auto;
+    padding-right: 30px;
+}
+.camera-controls .combobox-toggle {
+    position: absolute;
+    right: 2px;
+    top: 2px;
+    bottom: 2px;
+    width: 26px;
+    border: 1px solid #bbb;
+    background: #e8e8e8;
+    color: #333;
+    cursor: pointer;
+    border-radius: 3px;
+    font-size: 11px;
+    padding: 0;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.camera-controls .combobox-toggle:hover {
+    background: #d0d0d0;
+    color: #000;
+}
+.camera-controls .combobox-toggle:active {
+    background: #b8b8b8;
+}
+.camera-controls .combobox-options {
+    position: absolute;
+    top: calc(100% + 2px);
+    left: 0;
+    right: 0;
+    max-height: 220px;
+    overflow-y: auto;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    background: white;
+    border: 1px solid #bbb;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    z-index: 1000;
+}
+.camera-controls .combobox-options[hidden] {
+    display: none;
+}
+.camera-controls .combobox-options li {
+    padding: 6px 8px;
+    font-family: monospace;
+    font-size: 12px;
+    cursor: pointer;
+    color: #333;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.camera-controls .combobox-options li:hover {
+    background: #e3f2fd;
+    color: #000;
+}
+.camera-controls .combobox-options li.selected {
+    background: #bbdefb;
+    font-weight: 600;
+}
+
 .camera-controls .config-btn {
     flex: 0 0 auto;
 }

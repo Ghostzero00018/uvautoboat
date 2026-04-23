@@ -517,6 +517,7 @@ function connectToROS() {
         updateConnectionStatus(true);
         addLog('Connected to rosbridge', 'info');
         subscribeToTopics();
+        populateCameraTopicList();
     });
 
     ros.on('error', (error) => {
@@ -575,6 +576,7 @@ function initCameraFeed() {
         cameraStatusEl.classList.add('error');
     });
 
+    initCameraTopicCombobox();
     updateCameraStream();
 }
 
@@ -631,6 +633,118 @@ function buildCameraUrl(topic) {
     const base = `${window.location.protocol}//${baseHost}:8080/stream`;
     // web_video_server expects the topic path unencoded (slashes are valid), so build manually.
     return `${base}?topic=${topic}&type=mjpeg&quality=80`;
+}
+
+// Camera topic combobox — wires up the ▼ toggle button, option-click
+// selection, outside-click dismissal, Escape-key close, and a live `title`
+// sync so hovering the (often visually truncated) input surfaces the full
+// current topic.
+function initCameraTopicCombobox() {
+    const input = document.getElementById('camera-topic');
+    const toggle = document.getElementById('camera-topic-toggle');
+    const options = document.getElementById('camera-topic-options');
+    if (!input || !toggle || !options) return;
+
+    const hide = () => { options.hidden = true; };
+    const show = () => {
+        options.hidden = false;
+        // Mark the current-value option so the user sees what's already selected.
+        options.querySelectorAll('li').forEach(li => {
+            li.classList.toggle('selected', li.dataset.topic === input.value);
+        });
+    };
+
+    // Don't steal focus when the button is mousedown — click fires, input
+    // retains focus for subsequent typing.
+    toggle.addEventListener('mousedown', (e) => e.preventDefault());
+    toggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        options.hidden ? show() : hide();
+    });
+
+    // Option click — set value, refresh tooltip, auto-trigger stream switch
+    // (Block F's same-topic no-op still guards against redundant churn).
+    options.addEventListener('click', (e) => {
+        const li = e.target.closest('li[data-topic]');
+        if (!li) return;
+        input.value = li.dataset.topic;
+        input.title = li.dataset.topic;
+        hide();
+        updateCameraStream();
+    });
+
+    // Outside-click dismissal — guard against closing when the click target
+    // is the input or any part of the options list itself.
+    document.addEventListener('click', (e) => {
+        if (options.hidden) return;
+        if (e.target === input || e.target === toggle) return;
+        if (options.contains(e.target)) return;
+        hide();
+    });
+
+    // Escape key closes the dropdown — listener on document (not input) so it
+    // fires regardless of which element currently holds focus. Input focus
+    // can shift away after the toggle click depending on browser quirks.
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !options.hidden) hide();
+    });
+
+    // Keep title attribute in sync with input value so hovering the truncated
+    // input shows the full topic name regardless of panel width.
+    input.title = input.value;
+    input.addEventListener('input', () => { input.title = input.value; });
+}
+
+// Query rosbridge for image topics and rebuild the combobox option list.
+// Hardcoded <li>s in index.html are the pre-connection fallback; this
+// overwrites them on first ros connection with whatever the sim advertises.
+// Name-pattern filter drops web_video_server's zombie Image-typed
+// subscriptions on LiDAR topics (a prior mistaken Refresh against e.g. /scan
+// leaks a subscription that /rosapi then reports). Silent on failure.
+async function populateCameraTopicList() {
+    if (!ros) return;
+    const options = document.getElementById('camera-topic-options');
+    if (!options) return;
+
+    const types = ['sensor_msgs/msg/Image', 'sensor_msgs/msg/CompressedImage'];
+    const discovered = new Set();
+
+    const queries = types.map(type => new Promise((resolve) => {
+        const svc = new ROSLIB.Service({
+            ros: ros,
+            name: '/rosapi/topics_for_type',
+            serviceType: 'rosapi_msgs/srv/TopicsForType'
+        });
+        svc.callService(
+            new ROSLIB.ServiceRequest({ type }),
+            (result) => {
+                (result.topics || []).forEach(t => discovered.add(t));
+                resolve();
+            },
+            () => resolve()
+        );
+    }));
+
+    await Promise.all(queries);
+
+    const imageTopics = [...discovered]
+        .filter(t => /\/image_(raw|rect|color|compressed)(\/|$)/.test(t))
+        .sort();
+
+    if (imageTopics.length === 0) {
+        if (DEBUG_MODE) console.warn('No image topics discovered via rosbridge; keeping hardcoded fallback');
+        return;
+    }
+
+    options.replaceChildren(...imageTopics.map(topic => {
+        const li = document.createElement('li');
+        li.setAttribute('role', 'option');
+        li.dataset.topic = topic;
+        li.textContent = topic;
+        li.title = topic;  // tooltip for hover when text-overflow truncates the entry
+        return li;
+    }));
+    if (DEBUG_MODE) console.log(`Camera topic list: ${imageTopics.length} topics discovered`);
 }
 
 // Update connection status indicator
