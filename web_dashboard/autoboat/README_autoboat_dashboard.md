@@ -83,7 +83,7 @@ Then open **<http://localhost:8002>**.
 | **Health Check**           | Live streaming 49-check system diagnostic with elapsed time                     |
 | **System Logs**            | Timestamped, color-coded log entries                                            |
 | **ROS2 Terminal**          | Direct ROS2 command output                                                      |
-| **Camera Feed**            | MJPEG stream with configurable topic                                            |
+| **Camera Feed**            | MJPEG stream; combobox auto-populated from rosbridge with free-text fallback    |
 
 ## Configuration System
 

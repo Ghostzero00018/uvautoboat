@@ -70,12 +70,14 @@ PID gains, speeds, safety distances, and A* settings are validated only by HTML 
 - **File:** `web_dashboard/autoboat/app.js` — config send functions
 - **Impact:** dangerous parameter values (e.g., `max_speed: 99999`) accepted by ROS nodes
 
-#### 6. Camera topic input unsanitized
+#### 6. Camera topic input — only syntactic validation, no type check
 
-The camera topic input field passes user-provided strings directly to web_video_server without validation.
+The camera topic input is validated against `ROS_TOPIC_PATTERN` (`/^\/[a-zA-Z0-9_/]+$/`), which blocks URL-special characters (`?`, `#`, `&`, spaces) and enforces ROS-shaped names. As of 23/04/2026 the combobox also restricts the dropdown to topics that `/rosapi/topics_for_type` reports as `sensor_msgs/Image` or `sensor_msgs/CompressedImage`, filtered by an `image_{raw,rect,color,compressed}` name pattern.
 
-- **File:** `web_dashboard/autoboat/app.js` — camera stream URL construction
-- **Impact:** arbitrary ROS topic data could be requested via web_video_server
+Residual gap: free-text input still bypasses the dropdown whitelist, and `web_video_server` does not itself enforce that a requested topic is image-typed — it will subscribe to any name as `sensor_msgs/Image` and leak a zombie subscription if the real publisher type differs.
+
+- **File:** `web_dashboard/autoboat/app.js` — `updateCameraStream`, `populateCameraTopicList`
+- **Impact:** attacker with dashboard access can still construct an arbitrary `image_raw`-named stream URL; mostly a nuisance (fails silently) rather than an exfiltration path, but contributes to `web_video_server` state leaks.
 
 #### 7. Direct thrust publishing via rosbridge
 
@@ -133,7 +135,7 @@ The `/rosout` subscription displays all debug/info/warning/error messages from a
 |:----|:-----------|
 | Basic authentication | Use nginx as a reverse proxy with `htpasswd` for HTTP basic auth in front of all 3 ports |
 | Enable WSS/HTTPS | Configure nginx TLS termination with a self-signed certificate for LAN use |
-| Whitelist camera topics | Validate camera topic input against a list of known sensor topics before constructing the URL |
+| Whitelist camera topics | **Partially implemented 23/04/2026** — combobox dropdown is restricted to topics advertising `sensor_msgs/Image` via `/rosapi/topics_for_type`, plus an `image_raw`/`image_rect`/etc. name-pattern filter. Remaining gap: free-text input in the same field still bypasses the whitelist; a complete fix would reject non-image topics at `updateCameraStream` entry before hitting web_video_server. |
 | Server-side param bounds | Add `min`/`max` range checks in the Python nodes' `config_callback` functions |
 
 ### Full hardening (future architecture)

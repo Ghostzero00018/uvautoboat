@@ -358,7 +358,13 @@ If CPU is pegged or `curl` times out, the server is deadlocked.
 
 Full sim restart via the launcher also works, but is overkill — only the camera server is affected.
 
-**Prevention**: The dashboard has a 2 s Refresh-button debounce and explicit stream tear-down (since 22/04/2026). Avoid clicking Refresh faster than ~once per 3 s to stay well clear of the server's recycle window.
+**Prevention**: The dashboard has several layered defences (`web_dashboard/autoboat/app.js`):
+
+- Same-topic Refresh is a no-op — clicking Refresh while already streaming the selected topic returns early with an `"Already streaming this topic"` toast instead of tearing down. Any click frequency is safe in this common case.
+- Cross-topic Refresh (switching between e.g. `front_left` and `front_right`) is rate-limited by the unified `debounceGroup` at 2 s, plus a 500 ms browser TCP-close gap before the new connection opens.
+- The camera-topic combobox auto-populates from `/rosapi/topics_for_type` for `sensor_msgs/Image`, so the typical switch-camera flow picks a valid image topic instead of causing a churn cycle against a misnamed one.
+
+In practice the deadlock window has narrowed significantly since 23/04/2026 — still possible with sustained cross-topic hammering, not from repeated same-topic clicks.
 
 ---
 
