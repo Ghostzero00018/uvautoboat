@@ -552,10 +552,7 @@ function initCameraFeed() {
         // bytes, recovery requires killing the server process). 2 s gives the
         // server time to cleanly recycle the previous MJPEG connection.
         refreshBtn.addEventListener('click', () => {
-            if (refreshBtn.disabled) return;
-            refreshBtn.disabled = true;
-            updateCameraStream();
-            setTimeout(() => { refreshBtn.disabled = false; }, 2000);
+            debounceGroup('camera-refresh', 2000, () => updateCameraStream(), { greyoutIds: ['btn-refresh-camera'] });
         });
     }
 
@@ -1903,61 +1900,40 @@ function initTerminal() {
 
 // ========== MISSION CONTROL FUNCTIONS ==========
 
-// Debounce guard — prevents duplicate commands from rapid clicks
-let lastCommandTime = 0;
-const COMMAND_DEBOUNCE_MS = 800;
+// Shared debounce helper — one timer per `name`, optional `.cooldown` greyout
+// on a group of button IDs, optional warn-level log on blocked re-click. All
+// rate-limited click handlers (mission commands, tuning Apply/Preset, camera
+// refresh, E-Stop scroll shortcut) go through this single mechanism.
+const _debounceGroupTimers = new Map();
 
-function debounceCommand(fn) {
+function debounceGroup(name, ms, fn, options = {}) {
     const now = Date.now();
-    if (now - lastCommandTime < COMMAND_DEBOUNCE_MS) {
-        addLog('Command ignored (too fast) | Commande ignorée (trop rapide)', 'warning');
+    if (now - (_debounceGroupTimers.get(name) || 0) < ms) {
+        if (options.logOnBlock) addLog(options.logOnBlock, 'warning');
         return;
     }
-    lastCommandTime = now;
+    _debounceGroupTimers.set(name, now);
+    if (options.greyoutIds) {
+        const els = options.greyoutIds.map(id => document.getElementById(id)).filter(el => el);
+        els.forEach(el => el.classList.add('cooldown'));
+        setTimeout(() => els.forEach(el => el.classList.remove('cooldown')), ms);
+    }
     fn();
 }
-
-// Tuning-panel debouncers — two independent 1 s cooldowns, one for Apply
-// actions and one for Preset switches. Kept separate (not a single shared
-// timer) so the natural "click Preset, then click Apply" flow still works
-// within the 1 s window. Goal: stop /planning/set_config spam and stacked
-// toasts when the user rapid-clicks an Apply button or thrashes between presets.
-let lastApplyTime = 0;
-let lastPresetTime = 0;
-const TUNING_DEBOUNCE_MS = 1000;
 
 const APPLY_BTN_IDS = ['btn-apply-config', 'btn-apply-astar', 'btn-apply-perception', 'btn-apply-controller'];
 const PRESET_BTN_IDS = ['btn-preset-universal', 'btn-preset-buoy-field', 'btn-preset-pier', 'btn-preset-open-water'];
 
-// Grey out a group of buttons for the cooldown window — mirrors the camera-
-// refresh button's visual feedback so the user can SEE the debounce firing
-// rather than just hearing about it in the log.
-function setGroupCooldown(ids, durationMs) {
-    const els = ids.map(id => document.getElementById(id)).filter(el => el);
-    els.forEach(el => el.classList.add('cooldown'));
-    setTimeout(() => els.forEach(el => el.classList.remove('cooldown')), durationMs);
+function debounceCommand(fn) {
+    debounceGroup('command', 800, fn, { logOnBlock: 'Command ignored (too fast) | Commande ignorée (trop rapide)' });
 }
 
 function debounceApply(fn) {
-    const now = Date.now();
-    if (now - lastApplyTime < TUNING_DEBOUNCE_MS) {
-        addLog('Apply ignored (too fast) | Apply ignoré (trop rapide)', 'warning');
-        return;
-    }
-    lastApplyTime = now;
-    setGroupCooldown(APPLY_BTN_IDS, TUNING_DEBOUNCE_MS);
-    fn();
+    debounceGroup('apply', 1000, fn, { greyoutIds: APPLY_BTN_IDS, logOnBlock: 'Apply ignored (too fast) | Apply ignoré (trop rapide)' });
 }
 
 function debouncePreset(fn) {
-    const now = Date.now();
-    if (now - lastPresetTime < TUNING_DEBOUNCE_MS) {
-        addLog('Preset switch ignored (too fast) | Changement de preset ignoré (trop rapide)', 'warning');
-        return;
-    }
-    lastPresetTime = now;
-    setGroupCooldown(PRESET_BTN_IDS, TUNING_DEBOUNCE_MS);
-    fn();
+    debounceGroup('preset', 1000, fn, { greyoutIds: PRESET_BTN_IDS, logOnBlock: 'Preset switch ignored (too fast) | Changement de preset ignoré (trop rapide)' });
 }
 
 // Initialize mission control panel
@@ -2070,17 +2046,15 @@ function initMissionControl() {
     // the real Emergency Stop button into view and flash it. Shared handler
     // so new shortcut sites (e.g., a keyboard shortcut) only need to register
     // to the same ID list.
-    let scrollEstopTimer = 0;
     const scrollToEmergencyStop = () => {
-        const now = Date.now();
-        if (now - scrollEstopTimer < 300) return;
-        scrollEstopTimer = now;
-        const target = document.getElementById('btn-emergency-stop');
-        if (!target) return;
-        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        target.focus({ preventScroll: true });
-        target.classList.add('estop-flash');
-        setTimeout(() => target.classList.remove('estop-flash'), 1200);
+        debounceGroup('estop-shortcut', 300, () => {
+            const target = document.getElementById('btn-emergency-stop');
+            if (!target) return;
+            target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            target.focus({ preventScroll: true });
+            target.classList.add('estop-flash');
+            setTimeout(() => target.classList.remove('estop-flash'), 1200);
+        });
     };
     ['header-estop-badge', 'footer-estop-badge'].forEach(id => {
         const el = document.getElementById(id);
