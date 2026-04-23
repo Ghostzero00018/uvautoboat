@@ -2070,7 +2070,11 @@ function initMissionControl() {
     // the real Emergency Stop button into view and flash it. Shared handler
     // so new shortcut sites (e.g., a keyboard shortcut) only need to register
     // to the same ID list.
+    let scrollEstopTimer = 0;
     const scrollToEmergencyStop = () => {
+        const now = Date.now();
+        if (now - scrollEstopTimer < 300) return;
+        scrollEstopTimer = now;
         const target = document.getElementById('btn-emergency-stop');
         if (!target) return;
         target.scrollIntoView({ behavior: 'smooth', block: 'center' });
