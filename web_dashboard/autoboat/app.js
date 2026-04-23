@@ -37,6 +37,7 @@ let pendingTrajectoryUpdate = false;
 let cameraImageEl = null;
 let cameraStatusEl = null;
 let cameraTopicInput = null;
+let currentStreamingTopic = null;
 
 // Mission state
 let missionState = {
@@ -598,6 +599,15 @@ function updateCameraStream() {
     if (!cameraTopicInput.value.trim()) {
         cameraTopicInput.value = topic;
     }
+    // Same-topic Refresh is a no-op — skip the tear-down to eliminate the
+    // self-inflicted MJPEG connection churn that eventually deadlocks
+    // web_video_server under sustained Refresh-button hammering at the 2 s
+    // debounce boundary. 'error' class guards the retry path: if the feed
+    // has errored out, Refresh should still tear down and reconnect.
+    if (topic === currentStreamingTopic && !cameraStatusEl.classList.contains('error')) {
+        showFeedback('Already streaming this topic | Flux déjà actif', 'info');
+        return;
+    }
     // Valid topic — clear any sticky user-input error so load handler can resume updates.
     cameraStatusEl.dataset.userError = '';
     cameraStatusEl.classList.remove('error');
@@ -605,12 +615,14 @@ function updateCameraStream() {
     const streamUrl = buildCameraUrl(topic);
     // Tear the old stream down explicitly before opening the new one. Without
     // this interval, rapid img.src swaps race web_video_server's per-client
-    // cleanup and can deadlock the server (Common_Issues.md). 200 ms lets the
-    // browser issue the TCP close before initiating the next connection.
+    // cleanup and can deadlock the server (Common_Issues.md). 500 ms gives
+    // the browser time to fully close TCP before the next connection — the
+    // earlier 200 ms was inadequate under sustained churn.
     cameraImageEl.removeAttribute('src');
+    currentStreamingTopic = topic;
     setTimeout(() => {
         cameraImageEl.src = `${streamUrl}&t=${Date.now()}`;
-    }, 200);
+    }, 500);
 }
 
 function buildCameraUrl(topic) {
