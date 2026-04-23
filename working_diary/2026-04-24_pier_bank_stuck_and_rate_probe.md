@@ -62,7 +62,7 @@ Write 2-3 paragraphs in this block at end of investigation:
 - What fix direction looks plausible (e.g., "expand height filter upper bound to 3 m for near-range clustering", or "SASS needs a wall-detection heuristic distinct from the buoy-like case").
 - Estimated effort and risk for the fix.
 
-Implementation is deferred to a later block (24/04 afternoon if investigation concludes fast, or 25/04 otherwise).
+Implementation is deferred to a later block (24/04 afternoon if investigation concludes fast, or 27/04 otherwise).
 
 **Outcome.** [To fill — mechanism identified, fix direction, effort estimate, commit hash if a diagnostic patch landed.]
 
@@ -253,11 +253,11 @@ fix(dashboard): <scenario-specific fix>
 
 | After | State | Rollover cost |
 |:------|:------|:--------------|
-| Block A diagnosis only | Pier/bank mechanism identified, fix deferred | 25/04 starts on the fix implementation |
-| Block A diagnosis + patch | Fix landed | 25/04 moves to Block B or next priority |
-| Block B | MP + QGC installed + smoke-launched | 25/04 picks up C or next priority |
-| Block C | `rate_probe.py` in `tools/` | 25/04 starts on Block D or new priority |
-| Block D | UX pass 2 scenarios addressed | 25/04 on supervisor-related work if available |
+| Block A diagnosis only | Pier/bank mechanism identified, fix deferred | 27/04 starts on the fix implementation |
+| Block A diagnosis + patch | Fix landed | 27/04 moves to Block B or next priority |
+| Block B | MP + QGC installed + smoke-launched | 27/04 picks up C or next priority |
+| Block C | `rate_probe.py` in `tools/` | 27/04 starts on Block D or new priority |
+| Block D | UX pass 2 scenarios addressed | 27/04 on supervisor-related work if available |
 | Block E | Full day closed | 24/04 wrapped |
 
 ## Known unknowns surfaced during the day
@@ -266,16 +266,16 @@ Use this section to capture anything surprising during the day — file state dr
 
 - [To fill]
 
-## Next steps — concrete plan for 25/04
+## Next steps — concrete plan for 27/04
 
 [To fill at end of day.]
 
-### Actionable on 25/04
+### Actionable on 27/04
 
 - **Carry-over from today:** whichever of Blocks A / B / C didn't land or needs follow-up.
 - **If supervisor meeting scheduled:** Phase A parameter-set conversation → unblocks water-quality sensor scaffolding.
 
-### Blocked / deferred (not on 25/04)
+### Blocked / deferred (not on 27/04)
 
 - **Phase A implementation** — blocked on supervisor.
 - **Real no-regression test for `launch/remap.launch.yaml`** — migrates to Phase 5.1 bench (Pi 5).
