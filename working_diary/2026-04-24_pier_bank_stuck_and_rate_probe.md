@@ -1,16 +1,19 @@
-# 2026-04-24 — P1 pier/bank stuck investigation + P3 rate-probe tool
+# 2026-04-24 — P1 pier/bank investigation + MP/QGC install + rate-probe
 
 ## Context
 
 Scaffold written evening of 23/04 as tomorrow's work template — fill in each section as the day progresses.
 
-**Mixed-scope day after 23/04's small-tasks-only mode.** Priority 1 from the open-issue list (carried forward since 20/04 pressure test) leads the morning — 2-3 h, needs live sim. P3 rate-probe tool (~45 min, Linux-local) fills an afternoon slot. UX pass 2 is filler if capacity remains. No supervisor conversation expected; Phase A implementation remains blocked.
+**Hardware context from 23/04 afternoon supervisor meeting.** Prof walked through the real hardware in person — boat frame, control unit box, battery, and inside the control unit a **Raspberry Pi 5** as the companion computer (confirms the Pi 5 target that was tentative in Board.md). Prof introduced two mission-planner GUIs: **QGroundControl** (cross-platform, MAVLink, PX4/ArduPilot compatible) and **Mission Planner** (ArduPilot ecosystem, Windows-native / Linux-via-Mono), with **Mission Planner preferred**. Prof also raised a longer-term goal: the webdashboard should eventually mirror its current waypoint-issue + live-telemetry flow against MP/QGC as the autopilot front-end, not directly against ROS 2 nodes. Full integration is Phase 5.2+ scope (post-bringup); tomorrow just seeds the install side.
 
-Three planned blocks, each independently commit-able and stoppable:
+**Mixed-scope day for 24/04.** P1 pier/bank (carried since 20/04 pressure test) leads the morning — 2-3 h, needs live sim. Mid-day block installs MP + QGC on the Linux workstation. Then P3 rate-probe tool (~45 min, Linux-local). UX pass 2 as filler if capacity remains. No supervisor meeting tomorrow; Phase A implementation remains blocked on further conversation.
+
+Four planned blocks, each independently commit-able and stoppable:
 
 1. **P1 pier/bank stuck investigation** — reproduce in sim, trace where SASS / controller state misbehaves against a static obstacle with vertical extent, propose fix scope (don't necessarily implement today).
-2. **P3 `tools/rate_probe.py`** — standalone publisher-rate probe with configurable QoS, works around `ros2 topic hz`'s Jazzy limitation (no `--qos-*` flags) that misreports rate on BEST_EFFORT publishers.
-3. **Dashboard UX pass 2** — mission-control edge cases: Reset during Confirm window, Go Home while already at home, multi-click Joystick toggle mid-mission.
+2. **Install Mission Planner + QGroundControl** — prof-requested mission-planner GUIs on the Linux workstation (QGC native AppImage, MP via Mono). Smoke-launch only — no vehicle to connect to yet.
+3. **P3 `tools/rate_probe.py`** — standalone publisher-rate probe with configurable QoS, works around `ros2 topic hz`'s Jazzy limitation (no `--qos-*` flags) that misreports rate on BEST_EFFORT publishers.
+4. **Dashboard UX pass 2** — mission-control edge cases: Reset during Confirm window, Go Home while already at home, multi-click Joystick toggle mid-mission.
 
 Plus wrap-up diary fill-in at end of day.
 
@@ -63,7 +66,79 @@ Implementation is deferred to a later block (24/04 afternoon if investigation co
 
 **Outcome.** [To fill — mechanism identified, fix direction, effort estimate, commit hash if a diagnostic patch landed.]
 
-## Block B — P3 `tools/rate_probe.py`
+## Block B — Install Mission Planner + QGroundControl (prof request)
+
+Per 23/04 afternoon meeting. Both GUIs are MAVLink-based and assume a compatible flight controller / autopilot — the Pi 5 companion + TBD autopilot firmware will eventually provide that. Goal today is install + smoke-launch (each GUI opens cleanly with no vehicle connected). Connection to real hardware is Phase 5.1+.
+
+### QGroundControl — Linux AppImage
+
+Primary reference: <https://docs.qgroundcontrol.com/master/en/qgc-user-guide/getting_started/download_and_install.html>
+
+```bash
+# Prerequisites
+sudo usermod -a -G dialout $USER              # serial-port access; log out/in to take effect
+sudo apt update
+sudo apt install libfuse2 libqt5gui5 \
+    gstreamer1.0-plugins-bad gstreamer1.0-libav gstreamer1.0-gl -y
+# Optional — only if no cellular modem in use (ModemManager hijacks USB-serial devices):
+sudo apt remove modemmanager -y
+
+# Download stable AppImage + launch
+cd ~/Downloads
+wget https://d176tv9ibo4jno.cloudfront.net/latest/QGroundControl.AppImage
+chmod +x QGroundControl.AppImage
+./QGroundControl.AppImage
+```
+
+Verify: GUI launches; without a vehicle connected it sits at a "Waiting for Vehicle Connection" banner. Record version from Help → About.
+
+### Mission Planner — via Mono on Linux (prof's preferred tool)
+
+Primary reference: <https://ardupilot.org/planner/docs/mission-planner-installation.html>
+
+Mission Planner is .NET-native on Windows; Linux support is via the Mono runtime. Functional for mission planning + basic telemetry but historically has occasional UI glitches vs. the Windows version.
+
+```bash
+# Prerequisites: Mono .NET runtime
+sudo apt update
+sudo apt install mono-complete -y
+mono --version     # expect Mono JIT compiler 6.x or newer
+
+# Fetch + unpack the latest Mission Planner Linux zip
+cd ~/Downloads
+wget https://firmware.ardupilot.org/Tools/MissionPlanner/MissionPlanner-latest.zip
+mkdir -p ~/MissionPlanner
+unzip -o MissionPlanner-latest.zip -d ~/MissionPlanner
+
+# Run
+cd ~/MissionPlanner
+mono MissionPlanner.exe
+```
+
+Verify: GUI launches; equivalent "Waiting for Vehicle Connection" state. Record version from Help → About.
+
+### Fallback — Windows-native install on the laptop
+
+If MP under Mono turns out too flaky for prof's planned demos (known issues include slow rendering, occasional crashes, some plugins non-functional), install the Windows-native `.msi` from the same `firmware.ardupilot.org/Tools/MissionPlanner/` path onto the Windows laptop. Workflow then: Linux workstation stays primary for sim + ROS; Windows laptop hosts prof-facing MP with MAVLink-over-network once the Pi 5 is online (default port `14550/udp`, standard MAVLink convention).
+
+### Outcome — record install results
+
+- Which machine each tool landed on (workstation / laptop / both).
+- Whether each GUI launched cleanly; note any Mono warnings or missing-library errors.
+- Version strings captured.
+- No repo code changes expected; Board.md milestone row optional (this is setup state, not a code milestone).
+
+If the only repo artifact is a Board.md update:
+
+```bash
+git add Board.md
+git commit -m "docs: record MP + QGC install on Linux workstation per 23/04 meeting"
+git push
+```
+
+**Outcome.** [To fill — target machines, version strings, launch-clean?, Board.md commit hash if one landed, any Mono-specific issues with MP.]
+
+## Block C — P3 `tools/rate_probe.py`
 
 Known-unknown from 22/04 perception-rate baseline work: `ros2 topic hz` in Jazzy has no `--qos-*` flag (only `ros2 topic echo` does). Probing a BEST_EFFORT publisher with the default RELIABLE subscription drops messages silently and reports a misleadingly low rate. Standalone Python script works around this.
 
@@ -122,7 +197,7 @@ git push
 
 **Outcome.** [To fill — rate measured on /perception/obstacle_info, match/mismatch with 22/04 baseline, any surprise during impl, commit hash.]
 
-## Block C — Dashboard UX pass 2 (filler)
+## Block D — Dashboard UX pass 2 (filler)
 
 Planned-filler block; skip or truncate if Block A runs long. Three mission-control edge cases identified during 22/04 review but not addressed:
 
@@ -158,7 +233,7 @@ fix(dashboard): <scenario-specific fix>
 
 **Outcome.** [To fill — which scenarios needed fixes, commits, any unexpected findings.]
 
-## Block D — Wrap + diary fill-in
+## Block E — Wrap + diary fill-in
 
 1. `git log --oneline -5` — sanity check the day's commits landed cleanly.
 2. Pre-commit scan one more time — run the standing repo-wide sweep (expected: zero matches).
@@ -180,9 +255,10 @@ fix(dashboard): <scenario-specific fix>
 |:------|:------|:--------------|
 | Block A diagnosis only | Pier/bank mechanism identified, fix deferred | 25/04 starts on the fix implementation |
 | Block A diagnosis + patch | Fix landed | 25/04 moves to Block B or next priority |
-| Block B | `rate_probe.py` in `tools/` | 25/04 starts on Block C or new priority |
-| Block C | UX pass 2 scenarios addressed | 25/04 on supervisor-related work if available |
-| Block D | Full day closed | 24/04 wrapped |
+| Block B | MP + QGC installed + smoke-launched | 25/04 picks up C or next priority |
+| Block C | `rate_probe.py` in `tools/` | 25/04 starts on Block D or new priority |
+| Block D | UX pass 2 scenarios addressed | 25/04 on supervisor-related work if available |
+| Block E | Full day closed | 24/04 wrapped |
 
 ## Known unknowns surfaced during the day
 
@@ -204,3 +280,4 @@ Use this section to capture anything surprising during the day — file state dr
 - **Phase A implementation** — blocked on supervisor.
 - **Real no-regression test for `launch/remap.launch.yaml`** — migrates to Phase 5.1 bench (Pi 5).
 - **C3 bench verification** — passive wait for real-hardware symptom.
+- **Dashboard ↔ MP/QGC integration** (prof's long-term request from 23/04 meeting). Goal: dashboard issues waypoints + monitors live telemetry *through* MP/QGC as the autopilot front-end, not directly against ROS 2 nodes. Requires a MAVLink bridge on the Pi 5 (`mavros`, `mavsdk`, or similar) plus dashboard-side MAVLink emit/subscribe. Significant architecture work — fits the Phase 5.2+ window once basic bringup via MP/QGC against the Pi 5 is proven. Preserve today's dashboard UX (combobox, debounced controls, live map) as the prototype the MAVLink-bridged version has to match.
