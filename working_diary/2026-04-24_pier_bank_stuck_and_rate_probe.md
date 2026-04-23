@@ -165,7 +165,7 @@ fix(dashboard): <scenario-specific fix>
 3. **Post-change doc audit** — scan `wiki/*`, `README.md`, `USER_MANUAL.md`, dashboard README, `Common_Issues.md`, `Design_Rationale.md`, `SASS.md` for stale claims touching today's changes (especially if P1 SASS behaviour is altered or rate_probe lands a new tool).
 4. Fill the `[To fill]` placeholders throughout this file with concrete outcomes.
 5. Add 24/04 milestone rows to Board.md's Timeline table.
-6. Update the external `Research_intern_IMT_NE/working_diary/Week7_20_04-24_04.md` Friday block.
+6. Fill the Friday block's `[fill]` / `[待填]` Outcome placeholders in the external `Research_intern_IMT_NE/working_diary/Week7_20_04-24_04.md` (scaffold already in place from 22/04 evening restructure; today's work just replaces placeholders with real outcomes).
 7. Commit the diary / Board updates:
 
    ```bash
