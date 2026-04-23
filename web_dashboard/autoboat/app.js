@@ -1466,25 +1466,25 @@ const CONTROLLER_DEFAULTS = {
     'controller-slew-rate': 80
 };
 
-function resetPerceptionToDefaults() {
-    for (const [id, val] of Object.entries(PERCEPTION_DEFAULTS)) {
+function resetGroupToDefaults(defaults, label, extraReset) {
+    for (const [id, val] of Object.entries(defaults)) {
         const el = document.getElementById(id);
         if (el) { el.value = val; dirtyInputs.add(id); el.classList.add('input-dirty'); }
     }
-    addLog('Perception parameters reset to launch defaults | Paramètres Perception réinitialisés', 'info');
-    showFeedback('🔄 Perception reset to launch defaults', 'info');
+    if (extraReset) extraReset();
+    addLog(`${label} parameters reset to launch defaults | Paramètres ${label} réinitialisés`, 'info');
+    showFeedback(`🔄 ${label} reset to launch defaults`, 'info');
+}
+
+function resetPerceptionToDefaults() {
+    resetGroupToDefaults(PERCEPTION_DEFAULTS, 'Perception');
 }
 
 function resetControllerToDefaults() {
-    for (const [id, val] of Object.entries(CONTROLLER_DEFAULTS)) {
-        const el = document.getElementById(id);
-        if (el) { el.value = val; dirtyInputs.add(id); el.classList.add('input-dirty'); }
-    }
-    // Reset VFH select
-    const vfhEl = document.getElementById('controller-use-vfh');
-    if (vfhEl) vfhEl.value = 'false';
-    addLog('Controller parameters reset to launch defaults | Paramètres Controller réinitialisés', 'info');
-    showFeedback('🔄 Controller reset to launch defaults', 'info');
+    resetGroupToDefaults(CONTROLLER_DEFAULTS, 'Controller', () => {
+        const vfhEl = document.getElementById('controller-use-vfh');
+        if (vfhEl) vfhEl.value = 'false';
+    });
 }
 
 // Initialize value tracking and displays
