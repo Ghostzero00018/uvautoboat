@@ -6,18 +6,21 @@ Scaffold written evening of 23/04 as tomorrow's work template — fill in each s
 
 **Hardware context from 23/04 afternoon supervisor meeting.** Prof walked through the real hardware in person — boat frame, control unit box, battery, and inside the control unit a **Raspberry Pi 5** as the companion computer (confirms the Pi 5 target that was tentative in Board.md). Prof introduced two mission-planner GUIs: **QGroundControl** (cross-platform, MAVLink, PX4/ArduPilot compatible) and **Mission Planner** (ArduPilot ecosystem, Windows-native / Linux-via-Mono), with **Mission Planner preferred**. Prof also raised a longer-term goal: the webdashboard should eventually mirror its current waypoint-issue + live-telemetry flow against MP/QGC as the autopilot front-end, not directly against ROS 2 nodes. Full integration is Phase 5.2+ scope (post-bringup); tomorrow just seeds the install side.
 
-**Mixed-scope day for 24/04.** P1 pier/bank (carried since 20/04 pressure test) leads the morning — 2-3 h, needs live sim. Mid-day block installs MP + QGC on the Linux workstation. Then P3 rate-probe tool (~45 min, Linux-local). UX pass 2 as filler if capacity remains. No supervisor meeting tomorrow; Phase A implementation remains blocked on further conversation.
+**Afternoon-only working day.** Maintainer unavailable at the workstation all morning (off-campus); arrives for the afternoon slot only — realistic productive budget ~3.5 h. **Block A (P1 pier/bank, 2-3 h inspect-first investigation) is deferred to 27/04 Monday** for a full-day focus; its scaffold below stays in place as ready-to-execute on Monday. Today's active scope is three concrete small blocks plus wrap: MP + QGC install (prof-requested), rate_probe tool, UX pass 2 as filler. No supervisor meeting today; Phase A implementation remains blocked on further conversation.
 
-Four planned blocks, each independently commit-able and stoppable:
+Three active blocks for the afternoon (plus wrap), each independently commit-able and stoppable:
 
-1. **P1 pier/bank stuck investigation** — reproduce in sim, trace where SASS / controller state misbehaves against a static obstacle with vertical extent, propose fix scope (don't necessarily implement today).
-2. **Install Mission Planner + QGroundControl** — prof-requested mission-planner GUIs on the Linux workstation (QGC native AppImage, MP via Mono). Smoke-launch only — no vehicle to connect to yet.
-3. **P3 `tools/rate_probe.py`** — standalone publisher-rate probe with configurable QoS, works around `ros2 topic hz`'s Jazzy limitation (no `--qos-*` flags) that misreports rate on BEST_EFFORT publishers.
-4. **Dashboard UX pass 2** — mission-control edge cases: Reset during Confirm window, Go Home while already at home, multi-click Joystick toggle mid-mission.
+1. **Install Mission Planner + QGroundControl** (Block B below) — prof-requested mission-planner GUIs on the Linux workstation (QGC native AppImage, MP via Mono). Smoke-launch only — no vehicle to connect to yet.
+2. **P3 `tools/rate_probe.py`** (Block C below) — standalone publisher-rate probe with configurable QoS, works around `ros2 topic hz`'s Jazzy limitation (no `--qos-*` flags) that misreports rate on BEST_EFFORT publishers.
+3. **Dashboard UX pass 2** (Block D below) — mission-control edge cases: Reset during Confirm window, Go Home while already at home, multi-click Joystick toggle mid-mission.
 
-Plus wrap-up diary fill-in at end of day.
+Plus wrap-up diary fill-in at end of day (Block E).
+
+**Deferred to 27/04 (not today):** Block A — P1 pier/bank stuck investigation. Scaffold preserved below for Monday's use; skip past it when reading for today's plan.
 
 ## Block A — P1 pier/bank stuck investigation
+
+> **⚠️ DEFERRED to 27/04 Monday.** Maintainer has no morning slot on 24/04 (afternoon-only, off-campus AM); this 2-3 h inspect-first investigation needs a fresh full-day focus. Scaffold preserved for Monday's use — skip to Block B for today's work.
 
 Long-running open item from 20/04 pressure test. Boat appears to enter a stuck state when navigating close to a pier or bank (shallow-slope vertical obstacle). Current SASS (`wiki/SASS.md`: "turn toward clearer side") was designed around floating buoy-like obstacles; it's unclear how well the same logic handles an obstacle with near-vertical extent and large lateral footprint.
 
@@ -62,7 +65,7 @@ Write 2-3 paragraphs in this block at end of investigation:
 - What fix direction looks plausible (e.g., "expand height filter upper bound to 3 m for near-range clustering", or "SASS needs a wall-detection heuristic distinct from the buoy-like case").
 - Estimated effort and risk for the fix.
 
-Implementation is deferred to a later block (24/04 afternoon if investigation concludes fast, or 27/04 otherwise).
+Implementation is deferred within the 27/04 full-day slot if diagnosis concludes fast, or to 28/04 otherwise.
 
 **Outcome.** [To fill — mechanism identified, fix direction, effort estimate, commit hash if a diagnostic patch landed.]
 
@@ -253,12 +256,10 @@ fix(dashboard): <scenario-specific fix>
 
 | After | State | Rollover cost |
 |:------|:------|:--------------|
-| Block A diagnosis only | Pier/bank mechanism identified, fix deferred | 27/04 starts on the fix implementation |
-| Block A diagnosis + patch | Fix landed | 27/04 moves to Block B or next priority |
-| Block B | MP + QGC installed + smoke-launched | 27/04 picks up C or next priority |
-| Block C | `rate_probe.py` in `tools/` | 27/04 starts on Block D or new priority |
-| Block D | UX pass 2 scenarios addressed | 27/04 on supervisor-related work if available |
-| Block E | Full day closed | 24/04 wrapped |
+| Block B | MP + QGC installed + smoke-launched | 27/04 picks up C/D or goes straight to Block A |
+| Block C | `rate_probe.py` in `tools/` | 27/04 picks up D or goes straight to Block A |
+| Block D | UX pass 2 scenarios addressed | 27/04 opens on Block A (full-day slot) |
+| Block E | Afternoon wrapped | 27/04 opens on Block A (full-day slot) |
 
 ## Known unknowns surfaced during the day
 
@@ -272,7 +273,8 @@ Use this section to capture anything surprising during the day — file state dr
 
 ### Actionable on 27/04
 
-- **Carry-over from today:** whichever of Blocks A / B / C didn't land or needs follow-up.
+- **Primary focus: Block A — P1 pier/bank stuck investigation** (full-day slot). Deferred from 24/04 per morning-off-campus; scaffold at Block A above is ready to execute. Inspect-first diagnosis (~2-3 h), then fix implementation within the same day if diagnosis concludes fast; otherwise the fix rolls to 28/04.
+- **Carry-over from 24/04:** whichever of Blocks B / C / D didn't land or needs follow-up.
 - **If supervisor meeting scheduled:** Phase A parameter-set conversation → unblocks water-quality sensor scaffolding.
 
 ### Blocked / deferred (not on 27/04)
