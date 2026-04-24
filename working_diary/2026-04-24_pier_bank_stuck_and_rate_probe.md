@@ -277,7 +277,25 @@ Commit message template per scenario:
 fix(dashboard): <scenario-specific fix>
 ```
 
-**Outcome.** [To fill — which scenarios needed fixes, commits, any unexpected findings.]
+**Outcome.** Inspected all three scenarios; two already fully defended, one had a minor cosmetic bug. Net code change smaller than the scaffold anticipated, net UX change noticeably better.
+
+Findings per scenario:
+
+- **S1 — Reset during Confirm.** The button-disable defense was already in place (`app.js:2441` set `btnReset.disabled = !connected || awaitingDecision` with an explicit comment on the clear_mission vs. confirm_waypoints race). No risk of a silent state corruption. But: when a user clicks a greyed-out button nothing fires, and the reason wasn't explained anywhere — classic silent UX. Fix: keep the defense (click still a no-op), but make the button *clickable* again during `WAITING_CONFIRM` and route the click to a toast. Implementation: new `.mission-btn-blocked` CSS class (opacity + not-allowed cursor, hover-neutralised) applied via `classList.toggle` instead of the `disabled` attribute; click handler prepends a state check that shows `showFeedback()` + `addLog()` and returns early. `aria-disabled` set for assistive-tech parity.
+- **S2 — Go Home while at home.** No server- or client-side distance check. Existing behaviour: planner sets `waypoints=[(home_x, home_y)]`, transitions to DRIVING, `waypoint_reach_tolerance` (3.5 m) fires on the next control tick, state flickers DRIVING → FINISHED with no thruster movement. Functional but cosmetically ugly. **Two-layer fix** (defense in depth):
+    1. **Server side** — `waypoint_planner.py` `go_home` handler now computes `math.hypot(home_x - curr_x, home_y - curr_y)` against `self.waypoint_tolerance`; if within, logs `🏠 GO HOME ignored — already at home (X.X m from spawn, within waypoint_tolerance 3.5 m)` and returns before any state/waypoint mutation. Protects CLI clients, rosbridge scripts, any old dashboard version.
+    2. **Client side** — `app.js` Go Home click handler runs the same check using `gpsToLocal(currentState.gps.lat, currentState.gps.lon)` + `currentState.config.waypoint_tolerance`; shows `showFeedback()` toast + `addLog` entry; skips `sendMissionCommand` entirely, so the confirm-modal never pops and the planner never sees a wasted command.
+- **S3 — Multi-click Joystick toggle mid-mission.** Defended twice over already. (a) State-based button disable: `btnJoyEnable.disabled = !(connected && !joystickOverride)` and symmetric for Disable, so after a successful click the button greys out until `joystick_override` flips in the status publish. (b) `debounceCommand()` wraps both handlers = `debounceGroup('command', 800 ms, ...)` — shared timer across mission-control buttons. Rapid `enable → disable → enable` cannot race: either state-gated or 800 ms-gated. No fix needed.
+
+Files touched (three commits over the block):
+
+- `plan/plan/waypoint_planner.py` — `go_home` at-home guard (+15 LOC)
+- `web_dashboard/autoboat/app.js` — both the S2 client-side guard (+21) and the S1 click-routing (+14, with `disabled`/class swap in the state-refresh code (+8 / −2))
+- `web_dashboard/autoboat/style_merged.css` — new `.mission-btn-blocked` class + hover-neutralisation (+14)
+
+Single commit `9832793` covered all three. Verification in sim: S1 toast appears on Reset-during-Confirm click; Cancel/Confirm un-greys the button; Go Home at spawn fires toast and never sends the command; Go Home after ~5 m of travel goes through the confirm modal and triggers normal return.
+
+Adjacent UX decision recorded: **do not add routine "command-sent" toasts to every button.** The dashboard already has a 3-tier feedback system (log panel = every event, toast = abnormal/silent outcomes, modal = destructive confirms) and the mission-state strip + button greyouts + map give 3–4 visual channels on successful clicks. A universal click-toast would dilute the rejection-toasts we just added.
 
 ## Block E — Wrap + diary fill-in
 
@@ -318,7 +336,7 @@ Use this section to capture anything surprising during the day — file state dr
 
 ## Next steps — concrete plan for 27/04
 
-[To fill at end of day.]
+The afternoon-only budget carried all three planned small blocks (B + C + D) cleanly plus a deeper-than-expected Block B doc audit (Phase 5 / autopilot / dashboard-MAVLink longer-term scope woven through `Board.md` + `wiki/Roadmap.md`). Nothing from today rolls into Monday. The full-day slot opens directly on Block A — the deferred P1 pier/bank stuck investigation.
 
 ### Actionable on 27/04
 

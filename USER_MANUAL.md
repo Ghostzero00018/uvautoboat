@@ -1158,7 +1158,7 @@ Interrupts:
 - RESET: clears waypoints, state->INIT, thrust zero; must Generate/Confirm again.
 - JOYSTICK ON: state->JOYSTICK, mission_armed=false; Controller stops, manual teleop.
 - JOYSTICK OFF: if waypoints exist -> state=PAUSED (Resume works); else INIT.
-- GO HOME: replace waypoints with spawn, state=DRIVING, mission_armed=true, go_home_mode=true.
+- GO HOME: replace waypoints with spawn, state=DRIVING, mission_armed=true, go_home_mode=true. Rejected with a log warning (and a dashboard toast) if current position is within `waypoint_tolerance` of spawn — avoids a DRIVING→FINISHED flicker when already at home.
 ```
 
 ---
