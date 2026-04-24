@@ -241,9 +241,9 @@ uvautoboat/
 | Emergency stop (dashboard + CLI) | ✅ Working |
 | JSON log export | ✅ Working |
 | VRX LiDAR patch (issue #876) | ✅ Workaround |
-| Obstacle avoidance (detour explosion fix) | 🔧 Planned |
-| VFH steering bias | 🔧 Planned |
-| Pier/low-obstacle avoidance tuning | 🔧 Planned |
+| Obstacle avoidance (detour explosion fix) | 🔧 Planned (also partially tested) |
+| VFH steering bias | 🔧 Planned (also partially tested) |
+| Pier/low-obstacle avoidance tuning | 🔧 Planned (also partially tested) |
 
 ---
 
