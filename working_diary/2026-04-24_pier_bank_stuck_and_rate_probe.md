@@ -88,9 +88,9 @@ sudo apt remove modemmanager -y
 
 # Download stable AppImage + launch
 cd ~/Downloads
-wget https://d176tv9ibo4jno.cloudfront.net/latest/QGroundControl.AppImage
-chmod +x QGroundControl.AppImage
-./QGroundControl.AppImage
+wget https://d176tv9ibo4jno.cloudfront.net/latest/QGroundControl-x86_64.AppImage
+chmod +x QGroundControl-x86_64.AppImage
+./QGroundControl-x86_64.AppImage
 ```
 
 Verify: GUI launches; without a vehicle connected it sits at a "Waiting for Vehicle Connection" banner. Record version from Help → About.
@@ -139,7 +139,26 @@ git commit -m "docs: record MP + QGC install on Linux workstation per 23/04 meet
 git push
 ```
 
-**Outcome.** [To fill — target machines, version strings, launch-clean?, Board.md commit hash if one landed, any Mono-specific issues with MP.]
+**Outcome.** Both GUIs installed + smoke-launched on the Linux workstation (campus). No work on the Windows laptop today.
+
+Versions:
+
+- **QGC** — stable daily build, AppImage server mtime 09/10/2025. Precise build string reachable in-app via Q icon → Application Settings → General → About (not captured this run; sufficient for the install-only goal).
+- **Mission Planner** — `1.3.9384.38258`, up-to-date against upstream (MP's built-in version check reported `local 1.3.9384.38258 vs Remote 1.3.9384.38258`).
+
+Launch quality:
+
+- **QGC clean.** Non-fatal warnings only — `libva` VA-API hardware-decode fallback, `speechd` text-to-speech plug-in missing, `PX4LogTransferSettings.qml` TypeError spam from null-vehicle bindings when the Analyze page is opened with no vehicle connected. All expected on a headless bench.
+- **MP reached the main UI under Mono 6.8.0.105 but with a degraded feature set.** GDAL / OGR / OSR geospatial bindings (`gdal_wrap`, `ogr_wrap`, `osr_wrap`) all fail `DllNotFoundException` under Mono — terrain overlay and advanced geo-ref will not work on the Linux install. Also observed: `libdl.so` / `setupapi.dll` DllNotFound (Windows-native PINVOKE paths used by the `TrackerHome` USB-GPS plugin), `AltitudeAngelWings.Plugin` GDI+ `InvalidParameter` on icon conversion, `example13-herelink2.cs` Roslyn CodeGen errors on the side-example plugin. For prof's planned waypoint-issue / live-telemetry workflow these should be non-blocking; if a GIS-heavy demo is requested, the Fallback section above (Windows-native `.msi` on the laptop) stays on the table.
+
+Beyond smoke-launch:
+
+- PATH shortcuts installed in `~/.local/bin/`: `qgc` (symlink) and `missionplanner` (wrapper script that `cd`s into `~/MissionPlanner` before `exec mono MissionPlanner.exe` — MP resolves plugins + resources by relative path, so cwd matters).
+- QGC AppImage relocated `~/Downloads/` → `~/Applications/QGroundControl.AppImage` for persistence; symlink retargeted.
+- `~/Downloads/MissionPlanner-latest.zip` (112 MB) deleted; the extracted `~/MissionPlanner/` tree makes it redundant.
+- Optional `sudo apt remove modemmanager` step (from the install block above) was NOT run — no cellular modem in the workflow, safer default is to leave `modemmanager` installed.
+
+No repo code changes (host-side setup). Board.md milestone row skipped per the diary's "setup state, not a code milestone" note.
 
 ## Block C — P3 `tools/rate_probe.py`
 
@@ -265,7 +284,10 @@ fix(dashboard): <scenario-specific fix>
 
 Use this section to capture anything surprising during the day — file state drift, unexpected behaviour, migration caveats. Each entry: file:line or command + observation + fix or follow-up.
 
-- [To fill]
+- **Scaffold URL for QGC was stale.** The Block B install block had `https://d176tv9ibo4jno.cloudfront.net/latest/QGroundControl.AppImage` — returns `403 Forbidden` against the current CloudFront backend. The live filename carries an arch suffix: `QGroundControl-x86_64.AppImage`. Fixed inline in the Block B install block (lines 91, 93) so future re-reads of this diary execute cleanly. Upstream docs at `docs.qgroundcontrol.com/master/en/qgc-user-guide/getting_started/download_and_install.html` confirm the suffixed form.
+- **`mono-complete` pulls in a Mono XSP4 web server (`0.0.0.0:8084`).** The `mono-xsp4` / `mono-xsp4-base` packages land as dependencies of `mono-complete` and the post-install script registers a dev HTTP listener on all interfaces, port `8084`. Unused by MP itself. Worth a follow-up `sudo systemctl disable --now mono-xsp4` (or equivalent) to close the needless open port — campus dev stance tolerates it, but it's pure surface area.
+- **`libfuse2` / `libqt5gui5` silently renamed to `libfuse2t64` / `libqt5gui5t64` on Noble.** Ubuntu 24.04's 64-bit `time_t` ABI transition appended `t64` to affected package names. `apt install libfuse2` still works (meta-package pointer) but the installed binary is the t64 variant. Cosmetic; flagged for anyone grep-checking dpkg inventory.
+- **GDAL / OGR / OSR are broken under Mono on Linux MP.** Covered in the Outcome above. The upstream MP team has known this for years; the Linux-under-Mono path is officially a "basic mission planning + telemetry" target, not a full GIS workstation. Decision point deferred: if the prof's demo scope includes terrain or geo-ref, we migrate MP to the Windows laptop per the Fallback section. Preserve today's install either way — QGC on Linux covers the same role for MAVLink console work.
 
 ## Next steps — concrete plan for 27/04
 
