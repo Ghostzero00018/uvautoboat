@@ -2123,6 +2123,20 @@ function initMissionControl() {
     });
 
     document.getElementById('btn-reset-mission').addEventListener('click', () => {
+        // Blocked during the Confirm/Cancel window — racing a clear_mission
+        // against a pending confirm_waypoints leaves the planner inconsistent.
+        // Toast explains why instead of the button silently doing nothing.
+        if (missionState.state === 'WAITING_CONFIRM') {
+            showFeedback(
+                '🛑 Reset blocked — click Confirm or Cancel first | Cliquez Confirmer ou Annuler d\'abord',
+                'warning'
+            );
+            addLog(
+                'Reset blocked during WAITING_CONFIRM — resolve the pending waypoint preview first',
+                'warning'
+            );
+            return;
+        }
         if (confirm('Reset mission and clear waypoints? | Réinitialiser la mission et effacer les waypoints?')) {
             debounceCommand(() => {
                 sendMissionCommand('reset_mission');
@@ -2137,6 +2151,27 @@ function initMissionControl() {
 
     // Go Home - One-click return to spawn point
     document.getElementById('btn-go-home').addEventListener('click', () => {
+        // Client-side at-home guard — mirrors the planner-side check in
+        // waypoint_planner.py. Without this, clicking Go Home at spawn is
+        // silently accepted and ignored; the toast gives the user immediate
+        // feedback. Uses synced planner config for tolerance when available.
+        if (gpsOrigin && currentState.gps.lat !== 0) {
+            const local = gpsToLocal(currentState.gps.lat, currentState.gps.lon);
+            const distToHome = Math.hypot(local.x, local.y);
+            const tolerance = (currentState.config && currentState.config.waypoint_tolerance)
+                ?? readInput('cfg-waypoint-tolerance', 3.5);
+            if (distToHome < tolerance) {
+                showFeedback(
+                    `🏠 Already at home (${distToHome.toFixed(1)} m from spawn, within ${tolerance.toFixed(1)} m tolerance) | Déjà à la maison`,
+                    'warning'
+                );
+                addLog(
+                    `Go Home ignored — already at home (${distToHome.toFixed(1)} m, within ${tolerance.toFixed(1)} m)`,
+                    'warning'
+                );
+                return;
+            }
+        }
         if (confirm('🏠 Go Home: The boat will navigate to its starting point. Continue? | Le bateau va naviguer vers son point de départ. Continuer?')) {
             debounceCommand(() => {
                 sendMissionCommand('go_home');
@@ -2431,8 +2466,17 @@ function updateMissionControlUI(state) {
     });
 
     // Reset is safe in most states, but NOT during the Confirm/Cancel window —
-    // racing a clear_mission against a pending confirm_waypoints leaves the planner inconsistent
-    if (btnReset) btnReset.disabled = !connected || awaitingDecision;
+    // racing a clear_mission against a pending confirm_waypoints leaves the planner inconsistent.
+    // We keep the button clickable during WAITING_CONFIRM so the click handler
+    // can show a toast explaining why; the `.mission-btn-blocked` class gives
+    // the same visual greyed-out cue as :disabled. `aria-disabled` signals to
+    // assistive tech that the button is operator-inhibited.
+    if (btnReset) {
+        btnReset.disabled = !connected;
+        const blocked = connected && awaitingDecision;
+        btnReset.classList.toggle('mission-btn-blocked', blocked);
+        btnReset.setAttribute('aria-disabled', (!connected || awaitingDecision) ? 'true' : 'false');
+    }
     
     // STOP/joystick toggles only when not awaiting confirm/cancel
     if (!awaitingDecision) {

@@ -527,6 +527,21 @@ class WaypointPlanner(Node):
                         curr_x, curr_y = 0.0, 0.0
                     home_x, home_y = self.latlon_to_meters(self.start_gps[0], self.start_gps[1])
 
+                    # At-home guard: if we're already within waypoint_tolerance of home,
+                    # the DRIVING transition would fire waypoint_reach on the first control
+                    # tick and flicker straight to FINISHED. Refuse the command instead.
+                    # Requires current_gps for distance; otherwise fall through to the
+                    # existing behaviour (curr_x / curr_y default to 0 when GPS is absent).
+                    if self.current_gps:
+                        dist_to_home = math.hypot(home_x - curr_x, home_y - curr_y)
+                        if dist_to_home < self.waypoint_tolerance:
+                            self.get_logger().warn(
+                                f"🏠 GO HOME ignored — already at home "
+                                f"({dist_to_home:.1f} m from spawn, within "
+                                f"waypoint_tolerance {self.waypoint_tolerance:.1f} m)"
+                            )
+                            return
+
                     self.waypoints = [(home_x, home_y)]
                     self.current_wp_index = 0
                     

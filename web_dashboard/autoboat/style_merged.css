@@ -528,6 +528,20 @@ h2 {
     pointer-events: none;
 }
 
+/* Operator-blocked state for mission buttons — visually matches :disabled
+   but stays clickable so the click handler can show a toast explaining why.
+   Used for Reset during WAITING_CONFIRM (the existing defense stays: click
+   is still a no-op, routed to a toast instead of a silent grey-out). */
+.mission-btn-blocked {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.mission-btn.mission-btn-blocked:hover {
+    transform: none;
+    box-shadow: none;
+}
+
 .mission-btn.generate {
     background: linear-gradient(135deg, #667eea, #764ba2);
     color: white;
