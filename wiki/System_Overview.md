@@ -249,6 +249,7 @@ uvautoboat/
 ├── web_dashboard/     # Web monitoring interfaces
 ├── test_environment/  # Custom Gazebo worlds and models
 ├── environment_plugins/ # Gazebo plugins
+├── tools/             # Ad-hoc diagnostic scripts (rate_probe.py — QoS-aware topic-hz)
 └── wiki/              # This documentation
 ```
 

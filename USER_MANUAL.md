@@ -125,6 +125,8 @@ uvautoboat/
 │   ├── launch_autoboat_complete.sh   # One-click full system launch
 │   ├── health_check_autoboat.sh      # System health check (49 checks)
 │   └── patch_vrx.sh                 # VRX xacro fix (publish_model_pose)
+├── tools/                      # Ad-hoc diagnostic / ops scripts (standalone rclpy)
+│   └── rate_probe.py                # QoS-aware publisher-rate probe (works around Jazzy's `ros2 topic hz` lacking --qos-* flags)
 ├── working_diary/              # Daily development logs
 ├── legacy/                     # Deprecated code (for reference only)
 │   ├── atlantis/                    # Old Atlantis planner, controller, launch, dashboard

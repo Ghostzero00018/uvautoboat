@@ -188,6 +188,7 @@ uvautoboat/
 ├── test_environment/           # Gazebo worlds and models
 ├── wiki/                       # Wiki documentation
 ├── working_diary/              # Daily development logs
+├── tools/                      # Ad-hoc ops scripts (e.g. rate_probe.py — QoS-aware topic-hz)
 ├── legacy/                     # Deprecated code (see legacy/DEPRECATED.md)
 └── USER_MANUAL.md              # Detailed technical manual
 ```
