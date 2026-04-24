@@ -237,7 +237,7 @@ uvautoboat/
 | A* detour planning | ✅ Working |
 | Web dashboard with live map | ✅ Working |
 | Health check (49 checks) | ✅ Working |
-| CLI mission control | 🧪 Needs testing |
+| CLI mission control | ✅ Working |
 | Emergency stop (dashboard + CLI) | ✅ Working |
 | JSON log export | ✅ Working |
 | VRX LiDAR patch (issue #876) | ✅ Workaround |
