@@ -248,7 +248,7 @@ uvautoboat/
 ├── launch/            # Top-level launch files
 ├── web_dashboard/     # Web monitoring interfaces
 ├── test_environment/  # Custom Gazebo worlds and models
-├── environment_plugins/ # Gazebo plugins
+├── scripts/           # Repo-maintenance helpers (wiki sync, …)
 ├── tools/             # Ad-hoc diagnostic scripts (rate_probe.py — QoS-aware topic-hz)
 └── wiki/              # This documentation
 ```

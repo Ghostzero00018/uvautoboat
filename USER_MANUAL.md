@@ -108,6 +108,7 @@ uvautoboat/
 ├── test_environment/           # Gazebo worlds and LiDAR reference
 │   ├── sydney_regatta_DEFAULT.sdf  # Default VRX world (clean environment)
 │   └── wamv_3d_lidar.xacro         # Default 3D LIDAR config (backup)
+├── images/                     # Doc-asset library (logos + architecture diagrams)
 ├── wiki/                       # GitHub Wiki documentation
 │   ├── Home.md                      # Wiki landing page
 │   ├── Installation_Guide.md        # Setup instructions
@@ -125,6 +126,8 @@ uvautoboat/
 │   ├── launch_autoboat_complete.sh   # One-click full system launch
 │   ├── health_check_autoboat.sh      # System health check (49 checks)
 │   └── patch_vrx.sh                 # VRX xacro fix (publish_model_pose)
+├── scripts/                    # Repo-maintenance helpers
+│   └── sync_wiki.sh                # Sync `wiki/*.md` → published GitHub Wiki
 ├── tools/                      # Ad-hoc diagnostic / ops scripts (standalone rclpy)
 │   └── rate_probe.py                # QoS-aware publisher-rate probe (works around Jazzy's `ros2 topic hz` lacking --qos-* flags)
 ├── working_diary/              # Daily development logs

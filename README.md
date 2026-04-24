@@ -185,7 +185,9 @@ uvautoboat/
 ├── launch/                     # autoboat.launch.yaml
 ├── web_dashboard/autoboat/      # Web dashboard (HTML/JS/CSS)
 ├── one_click_launch_all/       # Launch script + health check + VRX patch
+├── scripts/                    # Repo-maintenance helpers (wiki sync, …)
 ├── test_environment/           # Gazebo worlds and models
+├── images/                     # Logo + diagram assets referenced from docs
 ├── wiki/                       # Wiki documentation
 ├── working_diary/              # Daily development logs
 ├── tools/                      # Ad-hoc ops scripts (e.g. rate_probe.py — QoS-aware topic-hz)
