@@ -1650,7 +1650,7 @@ S = Start, G = Goal, X = Obstacle
 | :------ | :------: | :------------ |
 | **ROS 2 Parameter Migration** | ✅ Done | Parameters now configurable via `autoboat.launch.yaml` |
 | **Multi-Terminal Launch** | ✅ Done | `one_click_launch_all/launch_autoboat_complete.sh` now available |
-| **Debugging Required** | 🔄 In Progress | Complex planning and obstacle detection still need debugging |
+| **Tuning iterations in flight** | 🔄 In Progress | Three items partially tested, still being tuned: detour-explosion fix, VFH steering bias, pier / low-obstacle avoidance |
 
 ---
 
@@ -1730,7 +1730,7 @@ Open an issue on [GitHub](https://github.com/Ghostzero00018/uvautoboat/issues) w
 
 Project finished by IMT NORD EUROPE DNM DMI-2026
 
-Last updated at 22/04/2026
+Last updated at 24/04/2026
 
 ---
 

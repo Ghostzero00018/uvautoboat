@@ -18,7 +18,7 @@ Scientific community fit: RMC2 — modeling, control, and communication of compl
 
 ---
 
-## 2. Current state (as of 21/04/2026)
+## 2. Current state (as of 24/04/2026)
 
 ### Navigation foundation — ready for hardware
 
@@ -46,7 +46,7 @@ Scientific community fit: RMC2 — modeling, control, and communication of compl
 
 ## 3. Phase 5 — Real-Hardware Deployment
 
-> **Canonical detailed reference:** `working_diary/2026-04-19_to_2026-04-20_phase5_prep_scope_plan.md` — /wamv/\* topic inventory, `remap.launch.yaml` paper design, bridge-node pseudocode, 24-item supervisor CCU checklist. That document was written as a pre-execution scope plan; all of its contents remain in effect as of 21/04/2026.
+> **Canonical detailed reference:** `working_diary/2026-04-19_to_2026-04-20_phase5_prep_scope_plan.md` — /wamv/\* topic inventory, `remap.launch.yaml` paper design, bridge-node pseudocode, 24-item supervisor CCU checklist. Pre-execution scope plan; the topic inventory and remap design still stand (`remap.launch.yaml` shipped 22/04/2026). The 23/04/2026 supervisor walk-through narrowed the bridge-node target toward a MAVLink-speaking autopilot and partially answers the CCU checklist — see the Summary bullets below for the current working hypothesis.
 
 ### Summary
 
@@ -55,7 +55,7 @@ Scientific community fit: RMC2 — modeling, control, and communication of compl
 - **Transition path:** paper design is a two-layer remap — `topic_tools/relay` from VRX `/wamv/*` names to neutral `/sensors` / `/actuators` names (layer A), plus an optional bridge node for real-hardware protocol translation (layer B). The three pipeline nodes continue to subscribe to VRX names during Phase 5.0; no code churn required until layer A is proven.
 - **Phase 5.2+ dashboard integration (longer-term, prof request 23/04):** web dashboard should eventually issue waypoints and read telemetry *through* MP/QGC as the autopilot front-end, rather than directly against ROS 2 nodes. Requires a MAVLink bridge on the Pi 5 (`mavros` / `mavsdk` / similar) plus dashboard-side MAVLink emit/subscribe. Explicitly out of Phase 5.0 bring-up scope; preserved current dashboard UX as the behavioural target the MAVLink-bridged version must match.
 
-### Status of prep tasks (as of 22/04/2026)
+### Status of prep tasks (as of 24/04/2026)
 
 | Task | Status |
 |:-----|:------:|

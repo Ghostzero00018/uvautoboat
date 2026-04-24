@@ -8,8 +8,8 @@
 |---|---|
 | **Project** | AutoBoat Navigation System |
 | **Repository** | [Ghostzero00018/uvautoboat](https://github.com/Ghostzero00018/uvautoboat) |
-| **Last Updated** | 23/04/2026 |
-| **Status** | 🟢 Simulation ready (A* path planning + one-click launcher + wiki docs + dashboard config system). Real-hardware deployment begins next week. |
+| **Last Updated** | 24/04/2026 |
+| **Status** | 🟢 Simulation ready (A* path planning + one-click launcher + wiki docs + dashboard config system + MP/QGC install). Real-hardware deployment prep ongoing — Pi 5 walked through 23/04/2026, bench delivery pending. |
 
 ---
 
@@ -357,7 +357,7 @@ Current position ──>│  (in Planner)       │
 
 ## 📜 Acknowledgments
 
-**Document Version**: 9.9 | **Last Updated**: 23/04/2026
+**Document Version**: 9.9 | **Last Updated**: 24/04/2026
 
 **Maintained By**: AutoBoat Development Team
 
