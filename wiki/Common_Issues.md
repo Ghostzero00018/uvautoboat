@@ -151,12 +151,17 @@ gz service -s /world/sydney_regatta/set_pose \
 **Diagnosis**:
 
 ```bash
-# Check obstacle detection rate — perception publishes once per LiDAR scan (~20 Hz)
+# Check obstacle detection rate — perception publishes once per LiDAR scan.
+# Steady-state ~20 Hz at Gazebo RTF ≈ 1.0; scales down proportionally when the
+# sim is running slower than real time.
 ros2 topic hz /perception/obstacle_info
 
-# Check raw LiDAR: `ros2 topic hz` with default reliable QoS can't match VRX's
-# best_effort publisher — the probe returns misleadingly low numbers. Check
-# publisher presence and subscription count instead:
+# Raw LiDAR rate + liveness. In the current ros_gz_bridge config this topic is
+# published RELIABLE (verify via `ros2 topic info --verbose`), so the default
+# hz probe works. If a future bridge change switches the publisher to
+# BEST_EFFORT, see "QoS-aware rate probing" below — Jazzy's `ros2 topic hz`
+# has no --qos-* flag and mismatches against BEST_EFFORT publishers silently.
+ros2 topic hz /wamv/sensors/lidars/lidar_wamv_sensor/points
 ros2 topic info /wamv/sensors/lidars/lidar_wamv_sensor/points   # expect Publisher count: 1
 
 # Sample current obstacle-info JSON once
@@ -768,6 +773,19 @@ ros2 topic list
 ros2 topic hz /wamv/sensors/gps/gps/fix
 ros2 topic echo /perception/obstacle_info
 ```
+
+### QoS-Aware Rate Probing (BEST_EFFORT publishers)
+
+`ros2 topic hz` in Jazzy has no `--qos-*` flag — its subscription is always RELIABLE. Against a BEST_EFFORT publisher the QoS is incompatible and the probe silently returns 0 Hz / misleadingly low rates with no obvious error. (`ros2 topic echo` *does* accept `--qos-reliability`, but that only helps for content inspection, not rate.)
+
+The current stack publishes all commonly-inspected topics RELIABLE — confirm via `ros2 topic info --verbose <topic>` (look for `Reliability: RELIABLE`). If a future change introduces a BEST_EFFORT publisher (e.g. a `ros_gz_bridge` config using `sensor_data` QoS, or a MAVLink bridge on the Pi 5), use the bundled probe:
+
+```bash
+python3 tools/rate_probe.py --topic /some/best_effort_topic \
+    --reliability best_effort --duration 20
+```
+
+`tools/rate_probe.py` is a standalone rclpy script — no colcon build needed. Also accepts `--reliability reliable`, configurable `--depth` and `--duration`. Discovers the message type via rclpy introspection unless `--type pkg/msg/Name` is supplied.
 
 ### Check Parameters
 

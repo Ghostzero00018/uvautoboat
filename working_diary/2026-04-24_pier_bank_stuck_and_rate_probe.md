@@ -217,7 +217,31 @@ git commit -m "tools: add rate_probe.py for QoS-aware publisher rate probing"
 git push
 ```
 
-**Outcome.** [To fill — rate measured on /perception/obstacle_info, match/mismatch with 22/04 baseline, any surprise during impl, commit hash.]
+**Outcome.** `tools/rate_probe.py` landed as specified — argparse surface matches the design sketch above, executable bit set, `--help` output clean. Script is a standalone rclpy node: discovers message type via `get_topic_names_and_types()` when `--type` is omitted, subscribes with the requested QoS profile (`ReliabilityPolicy.RELIABLE | BEST_EFFORT`, `HistoryPolicy.KEEP_LAST`, `depth`), counts arrivals over `--duration`, prints N + mean Hz + inter-arrival mean/std in ms.
+
+Live validation against `/perception/obstacle_info` (sim running, boat idle):
+
+| Probe | N / elapsed | Mean Hz | Interval mean/std (ms) |
+|:------|:------------|:--------|:-----------------------|
+| `rate_probe.py --reliability reliable` | 17 / 20.03 s | 0.88 | 1141 / 174 |
+| `ros2 topic hz` (default RELIABLE) | window=12 | 0.836 | 1077–1350 min/max |
+
+→ Agree within noise. Script counts correctly when the publisher's QoS matches the subscriber's. **Correctness validated.**
+
+Jazzy-bug demonstration *not* completed today — no BEST_EFFORT publisher found in the running stack:
+
+- Diary's test plan above assumed `/wamv/sensors/lidars/lidar_wamv_sensor/points` was BEST_EFFORT (common `ros_gz_bridge` default for sensor data). `ros2 topic info --verbose` confirms the bridge in the current config publishes it `Reliability: RELIABLE`. Rate_probe and default `ros2 topic hz` therefore agreed again (4.00 Hz vs ~3.6–3.7 Hz).
+- A targeted scan across all ~70 topics for any `Reliability: BEST_EFFORT` publisher didn't finish (per-topic `topic info --verbose` calls hit ~1–3 s of discovery overhead each, making a whole-graph scan minutes-long); cancelled before completion. Conclusion from partial scan + known topic configs: the current stack is effectively all-RELIABLE at idle. Tool's value is preventative — ready when a BEST_EFFORT publisher appears (future bridge config change, MAVLink bridge on the Pi 5, some camera publishers).
+
+Adjacent finding worth recording: obstacle_info at idle was ~0.9 Hz today, not the "20 Hz baseline" cited at 22/04 diary. `wiki/Roadmap.md:66` qualifies that number as "at Gazebo RTF ≈ 1.0; rate tracks RTF" — today's idle sim was presumably running at lower RTF (or scene was too static to yield per-scan obstacle updates). Not a Block C concern; noted.
+
+Doc updates beyond the script itself:
+
+- `wiki/Common_Issues.md:145-165` — Obstacle Detection Issues block. Corrected the previously-stated "VRX LiDAR publisher is BEST_EFFORT" claim (we now have a counter-example verified via `topic info --verbose`); added RTF qualifier to the ~20 Hz claim; added a forward-reference to the new "QoS-Aware Rate Probing" section.
+- `wiki/Common_Issues.md` (System-Level Issues → Check Topics area) — Added a new "QoS-Aware Rate Probing (BEST_EFFORT publishers)" subsection that explains the Jazzy `topic hz` limitation and points to `tools/rate_probe.py` with a copy-pasteable invocation.
+- No changes to `README.md` / `USER_MANUAL.md` — their existing `ros2 topic hz /wamv/sensors/lidars/...` and `ros2 topic hz /wamv/sensors/gps/gps/fix` diagnostic commands target RELIABLE publishers, so the default probe works; no stale claim to correct.
+
+No commit yet (user commits manually). Suggested subject: `tools: add rate_probe.py + document QoS-aware rate probing`.
 
 ## Block D — Dashboard UX pass 2 (filler)
 
@@ -288,6 +312,9 @@ Use this section to capture anything surprising during the day — file state dr
 - **`mono-complete` pulls in a Mono XSP4 web server (`0.0.0.0:8084`).** The `mono-xsp4` / `mono-xsp4-base` packages land as dependencies of `mono-complete` and the post-install script registers a dev HTTP listener on all interfaces, port `8084`. Unused by MP itself. Worth a follow-up `sudo systemctl disable --now mono-xsp4` (or equivalent) to close the needless open port — campus dev stance tolerates it, but it's pure surface area.
 - **`libfuse2` / `libqt5gui5` silently renamed to `libfuse2t64` / `libqt5gui5t64` on Noble.** Ubuntu 24.04's 64-bit `time_t` ABI transition appended `t64` to affected package names. `apt install libfuse2` still works (meta-package pointer) but the installed binary is the t64 variant. Cosmetic; flagged for anyone grep-checking dpkg inventory.
 - **GDAL / OGR / OSR are broken under Mono on Linux MP.** Covered in the Outcome above. The upstream MP team has known this for years; the Linux-under-Mono path is officially a "basic mission planning + telemetry" target, not a full GIS workstation. Decision point deferred: if the prof's demo scope includes terrain or geo-ref, we migrate MP to the Windows laptop per the Fallback section. Preserve today's install either way — QGC on Linux covers the same role for MAVLink console work.
+- **`ros_gz_bridge` publishes LiDAR points RELIABLE, not BEST_EFFORT.** `ros2 topic info --verbose /wamv/sensors/lidars/lidar_wamv_sensor/points` shows `Reliability: RELIABLE`, contradicting the informal "sensor data = BEST_EFFORT" assumption baked into the Block C test plan (and into the pre-edit wording of `wiki/Common_Issues.md:157–159`). The bridge's per-topic QoS depends on its config, not a universal default. **Implication:** default `ros2 topic hz` works fine against this topic today; the Jazzy `--qos-*`-missing bug is latent rather than currently-biting. Fixed the misleading Common_Issues.md comment in the same commit.
+- **`/perception/obstacle_info` idle rate was ~0.9 Hz, not 20 Hz.** The 22/04 baseline "20 Hz" is qualified in `wiki/Roadmap.md:66` as "at Gazebo RTF ≈ 1.0; rate tracks RTF". Today's idle sim yielded 0.88 Hz (both our probe and `ros2 topic hz` agreed). Follow-up worth running once: capture Gazebo RTF during a future probe (via `/world/*/clock` vs wall-clock delta, or Gazebo's own RTF telemetry) to confirm the rate actually tracks RTF linearly and not some lower-level filter. No code change warranted yet.
+- **Whole-graph QoS scan via `ros2 topic info --verbose` is too slow.** Iterating every topic in `ros2 topic list` invoked `topic info --verbose` once per topic; each call hit ~1–3 s of DDS discovery and the full sweep exceeded ~1 min before being Ctrl-C'd. Faster scan path (if we need this again): a single rclpy node that queries `get_topic_names_and_types()` once and then inspects endpoint QoS via `get_publishers_info_by_topic()` — same info, one process, no per-topic discovery penalty. Worth a 30-min follow-up tool if BEST_EFFORT hunting becomes recurring; not today.
 
 ## Next steps — concrete plan for 27/04
 
