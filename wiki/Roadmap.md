@@ -51,8 +51,9 @@ Scientific community fit: RMC2 — modeling, control, and communication of compl
 ### Summary
 
 - **High-level CCU (confirmed):** Raspberry Pi 5, Ubuntu Noble (24.04), ROS 2 Jazzy — all Tier 1 per REP-2000. Dependency versions: Python 3.12.3, NumPy 1.26.4, PCL 1.14.0, OpenCV 4.6.0, Fast-DDS 2.14.0.
-- **Low-level CCU (TBD):** Either the Pi drives thrusters directly via GPIO PWM, or a separate microcontroller (STM32 / ESP32 / commercial motor controller) is present. This is the single largest schedule risk — the supervisor conversation decides whether a bridge node is needed at all.
+- **Low-level CCU (TBD — likely autopilot):** Supervisor's 23/04/2026 request to install Mission Planner + QGroundControl strongly suggests a MAVLink-speaking autopilot (ArduPilot or PX4) sits between the Pi 5 and the thrusters — both GUIs assume a MAVLink-compatible flight controller. The specific chip and firmware are still open. Alternative paths (Pi drives thrusters directly via GPIO PWM, or a non-MAVLink microcontroller as earlier hypothesised) remain logically possible but lower-probability given the 23/04 signal. Either way this is the single largest schedule risk — whether a bridge node is needed at all, and what protocol it speaks, hangs on the supervisor confirmation.
 - **Transition path:** paper design is a two-layer remap — `topic_tools/relay` from VRX `/wamv/*` names to neutral `/sensors` / `/actuators` names (layer A), plus an optional bridge node for real-hardware protocol translation (layer B). The three pipeline nodes continue to subscribe to VRX names during Phase 5.0; no code churn required until layer A is proven.
+- **Phase 5.2+ dashboard integration (longer-term, prof request 23/04):** web dashboard should eventually issue waypoints and read telemetry *through* MP/QGC as the autopilot front-end, rather than directly against ROS 2 nodes. Requires a MAVLink bridge on the Pi 5 (`mavros` / `mavsdk` / similar) plus dashboard-side MAVLink emit/subscribe. Explicitly out of Phase 5.0 bring-up scope; preserved current dashboard UX as the behavioural target the MAVLink-bridged version must match.
 
 ### Status of prep tasks (as of 22/04/2026)
 
@@ -64,6 +65,7 @@ Scientific community fit: RMC2 — modeling, control, and communication of compl
 | Supervisor CCU checklist (24 questions) | ✅ drafted |
 | Launcher readiness polls (pre-requisite for Pi 5 slower-CPU timing) | ✅ landed 20/04/2026 |
 | Profile `/perception/obstacle_info` Hz in VRX; baseline for Pi 5 comparison | ✅ 20.00 Hz at RTF ≈ 1.0 (22/04/2026); rate tracks Gazebo RTF |
+| Install Mission Planner + QGroundControl on Linux workstation (prof-requested toolchain) | ✅ 24/04/2026 — MP 1.3.9384.38258 + QGC stable-daily 09/10/2025; MP-under-Mono GDAL / OGR / OSR degraded (Windows `.msi` fallback held for GIS demos) |
 | Shore-comms plan (WiFi range test, 4G fallback) | ❌ |
 
 ### Blockers
@@ -312,10 +314,11 @@ Questions that unblock specific next steps. Organised by phase.
 
 ### Phase 5 (Pi 5 bring-up — see also the scope plan in `working_diary/`)
 
-1. Is there a separate low-level CCU between the Pi 5 and the thrusters, or does the Pi drive them directly?
+1. Is there a separate low-level CCU between the Pi 5 and the thrusters, or does the Pi drive them directly? (23/04/2026 MP/QGC signal leans toward separate MAVLink autopilot — needs explicit confirmation.)
 2. If separate: what chip, physical link, protocol? Any existing ICD / firmware?
-3. Thruster type and thrust range (for mapping the current 0–800 VRX scale to real Newtons / PWM duty)?
-4. Test-lake or test-site GPS coordinates for the geofence polygon?
+3. If autopilot: **ArduPilot or PX4?** What's the MAVLink connection topology between autopilot and Pi 5 — serial (USB/UART), Ethernet, onboard MAVLink-router? Default `14550/udp` or custom?
+4. Thruster type and thrust range (for mapping the current 0–800 VRX scale to real Newtons / PWM duty)?
+5. Test-lake or test-site GPS coordinates for the geofence polygon?
 
 ### Phase D (real probe)
 
@@ -339,3 +342,4 @@ Questions that unblock specific next steps. Organised by phase.
 | Date | Change |
 |:-----|:-------|
 | 21/04/2026 | Initial version. Consolidates Phase 5 scope summary (detail in `working_diary/2026-04-19_to_2026-04-20_phase5_prep_scope_plan.md`), adds research-extension architecture and Phase A consulting scope. |
+| 24/04/2026 | Phase 5 summary reworded for 23/04 supervisor hardware walk-through: Pi 5 visually verified inside CCU; MP/QGC install added as prep task; low-level CCU note now flags "likely autopilot" as the working hypothesis from prof's MP/QGC ask; new bullet for Phase 5.2+ dashboard-through-MAVLink longer-term goal; Phase 5 open-questions list gains an autopilot / MAVLink-topology question. |

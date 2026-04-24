@@ -139,12 +139,14 @@
 
 **Status**: Planned | **Expected kickoff**: Week of 20/04/2026 | **Priority**: High
 
-Supervisor has signalled imminent access to the real AutoBoat central control unit (CCU). Expected two-tier control architecture:
+Supervisor walked through the real AutoBoat central control unit (CCU) in person on 23/04/2026 — boat frame, control unit enclosure, battery, and a Raspberry Pi 5 inside the enclosure as the companion computer. Hardware not yet delivered to the intern's bench, but the target platform is now physically verified rather than specified-on-paper.
 
-- **High-level (confirmed)**: Raspberry Pi 5 running ROS 2 Jazzy + this repo's nodes, LiDAR driver, GPS/IMU drivers, dashboard, shore comms.
-- **Low-level (TBD — not confirmed)**: Supervisor mentioned something like an STM32 microcontroller, but the exact chip / whether a dedicated low-level board exists at all has not been confirmed. Could be STM32, ESP32, a commercial motor controller, or even omitted (Pi handles everything). Clarify with supervisor before hardware arrives.
+Expected two-tier control architecture:
 
-The whole repo is expected to run on the Pi 5.
+- **High-level (confirmed, 23/04/2026 visual)**: Raspberry Pi 5 running ROS 2 Jazzy + this repo's nodes, LiDAR driver, GPS/IMU drivers, dashboard, shore comms.
+- **Low-level (TBD — likely autopilot)**: Supervisor's 23/04 request to install **Mission Planner + QGroundControl** as the intended flight-control toolchain strongly suggests a MAVLink-speaking autopilot (ArduPilot or PX4) sits between the Pi 5 and the thrusters — MP and QGC both assume a MAVLink-compatible flight controller. The specific chip / firmware has not been confirmed; earlier STM32 mention remains speculative. Treat the autopilot-in-loop architecture as the **working hypothesis** pending supervisor confirmation; the alternative (Pi drives thrusters directly, MP/QGC installed only for future research work) stays on the table.
+
+The whole repo is expected to run on the Pi 5. Long-term (Phase 5.2+): dashboard should issue waypoints and read telemetry **through MP/QGC as the autopilot front-end** rather than directly against ROS 2 nodes — requires a MAVLink bridge on the Pi 5 (`mavros` / `mavsdk` / similar) plus dashboard-side MAVLink emit/subscribe. Not scoped for Phase 5.0 bring-up.
 
 ### Risks ranked (mitigation prep can start on Linux workstation without hardware)
 
@@ -165,7 +167,8 @@ The whole repo is expected to run on the Pi 5.
 | Profile `/perception/obstacle_info` Hz in VRX; document baseline | ✅ 20.00 Hz at RTF ≈ 1.0, 4 ms stdev, 120 s under Buoy Field mission (22/04/2026 Linux workstation). Rate tracks Gazebo RTF — this host drops to 30-40% under heavier load; Pi 5 on-water is the real Phase 5 baseline to compare against. |
 | Stub bridge node (inputs `/control/thrust_cmd`, outputs thrusters) with pass-through behaviour | 🟡 pseudocode drafted |
 | Inventory of every `/wamv/*` reference across Python, YAML, JS, HTML | ✅ done |
-| Supervisor conversation: confirm CCU architecture (is there a low-level controller? what chip? what firmware? any interface-control document?) | 🟡 checklist drafted |
+| Supervisor conversation: confirm CCU architecture (is there a low-level controller? what chip? what firmware? any interface-control document?) | 🟡 checklist drafted; partial signal 23/04/2026 — MP/QGC request implies MAVLink autopilot in loop, specific chip / firmware still open |
+| Install Mission Planner + QGroundControl on Linux workstation (prof-requested 23/04 toolchain) | ✅ 24/04/2026 — MP 1.3.9384.38258 + QGC stable-daily 09/10/2025; MP-under-Mono reaches main UI but GDAL / OGR / OSR fail (terrain + advanced geo-ref degraded — Windows `.msi` fallback held if prof needs GIS demos) |
 | Spec shore-comms plan (WiFi range test, fallback to 4G) | ⬜ |
 
 ### Hardware-arrival tasks (requires CCU on-bench)
@@ -176,6 +179,7 @@ The whole repo is expected to run on the Pi 5.
 | Build workspace on Pi 5 (native ARM64 build) | ⬜ |
 | Wire bridge node to real low-level protocol (only if supervisor confirms a separate low-level controller) | ⬜ |
 | Swap `/wamv/*` remaps to real driver topic names | ⬜ |
+| Connect MP / QGC to the autopilot (MAVLink default `14550/udp`, or serial if USB-tethered); verify telemetry + waypoint upload before attempting dashboard integration | ⬜ |
 | Bench test: dashboard → Pi 5 → (low-level if present) → thruster signal (dry bench, motors disconnected) | ⬜ |
 | Static analysis of thermals + current draw under full-stack load | ⬜ |
 
@@ -275,7 +279,10 @@ The whole repo is expected to run on the Pi 5.
 | 23/04/2026 | Health-check count verify: runtime total **= 49 in both IDLE and ACTIVE** (IDLE: 49 PASS; ACTIVE: 41 PASS + 8 TUNED from applied presets). Matches `README.md:128` and `:236` claim exactly; no docs change needed | ✅ |
 | 23/04/2026 | Dashboard shared-helpers consolidation: `scrollToEmergencyStop` 300 ms debounce (`03e5c2d`); `resetGroupToDefaults` helper extraction with thin wrappers (`11c5f95`); unified `debounceGroup(name, ms, fn, options)` helper absorbs `debounceCommand`/`debounceApply`/`debouncePreset` + camera refresh + E-Stop shortcut into single mechanism (`336fb28`, net –26 LOC) | ✅ |
 | 23/04/2026 | Camera panel hardening (unplanned F+G blocks): same-topic Refresh no-op eliminates Mode B `web_video_server` deadlock vector (`560f9fe`, tear-down gap 200→500 ms); custom combobox with ▼ toggle + rosbridge `/rosapi/topics_for_type` auto-discovery replaces free-text topic input (`8c215e5`, hardcoded 3-camera fallback preserved; name-pattern filter drops zombie Image-typed LiDAR subscriptions) | ✅ |
-| TBD | Real-hardware deployment (Pi 5 as confirmed target; low-level CCU architecture TBD) | 🔜 |
+| 23/04/2026 | Supervisor hardware walk-through: prof showed the real CCU in person — Pi 5 inside the control-unit enclosure (physically verified as companion computer). Prof-preferred toolchain **Mission Planner** (+ QGroundControl as cross-platform alt); signals a MAVLink autopilot in loop though specific chip / firmware not confirmed. Long-term ask: dashboard → MP/QGC as autopilot front-end (Phase 5.2+, post-bringup) | ✅ |
+| 24/04/2026 | MP + QGC installed on Linux workstation per 23/04 ask (`qgc` + `missionplanner` in `~/.local/bin`; QGC AppImage in `~/Applications/`; Mono 6.8.0.105). MP 1.3.9384.38258 reaches main UI but GDAL / OGR / OSR DLLs fail under Mono (terrain / geo-ref degraded); QGC stable-daily 09/10/2025 clean. Windows `.msi` fallback held for GIS-heavy demos | ✅ |
+| 24/04/2026 | `tools/rate_probe.py` — QoS-aware publisher-rate probe working around Jazzy's `ros2 topic hz` lacking `--qos-*` flag. Correctness validated against `/perception/obstacle_info` (both RELIABLE, rate_probe agrees with `topic hz` within noise at idle RTF). Jazzy-bug live demo deferred — no BEST_EFFORT publisher in the current stack (ros_gz_bridge publishes LiDAR points RELIABLE, contrary to the sensor_data-QoS assumption). `wiki/Common_Issues.md` gets a new QoS-aware rate-probing subsection + corrected Obstacle-Detection diagnostic block | ✅ |
+| TBD | Real-hardware deployment (Pi 5 as confirmed target, visual-verified 23/04/2026; MAVLink autopilot as working hypothesis; low-level CCU architecture TBD) | 🔜 |
 | TBD | Coverage Planning | ⏸️ |
 
 ---
