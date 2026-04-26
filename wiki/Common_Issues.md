@@ -508,7 +508,7 @@ If `~/seal_ws/src/install/` exists, that is the smoking gun.
 1. **Install Python packages** (skip if your workspace Python is managed via conda — `pip3` into the system Python can shadow conda packages and create hard-to-debug import races):
 
    ```bash
-   pip3 install numpy scipy matplotlib
+   pip3 install numpy matplotlib
    ```
 
 2. **Source ROS 2 environment**:
@@ -660,7 +660,7 @@ If `~/seal_ws/src/install/` exists, that is the smoking gun.
 
 **Symptoms**: Time-synchronization warnings at startup
 
-**Cause**: A node is running in wall-clock mode while the rest of the stack is on simulation time. `launch/autoboat.launch.yaml` sets `use_sim_time: true` for all three pipeline nodes, so launching via the one-click launcher should never hit this. If you do, you're likely running a node manually (e.g., via `ros2 run ...`) without passing the override:
+**Cause**: One node is on simulation time while another is on wall clock, so the time-source heuristic flags a mismatch. `launch/autoboat.launch.yaml` does NOT currently set `use_sim_time`; all three pipeline nodes default to wall time, and the one-click launcher inherits that default. If you need simulation-clock synchronization (typically when comparing logs against Gazebo's `/clock`), pass the override consistently to every node — e.g.:
 
 ```bash
 ros2 run plan waypoint_planner_node --ros-args -p use_sim_time:=true

@@ -219,7 +219,7 @@ echo $GZ_SIM_RESOURCE_PATH
 Install additional Python packages if needed:
 
 ```bash
-pip3 install numpy scipy matplotlib
+pip3 install numpy matplotlib
 ```
 
 ---

@@ -174,7 +174,7 @@ The **Modular (Perception–Planner–Controller)** three-node pipeline is the a
 - **ROS 2 Jazzy**: Robot middleware
 - **Gazebo Harmonic**: 3D simulation
 - **Python 3.10+**: Implementation language
-- **NumPy/SciPy**: Numerical computations
+- **NumPy**: Numerical computations
 - **Leaflet.js**: Interactive map visualization
 
 ### Web Communication Stack
