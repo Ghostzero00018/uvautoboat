@@ -350,3 +350,51 @@ The afternoon-only budget carried all three planned small blocks (B + C + D) cle
 - **Real no-regression test for `launch/remap.launch.yaml`** — migrates to Phase 5.1 bench (Pi 5).
 - **C3 bench verification** — passive wait for real-hardware symptom.
 - **Dashboard ↔ MP/QGC integration** (prof's long-term request from 23/04 meeting). Goal: dashboard issues waypoints + monitors live telemetry *through* MP/QGC as the autopilot front-end, not directly against ROS 2 nodes. Requires a MAVLink bridge on the Pi 5 (`mavros`, `mavsdk`, or similar) plus dashboard-side MAVLink emit/subscribe. Significant architecture work — fits the Phase 5.2+ window once basic bringup via MP/QGC against the Pi 5 is proven. Preserve today's dashboard UX (combobox, debounced controls, live map) as the prototype the MAVLink-bridged version has to match.
+
+## Post-day addendum — 26/04 Sunday weekend audit fixes
+
+Two days after the Friday wrap, a 5-item audit surfaced opportunistically (not from a planned activity). Each claim verified file:line + counter-evidence (`Read` / `Grep` in the same turn, never from session memory) before action. All 5 confirmed real and fixed; adjacent doc cleanup bundled. 5 commits landed on `main`:
+
+```text
+f8ee908 fix: add pytest cache files pattern to .gitignore
+7016b9b fix(health-check): derive script path from __file__ + wall-clock watchdog
+3523b12 refactor: canonical std_srvs/srv/Trigger in dashboard; drop dead scipy dep across plan + control packages
+2bd1982 docs: correct use_sim_time claim and drop scipy from install instructions and architecture overview
+e1c0ccc chore: extend .gitignore with vim .swo and backup/temp patterns
+```
+
+### What landed
+
+- **Health-check service path.** `plan/plan/health_check_service.py` SCRIPT_PATH no longer hardcodes `~/seal_ws/...`; derives from `Path(__file__).resolve().parents[2]` (same pattern `autoboat_cli.py:83` already uses). Workspace-relocatable.
+- **Health-check service timeout.** Replaced unreachable `process.wait(timeout=90)` (only ran post-stdout-EOF) with a `threading.Timer(90.0, _kill_on_timeout)` wall-clock watchdog + `timed_out` Event flag. A hung script with no output now actually times out, and the post-loop branch distinguishes forced-kill from clean-exit before publishing the status line.
+- **Canonical `std_srvs/srv/Trigger` in dashboard.** `web_dashboard/autoboat/app.js` had 3× short form `std_srvs/Trigger` and 1× long form. ROS 2 canonical is `<package>/srv/<Type>`; rosbridge_suite typically normalises but per-version compatibility varies. Unified all 4 references to the canonical long form.
+- **Dead `scipy` dep across packages.** Original audit caught `control/setup.py`; the counter-evidence sweep across `plan/` also caught `plan/setup.py` and `plan/package.xml` (the latter with both `install_requires` *and* `<exec_depend>python3-scipy</exec_depend>`). Zero `scipy` imports across `plan/plan/*.py` and `control/control/*.py`. All three sites cleaned in `3523b12`.
+- **`use_sim_time` doc drift.** `wiki/Common_Issues.md:663` claimed `launch/autoboat.launch.yaml` sets `use_sim_time: true` for all three pipeline nodes; `USER_MANUAL.md:336` correctly said "current launch files run on wall time". Grep on the launch file confirmed zero `use_sim_time` matches — USER_MANUAL was the truthful side. Rewrote the Common_Issues line to state launch yaml does NOT set `use_sim_time`, all three nodes default to wall time, override is per-node `--ros-args -p use_sim_time:=true` if needed.
+
+### Adjacent cleanups
+
+- **`scipy` in user-facing docs.** Same dead dep was advertised in three wiki spots: `Common_Issues.md:511`, `Installation_Guide.md:222` (`pip3 install numpy scipy matplotlib`), and `System_Overview.md:177` (`NumPy/SciPy`). Removed `scipy` from all three. `matplotlib` left in the two `pip3 install` lines pending a separate decision (also unused per grep, but lower-impact and less of a misleading "runtime requirement" signal).
+- **`.gitignore` housekeeping.** Two commits: `f8ee908` matched `pytest-cache-files-*/` directories the local environment was leaking into the working tree; `e1c0ccc` added `*.swo` (vim alt-buffer swap) and a new "Backup / Temporary" section with `*.bak`, `*.orig`, `*.rej`, `*.tmp`, `.tmp/`.
+
+### Verification discipline notes
+
+Spot-verify caught two would-have-been-bugs of the audit pass:
+
+- The original Claim #4 only flagged `control/setup.py`. Mid-cleanup, the same `\bscipy\b` grep run across `plan/` returned `plan/setup.py:21` and `plan/package.xml:22` — under-scoped report from the source audit. Without the wide grep the plan-package mirror would have stayed dead-declared.
+- An earlier conversational claim ("matplotlib appears in three docs spots") turned out to be `inferred` rather than verified; the actual count was two (the System_Overview line never mentioned matplotlib, only SciPy). Self-corrected on re-grep.
+
+### Linux-side validation needed (next session, 27/04)
+
+`7016b9b` changes runtime behaviour of the dashboard Health Check button. After the Monday `git pull`:
+
+```bash
+cd ~/seal_ws
+colcon build --packages-select plan control
+source install/setup.bash
+# Restart launcher, then trigger Health Check from the dashboard.
+# - Normal run: same observable behaviour (lines stream, status ok/error)
+# - Optional hung-script test (manufactured): insert `sleep 200` near the top of a copy of the script
+#   → Health Check should kill at ~90 s and publish a [TIMEOUT] line; status flips to error
+```
+
+Other commits today (`3523b12`, `2bd1982`, `e1c0ccc`, `f8ee908`) are pure string / dep-list / doc / `.gitignore` changes — no runtime behaviour delta beyond the build picking up the dropped `scipy` declaration on next `colcon build`.
