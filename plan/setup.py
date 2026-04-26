@@ -18,7 +18,6 @@ setup(
     install_requires=[
         'setuptools',
         'numpy',
-        'scipy',
     ],
     zip_safe=True,
     maintainer='Ghostzero00018',

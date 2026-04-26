@@ -2100,7 +2100,7 @@ function initMissionControl() {
             const stopService = new ROSLIB.Service({
                 ros: ros,
                 name: '/planning/stop_mission',
-                serviceType: 'std_srvs/Trigger'
+                serviceType: 'std_srvs/srv/Trigger'
             });
             stopService.callService(new ROSLIB.ServiceRequest({}), (result) => {
                 if (result.success) {
@@ -2276,7 +2276,7 @@ function generateWaypoints() {
     const generateService = new ROSLIB.Service({
         ros: ros,
         name: '/planning/generate_waypoints',
-        serviceType: 'std_srvs/Trigger'
+        serviceType: 'std_srvs/srv/Trigger'
     });
     generateService.callService(new ROSLIB.ServiceRequest({}), (result) => {
         if (result.success) {
@@ -3823,7 +3823,7 @@ window.addEventListener('load', () => {
 });
 
 // ============================================================================
-// Health Check Panel — calls /health_check/run (std_srvs/Trigger) via rosbridge
+// Health Check Panel — calls /health_check/run (std_srvs/srv/Trigger) via rosbridge
 // ============================================================================
 function classifyHealthLine(line) {
     if (/\[PASS\]/.test(line)) return 'pass';
