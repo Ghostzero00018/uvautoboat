@@ -41,6 +41,7 @@ Makefile
 
 # Pytest / Testing
 .pytest_cache/
+pytest-cache-files-*/
 .coverage
 htmlcov/
 test_results/
