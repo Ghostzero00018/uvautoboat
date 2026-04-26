@@ -50,8 +50,16 @@ test_results/
 .vscode/
 .idea/
 *.swp
+*.swo
 *~
 compile_commands.json
+
+# Backup / Temporary
+*.bak
+*.orig
+*.rej
+*.tmp
+.tmp/
 
 # OS Generated
 .DS_Store
