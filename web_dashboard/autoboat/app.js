@@ -1857,6 +1857,11 @@ function filterDirtyParams(fullConfig, idToParam) {
 // *_DEFAULTS maps for tuning-panel inputs. Returns undefined if unknown.
 function getCanonicalDefault(el) {
     if (!el || !el.id) return undefined;
+    // Prefer live default from /<ns>/param_ranges topic — Python is now the single
+    // source of truth (post 3-tuple extension). Falls through to legacy sources if
+    // the topic hasn't published a default for this input yet (Python still on the
+    // pre-extension version) or for inputs not in any PARAM_RANGES dict.
+    if (liveDefaults[el.id] !== undefined) return liveDefaults[el.id];
     if (el.dataset.default !== undefined && el.dataset.default !== '') return el.dataset.default;
     if (el.id.startsWith('perception-')) return PERCEPTION_DEFAULTS[el.id];
     if (el.id.startsWith('controller-')) return CONTROLLER_DEFAULTS[el.id];
@@ -3364,6 +3369,15 @@ function enrichTooltipsWithRanges() {
     });
 }
 
+// Live launch-defaults received from /<ns>/param_ranges (3rd element of each
+// [min, max, default] tuple, post-extension). Populated by applyRangesToDashboard;
+// consulted first by getCanonicalDefault. Eliminates the 4-place sync drift class
+// for defaults — Python becomes the single source of truth, dashboard reflects
+// whatever YAML launched with. Belt-and-braces: HTML data-default + PERCEPTION_DEFAULTS
+// / CONTROLLER_DEFAULTS still serve as fallbacks if the topic publishes legacy
+// 2-tuples (Python pre-extension) or for inputs not in any PARAM_RANGES dict.
+const liveDefaults = {};
+
 // Param name → list of HTML input IDs. A param may appear in multiple inputs
 // (e.g., 'lanes' is in both cfg-lanes and wp-lanes). Used by applyRangesToDashboard
 // to sync min/max from ROS nodes onto HTML inputs at runtime.
@@ -3418,8 +3432,9 @@ const PARAM_TO_INPUT_IDS = {
 function applyRangesToDashboard(rangesJson) {
     let changed = 0;
     for (const [paramName, range] of Object.entries(rangesJson)) {
-        if (!Array.isArray(range) || range.length !== 2) continue;
-        const [min, max] = range;
+        // Accept 2-tuple [min, max] (legacy) or 3-tuple [min, max, default] (post-extension).
+        if (!Array.isArray(range) || range.length < 2) continue;
+        const [min, max, defaultVal] = range;
         const inputIds = PARAM_TO_INPUT_IDS[paramName];
         if (!inputIds) continue;
         for (const id of inputIds) {
@@ -3428,6 +3443,13 @@ function applyRangesToDashboard(rangesJson) {
                 el.min = String(min);
                 el.max = String(max);
                 changed++;
+                // If the publisher included a default (Python post-3-tuple-extension),
+                // record it in liveDefaults and refresh the (default: X) span so it
+                // reflects the live launch value rather than a hardcoded HTML/JS one.
+                if (defaultVal !== undefined && defaultVal !== null) {
+                    liveDefaults[id] = defaultVal;
+                    updateValueDisplay(el);
+                }
             }
         }
     }

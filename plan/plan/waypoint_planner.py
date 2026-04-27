@@ -675,10 +675,18 @@ class WaypointPlanner(Node):
         publisher.publish(msg)
 
     def _publish_param_ranges(self):
-        """Publish validation ranges so the dashboard can sync HTML min/max."""
+        """Publish validation ranges + launch defaults so the dashboard can sync
+        HTML min/max AND the (default: X) hint without hardcoding defaults on the
+        dashboard side. Lazy-captures launch-time defaults on first publish — at
+        that point get_parameter() returns YAML-or-Python-default values, before
+        any runtime config_callback can mutate them."""
+        if not hasattr(self, '_launch_defaults'):
+            self._launch_defaults = {
+                p: self.get_parameter(p).value for p in self.PARAM_RANGES.keys()
+            }
         self._publish_json(
             self.pub_param_ranges,
-            {k: [lo, hi] for k, (lo, hi) in self.PARAM_RANGES.items()},
+            {k: [lo, hi, self._launch_defaults.get(k)] for k, (lo, hi) in self.PARAM_RANGES.items()},
             'param_ranges',
         )
 
