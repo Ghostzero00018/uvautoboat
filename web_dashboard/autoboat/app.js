@@ -1521,6 +1521,12 @@ function initConfigPanel() {
         document.getElementById('cfg-astar-resolution').value = '3.0';
         document.getElementById('cfg-astar-safety').value = '12.0';
         document.getElementById('cfg-astar-max').value = '20000';
+        // Programmatic value sets don't fire the `input` event; refresh the
+        // (default: X) span explicitly so the orange hint clears on Reset.
+        ['cfg-astar-resolution', 'cfg-astar-safety', 'cfg-astar-max'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) updateValueDisplay(el);
+        });
         debounceApply(() => {
             if (!connected || !configPublisher) {
                 showFeedback('❌ Not connected to ROS', 'error');
@@ -1608,7 +1614,15 @@ const CONTROLLER_DEFAULTS = {
 function resetGroupToDefaults(defaults, label, extraReset) {
     for (const [id, val] of Object.entries(defaults)) {
         const el = document.getElementById(id);
-        if (el) { el.value = val; dirtyInputs.add(id); el.classList.add('input-dirty'); }
+        if (el) {
+            el.value = val;
+            el.classList.remove('modified');
+            dirtyInputs.add(id);
+            el.classList.add('input-dirty');
+            // Programmatic value sets don't fire the `input` event, so refresh the
+            // (default: X) span explicitly to mirror resetConfigToDefaults' pattern.
+            updateValueDisplay(el);
+        }
     }
     if (extraReset) extraReset();
     addLog(`${label} fields reset to launch defaults`, 'info');
@@ -1733,11 +1747,14 @@ function updateConfigFromROS(data) {
         // Don't update if input is dirty (user modified) or focused
         if (el && !dirtyInputs.has(id) && document.activeElement !== el && value !== undefined) {
             el.value = value;
+            // Programmatic .value set doesn't fire `input`; refresh (default: X) span.
+            updateValueDisplay(el);
         }
         // Clear dirty state if ROS value matches what we sent (confirmation)
         if (el && dirtyInputs.has(id) && parseFloat(el.value) === value) {
             dirtyInputs.delete(id);
             el.classList.remove('input-dirty');
+            updateValueDisplay(el);
         }
     }
 
@@ -3085,6 +3102,12 @@ function updatePerceptionInputs(params) {
     document.getElementById('perception-temporal-threshold').value = params.temporal_threshold;
     document.getElementById('perception-water-threshold').value = params.water_plane_threshold;
     document.getElementById('perception-hysteresis').value = params.hysteresis_distance;
+    // Programmatic value sets don't fire the `input` event; refresh the
+    // (default: X) span for every perception input so spans match preset values.
+    Object.keys(PERCEPTION_DEFAULTS).forEach(id => {
+        const el = document.getElementById(id);
+        if (el) updateValueDisplay(el);
+    });
 }
 
 // Update Controller input fields from preset.
@@ -3114,6 +3137,14 @@ function updateControllerInputs(params) {
         document.getElementById('controller-turn-deadband').value = params.turn_deadband_deg;
     }
     document.getElementById('controller-slew-rate').value = params.slew_rate_limit;
+    // Programmatic value sets don't fire the `input` event; refresh the
+    // (default: X) span for every controller input + the use-vfh select.
+    Object.keys(CONTROLLER_DEFAULTS).forEach(id => {
+        const el = document.getElementById(id);
+        if (el) updateValueDisplay(el);
+    });
+    const vfhEl = document.getElementById('controller-use-vfh');
+    if (vfhEl) updateValueDisplay(vfhEl);
 }
 
 // Apply LiDAR perception parameters via config topic
