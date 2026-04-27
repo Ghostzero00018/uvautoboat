@@ -43,7 +43,7 @@ Themed grouping proposal (refine as we read the log + `Board.md` timeline):
 - **Dashboard consolidation + camera hardening + supervisor walk-through (23/04)** — unified `debounceGroup` helper (–26 LOC net); camera same-topic Refresh no-op eliminates a `web_video_server` deadlock vector; topic combobox with `/rosapi/topics_for_type` auto-discovery. Prof walked through the real CCU hardware (Pi 5 physically verified; MP/QGC as prof-preferred toolchain; MAVLink-autopilot-in-loop working hypothesis).
 - **MP + QGC install + rate_probe + UX pass 2 (24/04)** — prof-requested toolchain installed on Linux workstation (GDAL/OGR/OSR degraded under Mono, Windows `.msi` fallback held); `tools/rate_probe.py` with new `wiki/Common_Issues.md` QoS-aware-probing subsection; S1 Reset-during-Confirm + S2 Go-Home-at-home toasts with planner-side at-home guard.
 
-**Outcome.** [To fill — which items made the deck, which got parked, approx slide count added since 15/04, themes that emerged while reading the raw log.]
+**Outcome.** 5 themed slide groups landed (Naming/architecture cleanup; Dashboard maturity; Reliability tier; Diagnostics & Hardware-Deployment Prep; Mission Demo + Asks + Future Work), fed into the Windows-side PPT draft this afternoon. ~5 new content slides since the 15/04 deck (collapses to 3 if "Diagnostics" + "Reliability" merge). Three themes emerged: (1) **Observability first** — TUNED state, JSON schema guards, per-tab logs, rate probing, 4-state health check, dashboard validation rejection; (2) **Dashboard as a first-class subsystem** — helpers consolidation, security hardening, defensive toasts, hover unification; (3) **Phase 5 framing** — `remap.launch.yaml`, MP/QGC tooling, perception publish-rate baseline. Parked: detail-level commits (individual tooltips, JSON-parse hardening), diary scaffolding, Vostok1 breadcrumb cleanup. Number-correction round-trip via `8f55fea`: "26 files / ~1,100 refs" → "30 files, +1,099 / −1,398 lines" after `git diff --stat 39b5a6e` verification.
 
 ## Block B — Demo rehearsal
 
@@ -61,7 +61,17 @@ Run the canonical end-to-end demo (mirror the 15/04 structure from `PPT/assets/p
   - `TUNED` state chip in health check after a preset-apply
   - rate_probe.py side-by-side with `ros2 topic hz` (best for a technical-story slide, less for a live demo)
 
-**Outcome.** [To fill — any regressions surfaced, shortlist of 1–3 demo-worthy features, estimated live-demo minutes for Thursday timing.]
+**Outcome.** Demo rehearsal deferred to Tuesday morning — day shifted to **bug-finding during simulation testing**. Five emergent fixes shipped today:
+
+| Commit | Surface | Summary |
+|:-------|:--------|:--------|
+| `b3b8596` | Health Check service install path | `Path(__file__).resolve().parents[2]` worked from source but resolved 3 levels too short under colcon install layout, producing the dashboard error `Health check script not found at /home/ghostzero/seal_ws/install/lib/python3.12/...`. Fix: `ament_index_python.get_package_share_directory('plan')` + script installed as package data via `setup.py` `data_files`. |
+| `5c388a6` | Dashboard main-panel hover style | 5 mission buttons had no `:hover` rule at all (Joystick on/off, Confirm, Cancel, Resume); 5 large CTAs used `scale()` zoom, tuning Reset used bg-only — visually mismatched with paired Apply. Universal Pattern A (`translateY(-2px)` + colored shadow) applied across all main-panel buttons. |
+| `81cc4d6` | Per-tab launcher logs | Each `gnome-terminal` tab tees stdout/stderr to `/tmp/autoboat_tab_<name>.log`; `rm -f` at launcher start handles skip-flag stale-log edge case. Cold-simulate (`drop_caches` + `ros2 daemon stop`) didn't reproduce the first-of-day yellow warning — likely SSD page cache refilled too fast. Capture pending next genuine cold boot. |
+| `f1f067e` | Reset → Apply UX + dirty marker | Reset is now confirm + reset + apply in one step (Option B); A* Reset gained the missing confirm dialog. Dirty marker: drop focus-only trigger (was firing on click without edit); revert-to-default now clears the orange marker; 6 missing `data-default` attrs added (`wp-*` + `cfg-astar-*`). |
+| `bca4b0b` | `(default: X)` hint extended | Indicator was scoped to 6 `cfg-*` inputs only; now all parameter inputs (perception, controller, A*, waypoint, VFH select) show the orange hint when modified. Refactored `updateValueDisplay` via `getCanonicalDefault` + new `ensureValueDisplay` helper that creates the value-display sibling on the fly. |
+
+No live-demo shortlist drafted yet — that work moves to Tuesday's actual rehearsal.
 
 ## Block C — Visual capture
 
@@ -79,7 +89,7 @@ Candidate captures (final list depends on Block B):
 
 Real-hardware photos (Pi 5 in the CCU enclosure, real WAM-V running the stack on water, dashboard against a remote Pi 5) are deferred until hardware testing begins — added to the asset list as Phase-5.1+ progresses, not blocking the 30/04 deck.
 
-**Outcome.** [To fill — list of captured assets, any that turned out not useful once reviewed.]
+**Outcome.** Capture work deferred. Synthetic artefacts (`changelog_since_15-04.md` + `CHECKLIST.md`) were created mid-day under `ppt_assets/2026-04-30/`, then removed (commit `49b09ce`) once the maintainer decided PPT artefacts stay Windows-side; the diary itself updated in the same commit to drop the `mkdir -p ppt_assets/2026-04-30` line and point at the Windows-side flow. No PNG / terminal / MP4 captures today — Block B's deferral pulled Block C with it. Block A's bullet content fed the Windows-side slide draft directly instead.
 
 ## Block D — Wrap + diary fill-in
 
@@ -109,17 +119,45 @@ Real-hardware photos (Pi 5 in the CCU enclosure, real WAM-V running the stack on
 
 Use this section to capture anything surprising during the day — file state drift, unexpected behaviour, migration caveats. Each entry: file:line or command + observation + fix or follow-up.
 
-- [To fill]
+- **First-cold-launch warning still uncaptured** — user reports a yellow `print_warning` text on first-of-day launches that quiets on subsequent runs; phrased as "ros2 has error" by the user. Cold-simulate (`sync && echo 3 | sudo tee /proc/sys/vm/drop_caches` + `ros2 daemon stop`) didn't reproduce on this Linux workstation; SSD page cache likely refilled too fast. Per-tab logs (`81cc4d6`) now in place at `/tmp/autoboat_tab_<name>.log`; capture pending next genuine first-of-day launch.
+- **`update-pip-graph` GitHub Actions deprecation warning** — Node 20 deprecation on GitHub-managed `github/dependabot-action@main`, fires only on Dependabot-attributed events. Server-side workflow, not in our repo (only `sync-wiki.yml` is ours, uses `actions/checkout@v6`). Auto-resolves by 2 June 2026 per GitHub's cutover. No action needed.
+- **C3 specifics in commit `3389554`** — diary's themed grouping says "C1/C2/C3 bug fixes" but the slide draft (Windows-side) describes only two specifics (`_log_bad_json` propagation + `force_turn_after_reverse` persistence). Run `git show 3389554` Tuesday before finalizing the slide bullet.
+- **Revert-to-applied-non-default edge case** in dirty tracker — `getCanonicalDefault()` compares to launch default, not last-value-sent-to-ROS. After applying a non-default value, manually reverting to default clears the orange marker but ROS state is unchanged → silent mismatch in this narrow scenario. Proper fix: per-input `lastApplied` tracker (~30 LOC). Deferred.
+- **`autoboat_cli.py:83` cosmetic install-path bug** — same `parents[2]` defect as the health-check fix, affects only user-facing print messages at lines 277 and 541. Class-instance pair; deferred.
+- **3 `.modified`-class wirings missing** in `initConfigValueTracking()` — `cfg-waypoint-tolerance`, `cfg-approach-slow-distance`, `cfg-approach-slow-factor` have value-display spans in HTML but aren't in the init loop's `configInputs` array. Pre-existing bug. Deferred.
 
 ## Next steps — concrete plan for 28/04
 
-[To fill at end of day.]
+Today wrapped: 7 commits shipped on `main`, all simulation-tested. Block A done and fed the Windows-side PPT draft; Blocks B + C carry to Tuesday morning. Emergent bug-fix work consumed the afternoon (5 dashboard / launcher fixes — see Block B outcome table). See the actionable list below for Tuesday's order of operations.
 
 ### Actionable on 28/04 (Tuesday)
 
-- **PPT updates on Windows laptop** — consume today's changelog + visual assets into slides. Speaker-script additions mirror slide content (bilingual EN + 中文 per convention).
-- **Carry-over from 27/04:** whichever of Blocks A / B / C didn't land or needs follow-up.
-- **Rehearsal pass 2** — timed, with the updated deck, on Tuesday evening.
+**Morning — Linux side:**
+
+- **Block B — Demo rehearsal** (~1.5 h): canonical happy-path on `sydney_regatta_DEFAULT`. Verify no regressions since the 15/04 demo. Spot-check the new-since-then features (camera combobox, unified debounce visual, Reset-blocked toast, Go-Home-at-home toast, `[TUNED]` chip after a preset-apply, `rate_probe.py`). Draft live-demo shortlist (1-3 features) + estimated live-demo minutes for Thursday timing.
+- **Block C — Visual capture during/after the demo** (~45 min): 6 GUI PNGs (dashboard main view post-23/04, health-check IDLE + ACTIVE-with-preset, Reset-blocked toast, Go-Home-at-home toast, `Board.md` timeline rendered in the GitHub web view) + 2 terminal captures (`rate_probe.py --reliability reliable --duration 20 --topic /perception/obstacle_info` next to `ros2 topic hz /perception/obstacle_info`). Land directly in the Windows-side PPT assets folder.
+- **First-cold-launch warning capture**: if Tuesday's launch is the first since reboot, run `grep -iE 'warn|error|fail|deprecat' /tmp/autoboat_tab_*.log` immediately after the launch banner. The per-tab logs deployed in `81cc4d6` should now contain whatever yellow text was previously eluding capture.
+- **C3 spot-check**: `git show 3389554` to identify the third bug fix in the C-class commit. The slide draft (Windows-side) currently describes only two specifics (`_log_bad_json` + `force_turn_after_reverse`) — confirm the third or soften the slide bullet to "two C-class bugs" before finalizing.
+
+**Afternoon / evening — Windows side:**
+
+- **PPT updates**: consume today's changelog bullets + Block C captures into slides 2-6. Speaker-script additions mirror slide content (bilingual EN + 中文 per convention).
+- **Rehearsal pass 2**: timed run with the updated deck, Tuesday evening.
+
+**Optional follow-ups (post-deck or rainy-day):**
+
+- **`lastApplied` per-input dirty-tracker refactor** (~30 LOC, `web_dashboard/autoboat/app.js`). Today's `getCanonicalDefault(el)` compares an input's value to its **launch default**; the architecturally-correct semantic is "differs from what's **currently on ROS**". After applying a non-default value, manually reverting the field to launch default clears the orange marker but ROS state is unchanged → silent dashboard ↔ ROS mismatch in this narrow scenario.
+  - **Implementation sketch:** add `const lastApplied = new Map()` keyed by input ID. Initialize each entry from `getCanonicalDefault(el)` on page load (in the `allConfigInputs.forEach` loop). Update from inside `markClean(ids)` after a successful Apply (read each input's current value, store as `lastApplied.get(id)`); also update from the config-from-ROS sync path around `app.js:1722` whenever `el.value` is overwritten by an incoming config message.
+  - **Rename / rewire:** `isAtCanonicalDefault()` → `isAtAppliedValue()`, compares against `lastApplied.get(el.id)` instead of `getCanonicalDefault(el)`. `updateValueDisplay()` keeps using `getCanonicalDefault()` (the `(default: X)` hint is intentionally about launch default, not last-applied).
+  - **Test:** apply a non-default value via Apply; manually revert the field to its launch default; orange marker should now stay (was incorrectly clearing today).
+
+- **`autoboat_cli.py:83` cosmetic install-path fix** — same `parents[2]` defect as today's health-check fix (`b3b8596`). Affects only user-facing print sites at `autoboat_cli.py:277` (`"Start with: ros2 launch {_LAUNCH_FILE}"`) and `:541` (`"ros2 launch {_LAUNCH_FILE}"`). When run via `ros2 run plan autoboat_cli`, `_LAUNCH_FILE` resolves to a non-existent path under `install/lib/python3.12/launch/...` and the printed launch instruction is wrong (cosmetic — nothing breaks, but copy-pasting the printed path fails).
+  - **Cleanest fix:** mirror today's pattern (`b3b8596`). Edit `plan/setup.py` `data_files` to install `launch/*.yaml` as plan package data (e.g. `(os.path.join('share', package_name, 'launch'), glob('../launch/*.yaml'))`). Update `autoboat_cli.py` to look up via `Path(get_package_share_directory('plan')) / 'launch' / 'autoboat.launch.yaml'`. Then print as the pkg-relative form `ros2 launch plan autoboat.launch.yaml` instead of an absolute path. ~10 LOC across 2 files; rebuild required.
+  - **Alternative (smaller):** keep the absolute-path style but use the same `get_package_share_directory` lookup, adjusting the printed string accordingly. Saves the data_files entry but leaves the user with a longer absolute path to copy-paste.
+
+- **3 `.modified`-class wirings missing in `initConfigValueTracking()`** (`web_dashboard/autoboat/app.js:~1614`). Three inputs in the Advanced Configuration panel — `cfg-waypoint-tolerance`, `cfg-approach-slow-distance`, `cfg-approach-slow-factor` — already have `<span class="value-display"></span>` siblings in HTML (`index.html:552, 560, 568`) but aren't in the function's `configInputs` array (which only lists the 6 PID + speed + safe-dist inputs).
+  - **Effect today:** since `bca4b0b`, the `(default: X)` text DOES appear for them (via the broader `updateInputDirtyState` path that I wired tonight). But the `.modified` class — which adds the orange border + light-orange background via `.config-item input.modified` at `style_merged.css:~1335` — stays absent. So the visual is asymmetric: the 3 missing inputs show only `.input-dirty`'s thin orange contour + the `(default: X)` hint, while the 6 wired inputs show all three layers (`.input-dirty` + `.modified` + `(default: X)`).
+  - **Fix:** 3-line addition — append `'cfg-waypoint-tolerance', 'cfg-approach-slow-distance', 'cfg-approach-slow-factor'` to the array at `app.js:~1616`. Or better: drop the `.modified`-class duplication entirely and merge the orange-border styling into a single CSS rule keyed on `.input-dirty`, which already covers all parameter inputs uniformly. The duplication is pre-existing (predates today's work) and low-impact, but the CSS unification is the cleaner long-term fix.
 
 ### Blocked / deferred (not this week)
 
