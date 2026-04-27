@@ -17,7 +17,7 @@ Yesterday (27/04) shifted from rehearsal-to-bug-finding because launching the da
 
 Active blocks for the day:
 
-1. **Block A — Dashboard / code carry-over fixes** (~1.5 h): three confirmed bugs from 27/04 verification.
+1. **Block A — Dashboard / code carry-over fixes** (~50 min, post-recheck): A1 cosmetic CLI + A3 four `updateValueDisplay()` patches + A2 verify-and-clean.
 2. **Block B — PPT slide content paste on Windows** (~1.5 h): consume yesterday's bucket-restructured `paste_ready.md` into slides 2-6.
 3. **Block C — Demo rehearsal (deferred from 27/04)** (~1 h): canonical happy-path; confirm clean.
 4. **Block D — Quick verifications** (~30 min): C3 enumeration check; first-cold-launch warning capture (opportunistic).
@@ -25,7 +25,9 @@ Active blocks for the day:
 
 ## Block A — Dashboard / code carry-over fixes
 
-Three real bugs verified at end of 27/04 against the post-`bca4b0b` baseline. Each is small. Time-box A1+A2+A3 to 1.5 h total — overruns mean A3 (the bigger one) stays for Wednesday.
+Recheck on 27/04 evening sharpened the original scope. The actual fix is much smaller than the initial "lastApplied refactor" framing: 4 one-line additions + a tiny CLI cleanup. Time-box A1+A2+A3 to ~50 min — overruns mean A3 stays for Wednesday.
+
+> **Recheck note (27/04):** original A2 ("3 missing wirings") was based on reading `initConfigValueTracking()` only. Recheck found the 3 inputs ARE wired via `allConfigInputs` at `app.js:1432-1459` — wiring is universal across all 43 parameter inputs. The actual bug is in 4 PROGRAMMATIC-MUTATION paths that each set `el.value` without firing `updateValueDisplay()`. A2 becomes a quick verify-and-cleanup; A3 becomes 4 one-line patches.
 
 ### A1 — `autoboat_cli.py:83` cosmetic install-path defect (5 min)
 
@@ -47,51 +49,74 @@ Commit suggestion: `fix(cli): drop install-layout-broken _LAUNCH_FILE; use liter
 
 **Outcome.** [To fill]
 
-### A2 — 3 missing `.modified` class wirings in `initConfigValueTracking()` (15 min)
+### A2 — Verify A2 obsolescence + decide on `initConfigValueTracking` cleanup (5-10 min)
 
-`web_dashboard/autoboat/app.js:1629` `initConfigValueTracking()` only wires 6 inputs. Three missing: `cfg-waypoint-tolerance` / `cfg-approach-slow-distance` / `cfg-approach-slow-factor`. Without the wiring, those inputs don't get the orange `.modified` border on user modification.
+Per recheck, the originally-claimed "3 missing wirings" turn out to already be wired via `allConfigInputs` (`app.js:1432-1459`). Quick read-and-decide:
 
 ```bash
-# Open app.js at L1629-1656; extend the configInputs array from 6 entries to 9:
-#     'cfg-kp', 'cfg-ki', 'cfg-kd',
-#     'cfg-base-speed', 'cfg-max-speed', 'cfg-safe-dist',
-#     'cfg-waypoint-tolerance', 'cfg-approach-slow-distance', 'cfg-approach-slow-factor',
+cd ~/seal_ws/src/uvautoboat
+# Confirm allConfigInputs covers the 3 inputs
+grep -nA12 "const allConfigInputs" web_dashboard/autoboat/app.js | head -20
+# Confirm the 3 IDs (cfg-waypoint-tolerance, cfg-approach-slow-distance, cfg-approach-slow-factor) are in the array
 ```
 
-Verification: open dashboard; nudge `cfg-waypoint-tolerance` off-default; confirm orange `.modified` border appears. Repeat for the other two.
+Two outcomes:
 
-Commit suggestion: `fix(dashboard): wire .modified class for 3 missing tuning-panel inputs`
+1. **Confirmed wired** (expected) — `initConfigValueTracking()` at `app.js:1629-1656` is now redundant with `allConfigInputs`. Either:
+   - **(a) leave as-is** — duplicate listener attachment is harmless (idempotent calls); land A3 instead.
+   - **(b) delete** — drop `initConfigValueTracking()` + its single caller. Cleaner code; ~10 lines removed.
+2. **Not actually wired** — resurrect the original A2 task: extend `configInputs` array in `initConfigValueTracking()` to include the 3 missing inputs.
+
+**Default route:** option 1(a) — verify and skip. Option 1(b) lands later in the post-30/04 cleanup pass. Option 2 only if recheck was wrong.
+
+Commit suggestion (only if 1(b) chosen): `refactor(dashboard): drop redundant initConfigValueTracking — allConfigInputs covers all 43 inputs`
 
 **Outcome.** [To fill]
 
-### A3 — `lastApplied` per-input dirty-tracker refactor (45-60 min)
+### A3 — Four `updateValueDisplay()` calls in programmatic-mutation paths (30-45 min)
 
-The bigger one. Current dirty-marker compares input value to `data-default` (launch-time HTML attribute). Real semantics: dirty if input differs from **last value successfully applied to ROS**, not from launch default.
+Recheck revealed the user-reported bug isn't in dirty-tracker semantics — it's that 4 code paths mutate input values programmatically (`el.value = X`) without calling `updateValueDisplay(el)`. Programmatic value sets don't fire the `input` event, so the existing listener at `app.js:1453-1459` never runs. Result: orange `(default: X)` span persists indefinitely.
 
-Failure mode confirmed yesterday: user applies non-default → ROS holds non-default; user reverts input to launch default → marker clears (incorrect — ROS still has old value, input/ROS state mismatch is silent). Or: user lands at default first time, marker clears, but ROS has different prior value if config sync hasn't happened.
+**The four broken paths:**
 
-Reading scope:
+| # | Function | Location | What it skips |
+|:---:|:---|:---|:---|
+| 1 | `resetGroupToDefaults` | `app.js:1608-1615` | `updateValueDisplay(el)` + `classList.remove('modified')` inside loop |
+| 2 | A* Reset block | `app.js:1521-1542` | `updateValueDisplay(el)` for each of 3 inputs after `.value =` |
+| 3 | `updatePerceptionInputs` / `updateControllerInputs` | `app.js:3075-3088, 3094-3115` | `updateValueDisplay(el)` per input after `el.value = preset[id]` |
+| 4 | `updateConfigFromROS` perception/controller branch | `app.js:1692-1796` | `updateValueDisplay(el)` after `el.value = data[…]` for tuning IDs |
 
-- `app.js:1629-1656` — current `initConfigValueTracking()` dirty tracker
-- Apply button click handler (grep `Apply` or `sendConfig` for the publish path)
-- `updateConfigFromROS` — first ROS config sync hook
+`resetConfigToDefaults` at `app.js:1566-1585` is the ONE path that does it right (calls `updateValueDisplay(input)` at L1580). The 4 broken paths just need to mirror its pattern.
 
-Approach:
+**Two fix options:**
 
-1. Add module-level `const lastAppliedValues = new Map();` keyed by input id.
-2. On successful Apply (after the ROS publish), iterate config inputs and write `lastAppliedValues.set(id, currentValue)`.
-3. In the dirty-tracker `input` event listener, compare `currentValue` against `lastAppliedValues.get(id) ?? input.dataset.default` (fallback to launch-default for inputs that haven't been Applied yet).
-4. Initialize `lastAppliedValues` on first ROS config sync (around `updateConfigFromROS`).
+1. **Inline (4 spot patches)** — add `updateValueDisplay(el)` (and `el.classList.remove('modified')` for path 1) at each site. ~15 lines of diff, very targeted.
+2. **Helper-based** — introduce module-level `setInputValueAndNotify(el, value)`:
 
-Time-box: 45 min for implementation + 15 min for manual test. Test sequence:
+   ```js
+   function setInputValueAndNotify(el, value) {
+       if (!el) return;
+       el.value = value;
+       updateValueDisplay(el);
+   }
+   ```
 
-- Apply a non-default value → confirm `.modified` clears (matches lastApplied).
-- Revert input to launch default → confirm `.modified` STAYS ON (input now differs from lastApplied).
-- Re-Apply (now default) → confirm `.modified` clears (lastApplied = default = current).
+   Then replace `el.value = X` in all 4 paths with `setInputValueAndNotify(el, X)`. DRY, but more touch surface.
 
-If implementation overruns 60 min, **stop and roll to Wednesday** — A3 is polish, not blocking. Don't sacrifice Block B time for it.
+**Recommendation:** option 1 (inline) for the Tuesday slot — tighter diff, less risk of subtle regression. Option 2 is post-30/04 polish.
 
-Commit suggestion: `fix(dashboard): track lastApplied per-input for accurate dirty-marker semantics`
+**Bug investigation FIRST:** before patching, reproduce the bug on a `cfg-*` input (kp / ki / kd / base-speed / max-speed / safe-dist). `resetConfigToDefaults` already calls `updateValueDisplay`, so if cfg-*Reset ALSO leaves the span persistent, there's a deeper bug we haven't found. If cfg-* Reset clears correctly, the user was testing a perception-*/ controller-* input and the 4-path fix is sufficient.
+
+**Test sequence (after each path is patched):**
+
+- **Path 1 (resetGroupToDefaults):** edit `perception-water-threshold` off-default → orange span appears → click *Reset Perception* → confirm value AND span both clear.
+- **Path 2 (A* Reset):** edit `cfg-astar-resolution` off-default → click *Reset A\** → confirm.
+- **Path 3 (preset apply):** apply Pier preset → confirm tuning inputs that match preset values show no orange span; ones that differ from launch defaults DO show it.
+- **Path 4 (updateConfigFromROS):** harder to test cleanly; trust symmetry with cfg-* path.
+
+If implementation overruns 45 min, **stop and roll to Wednesday** — A3 is polish, not blocking. Don't sacrifice Block B time for it.
+
+Commit suggestion: `fix(dashboard): call updateValueDisplay() in 4 programmatic-mutation paths`
 
 **Outcome.** [To fill]
 
@@ -141,8 +166,9 @@ Verify on `sydney_regatta_DEFAULT`:
   - Go-Home-at-home toast at spawn
   - `TUNED` state chip in health check after a preset-apply
   - `rate_probe.py` side-by-side with `ros2 topic hz` (terminal screenshot — better for slide than live)
-  - **NEW post-A2:** `.modified` border on 3 newly-wired tuning inputs
-  - **NEW post-A3:** dirty-marker correctly clears on Apply, persists on revert-to-default
+  - **NEW post-A3:** orange `(default: X)` span clears immediately after *Reset Perception* / *Reset Controller* (was the user-reported bug)
+  - **NEW post-A3:** orange `(default: X)` span clears immediately after preset apply (Pier / Buoy Field / etc.)
+  - **NEW post-A3:** orange `(default: X)` span clears after ROS-side config update (e.g., reload or external `set_parameters`)
 
 Live-demo shortlist: pick 1-3 features for Thursday. Estimate live-demo minutes (target: 3-5 min if live; ≤2 min if pre-recorded).
 
@@ -199,7 +225,7 @@ If the warning doesn't surface today either: drop the planned Slide 6 secondary-
 
 | After | State | Rollover cost |
 |:------|:------|:--------------|
-| Block A | 3 dashboard / CLI fixes shipped | Wed picks up demo rehearsal + PPT |
+| Block A | A1 cleanup + A3 four-path patches shipped (A2 verify-only) | Wed picks up demo rehearsal + PPT |
 | Block B | Slides 2-6 content + speaker notes pasted | Wed = visual placement + dry-run timing |
 | Block C | Demo rehearsed clean | Wed = visual placement only |
 | Block D | C3 verified, optional cold-launch capture | (no rollover — both are one-shots) |
