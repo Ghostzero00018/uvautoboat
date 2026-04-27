@@ -13,20 +13,28 @@ Pre-scaffold written 27/04 evening. Today consumes the carry-over verified at th
 
 **Why this isn't a free-for-all today:**
 
-Yesterday (27/04) shifted from rehearsal-to-bug-finding because launching the dashboard surfaced a series of UX defects. 8 commits today landed those (`b3b8596` health-check service install, `5c388a6` hover unification, `81cc4d6` per-tab logs, `49b09ce` ppt_assets cleanup, `8f55fea` diary number correction, `f1f067e` Reset/dirty-marker, `bca4b0b` `(default: X)` extension, `8f7759b` diary fill). End-of-day verification surfaced 3 more confirmed-real bugs that are small enough to clear before tomorrow's demo rehearsal stays clean. None block Thursday's slot — they're polish — but a clean rehearsal Tuesday pushes Wednesday into pure PPT-on-Windows mode.
+Monday (27/04) shifted from rehearsal-to-bug-finding because launching the dashboard surfaced a series of UX defects. 8 commits Monday landed those (`b3b8596` health-check service install, `5c388a6` hover unification, `81cc4d6` per-tab logs, `49b09ce` ppt_assets cleanup, `8f55fea` diary number correction, `f1f067e` Reset/dirty-marker, `bca4b0b` `(default: X)` extension, `8f7759b` diary fill). End-of-day verification surfaced 3 more confirmed-real bugs + 1 architectural-debt class (param_ranges 4-place sync). **Sunday-evening update:** rather than queue them for Tuesday, all 4 items were pre-applied Windows-side in 3 commits (`ffb7f8f` cli relative path / `74eb2b2` dashboard span refresh on programmatic mutations / `888fadd` option-1 param_ranges 3-tuple — Python publishers + JS consumer combined). Tuesday's Block A becomes pure verification — needs `colcon build` + relaunch, then exercise each path. None block Thursday — all are polish — but green Tuesday verification pushes Wednesday into pure PPT-on-Windows mode.
 
 Active blocks for the day:
 
-1. **Block A — Dashboard / code carry-over fixes** (~50 min, post-recheck): A1 cosmetic CLI + A3 four `updateValueDisplay()` patches + A2 verify-and-clean.
+1. **Block A — Verification of pre-applied fixes** (~75 min, all changes already on `origin/main` as of Sunday evening): A1 cosmetic CLI + A3 four `updateValueDisplay()` patches + A2 verify-and-clean + A4 option-1 param_ranges 3-tuple consumer.
 2. **Block B — PPT slide content paste on Windows** (~1.5 h): consume yesterday's bucket-restructured `paste_ready.md` into slides 2-6.
 3. **Block C — Demo rehearsal (deferred from 27/04)** (~1 h): canonical happy-path; confirm clean.
 4. **Block D — Quick verifications** (~30 min): C3 enumeration check; first-cold-launch warning capture (opportunistic).
 5. **Block E — Wrap + diary fill-in**.
 
-## Block A — Dashboard / code carry-over fixes
+## Block A — Verification of pre-applied fixes
 
-Recheck on 27/04 evening sharpened the original scope. The actual fix is much smaller than the initial "lastApplied refactor" framing: 4 one-line additions + a tiny CLI cleanup. Time-box A1+A2+A3 to ~50 min — overruns mean A3 stays for Wednesday.
+Recheck on 27/04 evening sharpened the original scope; all fixes were then **pre-applied Windows-side Sunday evening** rather than queued for Tuesday. Tuesday's Block A is verification only — exercise each path against the post-pull tree.
 
+> **Pre-application status (Sunday evening, all on `origin/main`):**
+>
+> - `ffb7f8f` — A1 cli relative path (drops install-broken `parents[2]` `_REPO_ROOT`)
+> - `74eb2b2` — A3 four `updateValueDisplay()` patches in `resetGroupToDefaults` / A*Reset / `updatePerceptionInputs` / `updateControllerInputs` / `updateConfigFromROS` cfg-* loop
+> - `888fadd` — Option 1 param_ranges 3-tuple — Python publishers (3 nodes) extend payload to `[min, max, default]`; dashboard consumer adds `liveDefaults` map + extends `getCanonicalDefault` to consult it first; legacy fallbacks (HTML `data-default`, JS `*_DEFAULTS` constants) intact for safety
+>
+> All 3 commits are additive and forward-compatible: legacy 2-tuple `param_ranges` still works on the JS side, and Python's pre-3-tuple publish would still work on the original JS side. Risk on revert is bounded — a single commit revert per fault.
+>
 > **Recheck note (27/04):** original A2 ("3 missing wirings") was based on reading `initConfigValueTracking()` only. Recheck found the 3 inputs ARE wired via `allConfigInputs` at `app.js:1432-1459` — wiring is universal across all 43 parameter inputs. The actual bug is in 4 PROGRAMMATIC-MUTATION paths that each set `el.value` without firing `updateValueDisplay()`. A2 becomes a quick verify-and-cleanup; A3 becomes 4 one-line patches.
 
 ### A1 — `autoboat_cli.py:83` cosmetic install-path defect (5 min)
@@ -120,6 +128,45 @@ Commit suggestion: `fix(dashboard): call updateValueDisplay() in 4 programmatic-
 
 **Outcome.** [To fill]
 
+### A4 — Option 1 param_ranges 3-tuple verification (15-20 min)
+
+Pre-applied via `888fadd`. Eliminates the 4-place sync drift class for default values: Python now publishes `[min, max, default]` per param; dashboard consumes via a `liveDefaults` map; `getCanonicalDefault` consults `liveDefaults` first, falls back to legacy HTML `data-default` + `PERCEPTION_DEFAULTS` / `CONTROLLER_DEFAULTS` constants.
+
+**Prereq:** `colcon build --packages-select plan control` + relaunch (the new Python publisher is what populates `liveDefaults` on the dashboard side).
+
+**Verification sequence:**
+
+1. **DevTools console after dashboard connects (~5s after page load):**
+
+   ```js
+   liveDefaults
+   // Expect: object with ~30+ entries — cfg-kp, cfg-ki, cfg-kd, cfg-base-speed, ...,
+   // perception-min-height, ..., controller-critical-dist, ...
+   // If empty {} → Python publish didn't deploy; legacy fallbacks kicking in (still functional)
+   ```
+
+2. **Live-default flow sanity test:**
+
+   - In the dashboard, edit `cfg-kp` from 500 → 600
+   - Orange `(default: 500)` hint should appear under the input
+   - Verify in DevTools: `getCanonicalDefault(document.getElementById('cfg-kp'))` returns `500`
+
+3. **End-to-end YAML-as-truth test (transient, optional but conclusive):**
+
+   - Edit `launch/autoboat.launch.yaml` → change `kp` default from 500 to 555 (transient)
+   - Ctrl+C launcher, relaunch
+   - In dashboard, edit `cfg-kp` from 555 to 600
+   - Orange hint should now read `(default: 555)` — proving the chain `YAML → Python._launch_defaults → /control/param_ranges → liveDefaults['cfg-kp'] → getCanonicalDefault` works
+   - **Revert YAML to 500**, relaunch, confirm hint returns to `(default: 500)`
+
+**Pass criteria:** step 1 shows a populated `liveDefaults` AND step 2 shows the `(default: 500)` hint matching the YAML default. Step 3 is the strong end-to-end proof — run it if you have the time, skip if Block C is calling.
+
+**Fail handling:** if step 1 shows empty `liveDefaults`, the dashboard auto-falls-back to legacy paths — no user-visible breakage. Bug is in Python publish (most likely the 3-tuple JSON serialization or lazy-capture timing). Investigate: `ros2 topic echo /control/param_ranges --once` to see what's actually being published. If the topic shows 2-tuples, the build didn't pick up the Python edit (re-run `colcon build`). If it shows 3-tuples but `liveDefaults` stays empty, JS-side bug — `console.log` inside `applyRangesToDashboard` to trace.
+
+Commit suggestion (only if a fix is needed): `fix(nodes): <specific issue>` or `revert 888fadd` if the fault is irrecoverable on the day.
+
+**Outcome.** [To fill]
+
 ## Block B — PPT slide content paste on Windows
 
 Open `E:\IMT_dossier\DMI_Semester_3\Research_intern_IMT_NE\PPT\PPT_files\30_04_2026_presentatioin\AutoBoat_PPT_Intern_30_04_2026.pptx` and consume the bucket-restructured content from `assets/2026-04-30_slide_paste_ready.md`.
@@ -169,6 +216,7 @@ Verify on `sydney_regatta_DEFAULT`:
   - **NEW post-A3:** orange `(default: X)` span clears immediately after *Reset Perception* / *Reset Controller* (was the user-reported bug)
   - **NEW post-A3:** orange `(default: X)` span clears immediately after preset apply (Pier / Buoy Field / etc.)
   - **NEW post-A3:** orange `(default: X)` span clears after ROS-side config update (e.g., reload or external `set_parameters`)
+  - **NEW post-A4:** orange `(default: X)` hint VALUES come from YAML via `/<ns>/param_ranges` topic (verify `liveDefaults` is populated in DevTools); editing a YAML default + relaunching changes the hint accordingly
 
 Live-demo shortlist: pick 1-3 features for Thursday. Estimate live-demo minutes (target: 3-5 min if live; ≤2 min if pre-recorded).
 
@@ -225,7 +273,7 @@ If the warning doesn't surface today either: drop the planned Slide 6 secondary-
 
 | After | State | Rollover cost |
 |:------|:------|:--------------|
-| Block A | A1 cleanup + A3 four-path patches shipped (A2 verify-only) | Wed picks up demo rehearsal + PPT |
+| Block A | A1 + A3 + A4 verified clean (all pre-applied Sunday); A2 confirmed obsolete | Wed picks up demo rehearsal + PPT |
 | Block B | Slides 2-6 content + speaker notes pasted | Wed = visual placement + dry-run timing |
 | Block C | Demo rehearsed clean | Wed = visual placement only |
 | Block D | C3 verified, optional cold-launch capture | (no rollover — both are one-shots) |
@@ -256,6 +304,6 @@ Use this section to capture anything surprising during the day — file state dr
 - **Real no-regression test for `launch/remap.launch.yaml`** — needs first real-hardware bench (Pi 5).
 - **C3 bench verification** — passive wait for real-hardware symptom.
 - **Dashboard ↔ MP/QGC integration** — later integration milestone (post-real-hardware-bringup).
-- **`param_ranges` topic doesn't publish defaults** — 4-place sync (YAML + `index.html` + `app.js` + Python) is real architectural debt; post-30/04 work item.
+- **Option-1 cleanup sweep** — once option-1 is verified working (A4), the legacy fallbacks in `getCanonicalDefault` (HTML `data-default` attrs + `PERCEPTION_DEFAULTS` / `CONTROLLER_DEFAULTS` JS maps) become redundant code. Cleanup is non-blocking (current code is correct, just has belt-and-braces); queue for post-Thursday.
 - **Housekeeping carry-overs from 24/04** — `mono-xsp4` port-8084 disable; `tools/qos_scan.py` single-pass QoS inventory companion to `rate_probe.py`. Both bumped post-Thursday; rainy-day.
 - **`update-pip-graph` GitHub Actions Node 20 deprecation** — server-side, auto-resolves June 2026; no action needed.
