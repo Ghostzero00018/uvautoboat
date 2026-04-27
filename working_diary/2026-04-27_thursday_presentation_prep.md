@@ -34,7 +34,7 @@ less /tmp/changelog-since-apr15.txt
 
 Themed grouping proposal (refine as we read the log + `Board.md` timeline):
 
-- **Module rename (16/04)** — OKO / SPUTNIK / BURAN → `lidar_perception` / `waypoint_planner` / `heading_controller`; 26 files, ~1,100 refs. Behavioural no-op but affects every topic + dashboard reference.
+- **Module rename (16/04)** — OKO / SPUTNIK / BURAN → `lidar_perception` / `waypoint_planner` / `heading_controller`; **30 files, +1,099 / −1,398 lines** (line changes — actual identifier sites grep-counted at ~609; "1,100 refs" was an estimate, replaced after `git diff --stat` verification on 27/04). Behavioural no-op but affects every topic + dashboard reference.
 - **Perception hardening (17/04)** — param-ranges sync, smoke-detection removed, JSON-parse hardening.
 - **Target-aware VFH + Go Home progress (19/04)** — VFH responds to `/control/heading_error`; Go Home distance-based progress; Tier-A/B/C dashboard UX sprint.
 - **Dead-code audit + drift compensation + readiness polls (20/04)** — Tier 1 safe deletes; `max_speed` cap wired; Kalman drift compensation activated (gated update + feed-forward thrust); launcher `wait_for_*` polls replacing fixed sleeps; Tier 2 close-out (latched `/planning/emergency_stop`, `std_srvs/Trigger` services).
