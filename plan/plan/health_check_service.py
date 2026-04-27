@@ -5,15 +5,13 @@ import threading
 from pathlib import Path
 
 import rclpy
+from ament_index_python.packages import get_package_share_directory
 from rclpy.node import Node
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
 
-# Derive the script path from this file's location instead of hardcoding
-# ~/seal_ws/... so the dashboard Health Check works regardless of where the
-# workspace lives on disk (matches the pattern used in autoboat_cli.py).
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-SCRIPT_PATH = str(_REPO_ROOT / 'one_click_launch_all' / 'health_check_autoboat.sh')
+# Resolve via package share so the lookup matches both source and install layouts.
+SCRIPT_PATH = str(Path(get_package_share_directory('plan')) / 'scripts' / 'health_check_autoboat.sh')
 ANSI_ESCAPE = re.compile(r'\x1b\[[0-9;]*m')
 
 

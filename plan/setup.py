@@ -14,6 +14,8 @@ setup(
         ('share/' + package_name, ['package.xml']),
         # Install rviz config files
         (os.path.join('share', package_name, 'rviz'), glob('rviz/*.rviz')),
+        # Install health-check shell script so the in-process service can locate it via the package share dir.
+        (os.path.join('share', package_name, 'scripts'), glob('../one_click_launch_all/health_check_*.sh')),
     ],
     install_requires=[
         'setuptools',
