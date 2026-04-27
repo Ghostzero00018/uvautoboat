@@ -1454,6 +1454,7 @@ function initConfigPanel() {
         const el = document.getElementById(id);
         if (el) {
             el.addEventListener('input', () => updateInputDirtyState(el));
+            updateValueDisplay(el);  // initial render — paints (default: X) only if value already differs
         }
     });
 
@@ -1654,19 +1655,36 @@ function initConfigValueTracking() {
     });
 }
 
-// Update value display next to input
-function updateValueDisplay(input) {
-    const valueDisplay = input.nextElementSibling;
-    if (valueDisplay && valueDisplay.classList.contains('value-display')) {
-        const defaultValue = parseFloat(input.dataset.default);
-        const currentValue = parseFloat(input.value);
+// Ensure each parameter input has a value-display sibling, creating one if the
+// HTML didn't include it (tuning-panel inputs in particular were never given the
+// span). Returns the span for callers to write into.
+function ensureValueDisplay(input) {
+    let span = input.nextElementSibling;
+    if (span && span.classList.contains('value-display')) return span;
+    span = document.createElement('span');
+    span.className = 'value-display';
+    input.parentNode.insertBefore(span, input.nextSibling);
+    return span;
+}
 
-        if (currentValue !== defaultValue) {
-            valueDisplay.textContent = `(default: ${defaultValue})`;
-            valueDisplay.style.color = '#ff9800';
-        } else {
-            valueDisplay.textContent = '';
-        }
+// Paint or clear the (default: X) hint under an input based on canonical-default
+// match. Resolves the default via getCanonicalDefault so it works for every
+// parameter input (data-default OR PERCEPTION_DEFAULTS / CONTROLLER_DEFAULTS).
+function updateValueDisplay(input) {
+    if (!input || !input.id) return;
+    const canonical = getCanonicalDefault(input);
+    if (canonical === undefined) return;
+    const span = ensureValueDisplay(input);
+    const numCurrent = parseFloat(input.value);
+    const numCanon = parseFloat(canonical);
+    const matches = (!isNaN(numCurrent) && !isNaN(numCanon))
+        ? numCurrent === numCanon
+        : String(input.value) === String(canonical);
+    if (matches) {
+        span.textContent = '';
+    } else {
+        span.textContent = `(default: ${canonical})`;
+        span.style.color = '#ff9800';
     }
 }
 
@@ -1847,6 +1865,7 @@ function updateInputDirtyState(el) {
         dirtyInputs.add(el.id);
         el.classList.add('input-dirty');
     }
+    updateValueDisplay(el);
 }
 
 function markClean(inputIds) {
