@@ -557,9 +557,19 @@ h2 {
     color: white;
 }
 
+.mission-btn.confirm:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(40, 167, 69, 0.4);
+}
+
 .mission-btn.cancel {
     background: linear-gradient(135deg, #dc3545, #e83e8c);
     color: white;
+}
+
+.mission-btn.cancel:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(220, 53, 69, 0.4);
 }
 
 .mission-btn.start {
@@ -570,7 +580,7 @@ h2 {
 }
 
 .mission-btn.start:hover:not(:disabled) {
-    transform: scale(1.05);
+    transform: translateY(-2px);
     box-shadow: 0 6px 20px rgba(40, 167, 69, 0.5);
 }
 
@@ -582,7 +592,7 @@ h2 {
 }
 
 .mission-btn.stop:hover:not(:disabled) {
-    transform: scale(1.05);
+    transform: translateY(-2px);
     box-shadow: 0 6px 20px rgba(220, 53, 69, 0.5);
 }
 
@@ -591,13 +601,18 @@ h2 {
     color: white;
 }
 
+.mission-btn.resume:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(23, 162, 184, 0.4);
+}
+
 .mission-btn.reset {
     background: linear-gradient(135deg, #fd7e14, #dc6a10);
     color: white;
 }
 
-.mission-btn.reset:hover {
-    transform: scale(1.05);
+.mission-btn.reset:hover:not(:disabled) {
+    transform: translateY(-2px);
     box-shadow: 0 6px 20px rgba(253, 126, 20, 0.5);
 }
 
@@ -608,8 +623,8 @@ h2 {
     font-size: 1.1em;
 }
 
-.mission-btn.home:hover {
-    transform: scale(1.02);
+.mission-btn.home:hover:not(:disabled) {
+    transform: translateY(-2px);
     box-shadow: 0 6px 20px rgba(32, 201, 151, 0.5);
 }
 
@@ -625,8 +640,8 @@ h2 {
     animation: emergency-btn-glow 2s ease-in-out infinite;
 }
 
-.mission-btn.emergency:hover {
-    transform: scale(1.03);
+.mission-btn.emergency:hover:not(:disabled) {
+    transform: translateY(-2px);
     box-shadow: 0 8px 25px rgba(255, 0, 0, 0.6);
     background: linear-gradient(135deg, #ff3333, #ff0000);
 }
@@ -910,9 +925,19 @@ h2 {
     color: white;
 }
 
+.mission-btn.joystick:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(232, 62, 140, 0.4);
+}
+
 .mission-btn.joystick-off {
     background: linear-gradient(135deg, #6c757d, #495057);
     color: white;
+}
+
+.mission-btn.joystick-off:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(108, 117, 125, 0.4);
 }
 
 .joystick-section {
@@ -1939,7 +1964,9 @@ h2 {
     white-space: nowrap;
 }
 
-.reset-btn:hover {
+.reset-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(73, 80, 87, 0.4);
     background: linear-gradient(135deg, #5a6268, #495057);
     color: #fff;
 }
