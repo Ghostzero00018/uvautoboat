@@ -1447,19 +1447,13 @@ function initConfigPanel() {
         'controller-reverse-timeout', 'controller-max-reverse', 'controller-turn-deadband', 'controller-slew-rate'
     ];
 
-    // Mark input as dirty when user types
+    // Update dirty marker on input — only flag when value diverges from canonical
+    // default. Typing and reverting to default clears the marker; merely focusing
+    // a field no longer triggers it (focus alone doesn't change the value).
     allConfigInputs.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
-            el.addEventListener('input', () => {
-                dirtyInputs.add(id);
-                el.classList.add('input-dirty');
-            });
-            // Also mark dirty on focus (user intends to edit)
-            el.addEventListener('focus', () => {
-                dirtyInputs.add(id);
-                el.classList.add('input-dirty');
-            });
+            el.addEventListener('input', () => updateInputDirtyState(el));
         }
     });
 
@@ -1518,26 +1512,47 @@ function initConfigPanel() {
         showFeedback(msg, 'success');
     }));
 
-    // A* Reset button
+    // A* Reset button — confirm, reset fields to launch defaults, push to ROS in one step.
     document.getElementById('btn-reset-astar').addEventListener('click', () => {
+        if (!confirm('Reset A* parameters to launch defaults and send to ROS? | Réinitialiser les paramètres A* et envoyer à ROS?')) {
+            return;
+        }
         document.getElementById('cfg-astar-resolution').value = '3.0';
         document.getElementById('cfg-astar-safety').value = '12.0';
         document.getElementById('cfg-astar-max').value = '20000';
-        // Mark dirty so ROS sync doesn't overwrite
-        ['cfg-astar-resolution', 'cfg-astar-safety', 'cfg-astar-max'].forEach(id => {
-            dirtyInputs.add(id);
-            const el = document.getElementById(id);
-            if (el) el.classList.add('input-dirty');
+        debounceApply(() => {
+            if (!connected || !configPublisher) {
+                showFeedback('❌ Not connected to ROS', 'error');
+                return;
+            }
+            const navMode = getSelectedNavMode();
+            const config = {
+                astar_enabled: (navMode === 'runtime' || navMode === 'hybrid'),
+                astar_hybrid_mode: (navMode === 'hybrid'),
+                astar_resolution: 3.0,
+                astar_safety_margin: 12.0,
+                astar_max_expansions: 20000
+            };
+            configPublisher.publish(new ROSLIB.Message({ data: JSON.stringify(config) }));
+            markClean(['cfg-astar-resolution', 'cfg-astar-safety', 'cfg-astar-max']);
+            addLog('A* params reset to defaults and sent to ROS', 'info');
+            showFeedback('✅ A* parameters reset to defaults and applied', 'success');
         });
-        showFeedback('A* parameters reset to defaults — click Apply to send', 'info');
     });
 
-    // Reset to defaults button
+    // Reset to defaults button — confirm, reset fields, push to ROS in one step.
     document.getElementById('btn-reset-config').addEventListener('click', () => {
-        if (confirm('Reset all configuration values to defaults? | Réinitialiser toutes les valeurs par défaut?')) {
-            resetConfigToDefaults();
-            setTimeout(() => alert('🔄 Configuration Reset\n\nAll values restored to defaults.\n\n🔄 Configuration Réinitialisée\n\nToutes les valeurs restaurées par défaut.'), 100);
+        if (!confirm('Reset all configuration values to launch defaults and send to ROS? | Réinitialiser toutes les valeurs par défaut et envoyer à ROS?')) {
+            return;
         }
+        resetConfigToDefaults();
+        debounceApply(() => {
+            const success = sendConfig(false);
+            if (success) {
+                addLog('Config reset to defaults and sent to ROS', 'info');
+                showFeedback('✅ Configuration reset to defaults and applied', 'success');
+            }
+        });
     });
 
     // Initialize value displays and change indicators
@@ -1565,7 +1580,7 @@ function resetConfigToDefaults() {
         }
     });
 
-    addLog('Configuration reset to defaults — click Apply to send | Cliquez Appliquer pour envoyer', 'info');
+    addLog('Configuration fields reset to defaults', 'info');
 }
 
 // Perception launch defaults (must match autoboat.launch.yaml)
@@ -1595,8 +1610,7 @@ function resetGroupToDefaults(defaults, label, extraReset) {
         if (el) { el.value = val; dirtyInputs.add(id); el.classList.add('input-dirty'); }
     }
     if (extraReset) extraReset();
-    addLog(`${label} parameters reset to launch defaults | Paramètres ${label} réinitialisés`, 'info');
-    showFeedback(`🔄 ${label} reset to launch defaults`, 'info');
+    addLog(`${label} fields reset to launch defaults`, 'info');
 }
 
 function resetPerceptionToDefaults() {
@@ -1804,6 +1818,37 @@ function filterDirtyParams(fullConfig, idToParam) {
 }
 
 // Clear dirty state for a set of input IDs after a successful send
+// Canonical launch default for an input — data-default first, then the
+// *_DEFAULTS maps for tuning-panel inputs. Returns undefined if unknown.
+function getCanonicalDefault(el) {
+    if (!el || !el.id) return undefined;
+    if (el.dataset.default !== undefined && el.dataset.default !== '') return el.dataset.default;
+    if (el.id.startsWith('perception-')) return PERCEPTION_DEFAULTS[el.id];
+    if (el.id.startsWith('controller-')) return CONTROLLER_DEFAULTS[el.id];
+    if (el.id === 'controller-use-vfh') return 'false';
+    return undefined;
+}
+
+function isAtCanonicalDefault(el) {
+    const canonical = getCanonicalDefault(el);
+    if (canonical === undefined) return false;
+    const numCurrent = parseFloat(el.value);
+    const numCanon = parseFloat(canonical);
+    if (!isNaN(numCurrent) && !isNaN(numCanon)) return numCurrent === numCanon;
+    return String(el.value) === String(canonical);
+}
+
+function updateInputDirtyState(el) {
+    if (!el || !el.id) return;
+    if (isAtCanonicalDefault(el)) {
+        dirtyInputs.delete(el.id);
+        el.classList.remove('input-dirty');
+    } else {
+        dirtyInputs.add(el.id);
+        el.classList.add('input-dirty');
+    }
+}
+
 function markClean(inputIds) {
     inputIds.forEach(id => {
         dirtyInputs.delete(id);
@@ -2878,14 +2923,18 @@ function initTuningPanel() {
 
     // Reset defaults buttons
     document.getElementById('btn-reset-perception').addEventListener('click', () => {
-        if (confirm('Reset Perception parameters to launch defaults? | Réinitialiser les paramètres Perception?')) {
-            resetPerceptionToDefaults();
+        if (!confirm('Reset Perception parameters to launch defaults and send to ROS? | Réinitialiser les paramètres Perception et envoyer à ROS?')) {
+            return;
         }
+        resetPerceptionToDefaults();
+        debounceApply(() => applyPerceptionParameters());
     });
     document.getElementById('btn-reset-controller').addEventListener('click', () => {
-        if (confirm('Reset Controller parameters to launch defaults? | Réinitialiser les paramètres Controller?')) {
-            resetControllerToDefaults();
+        if (!confirm('Reset Controller parameters to launch defaults and send to ROS? | Réinitialiser les paramètres Controller et envoyer à ROS?')) {
+            return;
         }
+        resetControllerToDefaults();
+        debounceApply(() => applyControllerParameters());
     });
 
     if (DEBUG_MODE) console.log('Tuning panel initialized');

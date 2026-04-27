@@ -298,15 +298,15 @@
                     <div class="waypoint-config-inline">
                         <div class="config-item-inline">
                             <label for="wp-lanes">Lanes | Couloirs:</label>
-                            <input type="number" id="wp-lanes" min="1" max="50" value="10">
+                            <input type="number" id="wp-lanes" min="1" max="50" value="10" data-default="10">
                         </div>
                         <div class="config-item-inline">
                             <label for="wp-length">Length | Longueur (m):</label>
-                            <input type="number" id="wp-length" min="10" max="500" step="10" value="15">
+                            <input type="number" id="wp-length" min="10" max="500" step="10" value="15" data-default="15">
                         </div>
                         <div class="config-item-inline">
                             <label for="wp-width">Lane Width | Largeur (m):</label>
-                            <input type="number" id="wp-width" min="5" max="100" step="5" value="30">
+                            <input type="number" id="wp-width" min="5" max="100" step="5" value="30" data-default="30">
                         </div>
                     </div>
                     <button id="btn-generate-waypoints" class="mission-btn generate">
@@ -339,17 +339,17 @@
                             <label style="font-weight: 600; margin-bottom: 8px; display: block; color: #495057;">A* Advanced Parameters | Paramètres Avancés A*:</label>
                             <div class="param-row config-item">
                                 <label for="cfg-astar-resolution">Grid Resolution (m):</label>
-                                <input type="number" id="cfg-astar-resolution" min="0.5" max="20" step="any" value="3.0">
+                                <input type="number" id="cfg-astar-resolution" min="0.5" max="20" step="any" value="3.0" data-default="3.0">
                                 <span class="info-tooltip" title="Size of each A* grid cell. Smaller = more precise but slower | Taille de cellule. Plus petit = plus précis mais plus lent">ℹ️</span>
                             </div>
                             <div class="param-row config-item">
                                 <label for="cfg-astar-safety">Safety Margin (m):</label>
-                                <input type="number" id="cfg-astar-safety" min="1" max="50" step="any" value="12.0">
+                                <input type="number" id="cfg-astar-safety" min="1" max="50" step="any" value="12.0" data-default="12.0">
                                 <span class="info-tooltip" title="Obstacle inflation radius for A* planning. Larger = wider berth around obstacles | Rayon d'inflation des obstacles">ℹ️</span>
                             </div>
                             <div class="param-row config-item">
                                 <label for="cfg-astar-max">Max Expansions:</label>
-                                <input type="number" id="cfg-astar-max" min="100" max="100000" step="any" value="20000">
+                                <input type="number" id="cfg-astar-max" min="100" max="100000" step="any" value="20000" data-default="20000">
                                 <span class="info-tooltip" title="Maximum A* search iterations before giving up. Higher = searches more area but takes longer | Itérations max de recherche A*">ℹ️</span>
                             </div>
                             <div style="margin-top: 8px; display: flex; gap: 8px;">
@@ -577,7 +577,7 @@
                         ✅ Apply Config | Appliquer
                     </button>
                 </div>
-                <p class="btn-hint">Reset Defaults only changes the fields. Click Apply to send to ROS. | Reset ne change que les champs. Cliquez Appliquer pour envoyer.</p>
+                <p class="btn-hint">Reset Defaults restores launch values and applies to ROS in one step. Apply sends current field edits. | Reset rétablit les valeurs par défaut et envoie à ROS. Apply envoie les modifications.</p>
                 <input type="hidden" id="cfg-lanes" value="10">
                 <input type="hidden" id="cfg-scan-length" value="15">
                 <input type="hidden" id="cfg-scan-width" value="30">
@@ -729,7 +729,7 @@
                                 <button id="btn-reset-perception" class="reset-btn">🔄 Reset Defaults</button>
                                 <button id="btn-apply-perception" class="apply-btn" disabled title="Waiting for ROS config sync...">Apply Perception Params | Appliquer</button>
                             </div>
-                            <p class="btn-hint">Reset Defaults only changes the fields. Click Apply to send to ROS.</p>
+                            <p class="btn-hint">Reset Defaults restores launch values and applies to ROS in one step. Apply sends current field edits.</p>
                         </div>
                     </div>
 
@@ -867,7 +867,7 @@
                                 <button id="btn-reset-controller" class="reset-btn">🔄 Reset Defaults</button>
                                 <button id="btn-apply-controller" class="apply-btn" disabled title="Waiting for ROS config sync...">Apply Controller Params | Appliquer</button>
                             </div>
-                            <p class="btn-hint">Reset Defaults only changes the fields. Click Apply to send to ROS.</p>
+                            <p class="btn-hint">Reset Defaults restores launch values and applies to ROS in one step. Apply sends current field edits.</p>
                         </div>
                     </div>
                 </div>
