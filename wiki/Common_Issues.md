@@ -810,6 +810,20 @@ htop
 nvidia-smi  # If using GPU
 ```
 
+### Per-tab Launcher Logs (Post-Mortem)
+
+Each tab spawned by `launch_autoboat_complete.sh` tees its combined stdout/stderr to `/tmp/autoboat_tab_<name>.log` — one file per tab (`gazebo`, `rosbridge`, `navigation`, `camera`, `rviz`, `dashboard`). Use these when a warning or error scrolled off-screen, or fired in a tab you weren't watching live:
+
+```bash
+# Fish for warnings across all tabs at once:
+grep -iE 'warn|error|fail|deprecat' /tmp/autoboat_tab_*.log
+
+# View one tab with ANSI colors preserved:
+less -R /tmp/autoboat_tab_navigation.log
+```
+
+`tee` truncates each log on launch, and the launcher wipes `/tmp/autoboat_tab_*.log` at startup, so each session begins with a fresh log set. Files live in `/tmp` (tmpfs / RAM on most systems) and clear on reboot — no manual cleanup needed for the normal launch → stop → relaunch cycle.
+
 ---
 
 ## Still Having Issues?

@@ -317,16 +317,25 @@ cleanup
 # the same socket/shared-memory resources.
 sleep 4
 
+# Per-tab stdout/stderr is teed to /tmp/autoboat_tab_<name>.log so first-cold-launch
+# warnings (or any tab-internal error) can be grep'd post-mortem without watching
+# every tab live. tee truncates on open, so each launch overwrites the previous
+# log for tabs that are launched. The rm -f below covers the skip-flag edge case
+# where a tab from a previous session would otherwise leave a stale log behind.
+rm -f /tmp/autoboat_tab_*.log
+
 # T1: Launch Gazebo (VRX Simulation)
 # Apply upstream VRX patches (issue #876 workaround — LiDAR at origin fix)
 bash "$(dirname "$0")/patch_vrx.sh"
 
 print_status "Launching Gazebo (Sydney Regatta - $WORLD)..."
 gnome-terminal --wait --tab --title="gazebo" -- bash -i -c "
+{
 source \"$INSTALL_DIR/setup.bash\"
 echo \"Starting Gazebo with world: $WORLD\"
 echo 'Note: GPS may take 10-30 seconds to initialize'
 ros2 launch vrx_gz competition.launch.py world:="$WORLD"
+} 2>&1 | tee /tmp/autoboat_tab_gazebo.log
 " &
 GAZEBO_PID=$!
 # Wait for Gazebo to load the world and for WAM-V sensors to start publishing.
@@ -338,9 +347,11 @@ recheck "$GAZEBO_PID" "Gazebo"
 # T2: Launch ROS Bridge (WebSocket for dashboard)
 print_status "Launching ROS Bridge (WebSocket on ws://localhost:9090)..."
 gnome-terminal --wait --tab --title="rosbridge" -- bash -i -c "
+{
 source \"$INSTALL_DIR/setup.bash\"
 echo 'Starting ROS Bridge WebSocket server...'
 ros2 launch rosbridge_server rosbridge_websocket_launch.xml delay_between_messages:=0.0
+} 2>&1 | tee /tmp/autoboat_tab_rosbridge.log
 " &
 ROSBRIDGE_PID=$!
 wait_for_port 9090 30  # Rosbridge WebSocket
@@ -350,10 +361,12 @@ recheck "$ROSBRIDGE_PID" "ROS Bridge"
 # T3: Launch Navigation Stack (Perception-Planner-Controller)
 print_status "Launching Navigation Stack (Perception-Planner-Controller)..."
 gnome-terminal --wait --tab --title="navigation" -- bash -i -c "
+{
 source \"$INSTALL_DIR/setup.bash\"
 echo 'Starting AutoBoat Modular Navigation System...'
 echo 'Components: Perception | Planner | Controller'
 ros2 launch \"$WS_ROOT/src/uvautoboat/launch/autoboat.launch.yaml\"
+} 2>&1 | tee /tmp/autoboat_tab_navigation.log
 " &
 NAV_PID=$!
 # heading_controller_node is the last node to come up in the nav launch —
@@ -366,10 +379,12 @@ recheck "$NAV_PID" "Navigation stack"
 if [ "$LAUNCH_CAMERA" = true ]; then
     print_status "Launching Web Video Server (http://localhost:8080)..."
 gnome-terminal --wait --tab --title="camera" -- bash -i -c "
+{
 source \"$INSTALL_DIR/setup.bash\"
 echo 'Starting Web Video Server for camera feed...'
 echo 'Stream available at: http://localhost:8080'
 ros2 run web_video_server web_video_server
+} 2>&1 | tee /tmp/autoboat_tab_camera.log
 " &
     CAMERA_PID=$!
     wait_for_port 8080 30  # web_video_server MJPEG stream
@@ -381,6 +396,7 @@ fi
 if [ "$LAUNCH_RVIZ" = true ]; then
     print_status "Launching RViz visualization..."
 gnome-terminal --wait --tab --title="rviz" -- bash -i -c "
+{
 source \"$INSTALL_DIR/setup.bash\"
 echo 'Starting RViz...'
 sleep 3
@@ -388,6 +404,7 @@ cd \"$WS_ROOT\"
 # NOTE: rviz.launch.py only exists in vrx_gazebo (legacy package), not in vrx_gz.
 # vrx_gz is used for Gazebo Harmonic simulation; vrx_gazebo provides the RViz config.
 ros2 launch vrx_gazebo rviz.launch.py
+} 2>&1 | tee /tmp/autoboat_tab_rviz.log
 " &
     RVIZ_PID=$!
     sleep 8
@@ -399,11 +416,13 @@ fi
 if [ "$LAUNCH_DASHBOARD" = true ]; then
     print_status "Launching Web Dashboard (http://localhost:8002)..."
 gnome-terminal --wait --tab --title="dashboard" -- bash -i -c "
+{
 cd \"$WS_ROOT/src/uvautoboat/web_dashboard/autoboat\"
 echo 'Starting Web Dashboard HTTP server...'
 echo 'Dashboard available at: http://localhost:8002'
 echo 'Note: Wait for GPS to initialize (~10-30s) before opening dashboard'
 python3 -m http.server 8002
+} 2>&1 | tee /tmp/autoboat_tab_dashboard.log
 " &
     DASHBOARD_PID=$!
     wait_for_port 8002 15  # Dashboard HTTP server

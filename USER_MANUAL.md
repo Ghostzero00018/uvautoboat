@@ -1371,7 +1371,7 @@ these checks in order:
 ```bash
 ss -tuln | grep 9090
 # Expected: a line showing LISTEN on port 9090
-# If empty → rosbridge is not running. Check the rosbridge terminal tab for errors.
+# If empty → rosbridge is not running. Check the rosbridge terminal tab (or grep /tmp/autoboat_tab_rosbridge.log) for errors.
 ```
 
 **Step 2 — Is ROS_DOMAIN_ID consistent?**
