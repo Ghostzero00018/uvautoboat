@@ -15,7 +15,7 @@ Today's Linux-side focus is **content + evidence**, not slide-making. Three acti
 
 1. **Block A — Changelog compile** (~1 h): extract since-15/04 milestones into a focused "what's new" list, structured enough to drop into PPT slides.
 2. **Block B — Demo rehearsal** (~1.5 h): run the canonical happy-path mission end-to-end; confirm nothing regressed since the 15/04 demo; shortlist 1–3 new features worth showing live.
-3. **Block C — Visual capture** (~45 min): screenshots + short screen recordings of demo-worthy items. Output to a dedicated `ppt_assets/2026-04-30/` dir for the Windows side to consume.
+3. **Block C — Visual capture** (~45 min): screenshots + short screen recordings of demo-worthy items. Captured Linux-side and copied straight into the Windows-side PPT assets folder — no asset directory tracked in this repo (PPT artefacts stay Windows-side).
 
 Plus Block D wrap + diary fill-in at end of day.
 
@@ -65,11 +65,7 @@ Run the canonical end-to-end demo (mirror the 15/04 structure from `PPT/assets/p
 
 ## Block C — Visual capture
 
-Lightweight. Screenshots + short MP4s for Block B's shortlist. Target output dir:
-
-```bash
-mkdir -p ppt_assets/2026-04-30
-```
+Lightweight. Screenshots + short MP4s for Block B's shortlist. Files land directly in the Windows-side PPT assets folder (the maintainer's existing PPT working directory) — no asset directory in this repo. Transfer mechanism (USB / cloud sync / shared folder) is the maintainer's call.
 
 PNGs default; MP4s only where motion carries the story. Keep filenames self-descriptive (`dashboard_camera_combobox.png`, `health_check_tuned_state.png`, `go_home_at_home_toast.png`, etc.) so the Windows side doesn't have to interpret.
 
@@ -81,7 +77,9 @@ Candidate captures (final list depends on Block B):
 - Reset-during-Confirm toast + Go-Home-at-home toast.
 - `Board.md` timeline since 15/04, rendered in the GitHub web view — useful as a "scope" slide.
 
-**Outcome.** [To fill — list of captured assets with file paths, any that turned out not useful once reviewed.]
+Real-hardware photos (Pi 5 in the CCU enclosure, real WAM-V running the stack on water, dashboard against a remote Pi 5) are deferred until hardware testing begins — added to the asset list as Phase-5.1+ progresses, not blocking the 30/04 deck.
+
+**Outcome.** [To fill — list of captured assets, any that turned out not useful once reviewed.]
 
 ## Block D — Wrap + diary fill-in
 
@@ -104,7 +102,7 @@ Candidate captures (final list depends on Block B):
 |:------|:------|:--------------|
 | Block A | Changelog compiled, themes identified | Tue picks up demo rehearsal + visual capture |
 | Block B | Demo rehearsed, regressions ID'd, live-demo shortlist fixed | Tue starts visual capture |
-| Block C | Visual assets captured in `ppt_assets/2026-04-30/` | Tue opens directly on PPT slide updates (Windows) |
+| Block C | Visual assets captured + transferred to the Windows-side PPT folder | Tue opens directly on PPT slide updates (Windows) |
 | Block D | Day closed | Tue opens fresh on PPT work |
 
 ## Known unknowns surfaced during the day
