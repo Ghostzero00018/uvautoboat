@@ -79,9 +79,11 @@ import time
 from pathlib import Path
 from typing import Optional, Tuple
 
-# Derive repo root from this file's location: plan/plan/autoboat_cli.py -> repo root
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-_LAUNCH_FILE = _REPO_ROOT / 'launch' / 'autoboat.launch.yaml'
+# Launch file path (relative to repo-root cwd; works in both source and install layouts).
+# Previous form derived from __file__ via parents[2], which broke under colcon install
+# layout where this file resolves to install/lib/.../site-packages/plan/autoboat_cli.py
+# (parents[2] no longer == repo root). Plain relative string sidesteps the issue.
+_LAUNCH_FILE = 'launch/autoboat.launch.yaml'
 
 
 class MissionCLI(Node):
