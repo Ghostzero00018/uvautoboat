@@ -30,7 +30,7 @@ Recheck on 27/04 evening sharpened the original scope; all fixes were then **pre
 > **Pre-application status (Sunday evening, all on `origin/main`):**
 >
 > - `ffb7f8f` — A1 cli relative path (drops install-broken `parents[2]` `_REPO_ROOT`)
-> - `74eb2b2` — A3 four `updateValueDisplay()` patches in `resetGroupToDefaults` / A*Reset / `updatePerceptionInputs` / `updateControllerInputs` / `updateConfigFromROS` cfg-* loop
+> - `74eb2b2` — A3 four `updateValueDisplay()` patches in `resetGroupToDefaults` / A\*Reset / `updatePerceptionInputs` / `updateControllerInputs` / `updateConfigFromROS` cfg-\* loop
 > - `888fadd` — Option 1 param_ranges 3-tuple — Python publishers (3 nodes) extend payload to `[min, max, default]`; dashboard consumer adds `liveDefaults` map + extends `getCanonicalDefault` to consult it first; legacy fallbacks (HTML `data-default`, JS `*_DEFAULTS` constants) intact for safety
 >
 > All 3 commits are additive and forward-compatible: legacy 2-tuple `param_ranges` still works on the JS side, and Python's pre-3-tuple publish would still work on the original JS side. Risk on revert is bounded — a single commit revert per fault.
@@ -113,20 +113,20 @@ Recheck revealed the user-reported bug isn't in dirty-tracker semantics — it's
 
 **Recommendation:** option 1 (inline) for the Tuesday slot — tighter diff, less risk of subtle regression. Option 2 is post-30/04 polish.
 
-**Bug investigation FIRST:** before patching, reproduce the bug on a `cfg-*` input (kp / ki / kd / base-speed / max-speed / safe-dist). `resetConfigToDefaults` already calls `updateValueDisplay`, so if cfg-*Reset ALSO leaves the span persistent, there's a deeper bug we haven't found. If cfg-* Reset clears correctly, the user was testing a perception-*/ controller-* input and the 4-path fix is sufficient.
+**Bug investigation FIRST:** before patching, reproduce the bug on a `cfg-*` input (kp / ki / kd / base-speed / max-speed / safe-dist). `resetConfigToDefaults` already calls `updateValueDisplay`, so if cfg-\* Reset ALSO leaves the span persistent, there's a deeper bug we haven't found. If cfg-\* Reset clears correctly, the user was testing a perception-\*/ controller-\* input and the 4-path fix is sufficient.
 
 **Test sequence (after each path is patched):**
 
 - **Path 1 (resetGroupToDefaults):** edit `perception-water-threshold` off-default → orange span appears → click *Reset Perception* → confirm value AND span both clear.
 - **Path 2 (A* Reset):** edit `cfg-astar-resolution` off-default → click *Reset A\** → confirm.
 - **Path 3 (preset apply):** apply Pier preset → confirm tuning inputs that match preset values show no orange span; ones that differ from launch defaults DO show it.
-- **Path 4 (updateConfigFromROS):** harder to test cleanly; trust symmetry with cfg-* path.
+- **Path 4 (updateConfigFromROS):** harder to test cleanly; trust symmetry with cfg-\* path.
 
 If implementation overruns 45 min, **stop and roll to Wednesday** — A3 is polish, not blocking. Don't sacrifice Block B time for it.
 
 Commit suggestion: `fix(dashboard): call updateValueDisplay() in 4 programmatic-mutation paths`
 
-**Outcome.** ✅ Pre-applied Sunday evening via `74eb2b2`. All 3 interactive paths exercised in-browser after the rebuild + hard refresh: (1) edit `perception-water-threshold` off-default → Reset Perception → orange `(default: X)` cleared in the same tick; (2) edit `cfg-astar-resolution` off-default → Reset A\* → same; (3) Pier preset applied → spans correctly reflect preset-vs-launch-default (no stale `(default: X)` left over). Path 4 (`updateConfigFromROS` perception/controller branch) verified by symmetry with the cfg-* path — would only diverge if a separate ROS publisher pushed perception/controller config back, which doesn't happen in steady-state. All four sites use the same pattern as `resetConfigToDefaults` (programmatic `el.value =` + explicit `updateValueDisplay(el)`).
+**Outcome.** ✅ Pre-applied Sunday evening via `74eb2b2`. All 3 interactive paths exercised in-browser after the rebuild + hard refresh: (1) edit `perception-water-threshold` off-default → Reset Perception → orange `(default: X)` cleared in the same tick; (2) edit `cfg-astar-resolution` off-default → Reset A\* → same; (3) Pier preset applied → spans correctly reflect preset-vs-launch-default (no stale `(default: X)` left over). Path 4 (`updateConfigFromROS` perception/controller branch) verified by symmetry with the cfg-\* path — would only diverge if a separate ROS publisher pushed perception/controller config back, which doesn't happen in steady-state. All four sites use the same pattern as `resetConfigToDefaults` (programmatic `el.value =` + explicit `updateValueDisplay(el)`).
 
 ### A4 — Option 1 param_ranges 3-tuple verification (15-20 min)
 
@@ -175,7 +175,7 @@ Per the Sunday-evening plan, Part 2 cleanup runs IF AND ONLY IF Part 1 is fully 
 
 | File | Change |
 |:-----|:-------|
-| `index.html` | 15 `data-default="…"` attrs deleted from cfg-*and wp-* inputs (single sed pass) |
+| `index.html` | 15 `data-default="…"` attrs deleted from cfg-\* and wp-\* inputs (single sed pass) |
 | `index.html` | 3 Reset buttons (`btn-reset-config`, `btn-reset-perception`, `btn-reset-controller`) gained `disabled title="Waiting for ROS launch defaults..."` to mirror the Apply-button `configSynced` gating |
 | `app.js` `getCanonicalDefault` | Body shrunk to: `liveDefaults` lookup → `controller-use-vfh` special case → `undefined` |
 | `app.js` `resetGroupToDefaults` | Signature `(defaults, label, extraReset)` → `(prefix, label, extraReset)`; iterates `Object.entries(liveDefaults).filter(([id]) => id.startsWith(prefix))` |
@@ -187,8 +187,8 @@ Per the Sunday-evening plan, Part 2 cleanup runs IF AND ONLY IF Part 1 is fully 
 
 **Two scope additions beyond the 6-site plan** — both unavoidable, would have silently broken things if skipped:
 
-- `resetConfigToDefaults` (`app.js:1572`) reads `input.dataset.default` to populate cfg-*Reset values. Attr removal would have made the cfg-* Reset button silently no-op. Adapted to use `getCanonicalDefault(input)`.
-- `initConfigValueTracking` listener (`app.js:1657`) used `parseFloat(input.dataset.default)` for `.modified`-class management. After attr removal, `parseFloat(undefined) = NaN`, which always-add `.modified` on cfg-* edits. Same `getCanonicalDefault` swap; the function itself stays as the redundant code A2 noted, deletion still queued post-Thursday.
+- `resetConfigToDefaults` (`app.js:1572`) reads `input.dataset.default` to populate cfg-\* Reset values. Attr removal would have made the cfg-\* Reset button silently no-op. Adapted to use `getCanonicalDefault(input)`.
+- `initConfigValueTracking` listener (`app.js:1657`) used `parseFloat(input.dataset.default)` for `.modified`-class management. After attr removal, `parseFloat(undefined) = NaN`, which always-add `.modified` on cfg-\* edits. Same `getCanonicalDefault` swap; the function itself stays as the redundant code A2 noted, deletion still queued post-Thursday.
 
 **Verification (browser-only — JS/HTML served from source, no rebuild needed):** hard-refreshed `Ctrl+Shift+R`. DevTools confirms `typeof PERCEPTION_DEFAULTS === "undefined"`, `typeof CONTROLLER_DEFAULTS === "undefined"`, `document.getElementById('cfg-kp').dataset.default` is `undefined`, `getCanonicalDefault(document.getElementById('cfg-kp'))` still returns `500`. The 3 A3 paths still pass (Reset Perception clears spans, Reset A\* clears spans, Pier preset spans correctly reflect preset-vs-launch-default).
 
@@ -314,8 +314,8 @@ Use this section to capture anything surprising during the day — file state dr
 
 - **Stale install vs source — runtime check needs rebuild.** Bare `python3 -c "from plan.autoboat_cli import _LAUNCH_FILE; print(_LAUNCH_FILE)"` returned the OLD `PosixPath('.../install/lib/python3.12/launch/autoboat.launch.yaml')` despite source being the new literal string. The ROS 2 install tree is hermetic; runtime imports go through `install/lib/python3.12/site-packages/plan/autoboat_cli.py` regardless of source. Source-level grep verifies a fix landed; runtime verification needs a rebuild. Worth flagging as a rule any time a source-vs-runtime fact-check happens.
 - **`colcon build` rejects mixed install layouts.** Bare `colcon build --packages-select plan control` errored with `The install directory 'install' was created with the layout 'merged'`. The workspace was previously built `--merge-install`; subsequent builds must keep the flag. Adding `--merge-install` to the existing pattern (rather than `rm -rf install/` and rebuilding from scratch) was the right call; the rebuild took 1.39 s incremental.
-- **Cleanup scope expansion (Part 2).** Plan listed 6 edit sites but missed `resetConfigToDefaults` (`app.js:1572`) and `initConfigValueTracking` listener (`app.js:1657`); both read `input.dataset.default`. Attr removal would have silently broken cfg-* Reset and turned the `.modified`-class check into NaN-vs-number (always-add). Adapted both to `getCanonicalDefault` — necessary, not adjacent.
-- **`gateResetButtons` precision matters.** First draft used `keys.some(id => id.startsWith('cfg-'))` to gate `btn-reset-config`. But `cfg-` matches planner-published keys (cfg-lanes, cfg-astar-*) which arrive independently of heading_controller's publish — false-enable when planner publishes first. Tightened to `'cfg-kp' in liveDefaults` since cfg-kp arrives in the same JSON message that fills all 6 PID/speed cfg-* IDs.
+- **Cleanup scope expansion (Part 2).** Plan listed 6 edit sites but missed `resetConfigToDefaults` (`app.js:1572`) and `initConfigValueTracking` listener (`app.js:1657`); both read `input.dataset.default`. Attr removal would have silently broken cfg-\* Reset and turned the `.modified`-class check into NaN-vs-number (always-add). Adapted both to `getCanonicalDefault` — necessary, not adjacent.
+- **`gateResetButtons` precision matters.** First draft used `keys.some(id => id.startsWith('cfg-'))` to gate `btn-reset-config`. But `cfg-` matches planner-published keys (cfg-lanes, cfg-astar-\*) which arrive independently of heading_controller's publish — false-enable when planner publishes first. Tightened to `'cfg-kp' in liveDefaults` since cfg-kp arrives in the same JSON message that fills all 6 PID/speed cfg-\* IDs.
 - **Block C "PPT assets" interpretation note.** Maintainer's "PPT assets already captured" closes the Block C demo-capture work but does not clarify whether Block B (slide content paste) is also done — Block B status remains [To fill] from Linux side; resolve when syncing diary to Windows.
 - **Cold-start `inf` JSON race in `/control/anti_stuck_status`.** First-run grep on `/tmp/autoboat_tab_*.log` (`grep -iE 'warn|error|fail|deprecat'`) surfaced `[ERROR] Refused to publish malformed JSON (anti_stuck_status): Out of range float values are not JSON compliant: inf`. Root cause: `heading_controller.py:287` `front_clear = float('inf')` sentinel + 0.5 s timer firing before `/perception/obstacle_info` lands. Fixed at the serialization boundary in `publish_anti_stuck_status` via inline `_safe(v)` mapping `inf` / NaN → `None` (`6ec20af`). Class-instance sweep on `_publish_json` callers caught a dormant mirror at `publish_status:1062` (`obstacle_distance` reads the same inf-init `min_obstacle_distance`); race masked because `publish_status` is gated on planner DRIVING (perception fires first), but the inf-source pattern is identical — same `_safe()` applied to that site as well. Init values at L286-289 + the gate at L968 (`if self.left_clear < float('inf')`) deliberately untouched (the gate uses inf as a data-received sentinel; flipping it would silently activate at boot). Dashboard parsers (`app.js` `updateAntiStuckStatus` + `/control/status` subscriber) verified null-safe pre-fix.
 - **Cosmetic-startup-warnings catalogued in `wiki/Common_Issues.md`.** Same first-run grep surfaced four upstream categories that survive the JSON-fix: `kdl_parser` root-link inertia (VRX WAM-V URDF), `libEGL ... driver (null)` + `failed to create dri2 screen` (NVIDIA/Mesa EGL probing during Gazebo GUI startup), Gazebo Harmonic `(deprecated)` GUI Follow service announcements, SDF `vrx::WaveVisual` plugin XML positioning warning. New `### Known Startup Warnings (Cosmetic)` subsection in `Common_Issues.md` (under `## Debug Commands`, adjacent to `### Per-tab Launcher Logs (Post-Mortem)`) lists each with origin + why-cosmetic + a `grep -vE` filter recipe (`134e52c`). Empty-after-filter is the new clean-run criterion.
