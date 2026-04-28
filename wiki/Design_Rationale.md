@@ -53,6 +53,24 @@ The dashboard is browser-based, connecting to ROS 2 via ROSBridge (WebSocket + J
 
 > **Note on ros2-web-bridge:** A separate project ([ros2-web-bridge](https://github.com/RobotWebTools/ros2-web-bridge)) once offered a Node.js-based alternative to rosbridge_suite. It was **archived in November 2025**, last targeted ROS 2 Dashing (2019), and its own README now redirects users to `rosbridge_suite`. AutoBoat uses `rosbridge_suite` — the actively maintained official ROS package — and requires no migration.
 
+### Why two separate stop channels (`/planning/stop_mission` service vs `/planning/emergency_stop` latched topic)?
+
+The system exposes **two independent stop mechanisms** by design — defense-in-depth against different failure modes rather than redundancy:
+
+| Channel | Type | Subscribers | Planner effect | Controller effect |
+|:--------|:-----|:------------|:---------------|:------------------|
+| `/planning/stop_mission` | `std_srvs/Trigger` service | Planner only (`waypoint_planner.py:338`) | Enters `PAUSED` state; ACK response confirms receipt | No direct hook — sees the pause indirectly via `/planning/mission_status` |
+| `/planning/emergency_stop` | `std_msgs/Bool`, latched (RELIABLE, depth=1) | Planner **and** Controller (`waypoint_planner.py:329`, `heading_controller.py:384`) | Enters dedicated `EMERGENCY_STOP` state | Latches `stop_override = True` — highest-priority thrust gate, zeroes all thruster output (`heading_controller.py:740`) |
+
+**Why both?** The two channels traverse different layers:
+
+- **Stop service** goes through the *mission state machine*: dashboard/CLI → planner service handler → `PAUSED` → controller eventually sees the pause via `/planning/mission_status`. If the planner is wedged or its callback queue is starved, the stop never reaches the controller.
+- **Emergency stop topic** bypasses the mission layer: dashboard/CLI publishes a single `Bool(true)` and **both** planner and controller receive it directly. The controller's `stop_override` zeroes thrust regardless of planner state — thrusters halt even if the planner is unresponsive. The whole point of the safety-critical layer is to bypass intermediate logic and reach the actuators directly.
+
+**Why latched?** `RELIABLE` + `KEEP_LAST=1` makes the topic durable: any subscriber joining after the publish — including a node killed and restarted mid-emergency — automatically receives the latched `True` on connection. Without latching, a restarted node would silently miss the safety state and resume thrusting.
+
+**Historical context.** Before the 20/04/2026 Tier 2 refactor (see `Board.md` timeline), both stop and emergency-stop rode `/planning/mission_command` and relied on client-side retry loops (CLI sent 3× with sleeps; dashboard sent 2× at 200 ms apart — see `waypoint_planner.py:336` comment) to "ensure delivery". Retries were a bandage, not a guarantee. Splitting into two channels closed both gaps: the ACK service answers "did my stop arrive?"; the latched topic answers "what if a node restarts mid-emergency?".
+
 ---
 
 ## Algorithm Choices
