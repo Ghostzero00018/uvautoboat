@@ -826,6 +826,28 @@ less -R /tmp/autoboat_tab_navigation.log
 
 ---
 
+### Known Startup Warnings (Cosmetic)
+
+A handful of `WARN` / `Warning` / `(deprecated)` lines surface in `/tmp/autoboat_tab_gazebo.log` on every cold launch. They originate from upstream components (Gazebo Harmonic, NVIDIA/Mesa EGL, ROS 2 `kdl_parser`, VRX SDF), not from `uvautoboat` code, and do not affect simulation behaviour.
+
+| Warning fragment | Origin | Why cosmetic |
+|:-----------------|:-------|:-------------|
+| `kdl_parser ... root link wamv/base_link has an inertia` | ROS 2 `kdl_parser` against VRX's WAM-V URDF | KDL silently ignores the inertia (the message itself says so); URDF is upstream |
+| `libEGL ... driver (null)` / `failed to create dri2 screen` | NVIDIA/Mesa EGL probing during Gazebo GUI startup | Gazebo tries the legacy DRI2 path and falls back to a working backend; rendering proceeds normally |
+| `[GUI] [Msg] Follow service on [/gui/follow] (deprecated)` (×2) | Gazebo Harmonic announcing deprecated GUI service paths | New service paths run in parallel; follow-camera works |
+| `Utils.cc:132 ... vrx::WaveVisual ... XML Element[plugin] ... Copying[plugin]` | SDF parser strictness vs. VRX's wave-visual plugin nesting | Parser repositions the element under `<sdf>` and proceeds; wave visual renders |
+
+**Cleaner grep going forward**:
+
+```bash
+grep -iE 'warn|error|fail|deprecat' /tmp/autoboat_tab_*.log | \
+  grep -vE 'kdl_parser|libEGL|gui/follow.*deprecated|vrx::WaveVisual'
+```
+
+Empty output = clean run. Anything that survives the filter is from project code or a new upstream warning worth investigating.
+
+---
+
 ## Still Having Issues?
 
 If your problem isn't listed here:
