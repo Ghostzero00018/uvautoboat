@@ -1577,42 +1577,23 @@ function resetConfigToDefaults() {
 
     configInputs.forEach(id => {
         const input = document.getElementById(id);
-        if (input && input.dataset.default) {
-            input.value = input.dataset.default;
-            input.classList.remove('modified');
-            // Mark dirty so ROS sync doesn't overwrite before user clicks Apply
-            dirtyInputs.add(id);
-            input.classList.add('input-dirty');
-            updateValueDisplay(input);
-        }
+        if (!input) return;
+        const def = getCanonicalDefault(input);
+        if (def === undefined) return;
+        input.value = def;
+        input.classList.remove('modified');
+        // Mark dirty so ROS sync doesn't overwrite before user clicks Apply
+        dirtyInputs.add(id);
+        input.classList.add('input-dirty');
+        updateValueDisplay(input);
     });
 
     addLog('Configuration fields reset to defaults', 'info');
 }
 
-// Perception launch defaults (must match autoboat.launch.yaml)
-const PERCEPTION_DEFAULTS = {
-    'perception-min-height': -1.2, 'perception-max-height': 1.5,
-    'perception-min-range': 2.2, 'perception-max-range': 100,
-    'perception-safe-dist': 10.0, 'perception-critical-dist': 5.5,  // perception_critical_distance in ROS
-    'perception-cluster-dist': 3.0, 'perception-min-cluster-size': 8,
-    'perception-temporal-history': 3, 'perception-temporal-threshold': 2,
-    'perception-water-threshold': 0.32, 'perception-hysteresis': 2.0
-};
-
-// Controller launch defaults (must match autoboat.launch.yaml)
-const CONTROLLER_DEFAULTS = {
-    'controller-critical-dist': 6.0, 'controller-safe-dist': 12.0,
-    'controller-bank-dist': 6.0, 'controller-obstacle-slow': 0.5,
-    'controller-bank-slow': 0.25, 'controller-avoid-gain': 18,
-    'controller-max-turn': 45, 'controller-stuck-timeout': 12.0,
-    'controller-stuck-threshold': 1.0, 'controller-reverse-timeout': 4.0,
-    'controller-max-reverse': 25, 'controller-turn-deadband': 0.5,
-    'controller-slew-rate': 80
-};
-
-function resetGroupToDefaults(defaults, label, extraReset) {
-    for (const [id, val] of Object.entries(defaults)) {
+function resetGroupToDefaults(prefix, label, extraReset) {
+    for (const [id, val] of Object.entries(liveDefaults)) {
+        if (!id.startsWith(prefix)) continue;
         const el = document.getElementById(id);
         if (el) {
             el.value = val;
@@ -1629,11 +1610,11 @@ function resetGroupToDefaults(defaults, label, extraReset) {
 }
 
 function resetPerceptionToDefaults() {
-    resetGroupToDefaults(PERCEPTION_DEFAULTS, 'Perception');
+    resetGroupToDefaults('perception-', 'Perception');
 }
 
 function resetControllerToDefaults() {
-    resetGroupToDefaults(CONTROLLER_DEFAULTS, 'Controller', () => {
+    resetGroupToDefaults('controller-', 'Controller', () => {
         const vfhEl = document.getElementById('controller-use-vfh');
         if (vfhEl) vfhEl.value = 'false';
     });
@@ -1654,7 +1635,7 @@ function initConfigValueTracking() {
 
             // Track changes
             input.addEventListener('input', () => {
-                const defaultValue = parseFloat(input.dataset.default);
+                const defaultValue = parseFloat(getCanonicalDefault(input));
                 const currentValue = parseFloat(input.value);
 
                 if (currentValue !== defaultValue) {
@@ -1682,8 +1663,8 @@ function ensureValueDisplay(input) {
 }
 
 // Paint or clear the (default: X) hint under an input based on canonical-default
-// match. Resolves the default via getCanonicalDefault so it works for every
-// parameter input (data-default OR PERCEPTION_DEFAULTS / CONTROLLER_DEFAULTS).
+// match. Resolves the default via getCanonicalDefault — i.e. liveDefaults from
+// /<ns>/param_ranges, so YAML is the single source of truth.
 function updateValueDisplay(input) {
     if (!input || !input.id) return;
     const canonical = getCanonicalDefault(input);
@@ -1852,19 +1833,14 @@ function filterDirtyParams(fullConfig, idToParam) {
     return hasDirty ? dirty : fullConfig;
 }
 
-// Clear dirty state for a set of input IDs after a successful send
-// Canonical launch default for an input — data-default first, then the
-// *_DEFAULTS maps for tuning-panel inputs. Returns undefined if unknown.
+// Canonical launch default for an input — sourced from liveDefaults, which mirrors
+// each node's /<ns>/param_ranges publish (3-tuple [min, max, default]). YAML is
+// the single source of truth; Python publishes; dashboard reads. Returns undefined
+// for inputs not in any PARAM_RANGES dict (e.g. controller-use-vfh, which is a
+// boolean toggle outside the numeric-range publish).
 function getCanonicalDefault(el) {
     if (!el || !el.id) return undefined;
-    // Prefer live default from /<ns>/param_ranges topic — Python is now the single
-    // source of truth (post 3-tuple extension). Falls through to legacy sources if
-    // the topic hasn't published a default for this input yet (Python still on the
-    // pre-extension version) or for inputs not in any PARAM_RANGES dict.
     if (liveDefaults[el.id] !== undefined) return liveDefaults[el.id];
-    if (el.dataset.default !== undefined && el.dataset.default !== '') return el.dataset.default;
-    if (el.id.startsWith('perception-')) return PERCEPTION_DEFAULTS[el.id];
-    if (el.id.startsWith('controller-')) return CONTROLLER_DEFAULTS[el.id];
     if (el.id === 'controller-use-vfh') return 'false';
     return undefined;
 }
@@ -3109,7 +3085,7 @@ function updatePerceptionInputs(params) {
     document.getElementById('perception-hysteresis').value = params.hysteresis_distance;
     // Programmatic value sets don't fire the `input` event; refresh the
     // (default: X) span for every perception input so spans match preset values.
-    Object.keys(PERCEPTION_DEFAULTS).forEach(id => {
+    Object.keys(liveDefaults).filter(id => id.startsWith('perception-')).forEach(id => {
         const el = document.getElementById(id);
         if (el) updateValueDisplay(el);
     });
@@ -3144,7 +3120,7 @@ function updateControllerInputs(params) {
     document.getElementById('controller-slew-rate').value = params.slew_rate_limit;
     // Programmatic value sets don't fire the `input` event; refresh the
     // (default: X) span for every controller input + the use-vfh select.
-    Object.keys(CONTROLLER_DEFAULTS).forEach(id => {
+    Object.keys(liveDefaults).filter(id => id.startsWith('controller-')).forEach(id => {
         const el = document.getElementById(id);
         if (el) updateValueDisplay(el);
     });
@@ -3370,12 +3346,11 @@ function enrichTooltipsWithRanges() {
 }
 
 // Live launch-defaults received from /<ns>/param_ranges (3rd element of each
-// [min, max, default] tuple, post-extension). Populated by applyRangesToDashboard;
-// consulted first by getCanonicalDefault. Eliminates the 4-place sync drift class
-// for defaults — Python becomes the single source of truth, dashboard reflects
-// whatever YAML launched with. Belt-and-braces: HTML data-default + PERCEPTION_DEFAULTS
-// / CONTROLLER_DEFAULTS still serve as fallbacks if the topic publishes legacy
-// 2-tuples (Python pre-extension) or for inputs not in any PARAM_RANGES dict.
+// [min, max, default] tuple). Populated by applyRangesToDashboard, read by
+// getCanonicalDefault. YAML is the single source of truth — Python publishes
+// the runtime defaults, dashboard mirrors them. Inputs not in any PARAM_RANGES
+// dict (e.g. controller-use-vfh boolean) get their default from getCanonicalDefault's
+// special-case fallthrough.
 const liveDefaults = {};
 
 // Param name → list of HTML input IDs. A param may appear in multiple inputs
@@ -3428,11 +3403,13 @@ const PARAM_TO_INPUT_IDS = {
 };
 
 // Apply ranges received from a ROS node to HTML inputs at runtime.
-// rangesJson: {param_name: [min, max], ...} — JSON from /<ns>/param_ranges
+// rangesJson: {param_name: [min, max, default], ...} — JSON from /<ns>/param_ranges.
+// 2-tuple [min, max] is accepted defensively (stale install tree where Python
+// hasn't been rebuilt to publish 3-tuples) but leaves liveDefaults unpopulated
+// for those params, so Reset buttons gated below won't enable.
 function applyRangesToDashboard(rangesJson) {
     let changed = 0;
     for (const [paramName, range] of Object.entries(rangesJson)) {
-        // Accept 2-tuple [min, max] (legacy) or 3-tuple [min, max, default] (post-extension).
         if (!Array.isArray(range) || range.length < 2) continue;
         const [min, max, defaultVal] = range;
         const inputIds = PARAM_TO_INPUT_IDS[paramName];
@@ -3443,9 +3420,6 @@ function applyRangesToDashboard(rangesJson) {
                 el.min = String(min);
                 el.max = String(max);
                 changed++;
-                // If the publisher included a default (Python post-3-tuple-extension),
-                // record it in liveDefaults and refresh the (default: X) span so it
-                // reflects the live launch value rather than a hardcoded HTML/JS one.
                 if (defaultVal !== undefined && defaultVal !== null) {
                     liveDefaults[id] = defaultVal;
                     updateValueDisplay(el);
@@ -3455,7 +3429,32 @@ function applyRangesToDashboard(rangesJson) {
     }
     if (changed > 0) {
         enrichTooltipsWithRanges();  // re-run so tooltips reflect the new ranges
+        gateResetButtons();  // un-disable Reset buttons whose namespace's defaults arrived
         if (DEBUG_MODE) console.log(`applyRangesToDashboard: updated ${changed} input(s)`);
+    }
+}
+
+// Reset buttons start disabled in HTML and depend on liveDefaults for their work.
+// Enable each one once at least one input from its namespace has populated. Mirrors
+// the Apply-button configSynced gating so a click before /<ns>/param_ranges arrives
+// can't turn into a silent no-op.
+function gateResetButtons() {
+    const keys = Object.keys(liveDefaults);
+    const ready = {
+        // Config Reset touches the 6 PID/speed cfg-* inputs (heading_controller params).
+        // 'cfg-kp' in liveDefaults means heading_controller's param_ranges has fired —
+        // a generic 'cfg-' prefix would match planner-published keys (cfg-lanes / cfg-astar-*)
+        // and falsely enable the button before the relevant defaults arrived.
+        'btn-reset-config': 'cfg-kp' in liveDefaults,
+        'btn-reset-perception': keys.some(id => id.startsWith('perception-')),
+        'btn-reset-controller': keys.some(id => id.startsWith('controller-')),
+    };
+    for (const [id, isReady] of Object.entries(ready)) {
+        const btn = document.getElementById(id);
+        if (btn && isReady && btn.disabled) {
+            btn.disabled = false;
+            btn.title = '';
+        }
     }
 }
 

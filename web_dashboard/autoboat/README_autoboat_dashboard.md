@@ -105,13 +105,15 @@ All three publish to `/planning/set_config`. Each node picks out only the keys i
 - **Dirty-params filtering** — only changed fields are sent (prevents overwriting unchanged params)
 - **Reset Defaults** — restores launch file values and marks fields dirty (prevents ROS sync race)
 
-### Parameter Sync (3 places)
+### Parameter Sync (1 place)
 
-Any parameter change must be mirrored in:
-
-1. `autoboat.launch.yaml` — the authoritative operational values
-2. `index.html` — input field default values
-3. `app.js` — readInput fallbacks, currentState.config, PERCEPTION_DEFAULTS, CONTROLLER_DEFAULTS
+`autoboat.launch.yaml` is the single source of truth for runtime defaults. Each
+node's `_publish_param_ranges` lazy-captures launch-time `get_parameter()` values
+into a `[min, max, default]` 3-tuple per param and publishes on `/<ns>/param_ranges`.
+The dashboard's `applyRangesToDashboard` writes the 3rd element into `liveDefaults`,
+which `getCanonicalDefault` then reads when painting `(default: X)` hints and when
+Reset buttons fire. `index.html` `value="…"` attributes are cosmetic-only (initial
+paint before ROS sync) — change them only if the unconnected-page snapshot matters.
 
 ### Known Parameter Collisions (Resolved)
 
