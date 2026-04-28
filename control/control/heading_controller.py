@@ -1052,6 +1052,15 @@ class HeadingController(Node):
 
     def publish_status(self, mode):
         """Publish controller status with perception v2.0 enhanced info"""
+        def _safe(v, decimals=3):
+            # Replace inf/NaN with None so JSON serialization succeeds.
+            # min_obstacle_distance is inf-init at boot until perception fires.
+            if v != v:                                          # NaN
+                return None
+            if v == float('inf') or v == float('-inf'):
+                return None
+            return round(v, decimals)
+
         self._publish_json(
             self.pub_status,
             {
@@ -1059,7 +1068,7 @@ class HeadingController(Node):
                 'stop_override': self.stop_override,
                 'avoidance_active': self.avoidance_mode,
                 'obstacle_detected': bool(self.obstacle_detected),
-                'obstacle_distance': round(float(self.min_obstacle_distance), 2),
+                'obstacle_distance': _safe(float(self.min_obstacle_distance), 2),
                 'current_yaw': round(math.degrees(self.current_yaw), 1),
                 'integral_error': round(float(self.integral_error), 4),
                 # Perception v2.0 enhanced fields
@@ -1237,6 +1246,17 @@ class HeadingController(Node):
     def publish_anti_stuck_status(self):
         """Publish anti-stuck system status for dashboard"""
         drift_uncertainty = self.drift_kalman.get_uncertainty()
+
+        def _safe(v, decimals=3):
+            # Replace inf/NaN with None so JSON serialization succeeds.
+            # Dashboard treats None as "no data yet" — happens briefly on cold-start
+            # before /perception/obstacle_info has fired.
+            if v != v:                                          # NaN
+                return None
+            if v == float('inf') or v == float('-inf'):
+                return None
+            return round(v, decimals)
+
         self._publish_json(
             self.pub_anti_stuck,
             {
@@ -1244,12 +1264,12 @@ class HeadingController(Node):
                 'escape_mode': self.escape_mode,
                 'escape_direction': self.escape_direction,
                 'consecutive_attempts': self.consecutive_stuck_count,
-                'front_clear': round(self.front_clear, 1),
-                'drift_vector': [round(self.drift_vector[0], 3), round(self.drift_vector[1], 3)],
-                'drift_uncertainty': [round(drift_uncertainty[0], 3), round(drift_uncertainty[1], 3)],
+                'front_clear': _safe(self.front_clear, 1),
+                'drift_vector': [_safe(self.drift_vector[0]), _safe(self.drift_vector[1])],
+                'drift_uncertainty': [_safe(drift_uncertainty[0]), _safe(drift_uncertainty[1])],
                 'drift_kalman_gain': [
-                    round(float(self.drift_kalman.last_kalman_gain[0, 0]), 3),
-                    round(float(self.drift_kalman.last_kalman_gain[1, 1]), 3),
+                    _safe(float(self.drift_kalman.last_kalman_gain[0, 0])),
+                    _safe(float(self.drift_kalman.last_kalman_gain[1, 1])),
                 ],
             },
             'anti_stuck_status',
