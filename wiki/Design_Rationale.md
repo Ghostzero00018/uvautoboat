@@ -71,6 +71,28 @@ The system exposes **two independent stop mechanisms** by design — defense-in-
 
 **Historical context.** Before the 20/04/2026 Tier 2 refactor (see `Board.md` timeline), both stop and emergency-stop rode `/planning/mission_command` and relied on client-side retry loops (CLI sent 3× with sleeps; dashboard sent 2× at 200 ms apart — see `waypoint_planner.py:336` comment) to "ensure delivery". Retries were a bandage, not a guarantee. Splitting into two channels closed both gaps: the ACK service answers "did my stop arrive?"; the latched topic answers "what if a node restarts mid-emergency?".
 
+### Why dashboard parameter defaults are 1-place (YAML-authoritative) instead of mirrored on the dashboard side?
+
+Until 28/04/2026, every tunable parameter's default value was mirrored on the dashboard side in addition to the launch YAML — but not uniformly. Main-config and waypoint inputs (`cfg-*`, `wp-*`) carried `data-default` HTML attributes; perception (`perception-*`) and controller (`controller-*`) inputs read from two JavaScript constant maps `PERCEPTION_DEFAULTS` / `CONTROLLER_DEFAULTS`. Each parameter therefore had one dashboard-side mirror of its YAML default, and project-wide there were **four** surfaces where a default could drift (YAML + HTML attrs + two JS maps). Adding a parameter required touching the YAML and whichever dashboard surface its prefix mapped to; changing a default required updating both. Forgetting the dashboard side produced a silent drift class — a Reset button would restore the wrong number, or the "(default: X)" hint would paint a stale value.
+
+#### How the fix works
+
+Each Python node's `_publish_param_ranges` lazy-captures launch-time `get_parameter()` values into a `[min, max, default]` 3-tuple per parameter and publishes them on `/<ns>/param_ranges` (one per node namespace: `/perception/param_ranges`, `/planning/param_ranges`, `/control/param_ranges`). The dashboard's `applyRangesToDashboard` writes the third element into `liveDefaults` keyed by HTML input ID (`web_dashboard/autoboat/app.js:3354`); `getCanonicalDefault(input)` reads from there when painting "(default: X)" hints and when Reset buttons fire (`app.js:1841`). `index.html` `value="…"` attributes survive but are now **cosmetic-only** — they paint the initial form before ROS sync arrives, then get overwritten ~1 s later by `applyRangesToDashboard`.
+
+The result: defaults are **1-place** (YAML); min/max ranges remain **2-place** (YAML default + Python's `PARAM_RANGES` bounds dict, since a wrong YAML value cannot be allowed to widen safety limits at runtime); per-parameter HTML/JS wiring (`allConfigInputs`, `PARAM_TO_INPUT_IDS`) is still per-parameter but no longer mirrors values.
+
+#### Tradeoffs
+
+- **Cost.** Reset buttons / "(default: X)" hints don't work until the first `/<ns>/param_ranges` publish lands (~1 s after page load). Reset buttons stay disabled until then — acceptable, since the dashboard is useless without ROS connection anyway.
+- **Cost.** An offline dashboard preview shows whatever was last hard-coded in `index.html` `value="…"` — fine for visual mockups, misleading for "what's the real default?". Answer is always YAML.
+- **Won.** The drift class is structurally impossible. Nothing on the dashboard side needs updating when a YAML default changes.
+
+#### Historical context
+
+The 4-place mirror was inherited from the 16/04/2026 rename refactor (legacy `OKO_DEFAULTS` / `BURAN_DEFAULTS` were renamed to `PERCEPTION_DEFAULTS` / `CONTROLLER_DEFAULTS` but their structure was kept intact). Commit `888fadd feat(param_ranges): 3-tuple extension` (27/04/2026) introduced the `liveDefaults` runtime path while keeping the legacy mirrors as belt-and-braces. The 28/04/2026 cleanup commit `19969c3 refactor(dashboard): drop legacy default fallbacks; YAML is single source of truth` deleted the redundant HTML and JS mirrors.
+
+For the **what** (current code-level rules) see the dashboard README's "Parameter Sync (1 place)" section: [README_autoboat_dashboard.md#parameter-sync-1-place](https://github.com/Ghostzero00018/uvautoboat/blob/main/web_dashboard/autoboat/README_autoboat_dashboard.md#parameter-sync-1-place).
+
 ---
 
 ## Algorithm Choices
