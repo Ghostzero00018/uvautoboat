@@ -212,7 +212,7 @@ wait_for_topic() {
     local timeout="${2:-30}"
     local elapsed=0
     while [ "$elapsed" -lt "$timeout" ]; do
-        if ros2 topic info "$topic" 2>/dev/null | grep -q 'Publisher count: [1-9]'; then
+        if ros2 topic info "$topic" 2>>/tmp/autoboat_launcher_probe.log | grep -q 'Publisher count: [1-9]'; then
             return 0
         fi
         sleep 1
@@ -229,7 +229,7 @@ wait_for_port() {
     local timeout="${2:-30}"
     local elapsed=0
     while [ "$elapsed" -lt "$timeout" ]; do
-        if ss -tln 2>/dev/null | grep -q ":$port "; then
+        if ss -tln 2>>/tmp/autoboat_launcher_probe.log | grep -q ":$port "; then
             return 0
         fi
         sleep 1
@@ -244,12 +244,20 @@ wait_for_port() {
 wait_for_node() {
     local node="$1"
     local timeout="${2:-30}"
-    local elapsed=0
-    while [ "$elapsed" -lt "$timeout" ]; do
-        if timeout 2 ros2 param list "$node" >/dev/null 2>&1; then
+    # SECONDS-based deadline so the timeout is a real wall-clock cap. An
+    # `elapsed += 1` accumulator would drift: each failed attempt can take up
+    # to `timeout 2` + `sleep 1`, so a `timeout=60` budget could otherwise
+    # block for ~180 s in the worst case.
+    local deadline=$((SECONDS + timeout))
+    while [ "$SECONDS" -lt "$deadline" ]; do
+        if timeout 2 ros2 param list "$node" >/dev/null 2>>/tmp/autoboat_launcher_probe.log; then
             return 0
         fi
-        elapsed=$((elapsed + 2))
+        # The trailing `sleep 1` prevents a fast-failing `ros2 param list`
+        # (cold daemon, node not yet present) from spinning the loop and
+        # spawning dozens of CLI processes that hammer DDS during the very
+        # window we're waiting on.
+        sleep 1
     done
     print_warning "Timed out waiting for node $node after ${timeout}s — continuing anyway"
     return 0
@@ -322,7 +330,7 @@ sleep 4
 # every tab live. tee truncates on open, so each launch overwrites the previous
 # log for tabs that are launched. The rm -f below covers the skip-flag edge case
 # where a tab from a previous session would otherwise leave a stale log behind.
-rm -f /tmp/autoboat_tab_*.log
+rm -f /tmp/autoboat_tab_*.log /tmp/autoboat_launcher_probe.log
 
 # T1: Launch Gazebo (VRX Simulation)
 # Apply upstream VRX patches (issue #876 workaround — LiDAR at origin fix)
@@ -339,8 +347,14 @@ ros2 launch vrx_gz competition.launch.py world:="$WORLD"
 " &
 GAZEBO_PID=$!
 # Wait for Gazebo to load the world and for WAM-V sensors to start publishing.
-# First GPS fix is the earliest reliable "world + boat are up" signal.
+# GPS publisher is advertised early in Gazebo's plugin-load phase — not proof
+# the world is fully simulated. On cold boot (empty page cache, Ogre shader
+# compile, Fuel asset load) the LiDAR plugin advertises much later than GPS,
+# so we gate on both. The /points gate proves the LiDAR bridge/plugin has
+# advertised before T3 starts the nav stack, so cold-boot startup is less
+# likely to race sensor discovery while DDS is still settling.
 wait_for_topic /wamv/sensors/gps/gps/fix 60
+wait_for_topic /wamv/sensors/lidars/lidar_wamv_sensor/points 60
 print_status "Gazebo launched (PID: $GAZEBO_PID)"
 recheck "$GAZEBO_PID" "Gazebo"
 
@@ -370,8 +384,10 @@ ros2 launch \"$WS_ROOT/src/uvautoboat/launch/autoboat.launch.yaml\"
 " &
 NAV_PID=$!
 # heading_controller_node is the last node to come up in the nav launch —
-# if it responds to a param list the whole pipeline is discoverable.
-wait_for_node /heading_controller_node 30
+# if it responds to a param list the whole pipeline is discoverable. 60s (not
+# 30s) gives cold-boot Python first-imports of numpy/scipy/rclpy across three
+# nodes enough headroom; warm-boot runs return within a few seconds anyway.
+wait_for_node /heading_controller_node 60
 print_status "Navigation stack launched (PID: $NAV_PID)"
 recheck "$NAV_PID" "Navigation stack"
 
