@@ -175,7 +175,7 @@ Per the Sunday-evening plan, Part 2 cleanup runs IF AND ONLY IF Part 1 is fully 
 
 | File | Change |
 |:-----|:-------|
-| `index.html` | 15 `data-default="…"` attrs deleted from cfg-* and wp-* inputs (single sed pass) |
+| `index.html` | 15 `data-default="…"` attrs deleted from cfg-*and wp-* inputs (single sed pass) |
 | `index.html` | 3 Reset buttons (`btn-reset-config`, `btn-reset-perception`, `btn-reset-controller`) gained `disabled title="Waiting for ROS launch defaults..."` to mirror the Apply-button `configSynced` gating |
 | `app.js` `getCanonicalDefault` | Body shrunk to: `liveDefaults` lookup → `controller-use-vfh` special case → `undefined` |
 | `app.js` `resetGroupToDefaults` | Signature `(defaults, label, extraReset)` → `(prefix, label, extraReset)`; iterates `Object.entries(liveDefaults).filter(([id]) => id.startsWith(prefix))` |
@@ -187,7 +187,7 @@ Per the Sunday-evening plan, Part 2 cleanup runs IF AND ONLY IF Part 1 is fully 
 
 **Two scope additions beyond the 6-site plan** — both unavoidable, would have silently broken things if skipped:
 
-- `resetConfigToDefaults` (`app.js:1572`) reads `input.dataset.default` to populate cfg-* Reset values. Attr removal would have made the cfg-* Reset button silently no-op. Adapted to use `getCanonicalDefault(input)`.
+- `resetConfigToDefaults` (`app.js:1572`) reads `input.dataset.default` to populate cfg-*Reset values. Attr removal would have made the cfg-* Reset button silently no-op. Adapted to use `getCanonicalDefault(input)`.
 - `initConfigValueTracking` listener (`app.js:1657`) used `parseFloat(input.dataset.default)` for `.modified`-class management. After attr removal, `parseFloat(undefined) = NaN`, which always-add `.modified` on cfg-* edits. Same `getCanonicalDefault` swap; the function itself stays as the redundant code A2 noted, deletion still queued post-Thursday.
 
 **Verification (browser-only — JS/HTML served from source, no rebuild needed):** hard-refreshed `Ctrl+Shift+R`. DevTools confirms `typeof PERCEPTION_DEFAULTS === "undefined"`, `typeof CONTROLLER_DEFAULTS === "undefined"`, `document.getElementById('cfg-kp').dataset.default` is `undefined`, `getCanonicalDefault(document.getElementById('cfg-kp'))` still returns `500`. The 3 A3 paths still pass (Reset Perception clears spans, Reset A\* clears spans, Pier preset spans correctly reflect preset-vs-launch-default).
