@@ -8,7 +8,7 @@
 |---|---|
 | **Project** | AutoBoat Navigation System |
 | **Repository** | [Ghostzero00018/uvautoboat](https://github.com/Ghostzero00018/uvautoboat) |
-| **Last Updated** | 24/04/2026 |
+| **Last Updated** | 28/04/2026 |
 | **Status** | 🟢 Simulation ready (A* path planning + one-click launcher + wiki docs + dashboard config system + MP/QGC install). Real-hardware deployment prep ongoing — Pi 5 walked through 23/04/2026, bench delivery pending. |
 
 ---
@@ -284,6 +284,7 @@ The whole repo is expected to run on the Pi 5. Long-term (Phase 5.2+): dashboard
 | 24/04/2026 | `tools/rate_probe.py` — QoS-aware publisher-rate probe working around Jazzy's `ros2 topic hz` lacking `--qos-*` flag. Correctness validated against `/perception/obstacle_info` (both RELIABLE, rate_probe agrees with `topic hz` within noise at idle RTF). Jazzy-bug live demo deferred — no BEST_EFFORT publisher in the current stack (ros_gz_bridge publishes LiDAR points RELIABLE, contrary to the sensor_data-QoS assumption). `wiki/Common_Issues.md` gets a new QoS-aware rate-probing subsection + corrected Obstacle-Detection diagnostic block | ✅ |
 | 24/04/2026 | Dashboard UX pass 2 (`9832793`): S1 Reset during Confirm (was silently disabled) now greyed via `.mission-btn-blocked` class and pops `🛑 Reset blocked — click Confirm or Cancel first` on click; S2 Go Home while at home now defended twice over (planner-side `go_home` at-home guard via `waypoint_tolerance` + dashboard client-side check before `sendMissionCommand`, both surface `🏠 Already at home (X.X m from spawn)`); S3 multi-click Joystick toggle already defended (state-gated button + 800 ms `debounceCommand`), no fix needed | ✅ |
 | 28/04/2026 | Sunday pre-applied dashboard polish verified clean (`ffb7f8f` cli relative path, `74eb2b2` four `updateValueDisplay()` calls in programmatic-mutation paths, `888fadd` option-1 `param_ranges` 3-tuple chain — 43 `liveDefaults` entries arrive from all 3 nodes, `getCanonicalDefault` returns YAML-published defaults). Part 2 option-1 cleanup sweep landed (3 dashboard files, +85/-84): 15 HTML `data-default` attrs deleted, JS `PERCEPTION_DEFAULTS` / `CONTROLLER_DEFAULTS` constants removed, `resetGroupToDefaults` signature flipped to prefix-based, Reset buttons gated on per-namespace `liveDefaults` arrival. 4-place sync drift class for default values collapsed to 1-place — `autoboat.launch.yaml` is now sole source of truth | ✅ |
+| 28/04/2026 | Cold-start JSON-serialization race fixed in `/control/anti_stuck_status` (`6ec20af`): inline `_safe()` maps `inf` / NaN → `None` in `publish_anti_stuck_status` and the dormant mirror at `publish_status` `obstacle_distance` (caught by class-instance sweep on `_publish_json` callers); init sentinels at L286-289 and the L968 gate left untouched. `wiki/Common_Issues.md` gains a `### Known Startup Warnings (Cosmetic)` subsection cataloguing 4 upstream categories (`kdl_parser` / `libEGL` / Gazebo Follow `(deprecated)` / VRX `WaveVisual` SDF) with origin + why-cosmetic + a `grep -vE` filter recipe (`134e52c`) | ✅ |
 | TBD | Real-hardware deployment (Pi 5 as confirmed target, visual-verified 23/04/2026; MAVLink autopilot as working hypothesis; low-level CCU architecture TBD) | 🔜 |
 | TBD | Coverage Planning | ⏸️ |
 
@@ -358,7 +359,7 @@ Current position ──>│  (in Planner)       │
 
 ## 📜 Acknowledgments
 
-**Document Version**: 9.9 | **Last Updated**: 24/04/2026
+**Document Version**: 9.9 | **Last Updated**: 28/04/2026
 
 **Maintained By**: AutoBoat Development Team
 
