@@ -51,7 +51,7 @@ The old node names (`oko_perception_node`, `sputnik_planner_node`, `buran_contro
 | **Parameter** | `oko_critical_distance` | `perception_critical_distance` |
 | **HTML IDs** | `oko-*` | `perception-*` |
 | **HTML IDs** | `buran-*` | `controller-*` |
-| **JS constants** | `OKO_DEFAULTS` / `BURAN_DEFAULTS` | `PERCEPTION_DEFAULTS` / `CONTROLLER_DEFAULTS` |
+| **JS constants** | `OKO_DEFAULTS` / `BURAN_DEFAULTS` | `PERCEPTION_DEFAULTS` / `CONTROLLER_DEFAULTS` (both subsequently removed 28/04/2026 — defaults now sourced from `liveDefaults` populated by `/<ns>/param_ranges`) |
 | **JS functions** | `applyOkoParameters()` / `applyBuranParameters()` | `applyPerceptionParameters()` / `applyControllerParameters()` |
 
 ---
