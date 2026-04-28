@@ -55,7 +55,7 @@ Option 2 is simpler. Pick option 2 unless the variable is referenced elsewhere.
 
 Commit suggestion: `fix(cli): drop install-layout-broken _LAUNCH_FILE; use literal launch command in help text`
 
-**Outcome.** [To fill]
+**Outcome.** ✅ Pre-applied Sunday evening via `ffb7f8f` (option 2 — literal relative string, no `_REPO_ROOT`). Source `_LAUNCH_FILE = 'launch/autoboat.launch.yaml'`. After `colcon build --merge-install --packages-select plan control` (the install layout was already merged-install, the bare `colcon build` errored until the flag was added), runtime import returns the same literal: `python3 -c "from plan.autoboat_cli import _LAUNCH_FILE; print(repr(_LAUNCH_FILE))"` → `'launch/autoboat.launch.yaml'`. Print sites at L279 and L543 now emit `ros2 launch launch/autoboat.launch.yaml` — install-tree-independent. Pre-rebuild import correctly returned the OLD `PosixPath('/home/ghostzero/seal_ws/install/lib/python3.12/launch/autoboat.launch.yaml')`, surfacing the stale-install caveat: A1 verifies at source level immediately, but only at runtime after rebuild.
 
 ### A2 — Verify A2 obsolescence + decide on `initConfigValueTracking` cleanup (5-10 min)
 
@@ -79,7 +79,7 @@ Two outcomes:
 
 Commit suggestion (only if 1(b) chosen): `refactor(dashboard): drop redundant initConfigValueTracking — allConfigInputs covers all 43 inputs`
 
-**Outcome.** [To fill]
+**Outcome.** ✅ Confirmed wired. `allConfigInputs` at `app.js:1432` lists all 43 parameter inputs including the 3 in question at L1436. `initConfigValueTracking` now-redundant per the recheck. **Default route 1(a) chosen** (leave as-is) — but the cleanup sweep below incidentally adapted its listener body (parseFloat(input.dataset.default) → parseFloat(getCanonicalDefault(input))) since the attr removal would otherwise turn the inner check into NaN-vs-number, always-adding `.modified`. Function structure preserved; deletion + the parallel `.modified` / `.input-dirty` CSS-duplication cleanup the 27/04 diary called out remain queued for post-Thursday.
 
 ### A3 — Four `updateValueDisplay()` calls in programmatic-mutation paths (30-45 min)
 
@@ -126,7 +126,7 @@ If implementation overruns 45 min, **stop and roll to Wednesday** — A3 is poli
 
 Commit suggestion: `fix(dashboard): call updateValueDisplay() in 4 programmatic-mutation paths`
 
-**Outcome.** [To fill]
+**Outcome.** ✅ Pre-applied Sunday evening via `74eb2b2`. All 3 interactive paths exercised in-browser after the rebuild + hard refresh: (1) edit `perception-water-threshold` off-default → Reset Perception → orange `(default: X)` cleared in the same tick; (2) edit `cfg-astar-resolution` off-default → Reset A\* → same; (3) Pier preset applied → spans correctly reflect preset-vs-launch-default (no stale `(default: X)` left over). Path 4 (`updateConfigFromROS` perception/controller branch) verified by symmetry with the cfg-* path — would only diverge if a separate ROS publisher pushed perception/controller config back, which doesn't happen in steady-state. All four sites use the same pattern as `resetConfigToDefaults` (programmatic `el.value =` + explicit `updateValueDisplay(el)`).
 
 ### A4 — Option 1 param_ranges 3-tuple verification (15-20 min)
 
@@ -165,7 +165,36 @@ Pre-applied via `888fadd`. Eliminates the 4-place sync drift class for default v
 
 Commit suggestion (only if a fix is needed): `fix(nodes): <specific issue>` or `revert 888fadd` if the fault is irrecoverable on the day.
 
-**Outcome.** [To fill]
+**Outcome.** ✅ Option-1 chain verified end-to-end. After rebuild + relaunch + hard refresh, DevTools shows `Object.keys(liveDefaults).length === 43` covering planner + controller + perception namespaces. `'cfg-kp' in liveDefaults` true; `'perception-water-threshold' in liveDefaults` true; `getCanonicalDefault(document.getElementById('cfg-kp'))` returns `500`. Edit `cfg-kp` 500 → 600 paints orange `(default: 500)` correctly under the input. Step 3 (transient YAML edit relaunched twice) skipped — chain already proven by the transitive evidence (43 entries arriving from 3 publishers + correct `getCanonicalDefault` return), and Block C rehearsal carry-over took priority over the strong-form proof. Confidence high enough to proceed to the cleanup sweep below.
+
+### A5 — Option-1 cleanup sweep (Part 2 of pre-applied work)
+
+Per the Sunday-evening plan, Part 2 cleanup runs IF AND ONLY IF Part 1 is fully green. Part 1 was — A1+A2+A3+A4 all ✅ — so the sweep was executed in the same session, before Block C rehearsal.
+
+**Scope landed (single uncommitted diff at the time of writing):**
+
+| File | Change |
+|:-----|:-------|
+| `index.html` | 15 `data-default="…"` attrs deleted from cfg-* and wp-* inputs (single sed pass) |
+| `index.html` | 3 Reset buttons (`btn-reset-config`, `btn-reset-perception`, `btn-reset-controller`) gained `disabled title="Waiting for ROS launch defaults..."` to mirror the Apply-button `configSynced` gating |
+| `app.js` `getCanonicalDefault` | Body shrunk to: `liveDefaults` lookup → `controller-use-vfh` special case → `undefined` |
+| `app.js` `resetGroupToDefaults` | Signature `(defaults, label, extraReset)` → `(prefix, label, extraReset)`; iterates `Object.entries(liveDefaults).filter(([id]) => id.startsWith(prefix))` |
+| `app.js` `resetPerceptionToDefaults` / `resetControllerToDefaults` | Pass `'perception-'` / `'controller-'` strings instead of `PERCEPTION_DEFAULTS` / `CONTROLLER_DEFAULTS` dicts |
+| `app.js` `updatePerceptionInputs` / `updateControllerInputs` post-loops | Iterate `Object.keys(liveDefaults).filter(id => id.startsWith('perception-'))` (and `'controller-'`) |
+| `app.js` | `const PERCEPTION_DEFAULTS = {...}` and `const CONTROLLER_DEFAULTS = {...}` declarations deleted (~25 LOC) |
+| `app.js` `gateResetButtons` | New ~15 LOC helper called from `applyRangesToDashboard`; un-disables each Reset button when its namespace's defaults arrive. Config Reset gates on `'cfg-kp' in liveDefaults` (not the broader `'cfg-' prefix`) to avoid false-enable when planner publishes first (`cfg-lanes` / `cfg-astar-*` arrive without `cfg-kp`) |
+| `web_dashboard/autoboat/README_autoboat_dashboard.md` | "Parameter Sync (3 places)" section rewritten as "Parameter Sync (1 place)" describing the new `YAML → Python publish → liveDefaults → getCanonicalDefault` chain |
+
+**Two scope additions beyond the 6-site plan** — both unavoidable, would have silently broken things if skipped:
+
+- `resetConfigToDefaults` (`app.js:1572`) reads `input.dataset.default` to populate cfg-* Reset values. Attr removal would have made the cfg-* Reset button silently no-op. Adapted to use `getCanonicalDefault(input)`.
+- `initConfigValueTracking` listener (`app.js:1657`) used `parseFloat(input.dataset.default)` for `.modified`-class management. After attr removal, `parseFloat(undefined) = NaN`, which always-add `.modified` on cfg-* edits. Same `getCanonicalDefault` swap; the function itself stays as the redundant code A2 noted, deletion still queued post-Thursday.
+
+**Verification (browser-only — JS/HTML served from source, no rebuild needed):** hard-refreshed `Ctrl+Shift+R`. DevTools confirms `typeof PERCEPTION_DEFAULTS === "undefined"`, `typeof CONTROLLER_DEFAULTS === "undefined"`, `document.getElementById('cfg-kp').dataset.default` is `undefined`, `getCanonicalDefault(document.getElementById('cfg-kp'))` still returns `500`. The 3 A3 paths still pass (Reset Perception clears spans, Reset A\* clears spans, Pier preset spans correctly reflect preset-vs-launch-default).
+
+**Diff stat:** 3 files, +85 / −84.
+
+**Suggested commit:** `refactor(dashboard): drop legacy default fallbacks; YAML is single source of truth`
 
 ## Block B — PPT slide content paste on Windows
 
@@ -220,7 +249,7 @@ Verify on `sydney_regatta_DEFAULT`:
 
 Live-demo shortlist: pick 1-3 features for Thursday. Estimate live-demo minutes (target: 3-5 min if live; ≤2 min if pre-recorded).
 
-**Outcome.** [To fill — list of demo-worthy features picked, any regressions surfaced, estimated live-demo minutes]
+**Outcome.** PPT assets already captured separately (per maintainer's confirmation), so the demo-rehearsal carry-over closed without execution today. Block A verification + Part 2 cleanup sweep absorbed the morning's simulation-side budget. Live-rehearsal pass 3 happens Wednesday with the Windows deck open; no live-demo shortlist refinement landed today.
 
 ## Block D — Quick verifications
 
@@ -235,7 +264,7 @@ git show 3389554
 
 If the diff shows 3 distinct logical changes (e.g. each subscriber's `_log_bad_json` is structurally different, plus the latch is a separate concept), update Slide 5 paste-ready to "three C-class bug fixes" and list them. If it's really one helper applied to two sites + the latch fix (= 2 mechanisms), leave the slide as-is — "C-class bug fixes" without enumeration is honest.
 
-**Outcome.** [To fill — count decision + Slide 5 update if needed]
+**Outcome.** `git show 3389554` shows **2 mechanisms** spread across **3 call sites**: (1) the `_log_bad_json` throttled-warn helper added to `lidar_perception` (replaces `current_target_callback`'s silent `except Exception: pass`) and `waypoint_planner` (replaces `obstacle_callback`'s silent fallback); (2) the `force_turn_after_reverse` latch fix in `heading_controller` (drops the unconditional same-tick reset at L793 so the latch persists across control ticks until the `else` branch's critical→non-critical transition). The two `_log_bad_json` helpers are byte-identical (same dict, same throttle, same logger call) — one concept duplicated, not two distinct fixes. Per plan heuristic, **Slide 5 stays as "C-class bug fixes" without enumeration** — the honest framing.
 
 ### D2 — First-cold-launch warning capture (opportunistic)
 
@@ -252,7 +281,7 @@ Save as `launcher_per_tab_log.png` in `Research_intern_IMT_NE\PPT\PPT_files\30_0
 
 If the warning doesn't surface today either: drop the planned Slide 6 secondary-visual mention; the per-tab logs are still a real win regardless of whether the screenshot lands.
 
-**Outcome.** [To fill — captured / not captured]
+**Outcome.** Not captured. Today's only launch was the Block A verification run (so it WAS the first of the day); no yellow warning text surfaced in the launcher terminals during the run. `/tmp/autoboat_tab_*.log` weren't grepped while the launcher was hot — moot in retrospect since nothing visibly fired. Per the diary contingency, drop the planned Slide 6 secondary-visual mention; the per-tab logs deployed via `81cc4d6` remain a real win independent of whether the screenshot ever lands.
 
 ## Block E — Wrap + diary fill-in
 
@@ -283,18 +312,23 @@ If the warning doesn't surface today either: drop the planned Slide 6 secondary-
 
 Use this section to capture anything surprising during the day — file state drift, unexpected behaviour, migration caveats. Each entry: `file:line` or command + observation + fix or follow-up.
 
-- [To fill]
+- **Stale install vs source — runtime check needs rebuild.** Bare `python3 -c "from plan.autoboat_cli import _LAUNCH_FILE; print(_LAUNCH_FILE)"` returned the OLD `PosixPath('.../install/lib/python3.12/launch/autoboat.launch.yaml')` despite source being the new literal string. The ROS 2 install tree is hermetic; runtime imports go through `install/lib/python3.12/site-packages/plan/autoboat_cli.py` regardless of source. Source-level grep verifies a fix landed; runtime verification needs a rebuild. Worth flagging as a rule any time a source-vs-runtime fact-check happens.
+- **`colcon build` rejects mixed install layouts.** Bare `colcon build --packages-select plan control` errored with `The install directory 'install' was created with the layout 'merged'`. The workspace was previously built `--merge-install`; subsequent builds must keep the flag. Adding `--merge-install` to the existing pattern (rather than `rm -rf install/` and rebuilding from scratch) was the right call; the rebuild took 1.39 s incremental.
+- **Cleanup scope expansion (Part 2).** Plan listed 6 edit sites but missed `resetConfigToDefaults` (`app.js:1572`) and `initConfigValueTracking` listener (`app.js:1657`); both read `input.dataset.default`. Attr removal would have silently broken cfg-* Reset and turned the `.modified`-class check into NaN-vs-number (always-add). Adapted both to `getCanonicalDefault` — necessary, not adjacent.
+- **`gateResetButtons` precision matters.** First draft used `keys.some(id => id.startsWith('cfg-'))` to gate `btn-reset-config`. But `cfg-` matches planner-published keys (cfg-lanes, cfg-astar-*) which arrive independently of heading_controller's publish — false-enable when planner publishes first. Tightened to `'cfg-kp' in liveDefaults` since cfg-kp arrives in the same JSON message that fills all 6 PID/speed cfg-* IDs.
+- **Block C "PPT assets" interpretation note.** Maintainer's "PPT assets already captured" closes the Block C demo-capture work but does not clarify whether Block B (slide content paste) is also done — Block B status remains [To fill] from Linux side; resolve when syncing diary to Windows.
 
 ## Next steps — concrete plan for 29/04
 
-[To fill at end of day with actual carry-overs and shortlist refinements.]
+Today wrapped: Part 1 verification clean (A1+A2+A3+A4 ✅ — pre-applied work all green) plus Part 2 option-1 cleanup sweep landed (3 dashboard files, +85/-84). Block C demo rehearsal closed without execution per maintainer's PPT-assets-in-hand signal; Block B status (Windows-side slide content paste) carries to Wednesday unless already complete on the Windows machine. Wednesday is now PPT-finishing + rehearsal day with no Linux-side debt.
 
 ### Actionable on 29/04 (Wednesday)
 
-- **PPT visual placement** — drop screenshots / PPT-drawn diagrams into placeholders on each slide. Use Block C visual-asset checklist (in `2026-04-30_slide_outline.md`).
+- **Block B carry-over (only if not done):** PPT slide content paste on Windows per the original Block B order — slides 1–8 + bilingual speaker notes for slides 2–7. If the Windows side already absorbed this, skip.
+- **PPT visual placement** — drop screenshots / PPT-drawn diagrams into placeholders on each slide. Maintainer reports assets already in hand; placement is the remaining work.
 - **Speaker-note timing pass** — read each slide note aloud, time end-to-end, adjust pacing; aim 22-26 min total.
 - **Rehearsal pass 3** — full end-to-end with Windows-side deck open in front of you. Bilingual where natural; English-primary for the formal delivery.
-- **Carry-over from 28/04:** whichever of Blocks A / B / C didn't land or needs follow-up.
+- **Optional: live demo rehearsal on Linux side.** Today's Block C carry-over closed without rehearsal because PPT assets are settled. If Wednesday's Windows-side rehearsal exposes a need for live-demo confidence (e.g. the deck still calls for a live cycle), drive a single canonical happy-path on `sydney_regatta_DEFAULT` to confirm boot → Generate → Confirm → Start → mission FINISHED still works post-cleanup. The Part 2 cleanup is dashboard-only and non-functional, so regression risk is low — but a 5-minute confirmation pass is cheap.
 - **Wednesday-evening dry-run** — final review checklist from `2026-04-30_slide_outline.md` (10 items including no-ellipsis check, visual motif consistency, asks-box highlighting, QR scan test).
 
 ### Blocked / deferred (not this week)
@@ -304,6 +338,5 @@ Use this section to capture anything surprising during the day — file state dr
 - **Real no-regression test for `launch/remap.launch.yaml`** — needs first real-hardware bench (Pi 5).
 - **C3 bench verification** — passive wait for real-hardware symptom.
 - **Dashboard ↔ MP/QGC integration** — later integration milestone (post-real-hardware-bringup).
-- **Option-1 cleanup sweep** — once option-1 is verified working (A4), the legacy fallbacks in `getCanonicalDefault` (HTML `data-default` attrs + `PERCEPTION_DEFAULTS` / `CONTROLLER_DEFAULTS` JS maps) become redundant code. Cleanup is non-blocking (current code is correct, just has belt-and-braces); queue for post-Thursday.
 - **Housekeeping carry-overs from 24/04** — `mono-xsp4` port-8084 disable; `tools/qos_scan.py` single-pass QoS inventory companion to `rate_probe.py`. Both bumped post-Thursday; rainy-day.
 - **`update-pip-graph` GitHub Actions Node 20 deprecation** — server-side, auto-resolves June 2026; no action needed.
