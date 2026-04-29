@@ -252,6 +252,33 @@ Migration applied (separate from the VFH fix scope, bundled in the same commit s
 - A\* Reset migrated to liveDefaults and properly gated until `/planning/param_ranges` arrives.
 - Bundled into single commit `7565242` (`fix(dashboard): tighten reset paths in Controller + A* config panels`).
 
+## Launch-time timer + hw-dependence disclaimer (unplanned)
+
+Maintainer asked for a small launcher addition: a wall-clock readout of total launch duration printed under the success banner, useful as an objective baseline for cold-vs-warm-boot comparisons (relevant once next week's RTF investigation begins).
+
+### Implementation
+
+Two-edit minimal change to `one_click_launch_all/launch_autoboat_complete.sh`:
+
+- Right after `set -e` — capture `LAUNCH_START=$SECONDS` (bash auto-increments `$SECONDS` from script start).
+- Right after `print_header "AutoBoat System Launched Successfully!"` — compute `LAUNCH_ELAPSED=$((SECONDS - LAUNCH_START))` and print `Total launch time: N s (Mm Ss) — varies with hardware/state` in green + yellow (matches the existing colour convention: green for success, yellow for caveats).
+
+Total only, no per-stage breakdown. Format prints both seconds and `Mm Ss` so longer launches stay readable (e.g. `Total launch time: 95 s (1m 35s)`).
+
+### First observation
+
+`Total launch time: 52 s (0m 52s)` on a fresh launch on the Linux workstation post-feature-deploy. Single data point; ~12 s above the documented `~20-40 s` warm-machine range in `wiki/Common_Issues.md`. Possible contributors: the new `/wamv/sensors/lidars/lidar_wamv_sensor/points` gate added in `2c0194a` extends the readiness window vs pre-`2c0194a` runs, plus normal cold-vs-warm variance and asset-cache state. Not enough samples to revise the documented range yet — recorded in `Board.md` as a baseline data point.
+
+### Disclaimer
+
+Absolute timing varies meaningfully across hardware (CPU, GPU, disk I/O, asset-cache state, concurrent load), so both the print line and `wiki/Common_Issues.md:22` now make this explicit — the timer is for cold-vs-warm comparisons **on your own machine**, not as an absolute benchmark across machines.
+
+### Outcome
+
+- Launch-timer feature merged in `3822e54` (`feat(launch): print total launch time after success header`).
+- Hardware-dependence disclaimer + Common_Issues prose + Board.md milestone row merged in `37e197c` (`docs+launch: disclaim hardware-dependence on launch-timer baseline`).
+- New baseline data point recorded for the deferred RTF investigation (week of 04/05).
+
 ## Rollover checkpoints
 
 | After | State | Rollover cost |
