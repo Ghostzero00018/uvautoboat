@@ -161,6 +161,57 @@ Items 5-10: pull from `2026-04-30_slide_outline.md`. If the outline file hasn't 
 
 **Outcome.** [To fill]
 
+## Cold-boot launcher validation (unplanned, AM)
+
+Yesterday's `2c0194a` (improve logging and timeout handling in launch script) landed without a same-day cold-boot test. This morning's first slot ran a fresh-reboot validation before opening Block A.
+
+### Test conditions
+
+Fresh laptop reboot, no other apps opened first; ROS 2 daemon not running, no leftover Gazebo/rosbridge processes, `/tmp/autoboat_*.log` empty.
+
+```bash
+cd ~/seal_ws/src/uvautoboat
+bash one_click_launch_all/launch_autoboat_complete.sh
+```
+
+### Result — pass
+
+- Launcher reached `AutoBoat System Launched Successfully!` without any `wait_for_*` timeout warnings.
+- `ros2 node list` returned all five expected nodes (`lidar_perception_node`, `waypoint_planner_node`, `heading_controller_node`, `waypoint_visualizer_node`, `health_check_service`) plus standard infra (`ros_gz_bridge`, `rosapi`, `rosbridge_websocket`, `rviz2`, frame publishers, `web_video_server`).
+- No `recheck "appears to have exited"` warnings; no fatal entries in any `/tmp/autoboat_tab_*.log`.
+
+The new `/wamv/sensors/lidars/lidar_wamv_sensor/points` gate fired and cleared. `wait_for_node /heading_controller_node 60` cleared without timeout. Patch goal — preventing first-launch-after-boot fatal ROS 2 crashes — met.
+
+### Side finding 1 — `wait_for_topic` SIGPIPE → BrokenPipeError (fixed today)
+
+`/var/crash/_opt_ros_jazzy_bin_ros2.1002.crash` (10:23) triggered an Apport popup on the cold launch. `/tmp/autoboat_launcher_probe.log` carries the underlying tracebacks: `BrokenPipeError` at `/opt/ros/jazzy/lib/python3.12/site-packages/ros2topic/verb/info.py:68`, twice (one per `wait_for_topic` call — GPS gate, LiDAR gate).
+
+Mechanism. `ros2 topic info | grep -q 'Publisher count: [1-9]'` — once `grep -q` matches the second of three lines, it exits and closes its stdin; `ros2 topic info` then SIGPIPEs while writing the trailing `Subscription count: %d` line. `ros2cli` doesn't `signal(SIGPIPE, SIG_DFL)`, so Python raises an unhandled `BrokenPipeError` and Apport catches it.
+
+Launcher effect: nil. `set -e` is on, `pipefail` isn't — pipeline status is `grep`'s 0, the `if` branch fires, `wait_for_topic` returns 0, the launcher proceeds. The Apport popup was the only visible artifact. Possible the original "first-launch-after-boot fatal crash" symptom that motivated `2c0194a` was *only* the popup all along; the launcher was reaching the success header through it.
+
+Fix. Capture-then-grep in `wait_for_topic`: `ros2 topic info` writes all three lines into a local variable, `grep` operates on the captured string with no live pipe. `wait_for_port` uses `ss` (C program — ignores SIGPIPE silently) — unaffected. `wait_for_node` uses `timeout 2 ros2 param list >/dev/null 2>>...` with no piped consumer — unaffected.
+
+Post-fix validation (deferred — current session is mid-run):
+
+1. After next cold boot, run the launcher.
+2. `cat /tmp/autoboat_launcher_probe.log` — expect zero `BrokenPipeError` lines. Other noise (`Unknown topic`, `failed to check service availability`, `Node not found`) is benign.
+3. `ls /var/crash/` — no new ros2 crash file dated today.
+
+### Side finding 2 — Gazebo RTF throttle (deferred)
+
+`ros2 topic hz /wamv/sensors/lidars/lidar_wamv_sensor/points` averaged ~2 Hz at T+0 and T+3 min. Nominal 10 Hz (`install/share/vrx_gazebo/models/wamv/tmp/model.urdf:1212` → `<update_rate>10</update_rate>`; xacro source `wamv_3d_lidar.xacro:28` → `update_rate:=10`). Ratio ≈ 0.2 → Gazebo running at ~20% RTF.
+
+Probable cause: GPU/render fallback. Gazebo logs `libEGL warning: ... failed to create dri2 screen` on an NVIDIA RTX A2000 Laptop (PCI `10de:24b8`). Mesa probes legacy DRI2, fails, falls back; target backend (proprietary NVIDIA EGL vs llvmpipe) not confirmed today. The `gpu_ray` LiDAR sensor and shader-coupled physics step throttle when render isn't accelerated.
+
+Pre-existing (independent of `2c0194a`); out of scope for the delivery week. Picked up under "Blocked / deferred (post-Thursday)" — week of 04/05.
+
+### Outcome
+
+- Cold-boot launcher patch validated.
+- SIGPIPE side issue patched today (capture-then-grep in `wait_for_topic`).
+- RTF throttle deferred to next week.
+
 ## Rollover checkpoints
 
 | After | State | Rollover cost |
@@ -202,3 +253,4 @@ Use this section to capture anything surprising during the day — file state dr
 - **Dashboard ↔ MP/QGC integration** — later integration milestone (post-real-hardware-bringup; Phase 5.2+).
 - **24/04 housekeeping carry-overs** — `mono-xsp4` port-8084 disable; `tools/qos_scan.py` single-pass QoS inventory companion to `rate_probe.py`. Bumped post-Thursday; rainy-day.
 - **`update-pip-graph` GitHub Actions Node 20 deprecation** — server-side, auto-resolves June 2026; no action needed.
+- **Gazebo RTF investigation** — LiDAR `/points` throttled to ~2 Hz vs 10 Hz nominal (`install/share/vrx_gazebo/models/wamv/tmp/model.urdf:1212`); `libEGL warning: ... failed to create dri2 screen` on the NVIDIA RTX A2000 Laptop (PCI `10de:24b8`) is the working hypothesis. Pre-existing (independent of `2c0194a`); surfaced 29/04 cold-boot validation. Pick up week of 04/05.
