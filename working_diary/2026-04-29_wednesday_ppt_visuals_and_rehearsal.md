@@ -296,6 +296,48 @@ Cross-checked the wiki + README + USER_MANUAL + Board for other timing claims ab
 - Disclaimer comment merged in `a6792db` (`docs(health_check): note hardware-dependence of full-check duration`).
 - Sibling-only update — no related docs needed touching.
 
+## Mission Progress panel — live state tracking + edge cases (unplanned, afternoon)
+
+Mission-test session surfaced a chain of related bugs in the dashboard's Mission Progress panel. Single debug arc, seven fixes, all in `web_dashboard/autoboat/app.js`, bundled into `181ddd7` (`fix(dashboard): live mission progress + obstacle/detour state fixes`).
+
+### Trigger
+
+User started a mission and observed `Current Speed: 0.0 m/s` and `Avg Speed: 0.0 m/s` even while the boat was actively cruising; `Time Remaining: --:--`; `Distance: 0m / 130m` not advancing pre-first-waypoint; the "live" Mission Status panel however was updating distance correctly. After a hard-refresh mid-mission the validation-driven Distance display went to `0m / 0m`. Then on Go Home, time-remaining stayed at `--:--`. Iterating through these surfaced the rest.
+
+### Fix 1 — Live ground speed (Pattern: read-without-write + stuck-state guard)
+
+`updateGPS` (`app.js:1045-1047`) only set `currentState.gps.lat / lon`. The wrapped hook's speed-from-position fallback at `app.js:3924-3931` read `currentState.gps.x - progressState.lastPosition.x` — but `.x / .y` were never populated, so `dx / dy` were `NaN`, `currentState.gps.speed = NaN`, falsy, displayed `0`. **Fix A**: add `gpsToLocal(...)` call in `updateGPS` to populate `x / y`. **Fix B**: drop the `!currentState.gps.speed` guard in the wrapped hook — it would freeze the value at the first non-zero result instead of recomputing each tick.
+
+### Fix 2 — Distance / time-remaining after hard-refresh (Pattern: trigger gap)
+
+`validateWaypoints` was only invoked from the Generate-button hook (`app.js:3960`); the `/planning/waypoints` topic subscription populated `missionState.waypoints` but never triggered re-validation. After a hard-refresh during an active mission, `currentValidation` stayed `null`, so the Distance and Time-Remaining display logic (both gated on `currentValidation`) fell back to HTML defaults `0m / 0m` and `--:--`. **Fix**: call `validateWaypoints(data.waypoints)` from the topic handler when `waypointsChanged` — covers reconnect / hard-refresh-during-mission without re-running on Generate's own topic echo (the existing 1.5 s setTimeout in the Generate hook still fires; minor double-validation, no functional issue).
+
+### Fix 3 — Go Home distance + time-remaining (Pattern: missing mode branch)
+
+After mission completion the planner publishes a single home waypoint via `/planning/waypoints` (`waypoint_planner.py:545`). Validation runs but the segment-summing loop has no segments (`length - 1 = 0`), so `currentValidation.estimates.distance = 0`. Distance display then computed `0m / 0m` (cosmetic), and time-remaining either showed `0:00` (if avgSpeed > 0.1) or stuck at `--:--` (if post-FINISHED stationary samples dragged avgSpeed below threshold). **Fix**: Go Home branches in both display sites — distance uses `goHomeInitialDistance - currentState.mission.distance`; time-remaining uses `currentState.mission.distance / avgSpeed`. The planner already publishes `distance_to_target` live, so both displays update tick-by-tick.
+
+### Fix 4 — Obstacle warning + detour edge logging (Pattern: read-without-write, ×2)
+
+Audit for similar shapes turned up two more silent failures:
+
+- `validateWaypoints` (`app.js:3700-3705`) reads `currentState.obstacles.clusters` and `obstacle_count` for a high-density warning, but `updateObstacleStatus` only wrote `min / front / left / right` — the cluster fields stayed `undefined`, making the warning dead code. Perception **does** publish both fields (`lidar_perception.py:827, 834`). **Fix**: add the two assignments in `updateObstacleStatus`.
+- `addHistoryEvent('detour', ...)` at `app.js:3940` was edge-detection: `if (data.detour_active && !currentState.mission.detour_active)`. The negation arm read a field that was never written, so the if fired on every `mission_status` tick during an active detour — log spam at ~10 Hz. **Fix**: write `currentState.mission.detour_active = !!data.detour_active` in the original `updateMissionStatus`, and **capture the previous value before the original runs** in the wrapped function (mirrors the existing `prevState` / `prevWaypoint` pattern), so the edge check compares against the captured prev rather than the just-written current.
+
+### Fix 5 — Live distance integration (Pattern: dead scaffold field)
+
+After Fix 2, the forward-mission distance display still computed `traveled = waypointsCompletedFraction * totalDist` — a step function that only advanced on waypoint capture. User correctly flagged this as confusing: pre-first-waypoint it stayed at `0m / 130m` even with the boat actively driving, then jumped at each capture. `progressState.distanceTraveled` was already declared (`app.js:3773`) but never written — dead scaffold. **Fix**: accumulate the GPS displacement into `distanceTraveled` during `DRIVING / PAUSED` in the wrapped `updateGPS`; reset on transition into `DRIVING` from a non-running state in the wrapped `updateMissionStatus`; in the display, render `Math.min(totalDist, Math.max(stepEstimate, distanceTraveled))` — live integration with the waypoint-step estimate as a floor (covers hard-refresh-during-mission so the display gets a sensible baseline immediately) and `totalDist` as a cap (validation underestimates by missing the spawn → first-waypoint leg, otherwise the integrated value would overshoot at mission end).
+
+### Fix 6 — Go Home init persistence on hard-refresh (Pattern: client-side state lost on refresh)
+
+Edge case caught during regression check on the Go Home branch: hard-refresh during Go Home reset `missionState.goHomeInitialDistance` to `null`, so the next `/planning/current_target` tick re-captured it as the at-refresh remaining distance, not the original Go Home start distance. The numerator (traveled) still grew live, but the `/X` denominator was misleading. **Fix**: localStorage-persist the captured init at the capture site; on subsequent captures, restore from localStorage if present (covers hard-refresh-during-Go-Home); always clear localStorage when not in Go Home (idempotent — covers reopen-after-prior-Go-Home so a fresh Go Home doesn't restore stale data). Mirrors the existing `WAYPOINT_STORAGE_KEY` / `persistWaypoints` pattern.
+
+### Outcome
+
+- All seven fixes bundled in `181ddd7`.
+- Total diff: +123 / −24 across `web_dashboard/autoboat/app.js`.
+- User-visible: live speed, live distance from t=0 (not just after first waypoint), live time-remaining, correct values during forward + Go Home + post-refresh; obstacle warning now reachable; detour log fires once per activation instead of ~10 Hz spam.
+- Common architectural lesson: dashboard had several "scaffold-without-write" fields (`gps.x/y`, `progressState.distanceTraveled`, `obstacles.clusters/obstacle_count`, `mission.detour_active`) — declared in state objects, read in display logic, never populated. Worth a focused audit pass at some point to find any remaining dead-scaffold instances.
+
 ## Rollover checkpoints
 
 | After | State | Rollover cost |
