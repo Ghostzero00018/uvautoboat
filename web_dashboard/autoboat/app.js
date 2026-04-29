@@ -58,6 +58,7 @@ let missionState = {
 };
 
 const WAYPOINT_STORAGE_KEY = 'autoboat_cached_waypoints';
+const GO_HOME_INIT_KEY = 'autoboat_go_home_initial_distance';
 
 // Data storage
 let currentState = {
@@ -861,7 +862,17 @@ function subscribeToTopics() {
             if (missionState.goHomeMode
                 && missionState.goHomeInitialDistance === null
                 && data.distance_to_target > 0.5) {
-                missionState.goHomeInitialDistance = data.distance_to_target;
+                // Restore from localStorage if available (covers hard-refresh-during-Go-Home,
+                // where this tick's value would otherwise become a misleading at-refresh
+                // baseline). localStorage is cleared whenever goHomeMode flips off, so a
+                // present value reliably means "we're resuming the same Go Home session".
+                const persisted = restorePersistedGoHomeInit();
+                if (persisted !== null) {
+                    missionState.goHomeInitialDistance = persisted;
+                } else {
+                    missionState.goHomeInitialDistance = data.distance_to_target;
+                    persistGoHomeInit(data.distance_to_target);
+                }
             }
         }
     });
@@ -888,6 +899,12 @@ function subscribeToTopics() {
             missionState.totalWaypoints = data.total || data.waypoints.length;
             persistWaypoints();
             displayWaypointsOnMap(data.waypoints, waypointsChanged);
+            // Validate on every route change — the Generate-button hook only fires for
+            // user-initiated generations; this covers reconnect/hard-refresh-during-mission
+            // so `currentValidation` populates and distance/time-remaining display works.
+            if (waypointsChanged) {
+                validateWaypoints(data.waypoints);
+            }
         } else {
             clearWaypoints('Planner cleared waypoints');
         }
@@ -1045,6 +1062,12 @@ function subscribeToTopics() {
 function updateGPS(message) {
     currentState.gps.lat = message.latitude;
     currentState.gps.lon = message.longitude;
+    // Local-frame xy (origin = first GPS fix) — downstream speed compute and
+    // lastPosition tracking read these; without the assignment they stayed
+    // undefined and the speed compute produced NaN.
+    const local = gpsToLocal(message.latitude, message.longitude);
+    currentState.gps.x = local.x;
+    currentState.gps.y = local.y;
 
     // Update display
     document.getElementById('latitude').textContent = message.latitude.toFixed(6) + '°';
@@ -1114,6 +1137,10 @@ function updateMissionStatus(data) {
     missionState.goHomeMode = data.go_home_mode || false;
     // Detour badge
     updateDetourBadge(!!data.detour_active);
+    // Persist detour edge-state so the history-pane log only fires once per
+    // activation. Without this, the `!currentState.mission.detour_active` check
+    // below was always true, spamming the log at the mission_status tick rate.
+    currentState.mission.detour_active = !!data.detour_active;
     // Only update distance if the caller actually provided it — the /planning/current_target
     // subscriber is the authoritative source and writes `currentState.mission.distance` directly.
     if (data.distance_to_waypoint !== undefined && data.distance_to_waypoint !== null) {
@@ -1122,8 +1149,14 @@ function updateMissionStatus(data) {
 
     // Reset the captured Go Home initial distance once we leave Go Home so the next
     // trip starts fresh. The capture itself happens in the /planning/current_target subscriber.
-    if (!missionState.goHomeMode && missionState.goHomeInitialDistance !== null) {
-        missionState.goHomeInitialDistance = null;
+    if (!missionState.goHomeMode) {
+        if (missionState.goHomeInitialDistance !== null) {
+            missionState.goHomeInitialDistance = null;
+        }
+        // Always clear localStorage when not in Go Home (idempotent) — covers the
+        // reopen-after-prior-Go-Home case where the in-memory check above wouldn't
+        // fire (it's already null), so a fresh Go Home wouldn't restore stale data.
+        clearPersistedGoHomeInit();
     }
     
     // CRITICAL: Update missionState.currentWaypoint so waypoints on map reflect current progress
@@ -1174,6 +1207,10 @@ function updateObstacleStatus(data) {
     currentState.obstacles.front = data.front_clear;
     currentState.obstacles.left = data.left_clear;
     currentState.obstacles.right = data.right_clear;
+    // Persist cluster info so validateWaypoints can flag high-density routes;
+    // perception publishes both fields in `obstacle_info`, dashboard previously dropped them.
+    currentState.obstacles.obstacle_count = data.obstacle_count;
+    currentState.obstacles.clusters = data.clusters;
 
     const minDist = data.min_distance;
     const minDistText = minDist >= 999 ? '∞' : minDist.toFixed(1) + 'm';
@@ -2771,6 +2808,25 @@ function persistWaypoints() {
     }
 }
 
+function persistGoHomeInit(value) {
+    try { localStorage.setItem(GO_HOME_INIT_KEY, String(value)); } catch (e) {}
+}
+
+function restorePersistedGoHomeInit() {
+    try {
+        const stored = localStorage.getItem(GO_HOME_INIT_KEY);
+        if (stored !== null) {
+            const parsed = parseFloat(stored);
+            if (!isNaN(parsed) && parsed > 0) return parsed;
+        }
+    } catch (e) {}
+    return null;
+}
+
+function clearPersistedGoHomeInit() {
+    try { localStorage.removeItem(GO_HOME_INIT_KEY); } catch (e) {}
+}
+
 function restorePersistedWaypoints() {
     try {
         const raw = localStorage.getItem(WAYPOINT_STORAGE_KEY);
@@ -3821,15 +3877,30 @@ function updateMissionProgress() {
             _prevProgress.wp = wpText;
         }
 
-        // Update distance (simplified - would need actual path tracking)
-        if (currentValidation) {
-            const totalDist = currentValidation.estimates.distance;
-            const traveledDist = waypointsCompletedFraction * totalDist;
-            const distText = `${traveledDist.toFixed(0)}m / ${totalDist.toFixed(0)}m`;
-            if (_prevProgress.dist !== distText) {
-                document.getElementById('progress-distance').textContent = distText;
-                _prevProgress.dist = distText;
+        // Update distance — Go Home mode uses live distance-to-home (single home
+        // waypoint produces validation.estimates.distance = 0 since no segments to sum),
+        // forward missions use the validated route distance.
+        let distText = null;
+        if (missionState.goHomeMode) {
+            const init = missionState.goHomeInitialDistance;
+            const curr = currentState.mission.distance || 0;
+            if (init && init > 0) {
+                const traveled = Math.max(0, init - curr);
+                distText = `${traveled.toFixed(0)}m / ${init.toFixed(0)}m`;
             }
+        } else if (currentValidation) {
+            const totalDist = currentValidation.estimates.distance;
+            // Live GPS-integrated distance, with the waypoint-count step-estimate as a
+            // floor so hard-refresh-during-mission still gets a sensible baseline. Capped
+            // at totalDist for display since validation underestimates by missing the
+            // spawn → first-waypoint leg, which would otherwise overshoot.
+            const stepEstimate = waypointsCompletedFraction * totalDist;
+            const traveledDist = Math.min(totalDist, Math.max(stepEstimate, progressState.distanceTraveled));
+            distText = `${traveledDist.toFixed(0)}m / ${totalDist.toFixed(0)}m`;
+        }
+        if (distText !== null && _prevProgress.dist !== distText) {
+            document.getElementById('progress-distance').textContent = distText;
+            _prevProgress.dist = distText;
         }
 
         // Update current speed from GPS
@@ -3852,16 +3923,27 @@ function updateMissionProgress() {
             _prevProgress.avg = avgText;
         }
 
-        // Calculate time remaining
+        // Calculate time remaining — Go Home uses live distance-to-home; forward
+        // missions use the validated-route remaining-distance.
         let timeText = '--:--';
-        if (currentValidation && avgSpeed > 0.1) {
-            const totalDist = currentValidation.estimates.distance;
-            const traveledDist = waypointsCompletedFraction * totalDist;
-            const remainingDist = totalDist - traveledDist;
-            const remainingTime = remainingDist / avgSpeed;
-            const mins = Math.floor(remainingTime / 60);
-            const secs = Math.floor(remainingTime % 60);
-            timeText = `${mins}:${secs.toString().padStart(2, '0')}`;
+        if (avgSpeed > 0.1) {
+            let remainingDist = null;
+            if (missionState.goHomeMode) {
+                remainingDist = currentState.mission.distance;
+            } else if (currentValidation) {
+                const totalDist = currentValidation.estimates.distance;
+                // Mirror the Distance display's live formula so time-remaining stays
+                // in sync with the value the user sees beside it.
+                const stepEstimate = waypointsCompletedFraction * totalDist;
+                const traveledDist = Math.min(totalDist, Math.max(stepEstimate, progressState.distanceTraveled));
+                remainingDist = totalDist - traveledDist;
+            }
+            if (remainingDist !== null && remainingDist >= 0) {
+                const remainingTime = remainingDist / avgSpeed;
+                const mins = Math.floor(remainingTime / 60);
+                const secs = Math.floor(remainingTime % 60);
+                timeText = `${mins}:${secs.toString().padStart(2, '0')}`;
+            }
         }
         if (_prevProgress.time !== timeText) {
             document.getElementById('progress-time-remaining').textContent = timeText;
@@ -3893,8 +3975,16 @@ const originalUpdateMissionStatus = updateMissionStatus;
 updateMissionStatus = function(data) {
     const prevState = currentState.mission.state;
     const prevWaypoint = currentState.mission.waypoint;
+    const prevDetourActive = currentState.mission.detour_active;
 
     originalUpdateMissionStatus(data);
+
+    // Reset live distance accumulator on transition into DRIVING from a non-running
+    // state so each fresh mission starts the Distance display at 0.
+    const runningStates = ['DRIVING', 'PAUSED'];
+    if (data.state === 'DRIVING' && !runningStates.includes(prevState)) {
+        progressState.distanceTraveled = 0;
+    }
 
     // Log state changes
     if (prevState !== data.state) {
@@ -3906,8 +3996,10 @@ updateMissionStatus = function(data) {
         addHistoryEvent('waypoint', `Waypoint ${data.waypoint}/${data.total_waypoints} reached`);
     }
 
-    // Log detours
-    if (data.detour_active && !currentState.mission.detour_active) {
+    // Log detours — fire only on rising edge (was inactive, now active).
+    // Compare against the captured prev value, since originalUpdateMissionStatus
+    // has already written the new value into `currentState.mission.detour_active`.
+    if (data.detour_active && !prevDetourActive) {
         addHistoryEvent('detour', 'Detour activated (obstacle avoidance)');
     }
 
@@ -3920,14 +4012,21 @@ const originalUpdateGPS = updateGPS;
 updateGPS = function(message) {
     originalUpdateGPS(message);
 
-    // Calculate speed from position changes if not provided
-    if (!currentState.gps.speed && progressState.lastPosition) {
+    // Recompute instantaneous ground speed every tick. The previous
+    // `!currentState.gps.speed` guard caused the value to freeze at the first
+    // non-zero result, so the boat appeared to hold its first speed forever.
+    if (progressState.lastPosition) {
         const dx = currentState.gps.x - progressState.lastPosition.x;
         const dy = currentState.gps.y - progressState.lastPosition.y;
         const dt = (Date.now() - progressState.lastPosition.time) / 1000; // seconds
         if (dt > 0) {
             const dist = Math.sqrt(dx * dx + dy * dy);
             currentState.gps.speed = dist / dt;
+            // Accumulate path-distance during active mission so the Distance display
+            // updates live within a leg, not just on waypoint capture.
+            if (missionState.state === 'DRIVING' || missionState.state === 'PAUSED') {
+                progressState.distanceTraveled += dist;
+            }
         }
     }
 
