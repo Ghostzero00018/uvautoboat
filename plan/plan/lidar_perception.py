@@ -32,7 +32,7 @@ Topics:
 
     Publishes:
         /perception/obstacle_info (String) - JSON with obstacle distances per sector
-        /perception/param_ranges (String) - JSON parameter validation ranges for dashboard HTML min/max sync
+        /perception/param_ranges (String) - JSON [min, max, default] 3-tuples; dashboard syncs HTML min/max + populates liveDefaults for (default: X) hints
 """
 
 import rclpy
@@ -58,7 +58,8 @@ class LidarPerception(Node):
     """
 
     # Single source of truth for parameter validation ranges.
-    # Published on /perception/param_ranges so the dashboard can sync HTML min/max.
+    # Published on /perception/param_ranges as [min, max, default] 3-tuples
+    # (defaults lazy-captured at launch — see _publish_param_ranges).
     PARAM_RANGES = {
         'min_height': (-50.0, 50.0),
         'max_height': (-50.0, 50.0),
@@ -347,7 +348,7 @@ class LidarPerception(Node):
             }
 
             # Valid ranges come from self.PARAM_RANGES (class-level constant — also
-            # published on /perception/param_ranges so the dashboard can sync HTML min/max)
+            # published on /perception/param_ranges as [min, max, default] 3-tuples)
             for config_key, (attr_name, type_func) in param_map.items():
                 if config_key in config:
                     new_val = type_func(config[config_key])

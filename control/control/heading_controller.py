@@ -39,7 +39,7 @@ Topics:
         /control/status (String) - Controller status
         /control/anti_stuck_status (String) - Anti-stuck system status
         /control/heading_error (Float64) - body-frame angle-to-target, published per control tick for perception VFH targeting
-        /control/param_ranges (String) - JSON parameter validation ranges for dashboard HTML min/max sync
+        /control/param_ranges (String) - JSON [min, max, default] 3-tuples; dashboard syncs HTML min/max + populates liveDefaults for (default: X) hints
 """
 
 import rclpy
@@ -158,7 +158,8 @@ class HeadingController(Node):
     """
 
     # Single source of truth for parameter validation ranges.
-    # Published on /control/param_ranges so the dashboard can sync HTML min/max.
+    # Published on /control/param_ranges as [min, max, default] 3-tuples
+    # (defaults lazy-captured at launch — see _publish_param_ranges).
     PARAM_RANGES = {
         # PID gains
         'kp': (0.0, 2000.0),

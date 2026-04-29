@@ -1005,7 +1005,8 @@ function subscribeToTopics() {
         updateWorldFromConfig(data);
     });
 
-    // Subscribe to param ranges from all 3 nodes — syncs HTML min/max from Python authoritative ranges
+    // Subscribe to param ranges from all 3 nodes — Python publishes [min, max, default] 3-tuples;
+    // applyRangesToDashboard syncs HTML min/max AND populates liveDefaults for (default: X) hints + Reset
     ['/perception/param_ranges', '/planning/param_ranges', '/control/param_ranges'].forEach(topicName => {
         const topic = new ROSLIB.Topic({
             ros: ros,
@@ -1856,7 +1857,7 @@ let _validationErrors = 0;
 function resetValidation() { _validationErrors = 0; }
 function hasValidationErrors() { return _validationErrors > 0; }
 
-// Read and validate a numeric input using its HTML min/max/default attributes.
+// Read and validate a numeric input using its HTML min/max attributes.
 // Returns fallback if out of range, increments _validationErrors, and shows orange toast.
 function readInput(id, fallback) {
     const el = document.getElementById(id);

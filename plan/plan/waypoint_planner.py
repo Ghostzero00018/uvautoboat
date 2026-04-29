@@ -36,7 +36,7 @@ Topics:
         /planning/current_target (String) - JSON current target waypoint
         /planning/mission_status (String) - JSON mission state
         /planning/config (String) - runtime parameter snapshot
-        /planning/param_ranges (String) - JSON parameter validation ranges for dashboard HTML min/max sync
+        /planning/param_ranges (String) - JSON [min, max, default] 3-tuples; dashboard syncs HTML min/max + populates liveDefaults for (default: X) hints
 
     Services:
         /planning/stop_mission (std_srvs/Trigger) - ACK-based stop (replaces retry-over-topic)
@@ -171,7 +171,8 @@ class WaypointPlanner(Node):
     """
 
     # Single source of truth for parameter validation ranges.
-    # Published on /planning/param_ranges so the dashboard can sync HTML min/max.
+    # Published on /planning/param_ranges as [min, max, default] 3-tuples
+    # (defaults lazy-captured at launch — see _publish_param_ranges).
     PARAM_RANGES = {
         'lanes': (1, 100),
         'scan_length': (1.0, 500.0),
