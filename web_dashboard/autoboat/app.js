@@ -1518,14 +1518,20 @@ function initConfigPanel() {
         if (!confirm('Reset A* parameters to launch defaults and send to ROS? | Réinitialiser les paramètres A* et envoyer à ROS?')) {
             return;
         }
-        document.getElementById('cfg-astar-resolution').value = '3.0';
-        document.getElementById('cfg-astar-safety').value = '12.0';
-        document.getElementById('cfg-astar-max').value = '20000';
-        // Programmatic value sets don't fire the `input` event; refresh the
-        // (default: X) span explicitly so the orange hint clears on Reset.
-        ['cfg-astar-resolution', 'cfg-astar-safety', 'cfg-astar-max'].forEach(id => {
+        // 1-place defaults: resolve from liveDefaults at click time, use for both UI and ROS publish.
+        const astarIds = ['cfg-astar-resolution', 'cfg-astar-safety', 'cfg-astar-max'];
+        const astarDefaults = {};
+        astarIds.forEach(id => {
             const el = document.getElementById(id);
-            if (el) updateValueDisplay(el);
+            if (!el) return;
+            const def = getCanonicalDefault(el);
+            if (def !== undefined) {
+                astarDefaults[id] = def;
+                el.value = def;
+            }
+            // Programmatic value sets don't fire the `input` event; refresh the
+            // (default: X) span explicitly so the orange hint clears on Reset.
+            updateValueDisplay(el);
         });
         debounceApply(() => {
             if (!connected || !configPublisher) {
@@ -1536,12 +1542,12 @@ function initConfigPanel() {
             const config = {
                 astar_enabled: (navMode === 'runtime' || navMode === 'hybrid'),
                 astar_hybrid_mode: (navMode === 'hybrid'),
-                astar_resolution: 3.0,
-                astar_safety_margin: 12.0,
-                astar_max_expansions: 20000
+                astar_resolution: parseFloat(astarDefaults['cfg-astar-resolution']),
+                astar_safety_margin: parseFloat(astarDefaults['cfg-astar-safety']),
+                astar_max_expansions: parseInt(astarDefaults['cfg-astar-max'], 10)
             };
             configPublisher.publish(new ROSLIB.Message({ data: JSON.stringify(config) }));
-            markClean(['cfg-astar-resolution', 'cfg-astar-safety', 'cfg-astar-max']);
+            markClean(astarIds);
             addLog('A* params reset to defaults and sent to ROS', 'info');
             showFeedback('✅ A* parameters reset to defaults and applied', 'success');
         });
@@ -1615,8 +1621,17 @@ function resetPerceptionToDefaults() {
 
 function resetControllerToDefaults() {
     resetGroupToDefaults('controller-', 'Controller', () => {
+        // controller-use-vfh isn't in liveDefaults (boolean toggle, not in PARAM_RANGES),
+        // so the main loop skips it. Mirror the loop's full reset trio here, otherwise
+        // the orange (default: X) span lingers after a preset → reset cycle.
         const vfhEl = document.getElementById('controller-use-vfh');
-        if (vfhEl) vfhEl.value = 'false';
+        if (vfhEl) {
+            vfhEl.value = 'false';
+            vfhEl.classList.remove('modified');
+            dirtyInputs.add('controller-use-vfh');
+            vfhEl.classList.add('input-dirty');
+            updateValueDisplay(vfhEl);
+        }
     });
 }
 
@@ -1678,7 +1693,13 @@ function updateValueDisplay(input) {
     if (matches) {
         span.textContent = '';
     } else {
-        span.textContent = `(default: ${canonical})`;
+        // For <select>, render the option's display text (e.g. "Disabled") rather
+        // than the raw HTML value (e.g. "false") — otherwise the hint disagrees
+        // with what the dropdown shows.
+        const display = input.tagName === 'SELECT'
+            ? (Array.from(input.options).find(o => o.value === String(canonical))?.textContent ?? canonical)
+            : canonical;
+        span.textContent = `(default: ${display})`;
         span.style.color = '#ff9800';
     }
 }
@@ -3446,6 +3467,9 @@ function gateResetButtons() {
         // a generic 'cfg-' prefix would match planner-published keys (cfg-lanes / cfg-astar-*)
         // and falsely enable the button before the relevant defaults arrived.
         'btn-reset-config': 'cfg-kp' in liveDefaults,
+        // A* params arrive together from waypoint_planner_node's param_ranges
+        // publish — single-key check is sufficient.
+        'btn-reset-astar': 'cfg-astar-resolution' in liveDefaults,
         'btn-reset-perception': keys.some(id => id.startsWith('perception-')),
         'btn-reset-controller': keys.some(id => id.startsWith('controller-')),
     };
