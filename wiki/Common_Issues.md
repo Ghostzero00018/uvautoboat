@@ -19,7 +19,7 @@ ros2 topic echo /wamv/sensors/gps/gps/fix --once
 
 **Solutions**:
 
-1. **Sim readiness still in progress**: the launcher runs bounded-retry readiness polls for each stage (Gazebo topics, rosbridge port, nav-node discovery). Typical cold-start is ~20-40 s on a warm machine. Let the 6 launcher terminals finish their spinner output before issuing commands.
+1. **Sim readiness still in progress**: the launcher runs bounded-retry readiness polls for each stage (Gazebo topics, rosbridge port, nav-node discovery). Typical cold-start is ~20-40 s on a warm machine, but absolute numbers are hardware-dependent (CPU, GPU, disk I/O, asset-cache state, concurrent load) — your machine's baseline may differ. Let the 6 launcher terminals finish their spinner output before issuing commands. The launcher prints a `Total launch time: N s (Mm Ss)` line right under the success banner — use it for cold-vs-warm comparisons on your own machine, not as an absolute benchmark.
 2. **Mission not started**: Run `ros2 run plan autoboat_cli start` (or use the dashboard Start button — interactive mode preferred over one-shot CLI commands, which can race DDS late-joiner discovery)
 3. **Waypoints not generated**: Run `ros2 run plan autoboat_cli generate`
 4. **Node not running**: Check `ros2 node list | grep -E 'heading_controller|lidar_perception|waypoint_planner'`

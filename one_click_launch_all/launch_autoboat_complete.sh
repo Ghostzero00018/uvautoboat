@@ -470,7 +470,7 @@ fi
 
 print_header "AutoBoat System Launched Successfully!"
 LAUNCH_ELAPSED=$((SECONDS - LAUNCH_START))
-echo -e "${GREEN}Total launch time: ${LAUNCH_ELAPSED} s ($((LAUNCH_ELAPSED / 60))m $((LAUNCH_ELAPSED % 60))s)${NC}"
+echo -e "${GREEN}Total launch time: ${LAUNCH_ELAPSED} s ($((LAUNCH_ELAPSED / 60))m $((LAUNCH_ELAPSED % 60))s)${NC} ${YELLOW}— varies with hardware/state${NC}"
 echo ""
 echo -e "${GREEN}System Status:${NC}"
 echo "  ROS Bridge:      ws://localhost:9090"
