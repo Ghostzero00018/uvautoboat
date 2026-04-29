@@ -279,6 +279,23 @@ Absolute timing varies meaningfully across hardware (CPU, GPU, disk I/O, asset-c
 - Hardware-dependence disclaimer + Common_Issues prose + Board.md milestone row merged in `37e197c` (`docs+launch: disclaim hardware-dependence on launch-timer baseline`).
 - New baseline data point recorded for the deferred RTF investigation (week of 04/05).
 
+## Health-check disclaimer follow-on (unplanned)
+
+Maintainer noted that the same hw-dependence applies to the `health_check_autoboat.sh` script — past experience shows full-check duration ~70-80 s under heavy multi-app load on the workstation, well above the documented `~30-60 s` typical range.
+
+### Implementation
+
+Single edit to `one_click_launch_all/health_check_autoboat.sh` (the Usage comment block). Documented typical range stays at `30-60 s` (warm-machine, light-load expectation); a 3-line variance note now follows, naming the contributors (CPU, ROS 2 daemon state, concurrent host load) and recording 70-80 s as the heavy-load upper-bound observation. `--quick` mode flagged as much less affected since it skips parameter and per-topic publisher probes.
+
+### Audit
+
+Cross-checked the wiki + README + USER_MANUAL + Board for other timing claims about the health-check shell script — none. The 49-checks count, the 4-state validation framework, the dashboard live-stream panel, and the `ros2 daemon` troubleshooting note all stay at a level of abstraction that doesn't commit to a duration. No other doc updates needed.
+
+### Outcome
+
+- Disclaimer comment merged in `a6792db` (`docs(health_check): note hardware-dependence of full-check duration`).
+- Sibling-only update — no related docs needed touching.
+
 ## Rollover checkpoints
 
 | After | State | Rollover cost |
