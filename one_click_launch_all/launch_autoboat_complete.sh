@@ -63,6 +63,9 @@
 
 set -e  # Exit on error
 
+# Wall-clock launch timer ($SECONDS auto-increments from script start in bash).
+LAUNCH_START=$SECONDS
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -466,6 +469,8 @@ if [ "$OPEN_BROWSER" = true ] && [ "$LAUNCH_DASHBOARD" = true ]; then
 fi
 
 print_header "AutoBoat System Launched Successfully!"
+LAUNCH_ELAPSED=$((SECONDS - LAUNCH_START))
+echo -e "${GREEN}Total launch time: ${LAUNCH_ELAPSED} s ($((LAUNCH_ELAPSED / 60))m $((LAUNCH_ELAPSED % 60))s)${NC}"
 echo ""
 echo -e "${GREEN}System Status:${NC}"
 echo "  ROS Bridge:      ws://localhost:9090"
