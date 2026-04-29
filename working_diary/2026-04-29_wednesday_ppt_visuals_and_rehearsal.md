@@ -338,6 +338,45 @@ Edge case caught during regression check on the Go Home branch: hard-refresh dur
 - User-visible: live speed, live distance from t=0 (not just after first waypoint), live time-remaining, correct values during forward + Go Home + post-refresh; obstacle warning now reachable; detour log fires once per activation instead of ~10 Hz spam.
 - Common architectural lesson: dashboard had several "scaffold-without-write" fields (`gps.x/y`, `progressState.distanceTraveled`, `obstacles.clusters/obstacle_count`, `mission.detour_active`) — declared in state objects, read in display logic, never populated. Worth a focused audit pass at some point to find any remaining dead-scaffold instances.
 
+## Param-sync doc thread + stale-comment cleanup (started 28/04 evening, finalised 29/04 late afternoon)
+
+A doc thread that started Tuesday evening as a one-question check ("is the param sync mechanism documented anywhere?") rolled into a four-commit audit pass spanning Tuesday-evening + Wednesday-late-afternoon. None of the work is functional — pure documentation hygiene around the 27/04 (`888fadd`) 3-tuple extension + 28/04 (`19969c3`) cleanup.
+
+### Tuesday evening — `wiki/Design_Rationale.md` "Why 1-place" subsection (`80a910f`)
+
+The audit confirmed the *what* lives in `web_dashboard/autoboat/README_autoboat_dashboard.md` "Parameter Sync (1 place)" but the *why* (drift class, cleanup motivation) was undocumented. New subsection added to `Design_Rationale.md` Architecture Decisions: "Why dashboard parameter defaults are 1-place (YAML-authoritative) instead of mirrored on the dashboard side?" — explains the pre-cleanup mirror surfaces, the 3-tuple `[min, max, default]` mechanism (`_publish_param_ranges` lazy-capture → `applyRangesToDashboard` → `liveDefaults` → `getCanonicalDefault`), tradeoffs (Reset disabled until first `/<ns>/param_ranges` arrives; offline preview shows `index.html` `value="…"` literals), and the 16/04 → 27/04 → 28/04 commit trajectory.
+
+Two refinement passes after review feedback:
+
+- **"4-place" framing rephrased.** Initial draft said "every tunable parameter's default value lived in four places" — actually pre-cleanup `data-default` was on `cfg-*` (12) + `wp-*` (3) inputs only, and perception/controller inputs read from `PERCEPTION_DEFAULTS` / `CONTROLLER_DEFAULTS` JS maps. Per-parameter mirrors = 2; project-wide drift surfaces = 4. Rephrased to reflect both perspectives.
+- **Cross-link target switched to absolute GitHub URL.** Initial `[../web_dashboard/autoboat/README_autoboat_dashboard.md]` would 404 in the published wiki because `scripts/sync_wiki.sh` flattens `wiki/*.md` into the wiki repo root. Switched to `https://github.com/Ghostzero00018/uvautoboat/blob/main/...#parameter-sync-1-place`, matching `Home.md` precedent.
+
+### Wednesday late afternoon — stale-comment sweep (`42f1c30`)
+
+Triggered by a "check if there are stale things in the main repo" sweep after the SIGPIPE-fix conversation wrapped. First-pass audit reported "clean"; second pass with broader patterns caught nine lines across four files where header docstrings / class comments still described `/<ns>/param_ranges` as "JSON parameter validation ranges for dashboard HTML min/max sync" — phrasing that pre-dates 27/04's 3-tuple extension. The function-level docstrings inside `_publish_param_ranges` had been correctly updated to "validation ranges + launch defaults"; the header-level ones were missed.
+
+Lines updated:
+
+- `plan/plan/lidar_perception.py` — module docstring (L35) + class `PARAM_RANGES` comment (L60-61) + `config_callback` parenthetical (L350)
+- `plan/plan/waypoint_planner.py` — module docstring (L39) + class `PARAM_RANGES` comment (L173-174)
+- `control/control/heading_controller.py` — module docstring (L42) + class `PARAM_RANGES` comment (L160-161)
+- `web_dashboard/autoboat/app.js` — `param_ranges` subscription comment (L1008) + `readInput` docstring (L1859, was naming a non-existent `default` HTML attribute — residue from pre-`19969c3` `data-default`)
+
+Net diff: +13 / −9. All comments now describe `[min, max, default]` 3-tuples and the `liveDefaults` / `(default: X)` hint role.
+
+### Wednesday late afternoon — README + wiki Home freshness pass
+
+Final sweep across the most-exposed surfaces caught two more stragglers:
+
+- **`README.md` L21** — Controller cell described "anti-stuck recovery (needs testing)"; the same file's What-Works status table (L236) had `Anti-stuck recovery (SASS) | ✅ Working`. Internal contradiction. Dropped the qualifier to harmonise.
+- **`wiki/Home.md` L66** — "Last Updated: 24/04/2026" stamp was five days behind today's commit cadence. Bumped to 29/04/2026.
+
+### Outcome
+
+- Doc thread closed.
+- All active surfaces (`wiki/`, `Board.md`, `README.md`, `USER_MANUAL.md`, dashboard README, code header docstrings) describe the post-`19969c3` 1-place sync model accurately.
+- Stale class was confined to header-level comments that had been overlooked when their function-level siblings were updated.
+
 ## Rollover checkpoints
 
 | After | State | Rollover cost |

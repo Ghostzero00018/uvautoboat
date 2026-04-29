@@ -18,7 +18,7 @@ The system is a modular 3-node ROS 2 pipeline:
 | ------ | ------ | ------------- |
 | **Perception** | Perception | 3D LiDAR obstacle detection, temporal filtering, clustering |
 | **Planner** | Planning | Lawnmower waypoint generation, A* detour planning, mission state machine |
-| **Controller** | Control | PID heading control, reactive obstacle avoidance, anti-stuck recovery (needs testing) |
+| **Controller** | Control | PID heading control, reactive obstacle avoidance, anti-stuck recovery |
 
 > **Note:** Earlier development used U.S.S.R space-program code-names (OKO, SPUTNIK, BURAN). See [Glossary — Legacy Code-Names](wiki/Glossary.md#legacy-module-code-names-pre-v30) for the mapping.
 
