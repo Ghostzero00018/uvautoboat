@@ -212,6 +212,46 @@ Pre-existing (independent of `2c0194a`); out of scope for the delivery week. Pic
 - SIGPIPE side issue patched today (capture-then-grep in `wait_for_topic`).
 - RTF throttle deferred to next week.
 
+## Dashboard reset-path polish (unplanned, AM)
+
+Surfaced after the cold-boot validation wrap-up — maintainer flagged a UX glitch in the Heading Controller panel: flipping `Use VFH Bias` (manual or via a quick-preset button) then clicking Reset Defaults left the orange `(default: X)` span lingering only for VFH while clearing correctly for other params. Also: that span rendered the raw HTML option value (`true` / `false`) rather than the dropdown's display label (`Enabled` / `Disabled`).
+
+### Issue 1 — VFH dirty hint lingers after Reset Defaults
+
+`resetGroupToDefaults` (`web_dashboard/autoboat/app.js:1594-1610`) iterates over `liveDefaults` entries. `controller-use-vfh` is intentionally outside `PARAM_RANGES` (boolean toggle, not a numeric range), so the loop skips it. The `extraReset` callback in `resetControllerToDefaults` handled VFH separately but only set `vfhEl.value = 'false'` — missing the `dirtyInputs.add` / `classList.add('input-dirty')` / `updateValueDisplay` trio that the main loop applies for every other input. The orange `(default: X)` span never re-rendered against the canonical default and lingered with whatever text it had before reset.
+
+Fix. Extended the `extraReset` callback to mirror the loop's full reset trio.
+
+### Issue 2 — Dirty hint shows `false` / `true` instead of `Disabled` / `Enabled`
+
+`updateValueDisplay` (`app.js:1668-1684`) hardcoded `(default: ${canonical})` where `canonical` is the raw HTML option `value` (`'false'` for VFH default). The `<option>`'s `textContent` (`Disabled`) is what the user sees in the dropdown, so the hint disagreed with the visible label.
+
+Fix. When `input.tagName === 'SELECT'`, look up the option whose `value === canonical` and use its `textContent` for display. Generic — any future tracked-default `<select>` benefits automatically.
+
+### Audit for similar patterns
+
+- **Custom-reset shortcuts that bypass the dirty trio.** Only one instance — the VFH `extraReset`, now fixed. `resetGroupToDefaults` is invoked with `extraReset` only by `resetControllerToDefaults`. `resetPerceptionToDefaults` has no `extraReset`; `resetConfigToDefaults` is a self-contained loop that already applies the trio correctly.
+- **Other `<select>` elements.** `controller-use-vfh` is the only `<select>` in the entire dashboard. No `createElement('select')` / `new Option(...)` calls — no dynamic dropdowns. The `updateValueDisplay` fix covers any future `<select>` with a tracked default automatically.
+
+Both VFH-pattern surfaces fully covered.
+
+### Bonus finding — `btn-reset-astar` hardcoded defaults
+
+Audit caught a related-but-different bug: the A\* Reset click handler (`app.js:1517-1548`) hardcoded `'3.0'` / `'12.0'` / `'20000'` for both the input `.value` sets *and* the ROS-published `config` object. Values matched `launch/autoboat.launch.yaml:139, 141, 143` so the button worked, but the structure was the same drift class the 28/04 option-1 cleanup was meant to eliminate — a YAML-default change would silently bypass this reset path while every other reset would track it.
+
+Migration applied (separate from the VFH fix scope, bundled in the same commit since both are dashboard reset-path cleanup):
+
+- HTML (`web_dashboard/autoboat/index.html:357`) — `btn-reset-astar` now starts `disabled` with "Waiting for ROS launch defaults..." tooltip, matching `btn-reset-config` / `btn-reset-perception` / `btn-reset-controller`.
+- JS `gateResetButtons` — new `'btn-reset-astar': 'cfg-astar-resolution' in liveDefaults` entry. Single-key check sufficient: A\* params arrive atomically from `waypoint_planner_node`'s single `param_ranges` publish.
+- JS click handler — captures liveDefaults values into a local `astarDefaults` map at click time, uses for both UI `.value` sets and the ROS-published `config`. No hardcoded literals; YAML is single source of truth as documented in `wiki/Design_Rationale.md` § "Why dashboard parameter defaults are 1-place".
+
+### Outcome
+
+- VFH lingering-hint bug fixed.
+- VFH dropdown vs hint label mismatch fixed.
+- A\* Reset migrated to liveDefaults and properly gated until `/planning/param_ranges` arrives.
+- Bundled into single commit `7565242` (`fix(dashboard): tighten reset paths in Controller + A* config panels`).
+
 ## Rollover checkpoints
 
 | After | State | Rollover cost |
