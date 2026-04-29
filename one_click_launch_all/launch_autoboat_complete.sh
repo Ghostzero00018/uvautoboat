@@ -212,7 +212,10 @@ wait_for_topic() {
     local timeout="${2:-30}"
     local elapsed=0
     while [ "$elapsed" -lt "$timeout" ]; do
-        if ros2 topic info "$topic" 2>>/tmp/autoboat_launcher_probe.log | grep -q 'Publisher count: [1-9]'; then
+        # Capture before grep — `grep -q` closes its pipe early, SIGPIPE-trapping `ros2 topic info`
+        # on the print of `Subscription count:` and crashing the Python CLI into /var/crash/.
+        local info=$(ros2 topic info "$topic" 2>>/tmp/autoboat_launcher_probe.log)
+        if grep -q 'Publisher count: [1-9]' <<<"$info"; then
             return 0
         fi
         sleep 1
