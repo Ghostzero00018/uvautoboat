@@ -15,8 +15,12 @@
 #
 # Usage:
 #   cd <workspace>/src/uvautoboat/one_click_launch_all
-#   bash health_check_autoboat.sh          # Full check (~30-60s)
+#   bash health_check_autoboat.sh          # Full check (~30-60s, hardware-dependent)
 #   bash health_check_autoboat.sh --quick  # Nodes + topics only (~5s)
+#
+# Full-check duration varies with hardware (CPU, ROS 2 daemon state) and
+# concurrent host load — observed up to 70-80 s on a workstation under heavy
+# multi-app use. --quick is much less affected (skips param + publisher probes).
 # ============================================================================
 
 # Colors
