@@ -93,6 +93,26 @@ The 4-place mirror was inherited from the 16/04/2026 rename refactor (legacy `OK
 
 For the **what** (current code-level rules) see the dashboard README's "Parameter Sync (1 place)" section: [README_autoboat_dashboard.md#parameter-sync-1-place](https://github.com/Ghostzero00018/uvautoboat/blob/main/web_dashboard/autoboat/README_autoboat_dashboard.md#parameter-sync-1-place).
 
+### Why `wait_for_topic` captures `ros2 topic info` output before grepping?
+
+The launcher's `wait_for_topic` helper polls Gazebo bridge readiness by checking that a sensor topic has at least one publisher. The natural pipeline shape — `ros2 topic info "$topic" | grep -q 'Publisher count: [1-9]'` — has a hidden SIGPIPE trap.
+
+`ros2 topic info` prints three lines: `Type:`, `Publisher count:`, `Subscription count:`. Once `grep -q` matches the second line, it exits and closes its stdin. `ros2 topic info` then SIGPIPEs while writing the trailing `Subscription count:` line. Python's `ros2cli` doesn't `signal(SIGPIPE, SIG_DFL)`, so the SIGPIPE surfaces as an unhandled `BrokenPipeError`, which Ubuntu Apport catches and writes to `/var/crash/_opt_ros_jazzy_bin_ros2.<uid>.crash` — popping a confusing GUI dialog on every cold launch. The launcher itself was unaffected: `set -e` without `pipefail` masked the failure (pipeline exit status was `grep`'s 0), the helper returned 0, the launch sequence proceeded.
+
+#### How the fix works
+
+`info=$(ros2 topic info "$topic" 2>>...)` captures the full three-line output into a local variable; `grep -q 'Publisher count: [1-9]' <<<"$info"` then operates on the captured string with no live pipe. Same matching semantics, no SIGPIPE.
+
+#### Tradeoffs
+
+- **Cost.** One extra subshell + here-string per probe. Negligible against the `sleep 1` already in the loop.
+- **Choice.** `local info=$(...)` (single-line form) over `local info; info=$(...)` (two-line form). Under `set -e`, a bare `info=$(cmd)` propagates the substitution's exit status; if `ros2 topic info` exits non-zero (e.g. transient daemon hiccup), the whole launcher would abort. `local`'s exit status masks the substitution's, preserving the helper's "always return 0 on transient failures" contract.
+- **Won.** Cosmetic crash dialogs on cold boot disappear. `wait_for_node` and `wait_for_port` were unaffected anyway (the former uses `>/dev/null` with no piped consumer; the latter uses `ss`, a C program that ignores SIGPIPE silently).
+
+#### Historical context
+
+The pipe-then-grep pattern shipped with the original readiness-polls work on 20/04/2026. The SIGPIPE behaviour was first observed on 29/04/2026 during a cold-boot validation pass for the 28/04 readiness-tightening patch (`2c0194a`); fix landed same day in `62636e9`.
+
 ---
 
 ## Algorithm Choices

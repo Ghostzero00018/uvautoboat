@@ -848,6 +848,14 @@ Empty output = clean run. Anything that survives the filter is from project code
 
 ---
 
+### Pre-`62636e9` cold-launch Apport popup (resolved 29/04/2026)
+
+If you see an Ubuntu Apport "internal error" dialog on a fresh boot — naming `/opt/ros/jazzy/bin/ros2` and showing a `BrokenPipeError` traceback in `ros2topic/verb/info.py` — your launcher script is from before commit `62636e9`. Pull `main` and the popup stops on the next cold launch.
+
+The launcher itself was always unaffected. `set -e` without `pipefail` masked the pipeline's exit status, so `wait_for_topic` returned 0 and the launch sequence proceeded as expected; the popup was a cosmetic side effect of `ros2 topic info` being SIGPIPEd by the original `| grep -q` pipeline. See `wiki/Design_Rationale.md` § "Why `wait_for_topic` captures `ros2 topic info` output before grepping" for the full mechanism + design rationale.
+
+---
+
 ## Still Having Issues?
 
 If your problem isn't listed here:
