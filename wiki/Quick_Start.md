@@ -26,7 +26,7 @@ Choose one of the following navigation systems:
 ros2 launch ~/seal_ws/src/uvautoboat/launch/autoboat.launch.yaml
 ```
 
-> **Note:** The integrated `ros2 run plan autoboat` is deprecated. Use the modular launch above.
+> **Note:** The earlier all-in-one integrated node has been moved to `legacy/all_in_one/` (`vostok1_integrated.py`) and is no longer maintained. The modular launch above is the only supported path.
 
 ---
 
@@ -38,7 +38,7 @@ You should see terminal output like:
 [INFO] AutoBoat Navigation System
 [INFO] Waiting for GPS signal...
 [INFO] GPS initialized: lat=XX.XXXX, lon=XX.XXXX
-[INFO] MISSION DÉMARRÉE ! | MISSION STARTED!
+[INFO] 🚀 MISSION STARTED!
 [INFO] PT 1/19 | Pos: (5.2, 3.1) | Cible: (15.0, 0.0) | Dist: 10.2m | Cap: 45°
 [INFO] ✅ DÉGAGÉ | CLEAR (F:50.0 L:50.0 R:50.0)
 ```

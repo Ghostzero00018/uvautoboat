@@ -59,8 +59,8 @@ The system exposes **two independent stop mechanisms** by design — defense-in-
 
 | Channel | Type | Subscribers | Planner effect | Controller effect |
 |:--------|:-----|:------------|:---------------|:------------------|
-| `/planning/stop_mission` | `std_srvs/Trigger` service | Planner only (`waypoint_planner.py:338`) | Enters `PAUSED` state; ACK response confirms receipt | No direct hook — sees the pause indirectly via `/planning/mission_status` |
-| `/planning/emergency_stop` | `std_msgs/Bool`, latched (RELIABLE, depth=1) | Planner **and** Controller (`waypoint_planner.py:329`, `heading_controller.py:384`) | Enters dedicated `EMERGENCY_STOP` state | Latches `stop_override = True` — highest-priority thrust gate, zeroes all thruster output (`heading_controller.py:740`) |
+| `/planning/stop_mission` | `std_srvs/Trigger` service | Planner only (`waypoint_planner.py:341`) | Enters `PAUSED` state; ACK response confirms receipt | No direct hook — sees the pause indirectly via `/planning/mission_status` |
+| `/planning/emergency_stop` | `std_msgs/Bool`, latched (RELIABLE, depth=1) | Planner **and** Controller (`waypoint_planner.py:330`, `heading_controller.py:386`) | Enters dedicated `EMERGENCY_STOP` state | Latches `stop_override = True` — highest-priority thrust gate, zeroes all thruster output (`heading_controller.py:744`) |
 
 **Why both?** The two channels traverse different layers:
 

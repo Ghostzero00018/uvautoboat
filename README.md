@@ -242,7 +242,7 @@ uvautoboat/
 | JSON log export | ✅ Working |
 | VRX LiDAR patch (issue #876) | ✅ Workaround |
 | Obstacle avoidance (detour explosion fix) | 🔧 Planned (also partially tested) |
-| VFH steering bias | 🔧 Planned (also partially tested) |
+| VFH steering bias | ✅ Working (off by default — opt-in via `use_vfh_bias` or dashboard preset) |
 | Pier/low-obstacle avoidance tuning | 🔧 Planned (also partially tested) |
 
 ---

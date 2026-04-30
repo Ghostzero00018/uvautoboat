@@ -216,10 +216,17 @@ echo $GZ_SIM_RESOURCE_PATH
 
 ### Python Package Issues
 
-Install additional Python packages if needed:
+Install additional Python packages if needed. **Ubuntu 24.04 ships Python 3.12 with PEP 668**, so plain `pip install` outside a virtualenv is blocked. Use the apt route:
 
 ```bash
-pip3 install numpy matplotlib
+sudo apt install python3-numpy python3-matplotlib
+```
+
+Or install via `pipx` for isolated environments:
+
+```bash
+sudo apt install pipx
+pipx install <package>
 ```
 
 ---
