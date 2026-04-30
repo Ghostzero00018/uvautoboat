@@ -36,6 +36,10 @@ Welcome to the **AutoBoat Wiki**! This documentation provides comprehensive guid
 - **[3D LIDAR Processing](3D_LIDAR_Processing)** — LiDAR Perception internals: temporal filtering, clustering, sector analysis
 - **[Simple Anti-Stuck System (SASS)](SASS)** — Heading Controller escape behaviour: turn toward clearer side until front is clear
 
+### 🔌 Hardware Bring-up
+
+- **[Pi 5 Bring-up Smoke Test](Pi5_Bringup_Smoke_Test)** — manual procedure to verify Pi 5 ↔ flight-controller serial link via MAVProxy + a `pymavlink` script, before `mavros2` enters the picture. Smoke test only — production telemetry path is `mavros2`, see [Roadmap §1.1](Roadmap#11-scope-clarifications-locked-30042026).
+
 ### 🐛 Troubleshooting & Security
 
 - **[Common Issues](Common_Issues)** — Solutions to frequent problems
