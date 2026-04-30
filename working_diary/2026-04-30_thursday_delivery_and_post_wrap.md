@@ -383,6 +383,78 @@ Branches from there:
 - Block F scheme entries if not landed
 - Any supervisor-meeting commitments captured in Block C that have a Linux-side action
 
+---
+
+## Block H — Phase 5 prep documentation thread (unplanned, evening)
+
+Two related documentation threads landed in the post-meeting evening, both surfaced by the 30/04 scope-lock conversation. Both are pure documentation — no functional code change.
+
+### H1 — Pi 5 ↔ flight-controller bring-up smoke-test procedure
+
+Triggered when a teammate shared procedural commands for first-light Pi 5 ↔ flight-controller verification (SSH + MAVProxy install + heartbeat verify + a small `pymavlink` script `stream_data.py` for IMU streaming). Reviewed the procedure end-to-end and surfaced eight issues in `stream_data.py` plus several procedural caveats specific to Ubuntu 24.04 / Pi 5.
+
+Procedural caveats:
+
+- **PEP 668** on Ubuntu 24.04 (Python 3.12) blocks `pip install ... --user` outside a venv. Use `pipx install mavproxy` instead.
+- **`/dev/serial0` requires UART setup** on Pi 5: disable serial console, enable UART hardware in `/boot/firmware/config.txt` (note: Ubuntu on Pi 5 uses `/boot/firmware/config.txt`, not `/boot/config.txt` like older Raspberry Pi OS images).
+- **`dialout` group membership** required for serial-port access; group changes only take effect on a fresh login.
+- **Serial-port exclusivity:** MAVProxy and the Python script can't both hold `/dev/serial0`. Use MAVProxy's UDP fan-out (`--out=udp:127.0.0.1:14550`) if both need to run in parallel.
+- **MAVProxy ≠ MAVROS.** Procedural docs from the team had them conflated; called out the distinction explicitly in the wiki page (MAVProxy is a router; MAVROS is the bridge).
+
+`stream_data.py` issues catalogued (8 items, severity-ranked):
+
+1. `MAV_DATA_STREAM_*` legacy API + 1 Hz IMU rate too slow + EXTRA1 stream typically maps to ATTITUDE not RAW_IMU on ArduPilot — replacement via `MAV_CMD_SET_MESSAGE_INTERVAL` per message ID at 10 Hz provided.
+2. `time.sleep(0.1)` after `recv_match(blocking=True)` is dead weight.
+3. `wait_heartbeat()` with no timeout blocks forever on a wrong-baud / FC-off scenario.
+4. No try/except around `mavlink_connection(...)`.
+5. Port + baud hardcoded; should be argparse args.
+6. RAW_IMU vs SCALED_IMU2/3 unit mismatch (raw counts vs mG) — print format identical, looks comparable but isn't.
+7. Three `parse_imu_data` branches 90% identical — DRY opportunity.
+8. No explicit `connection.close()` on exit.
+
+Documentation landing:
+
+- **New wiki page** `wiki/Pi5_Bringup_Smoke_Test.md` — 8 sections: status disclaimer + MAVProxy/MAVROS distinction; prerequisites; 4-step procedure; bring-up order (1. heartbeat, 2. direct script, 3. UDP fanout, 4. mavros2, 5. simulator integration); **original `stream_data.py` preserved verbatim under §5**; 8-row known-issues table in §6; suggested fixes in §7 (modern API + drop redundant sleep + heartbeat timeout + argparse + explicit close); cross-references to Roadmap §1.1 + §3 + ArduPilot/pymavlink/MAVROS docs.
+- `wiki/Home.md` — new "🔌 Hardware Bring-up" section between Module Deep Dives and Troubleshooting, linking to the new page.
+- `wiki/Roadmap.md` §3 — status table gains a row for the bring-up doc.
+
+### H2 — IoT IMT Nord Europe local-only network impact analysis
+
+Triggered when the maintainer flagged that **IoT IMT Nord Europe is institutional / IoT-only — no internet access**. This was previously assumed open-internet in the dashboard's design and is a Phase 5 deployment blocker as it stands.
+
+Inventory of the dashboard's current external runtime dependencies:
+
+| # | Source | Severity without internet |
+|:-:|:-------|:--------------------------|
+| 1 | `cdn.jsdelivr.net/npm/roslib@1` (`index.html:18`) | **Critical** — dashboard cannot connect to boat |
+| 2 | `unpkg.com/leaflet@1.9.4` JS + CSS (`index.html:21, 24`) | **Critical for map panel** |
+| 3 | `tile.openstreetmap.org` (`app.js:342`) | **Critical for map background** |
+| 4 | Google Fonts — Roboto Condensed (`style_merged.css:4`) | Cosmetic (system fallback) |
+
+The current `wiki/Common_Issues.md` and dashboard README only flagged (3); the more impactful (1) and (2) were the actual hidden risk.
+
+Three mitigation paths captured:
+
+- **Path A — Vendor libraries locally** (~2 MB; removes 3 of 4 deps; not just for IoT but hardens against any CDN outage). License compliance: Leaflet BSD-2 / roslib BSD-3 / Roboto Apache 2.0 — all compatible.
+- **Path B — Offline tile server** with pre-generated MBTiles for the test-site area (TileServer GL or `tilemaker` + `martin`; ~50-200 MB per area). Required for map functionality on IoT-local network.
+- **Path C — Map-less fallback mode** (~200 LOC; Cartesian XY plot in local frame; third-tier backup).
+
+Recommended Phase 5 prep order: Path A immediately, Path B before first on-water deployment, Path C optional.
+
+Documentation landing:
+
+- `wiki/Roadmap.md` §1.3 — full analysis (~80 lines): inventory + severity classification + three mitigation paths + recommended deployment order.
+- `wiki/Roadmap.md` §3 Phase 5 status table gains a row "Dashboard offline-capable for IoT-local network deployment ❌".
+- `wiki/Roadmap.md` §9 — revision log entry.
+- `web_dashboard/autoboat/README_autoboat_dashboard.md` — Troubleshooting section gains a leading note flagging the offline-deployment caveat with cross-link to Roadmap §1.3; the three relevant rows (Map tiles / ROSLIB not defined / Half the page missing) updated to point at Path A / Path B respectively.
+- `wiki/Common_Issues.md` + `USER_MANUAL.md` — existing "Internet required" notes cross-linked to Roadmap §1.3 for the durable analysis.
+
+### Outcome
+
+- Pi 5 bring-up procedure has a durable wiki home for when hardware lands at the bench.
+- IoT-local network constraint is now explicit, with clear mitigation paths and prep-order ranking. No silent assumption of open internet anywhere in the user-facing docs.
+- Two Board.md milestone rows added (Pi 5 bring-up doc + IoT-local analysis).
+
 ### Other deferred
 
 - **P1 pier/bank stuck investigation** — diagnostic plan in `working_diary/2026-04-24_pier_bank_stuck_and_rate_probe.md` Block A.

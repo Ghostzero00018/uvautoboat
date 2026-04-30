@@ -1410,7 +1410,11 @@ ss -tuln | grep 8002
 
 > **Internet required:** The dashboard loads `roslib.js` and `leaflet.js` from
 > CDNs (cdn.jsdelivr.net, unpkg.com). Without internet access, the page will
-> partially render and the ROS connection will never initialize.
+> partially render and the ROS connection will never initialize. For deployment
+> on a local-only network (e.g. the IoT IMT Nord Europe network used for Phase 5
+> hardware bring-up), see [`wiki/Roadmap.md` §1.3](wiki/Roadmap.md) for the full
+> impact analysis and three mitigation paths (vendor libs locally / offline tile
+> server / map-less fallback mode).
 
 ### Step 6 — Check firewall (if all above pass but still disconnected)
 

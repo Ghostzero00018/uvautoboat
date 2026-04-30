@@ -288,6 +288,10 @@ ros2 launch rosbridge_server rosbridge_websocket_launch.xml delay_between_messag
 
 > **Internet required:** The dashboard loads `roslib.js` and `leaflet.js` from
 > CDNs. Without internet, the page partially renders and ROS connection never initializes.
+> For deployment on a local-only network (e.g. the IoT IMT Nord Europe network used
+> for Phase 5 hardware bring-up), see [Roadmap §1.3](Roadmap#13-iot-imt-nord-europe--local-only-network-constraint-analysed-30042026)
+> for the full impact analysis and three mitigation paths (vendor libs locally /
+> offline tile server / map-less fallback mode).
 
 **6. Firewall blocking?**
 
