@@ -11,6 +11,8 @@
 #   - lidar_perception (Perception) - 3D LIDAR obstacle detection
 #   - waypoint_planner (Planner) - GPS waypoint planning
 #   - heading_controller (Controller) - PID control with obstacle avoidance
+#   - waypoint_visualizer - RViz markers for waypoints / current target / boat path
+#   - health_check_service - wraps health_check_autoboat.sh; exposes /health_check/run
 #
 # Prerequisites:
 #   # Kill any old Gazebo processes (Optional but recommended)

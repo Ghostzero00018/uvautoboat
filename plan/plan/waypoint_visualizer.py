@@ -2,9 +2,9 @@
 """
 Waypoint Visualizer for RViz - Modular Architecture
 
-Subscribes to the waypoint planner's mission status and waypoints topics,
-and publishes visualization markers for waypoints, current target,
-boat path, and no-go zones.
+Subscribes to the waypoint planner's mission status + waypoints topics
+and the GPS fix for current boat position; publishes visualization
+markers for waypoints, current target, boat path, and no-go zones.
 
 Run this alongside the modular waypoint planner to see waypoints in RViz.
 """
