@@ -186,6 +186,8 @@ Perception and Controller share the `/planning/set_config` topic. Parameters wit
 
 ## Troubleshooting
 
+> **Offline / no-internet deployment** (e.g., the IoT IMT Nord Europe institutional network used for Phase 5 hardware bring-up): the dashboard currently loads `roslib`, Leaflet (JS + CSS), OSM tiles, and Google Fonts from the public internet. Three of these (everything except the font) are critical — without internet the dashboard cannot connect to the boat (`roslib`), the map panel cannot render (Leaflet), and the map background is missing (OSM tiles). Full inventory + three mitigation paths (vendor libs locally / offline tile server / map-less fallback) live in [`wiki/Roadmap.md` §1.3](../../wiki/Roadmap.md). Required pre-deployment work for IoT-local networks.
+
 | Problem                           | Solution                                                              |
 | --------------------------------- | --------------------------------------------------------------------- |
 | Dashboard shows "Disconnected"    | See diagnostic steps below                                            |
@@ -193,9 +195,9 @@ Perception and Controller share the `/planning/set_config` topic. Parameters wit
 | Apply buttons stay grey           | Nodes not publishing `/planning/config` — check navigation is launched |
 | Reset then Apply sends old values | Fixed — Reset now marks inputs dirty to prevent ROS sync race         |
 | Camera feed not showing           | Check web_video_server: `ros2 run web_video_server web_video_server`  |
-| Map tiles not loading             | Requires internet for OpenStreetMap CDN                               |
-| ROSLIB not defined (console)      | Requires internet for CDN (roslibjs, Leaflet)                         |
-| Half the page missing             | CDN failed — check internet; see browser console (F12)                |
+| Map tiles not loading             | Requires internet for OpenStreetMap CDN. For offline deployment see Roadmap §1.3 Path B (offline tile server). |
+| ROSLIB not defined (console)      | Requires internet for CDN (roslibjs, Leaflet). For offline deployment see Roadmap §1.3 Path A (vendor libs locally). |
+| Half the page missing             | CDN failed — check internet or vendor libs; see browser console (F12). |
 | Parameter collision               | Perception params prefixed with `perception_` (e.g. `perception_critical_distance`) |
 
 ### Dashboard "Disconnected" Diagnostics

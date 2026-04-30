@@ -51,6 +51,87 @@ Three architectural questions raised in the 30/04 meeting and sent in writing to
 2. **CA model compute placement** — Linux workstation (recommended) or Pi 5? See §1.1 above.
 3. **Validation methodology** — same-day cross-validation (recommended) or a few-days' return visit? See §1.1 above + §6 Phase E.
 
+### 1.3 IoT IMT Nord Europe — local-only network constraint (analysed 30/04/2026)
+
+**Constraint.** The IoT IMT Nord Europe network is institutional / IoT-only — **no internet access**. Pi 5 ↔ Linux workstation traffic all stays on-LAN. This was implicitly assumed open-internet in the current dashboard design and breaks several runtime dependencies once we deploy on this network.
+
+#### Current external runtime dependencies in the dashboard
+
+Inventoried 30/04/2026 across `web_dashboard/autoboat/`:
+
+| # | Source | Function | Severity without internet |
+|:-:|:-------|:---------|:--------------------------|
+| 1 | `cdn.jsdelivr.net/npm/roslib@1` (`index.html:18`) | rosbridge WebSocket JS client | **Critical** — dashboard cannot subscribe/publish any ROS topic; connection to boat dead |
+| 2 | `unpkg.com/leaflet@1.9.4` JS + CSS (`index.html:21, 24`) | Map rendering library | **Critical for map panel** — map cannot render; other panels still work |
+| 3 | `tile.openstreetmap.org` (`app.js:342`) | Map background tiles | **Critical for map background** — map area renders empty grey; boat marker / waypoints / path overlay still draw on top, but with no geographical context |
+| 4 | Google Fonts — Roboto Condensed (`style_merged.css:4`) | Typography | **Cosmetic** — browser falls back to system default sans-serif |
+
+**Combined impact.** Without internet, dashboard core functionality (telemetry, mission control, health check) is **dead** because of (1). Even if (1) somehow loaded, the map panel is dead because of (2). Even if both libs loaded, the map background is missing because of (3). Today's `wiki/Common_Issues.md` and dashboard README both call out (3) only — the more impactful (1) and (2) are not currently flagged.
+
+This is a **Phase 5 deployment blocker** in the dashboard's current state.
+
+#### Mitigation paths
+
+Three options, ordered by recommended priority.
+
+##### Path A — Vendor libraries locally (low effort, removes 3 of 4 deps)
+
+Download `roslib.min.js`, `leaflet.js`, `leaflet.css`, and the Roboto Condensed font files; commit them under `web_dashboard/autoboat/vendor/`; reference via relative paths.
+
+```html
+<!-- Replace remote CDN refs with local vendored copies -->
+<script src="vendor/roslib.min.js"></script>
+<script src="vendor/leaflet/leaflet.js"></script>
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+```
+
+- **Cost:** ~2 MB of vendored assets in the repo; one-time download.
+- **Removes:** dependencies (1), (2), (4) — three of the four.
+- **License compliance:** Leaflet (BSD-2), roslib (BSD-3), Roboto (Apache 2.0) — all compatible with the project's Apache 2.0 license. Add a `vendor/LICENSE_NOTICES` file copying the upstream license texts.
+- **SRI integrity hashes** in current `<script integrity="sha384-…">` attributes become irrelevant with local vendoring; either drop them or compute hashes for the vendored copies.
+- **Not just for IoT.** This is hardening worth doing regardless — removes any runtime jsdelivr / unpkg / Google Fonts outage from blocking the dashboard.
+
+##### Path B — Offline tile server (required for map functionality on IoT)
+
+Run a local tile server on the Linux workstation; pre-generate tiles for the operating area before deployment. Removes dependency (3).
+
+Options:
+
+- **TileServer GL + MBTiles** — pre-render tiles at zoom 12-18 for the test-site bounding box; serve via a small Docker container or Node process. ~50-200 MB per area depending on zoom range and area size.
+- **`tilemaker` + `martin`** — generate MBTiles from raw OSM extracts (`.osm.pbf` from Geofabrik); serve via `martin`.
+- **`Leaflet.OfflineMap` plugin** — caches tiles in browser `localStorage` on first internet access; doesn't help if the workstation has never had internet on the test network.
+
+Pre-deployment workflow:
+
+1. Identify lake / test-site geographic bounds.
+2. Download OSM extract for the region (Geofabrik regional `.osm.pbf`).
+3. Generate MBTiles via `tilemaker`.
+4. Copy MBTiles to the workstation.
+5. Run tile server (e.g., `martin tiles.mbtiles`).
+6. Update `app.js:342` `L.tileLayer(...)` URL to `http://localhost:<port>/tiles/{z}/{x}/{y}.png` (or make it a launch parameter).
+
+For Phase 5 deployment on the IoT network, this path is **mandatory** if the map panel must work.
+
+##### Path C — Map-less fallback mode (optional, ~200 LOC)
+
+Add a launch flag (e.g., `--offline-map`) that:
+
+- Skips Leaflet initialization entirely
+- Replaces the map panel with a Cartesian XY plot of the boat's trajectory + waypoints in the local frame (no geographic background)
+- All other panels work normally
+
+Useful as a third-tier backup when even the local tile server is unavailable. Lowest priority — Path A + B should suffice for normal operation.
+
+#### Recommended approach for Phase 5 deployment
+
+1. **Path A first**, before any deployment — vendor (1), (2), (4). Network-independent hardening.
+2. **Path B before first on-water deployment** — offline tile server + pre-generated tiles for the test-site area.
+3. **Path C optional** — keep as a documented backup, do not implement until Path B has been tried and found insufficient.
+
+#### Tracker
+
+Status row added to §3 Phase 5 status table: "Dashboard offline-capable for IoT-local network deployment ❌". `web_dashboard/autoboat/README_autoboat_dashboard.md` troubleshooting table updated to flag (1) and (2) alongside the existing (3) entry. `wiki/Common_Issues.md` follows the dashboard README on user-facing troubleshooting.
+
 ---
 
 ## 2. Current state (as of 24/04/2026)
@@ -102,6 +183,7 @@ Three architectural questions raised in the 30/04 meeting and sent in writing to
 | Profile `/perception/obstacle_info` Hz in VRX; baseline for Pi 5 comparison | ✅ 20.00 Hz at RTF ≈ 1.0 (22/04/2026); rate tracks Gazebo RTF |
 | Install Mission Planner + QGroundControl on Linux workstation (prof-requested toolchain) | ✅ 24/04/2026 — MP 1.3.9384.38258 + QGC stable-daily 09/10/2025; MP-under-Mono GDAL / OGR / OSR degraded (Windows `.msi` fallback held for GIS demos) |
 | Pi 5 ↔ flight-controller bring-up smoke-test procedure documented | ✅ 30/04/2026 — see [Pi5_Bringup_Smoke_Test.md](Pi5_Bringup_Smoke_Test.md): SSH + UART + dialout setup, MAVProxy install (with PEP 668 caveat for Ubuntu 24.04), heartbeat verify, `stream_data.py` IMU smoke test with 8 known issues catalogued + suggested fixes |
+| Dashboard offline-capable for IoT-local network deployment | ❌ — required for IoT IMT Nord Europe (no internet); analysis + 3-path mitigation in §1.3. Path A (vendor libs) + Path B (offline tile server) are the recommended pre-deployment work. |
 | Shore-comms plan (WiFi range test, 4G fallback) | ❌ |
 
 ### Blockers
@@ -431,3 +513,4 @@ This is captured for traceability, not action. Re-open this section only when on
 | 30/04/2026 | Added §8 Sim infrastructure — VRX upstream fork captured as scheme-only with triggers / what-it-won't-solve / cost / explicit "not now" framing. Revision log renumbered §8 → §9. |
 | 30/04/2026 | §1.1 Scope clarifications + §1.2 Open questions added after the on-site scoping meeting (smaller scale than planned — campus power outage + IMT Mines Alès supervisor unavailable, so the on-site team ran its own session): Obj 1 = telemetry only (water-sensor data is Obj 2); MAVROS as the canonical MAVLink↔ROS bridge (MAVProxy is a router, not the bridge); DDS-over-IoT-WiFi multicast verification flagged as early-priority; CA placement most likely Linux-side; "regional datasets" portion of Obj 3 removed (insufficient accessible regional historical data); validation refined to same-day cross-validation; ML scope refined (residual-based + time-series + physics-informed; "ML trained on CA outputs" rejected). §6 Phase E rewritten to match. §7 top note + Phase E sub-list refresh. |
 | 30/04/2026 | §3 Phase 5 status table gains a row for the Pi 5 ↔ flight-controller bring-up smoke-test procedure (`wiki/Pi5_Bringup_Smoke_Test.md`): SSH + UART/dialout setup, MAVProxy install with PEP 668 caveat for Ubuntu 24.04, heartbeat verify, IMU smoke test via `stream_data.py` (received from team) — 8 known issues catalogued (legacy `MAV_DATA_STREAM_*` API + 1 Hz IMU rate too slow + missing heartbeat timeout + others), modern `MAV_CMD_SET_MESSAGE_INTERVAL` replacement provided. Bring-up order documented (1. heartbeat, 2. direct script, 3. UDP fanout, 4. mavros2, 5. simulator integration). Cross-linked from `wiki/Home.md` under a new "🔌 Hardware Bring-up" section. |
+| 30/04/2026 | §1.3 IoT IMT Nord Europe local-only network constraint analysed: dashboard has 4 internet-runtime dependencies (`roslib` from jsdelivr, `leaflet` JS+CSS from unpkg, OSM tile server, Google Fonts); without internet, (1) and (2) are **critical** (kill core dashboard + map respectively), (3) is critical for map background, (4) is cosmetic. Three mitigation paths captured (A: vendor libs locally — removes 3 of 4 deps; B: offline tile server with pre-generated MBTiles for the test area — required for the map panel; C: map-less fallback mode as third-tier backup). Recommended Phase 5 prep order: A immediately, B before first on-water deployment, C optional. §3 Phase 5 status table gains a row "Dashboard offline-capable for IoT-local network deployment ❌". `web_dashboard/autoboat/README_autoboat_dashboard.md` troubleshooting table updated to flag (1) and (2) alongside the existing (3) entry. |
