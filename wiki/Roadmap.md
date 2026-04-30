@@ -337,9 +337,51 @@ Questions that unblock specific next steps. Organised by phase.
 
 ---
 
-## 8. Revision log
+## 8. Sim infrastructure — VRX upstream fork (scheme only, not active)
+
+> **Status:** scheme only — *not* a planned task. This section captures the option to fork `osrf/vrx`, with explicit trigger conditions so the future fork-or-don't decision can be made on evidence rather than vibes.
+
+### 8.1 Today's baseline
+
+Project consumes upstream VRX via apt + a single workaround patch (`patch_vrx.sh` for the LiDAR-at-origin bug, upstream issue #876). One patch sits well under the threshold past which forking starts to make sense.
+
+### 8.2 Trigger conditions — when to re-open the decision
+
+Any one of these:
+
+- **Patch count growth.** Local workarounds against upstream grow past ~3. One is hygiene; three is a pattern; five-plus means tracking cost has caught up with fork-maintenance cost.
+- **Custom worlds / sensors / WAM-V mods that wouldn't merge upstream.** Project-specific changes (e.g., test-lake worlds for our regional dataset coverage area, water-quality sensor stubs that only matter to this internship's research stack) — upstream has no scope reason to accept them.
+- **Phase 5+ hardware integration with sim-side dependencies.** Bring-up surfaces a need for sim-side changes incompatible with upstream's API surface (e.g., a custom thrust-controller plugin for our autopilot bridge, a custom LiDAR plugin matching the real probe geometry).
+- **Long-term maintenance balance flips.** Re-evaluate whenever a major upstream release would otherwise force re-deriving every local patch.
+
+### 8.3 What forking would NOT solve
+
+Listed so future-us doesn't fork for the wrong reasons:
+
+- **Upstream's merge cadence.** Even on a fork, contributing back goes through the same review path. Forking buys local autonomy, not faster upstream merges.
+- **Real-hardware bring-up.** Pi 5 + MAVLink + thruster wiring lives entirely outside VRX.
+- **Test-environment custom worlds.** Already independent of VRX repo layout (`test_environment/`).
+
+### 8.4 Cost estimate and alternatives
+
+| Path | One-time | Ongoing |
+|:-----|:---------|:--------|
+| **Continue patches** (current) | ~0 | ~zero while patch count stays <3 |
+| **Fork** + CI + rebase strategy + contributor docs | ~1-2 days | ~1-2 h per upstream sync |
+| **Contribute upstream** | depends on fix | none after merge — upstream owns it |
+
+The fork path becomes cheaper than continued patches only when ongoing patch-maintenance time exceeds ongoing rebase time. Today's 1 patch is far from that crossover.
+
+### 8.5 Explicit "not now"
+
+This is captured for traceability, not action. Re-open this section only when one of the §8.2 triggers fires.
+
+---
+
+## 9. Revision log
 
 | Date | Change |
 |:-----|:-------|
 | 21/04/2026 | Initial version. Consolidates Phase 5 scope summary (detail in `working_diary/2026-04-19_to_2026-04-20_phase5_prep_scope_plan.md`), adds research-extension architecture and Phase A consulting scope. |
 | 24/04/2026 | Phase 5 summary reworded for 23/04 supervisor hardware walk-through: Pi 5 visually verified inside CCU; MP/QGC install added as prep task; low-level CCU note now flags "likely autopilot" as the working hypothesis from prof's MP/QGC ask; new bullet for Phase 5.2+ dashboard-through-MAVLink longer-term goal; Phase 5 open-questions list gains an autopilot / MAVLink-topology question. |
+| 30/04/2026 | Added §8 Sim infrastructure — VRX upstream fork captured as scheme-only with triggers / what-it-won't-solve / cost / explicit "not now" framing. Revision log renumbered §8 → §9. |

@@ -288,6 +288,7 @@ The whole repo is expected to run on the Pi 5. Long-term (Phase 5.2+): dashboard
 | 29/04/2026 | Cold-boot launcher validation: 28/04 readiness-poll patch (`2c0194a`) holds — fresh-reboot run shows all 5 expected nodes up, no `wait_for_*` timeout warnings, no fatal nav-stack tab exits. Side finding `wait_for_topic` SIGPIPE-trapped `ros2 topic info` (`grep -q` exits early on `Publisher count:` match, closing the pipe; `ros2cli` raises unhandled `BrokenPipeError` on the trailing `Subscription count:` print → Apport `_opt_ros_jazzy_bin_ros2.crash` popup; `set -e` without `pipefail` masked the failure so launcher proceeded). Fixed by capture-then-grep refactor in `wait_for_topic` (`62636e9`). Gazebo RTF throttle flagged out-of-scope (LiDAR `/points` ~2 Hz vs 10 Hz nominal; libEGL DRI2 fallback on NVIDIA RTX A2000 as working hypothesis), deferred to week of 04/05 | ✅ |
 | 29/04/2026 | Launcher prints `Total launch time: N s (Mm Ss)` after success header (`3822e54`): `$SECONDS`-based bash arithmetic, total only (no per-stage breakdown). First observation post-feature-deploy: 52 s on the Linux workstation. Baseline data point for next week's RTF investigation cold-vs-warm comparisons | ✅ |
 | TBD | Real-hardware deployment (Pi 5 as confirmed target, visual-verified 23/04/2026; MAVLink autopilot as working hypothesis; low-level CCU architecture TBD) | 🔜 |
+| TBD | VRX upstream fork (scheme only — triggers / cost / explicit "not now" framing captured in `wiki/Roadmap.md` §8) | 🔜 |
 | TBD | Coverage Planning | ⏸️ |
 
 ---
