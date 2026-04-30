@@ -1,8 +1,10 @@
-# 2026-04-30 — Thursday: 30/04 delivery + post-delivery wrap
+# 2026-04-30 — Thursday: scoping session (planned delivery rescheduled) + post-meeting wrap
+
+> **Day-of update — added 30/04 evening, supersedes the pre-meeting framing below.** The formal joint supervisor presentation **did not happen**. Reason: a **campus power outage at IMT Nord Europe** on the morning of 30/04 plus the **IMT Mines Alès supervisor (G. Zacharewicz) being unavailable**. The on-site team (maintainer + teammates) ran a smaller-scale scoping session in the afternoon instead — closer to a working scope-lock than a delivery, but it answered the architectural questions that needed to land before next week. The full Block C outcome below has the meeting details + scope-lock items. The formal joint presentation is rescheduled — date pending IMT Mines Alès availability + power restoration. Block A/B rehearsal work is **not wasted** — same deck and Asks carry forward to the rescheduled session.
 
 ## Context
 
-Pre-scaffold written 30/04 morning. Today is delivery day for the supervisor presentation; per yesterday's `working_diary/2026-04-29_*.md` "Spillover to Thursday morning" line, the morning absorbs all PPT-side work that didn't land Wednesday (visual placement / speaker-note timing pass / rehearsal pass 3 / Wed-evening 10-item review). Afternoon delivers. Evening picks up small repo follow-ons that don't compete for Thursday-morning's buffer.
+Pre-scaffold written 30/04 morning, before the power outage and the supervisor unavailability were known. Today *was planned as* delivery day for the supervisor presentation; per yesterday's `working_diary/2026-04-29_*.md` "Spillover to Thursday morning" line, the morning absorbs all PPT-side work that didn't land Wednesday (visual placement / speaker-note timing pass / rehearsal pass 3 / Wed-evening 10-item review). Afternoon was planned to deliver. Evening picks up small repo follow-ons that don't compete for Thursday-morning's buffer.
 
 **Week shape recap (closing edge):**
 
@@ -229,7 +231,7 @@ ros2 node list | grep -E 'heading_controller|lidar_perception|waypoint_planner|w
 
 ### Pass / fail handling
 
-- **All three checks pass:** log a 30/04 Board.md milestone row alongside the delivery row.
+- **All three checks pass:** log a 30/04 Board.md milestone row for Block E (no delivery row exists — delivery was rescheduled, see day-of update at top of file).
 - **BrokenPipeError still appears OR Apport popup fires:** capture `/tmp/autoboat_launcher_probe.log` + relevant tab logs + any new `/var/crash/_opt_ros_jazzy*.crash` file; defer fix to Mon 04/05 (post-Labour-Day).
 - **Other failure mode** (timeout warnings / missing nodes / new tab fatal exits): same — capture, defer.
 
@@ -293,7 +295,7 @@ Shifted from Friday per Labour Day.
 
 1. `git log --oneline -10` — sanity check the day's commits.
 2. Pre-commit grep — sweep for blocklist matches (zero expected).
-3. `Board.md` updates — milestone rows for: 30/04 delivery (Block C), Block E pass (if Block E passed), Block D cleanup (if non-trivial), Block F scheme-entry land (if Block F landed).
+3. `Board.md` updates — milestone rows for: 30/04 scoping session + scope-lock (Block C; **not** a delivery row, since the formal delivery was rescheduled — see day-of update at top), Block E pass (if Block E passed), Block D cleanup (if non-trivial), Block F scheme-entry land (if Block F landed).
 4. Fill the `[To fill]` placeholders throughout this file with concrete outcomes.
 5. On the Windows laptop, append today's section to `Research_intern_IMT_NE/working_diary/Week8_27_04-01_05.md` (Thu Block A through G summary; cross-link to this internal diary for detail).
 6. Commit:
