@@ -110,7 +110,26 @@ Presentation + group meeting per the rehearsed flow.
 - Commitments made (theirs to us; ours to them)
 - Follow-up TODOs surfaced during meeting
 
-**Outcome.** [To fill]
+**Outcome.** ✅ Smaller-scale than originally planned. **Campus power outage + IMT Mines Alès supervisor unavailable** the morning of 30/04, so the formal joint presentation was scratched. The on-site team (maintainer + teammates) held its own scoping session in the afternoon instead — closer to a working scope-lock than a delivery, but it answered the questions we needed before next week.
+
+**Scope locked across the three formal objectives** (see `wiki/Roadmap.md` §1.1 for the durable scoping reference):
+
+- **Obj 1 — telemetry only.** "Real sensor data from the drone" = boat telemetry (GPS, IMU, velocity, …) flowing low-level controller → Pi 5 (Ubuntu 24.04 + ROS 2 Jazzy, headless, on the IoT IMT Nord Europe network) → VRX simulator on the Linux workstation. Water-quality data is *not* part of Obj 1; it lives under Obj 2. Both streams ultimately reach the simulator, but Obj 1 owns only the telemetry plumbing. Simulator mirrors the real boat's pose — that is the digital-twin baseline.
+- **Obj 1 architecture clarifications.** `mavros2` (the ROS 2 port of MAVROS) is the MAVLink ↔ ROS bridge on the Pi 5. **MAVProxy is *not* the bridge** — it is a MAVLink router/multiplexer; the two are easy to confuse and were initially conflated in the meeting notes. Pi 5 ↔ Linux workstation talk via ROS 2 / DDS over the shared IoT WiFi; **multicast support on that network must be verified early** (corporate IoT WiFi often blocks multicast or isolates clients) — basic `talker` / `listener` round-trip before any serious pipeline work.
+- **Obj 2 — CA placement.** Most likely Linux-side, not Pi 5: more compute, easier dashboard integration, less contention with boat-side control loop. Pending explicit confirmation in the next supervisor exchange.
+- **Obj 3 — regional datasets REMOVED.** Accessible historical data for the project's region is insufficient (CESER / CPER ECRIN / VERD-Eau / CASTREau / CAP'Eau access not viable). The formal Obj 3 wording is preserved in `wiki/Roadmap.md` §1 for traceability; the implementation interpretation is now same-day cross-validation.
+- **Obj 3 — validation refined.** Same-day cross-validation: collect along R₁ + R₂ in one outing; hold out R₂; train CA on R₁; predict R₂; compare to held-out R₂. No temporal-change confound. Few-days' return is acceptable for slow-changing parameters only (conductivity in stable closed lake) — not for dynamic ones (DO post-rain, turbidity post-disturbance). The original meeting interpretation ("navigate route on day 1, return day 2-3 with different route, compare to day-1 prediction") was sharpened to surface the temporal-confound issue.
+- **Obj 3 — ML scope refined.** "Train an ML model deriving from the CA function" (initial framing) was rejected — training on a model's outputs just relearns the model. Refined approach: residual-based anomaly detection + time-series forecasting (ARIMA / Prophet / LSTM) + physics-informed ML (CA as prior, ML on residual) as a stretch goal.
+
+**Open questions surfaced during the meeting** (sent to teammate maintainer in writing for confirmation, see §1.2 of Roadmap):
+
+1. Phase A water-quality parameter subset — full set or smaller subset?
+2. CA model compute placement — Linux workstation (recommended) or Pi 5?
+3. Validation methodology — same-day cross-validation (recommended) or day-gap return?
+
+**Doc landing.** Scope-lock written into `wiki/Roadmap.md`: §1.1 (scope clarifications), §1.2 (the three open questions), §6 Phase E (validation approach refresh, regional-datasets removal note), §7 top-of-section update note + Phase E sub-list refresh, §9 revision log entry. This diary's Block C captures the meeting context and outcome; Roadmap is the durable reference.
+
+**Carryover from delivery.** The formal joint presentation is rescheduled — date pending IMT Mines Alès supervisor availability + power restoration. Rehearsal pass + dry-run work from Block A/B/E is **not wasted**: same deck and asks carry forward. The 30/04 deck stays in `Research_intern_IMT_NE/PPT/PPT_files/30_04_2026_presentation/` as the canonical pre-rescheduled-meeting version.
 
 ---
 

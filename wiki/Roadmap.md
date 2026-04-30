@@ -16,6 +16,41 @@ From the formal objectives document *"Aquatic Drone–Based Digital Twin for Spa
 
 Scientific community fit: RMC2 — modeling, control, and communication of complex systems.
 
+### 1.1 Scope clarifications (locked 30/04/2026)
+
+The 30/04 supervisor + teammates scoping meeting — held at smaller scale than originally planned, since a campus power outage and the IMT Mines Alès supervisor's unavailability forced the on-site team to run its own session — clarified each formal objective:
+
+**Obj 1 — "real sensor data from the drone".** Scope = boat **telemetry** (GPS, IMU, velocity, etc.) flowing from the low-level controller through the Pi 5 (Ubuntu 24.04 + ROS 2 Jazzy, headless, on the *IoT IMT Nord Europe* network) into the VRX simulator on the Linux workstation. Water-quality sensor data is **not** part of Obj 1 — it belongs under Obj 2. Both streams ultimately reach the simulator, but Obj 1 owns only the telemetry plumbing. The simulator mirrors the real boat's pose; this is the digital-twin baseline.
+
+Architecture inside Obj 1:
+
+- **MAVLink ↔ ROS bridge on the Pi 5.** `mavros2` (the ROS 2 port of MAVROS) translates MAVLink frames from the low-level controller into ROS topics; ROS commands flow the other way. **MAVProxy is *not* the bridge** — it is a MAVLink router/multiplexer for fanning out to additional ground-control tools (QGroundControl, Mission Planner) when needed. The two are easy to confuse and have been in the project's discussion notes.
+- **Pi 5 ↔ Linux workstation via ROS 2 / DDS** over the shared IoT WiFi. Direct topic discovery once both nodes share the same `ROS_DOMAIN_ID`. **Caveat:** corporate IoT networks frequently block multicast (DDS's default discovery transport) or isolate WiFi clients. This must be verified early with a basic `talker` / `listener` round-trip before serious pipeline work. Workarounds if multicast fails: Fast-DDS Discovery Server (unicast), Cyclone DDS peer list, or direct Ethernet during testing.
+
+Design implications worth tracking explicitly (so the digital-twin framing carries weight in the eventual report):
+
+- **Sim physics state when the real boat is connected.** Decide whether the simulator's physics step still runs in parallel with the real boat (so sim-predicted vs real-observed pose can be compared, surfacing model error) or whether it freezes and merely renders the real pose. Recommendation: run both; expose a launch flag.
+- **Topic remapping.** The current sim publishes `/wamv/sensors/gps/gps/fix` etc.; `mavros2` publishes `/mavros/global_position/global` etc. Downstream planner / controller / dashboard need to read from either source transparently. The existing `launch/remap.launch.yaml` is the home for this; worth a focused pass before Pi 5 hardware lands.
+- **Digital-twin value beyond mirroring.** Mirroring the real boat alone adds nothing the boat cannot do. Value comes from sim-side computation the real boat cannot perform: predict-ahead (run sim faster than real-time on current commands), what-if (alternative commands from current state), the eventual water-quality CA heatmap overlay (Obj 2). Worth being explicit about which of these is claimed for the deliverable.
+
+**Obj 2 — CA model compute placement.** Most likely **Linux-side**, not on the Pi 5: more compute headroom, easier dashboard integration, less contention with the boat-side control loop. Pending explicit confirmation in the next supervisor exchange.
+
+**Obj 3 — "regional datasets" portion REMOVED.** Accessible historical data for the project's region (CESER / CPER ECRIN / VERD-Eau / CASTREau / CAP'Eau) is insufficient or not available. Validation is replaced by **same-day cross-validation**: collect partial-coverage data along two routes R₁ + R₂ in a single outing; hold out R₂; train the CA on R₁ only; predict R₂ from CA; compare predictions to the held-out R₂ measurements. No temporal-change confound on the model error. A few-days' return visit is acceptable for slow-changing parameters (conductivity in a stable closed lake) but not for dynamic ones (DO post-rain, turbidity post-disturbance) — the original meeting interpretation of "navigate one route on day 1, return on day 2-3 with a different route, compare to day-1 prediction" was refined to surface this temporal-confound issue.
+
+**Obj 3 — ML scope refinement.** The meeting initially discussed "training an ML model deriving from the CA function" for anomaly detection; this was refined since training ML on CA outputs just relearns the CA and adds no information. Refined approach (still scoped as "if time permits"):
+
+- **Residual-based anomaly detection** — flag measurements where `|real − CA-predicted|` exceeds a threshold. Statistics on top of CA; light-touch and fastest to implement.
+- **Time-series forecasting** — ARIMA / Prophet / LSTM on collected measurement sequences for trend prediction.
+- **Physics-informed ML (stretch)** — use CA as a physics prior; train ML to predict the residual between CA and reality. Learns the CA's systematic blind spots; most interesting research-wise.
+
+### 1.2 Open questions surfaced 30/04 (sent for teammate input)
+
+Three architectural questions raised in the 30/04 meeting and sent in writing to the teammate maintainer for confirmation ahead of the next supervisor exchange:
+
+1. **Phase A water-quality parameter subset** — full set (pH, DO, turbidity, conductivity, temperature, …) or a smaller subset? See §5.3(a).
+2. **CA model compute placement** — Linux workstation (recommended) or Pi 5? See §1.1 above.
+3. **Validation methodology** — same-day cross-validation (recommended) or a few-days' return visit? See §1.1 above + §6 Phase E.
+
 ---
 
 ## 2. Current state (as of 24/04/2026)
@@ -296,14 +331,20 @@ These are recorded here to pre-empt scope drift and to make dependencies visible
 
 ### Phase E — Validation + ML
 
-- Blocked on regional dataset access (CESER / ECRIN / VERD-Eau / CASTREau / CAP'Eau).
-- Ingest regional dataset; align spatially / temporally with the CA-generated field.
-- Define validation metric (RMSE per parameter? Spatial correlation? Anomaly-detection precision / recall?).
-- ML component (time-permitting): could target anomaly detection on streaming readings (unsupervised or one-class), or trend prediction on the historical field.
+- **Validation approach (locked 30/04/2026):** same-day cross-validation. Collect partial-coverage data along two routes R₁ + R₂ in a single outing; hold out R₂; train the CA on R₁ only; predict R₂ from CA; compare to held-out R₂ measurements. No temporal-change confound on the model error. Day-gap return visits are acceptable for slow-changing parameters only (e.g., conductivity in a stable closed lake), not for dynamic parameters (DO, turbidity post-disturbance). See §1.1 for the meeting rationale.
+- The "regional datasets" pathway (CESER / CPER ECRIN / VERD-Eau / CASTREau / CAP'Eau) is **out of scope** as of 30/04/2026 — accessible historical data for the project's region is insufficient. The Obj 3 wording in §1 is preserved for traceability against the formal document; the implementation interpretation is the cross-validation approach above.
+- Validation metrics: RMSE per parameter on held-out R₂; spatial correlation between predicted-vs-observed; per-parameter coverage of the cross-validation across multiple outings.
+- ML component (time-permitting), refined 30/04/2026:
+  - **Residual-based anomaly detection** — flag measurements where `|real − CA-predicted|` exceeds a threshold. Statistics on top of CA; light-touch.
+  - **Time-series forecasting** — ARIMA / Prophet / LSTM on the time series of measurements for trend prediction.
+  - **Physics-informed ML (stretch)** — use CA as a physics prior, train ML to predict the residual between CA and reality. Learns systematic CA error.
+  - The discarded framing "ML trained on CA outputs" was rejected in the 30/04 meeting — training on a model's outputs just relearns the model. See §1.1.
 
 ---
 
 ## 7. Open questions — supervisor conversation
+
+> **Update 30/04/2026:** the smaller-scale on-site scoping meeting (§1.1) answered or refined several items. **Answered:** Phase E #1 (regional datasets — out of scope) and the ML framing (residual-based / time-series / physics-informed — see §1.1). **New questions surfaced** on CA placement and validation methodology (§1.2); folded into the relevant subsections below.
 
 Questions that unblock specific next steps. Organised by phase.
 
@@ -327,8 +368,10 @@ Questions that unblock specific next steps. Organised by phase.
 
 ### Phase E (validation & ML)
 
-1. Which regional dataset can we obtain access to, and in what format?
-2. Is ML a required deliverable or a stretch goal? Specific technique the supervisors expect (e.g., supervised regression, anomaly detection, LSTM)?
+1. ~~Which regional dataset can we obtain access to, and in what format?~~ — **Answered 30/04:** out of scope (insufficient accessible historical data). Validation now uses same-day cross-validation; see §1.1 + §6 Phase E.
+2. ML scope refined 30/04 (see §1.1) — residual-based anomaly detection + time-series forecasting + physics-informed ML (stretch). **Open:** which subset of the three is the priority for the deliverable?
+3. **(new 30/04)** Validation methodology — confirm same-day cross-validation as the primary approach; clarify which parameters are slow-changing enough to permit a few-days' return-visit fallback.
+4. **(new 30/04)** CA model compute placement — Linux workstation (recommended) or Pi 5?
 
 ### Process
 
@@ -385,3 +428,4 @@ This is captured for traceability, not action. Re-open this section only when on
 | 21/04/2026 | Initial version. Consolidates Phase 5 scope summary (detail in `working_diary/2026-04-19_to_2026-04-20_phase5_prep_scope_plan.md`), adds research-extension architecture and Phase A consulting scope. |
 | 24/04/2026 | Phase 5 summary reworded for 23/04 supervisor hardware walk-through: Pi 5 visually verified inside CCU; MP/QGC install added as prep task; low-level CCU note now flags "likely autopilot" as the working hypothesis from prof's MP/QGC ask; new bullet for Phase 5.2+ dashboard-through-MAVLink longer-term goal; Phase 5 open-questions list gains an autopilot / MAVLink-topology question. |
 | 30/04/2026 | Added §8 Sim infrastructure — VRX upstream fork captured as scheme-only with triggers / what-it-won't-solve / cost / explicit "not now" framing. Revision log renumbered §8 → §9. |
+| 30/04/2026 | §1.1 Scope clarifications + §1.2 Open questions added after the on-site scoping meeting (smaller scale than planned — campus power outage + IMT Mines Alès supervisor unavailable, so the on-site team ran its own session): Obj 1 = telemetry only (water-sensor data is Obj 2); MAVROS as the canonical MAVLink↔ROS bridge (MAVProxy is a router, not the bridge); DDS-over-IoT-WiFi multicast verification flagged as early-priority; CA placement most likely Linux-side; "regional datasets" portion of Obj 3 removed (insufficient accessible regional historical data); validation refined to same-day cross-validation; ML scope refined (residual-based + time-series + physics-informed; "ML trained on CA outputs" rejected). §6 Phase E rewritten to match. §7 top note + Phase E sub-list refresh. |
