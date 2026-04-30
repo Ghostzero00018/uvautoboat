@@ -168,6 +168,7 @@ Bundle findings; one commit per coherent class. Don't bundle unrelated fixes int
 Yesterday's diary L196-199 deferred this:
 
 > Post-fix validation (deferred — current session is mid-run):
+>
 > 1. After next cold boot, run the launcher.
 > 2. `cat /tmp/autoboat_launcher_probe.log` — expect zero `BrokenPipeError` lines.
 > 3. `ls /var/crash/` — no new ros2 crash file dated today.
