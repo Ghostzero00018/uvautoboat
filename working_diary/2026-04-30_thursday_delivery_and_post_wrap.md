@@ -159,7 +159,15 @@ grep -rnIE '(PERCEPTION_DEFAULTS|CONTROLLER_DEFAULTS|data-default)' \
 
 Bundle findings; one commit per coherent class. Don't bundle unrelated fixes into one mega-commit.
 
-**Outcome.** [To fill]
+**Outcome.** Three classes addressed, bundled into one commit (`2dfa650 docs: sync node docstrings, refresh stamps, drop dead wiki links`) rather than the originally-planned three per-class commits:
+
+- **A — docstring `Subscribes:` / `Publishes:` drift.** `plan/plan/waypoint_planner.py` +2 subs (`/planning/detour_request`, `/planning/skip_waypoint`); `control/control/heading_controller.py` +1 sub (`/planning/mission_command`) + 2 pubs (`/control/replan_request`, `/planning/skip_waypoint`). `lidar_perception.py` clean (4 subs / 2 pubs all already in docstring).
+- **B — stale `Last Updated` stamps.** `USER_MANUAL.md` 24/04 → 27/04 (last touched by `81cc4d6`); `web_dashboard/autoboat/README_autoboat_dashboard.md` 24/04 → 28/04 (last touched by `19969c3 refactor(dashboard): drop legacy default fallbacks`). Bumped to last-edit dates rather than today's date — accurate to evidence.
+- **C — broken wiki cross-references.** `wiki/Quick_Start.md` Next-Steps section (4 broken pointers to non-existent `First-Mission-Tutorial` / `Terminal-Mission-Control` / `Web-Dashboard-Guide` / `Configuration-and-Tuning` pages) removed entirely; `wiki/Installation_Guide.md` kept the working `[Quick Start](Quick_Start)` pointer, dropped 2 broken siblings. `scripts/sync_wiki.sh` confirmed not to rewrite anchors — these were genuinely broken on the published GitHub Wiki too, not just locally.
+
+Verified clean (no fix needed): TODO inventory (1 well-formed forward-looking note in `autoboat_cli.py:155` about a possible Tier-2 Trigger-service migration, conditional on a multi-operator coordination requirement); 16/04 rename residue (21 hits, all in intentional historical/explanatory docs — Glossary, Refactor Plan, Board milestone rows, README pointer, Home wiki note); `*_DEFAULTS` / `data-default` residue post-`19969c3` (3 hits, all in historical docs narrating the past 4-place sync model and its 28/04 collapse); cold-start time mention in `wiki/Common_Issues.md:22` (properly disclaimed in same sentence as hardware-dependent); health-check counts (5 mentions all consistent at 49 across `README.md` + `USER_MANUAL.md`).
+
+Diff summary: 6 files / +8 / -14. Pushed.
 
 ---
 
@@ -206,7 +214,13 @@ ros2 node list | grep -E 'heading_controller|lidar_perception|waypoint_planner|w
 - **BrokenPipeError still appears OR Apport popup fires:** capture `/tmp/autoboat_launcher_probe.log` + relevant tab logs + any new `/var/crash/_opt_ros_jazzy*.crash` file; defer fix to Mon 04/05 (post-Labour-Day).
 - **Other failure mode** (timeout warnings / missing nodes / new tab fatal exits): same — capture, defer.
 
-**Outcome.** [To fill]
+**Outcome.** PASS. All three pass criteria green on the first cold boot since `62636e9` landed:
+
+- `BrokenPipeError` in `/tmp/autoboat_launcher_probe.log`: **0** (probe log 99 B, only benign noise).
+- `/var/crash/_opt_ros_jazzy*.crash`: only the pre-existing `1002.crash` from 29/04 10:23 (untouched); no new today-dated crash.
+- 5 expected nodes alive (`heading_controller_node`, `health_check_service`, `lidar_perception_node`, `waypoint_planner_node`, `waypoint_visualizer_node`).
+
+`62636e9` capture-then-grep refactor in `wait_for_topic` holds. Launch time **43 s** (vs 29/04's 52 s — 9 s faster, normal hardware variance per the `37e197c` disclaimer on launch-timer baseline). No Apport popup observed during launch. Stack left running through the morning since the demo path was already settled (recorded clips, no live demo gate).
 
 ---
 
@@ -245,7 +259,12 @@ ros2 node list | grep -E 'heading_controller|lidar_perception|waypoint_planner|w
 - Alternatives (continue patches; contribute upstream).
 - Explicit "not now" framing — this is a scheme, not a plan.
 
-**Outcome.** [To fill]
+**Outcome.** Two surfaces landed in commit `626ce96 docs(roadmap): add §8 VRX upstream-fork scheme + Board entry`:
+
+- **`Board.md` Timeline:** new TBD row (🔜) `VRX upstream fork (scheme only — triggers / cost / explicit "not now" framing captured in wiki/Roadmap.md §8)`, slotted between Real-hardware deployment and Coverage Planning (both 🔜 deferred items).
+- **`wiki/Roadmap.md`:** new §8 "Sim infrastructure — VRX upstream fork (scheme only, not active)" with 5 subsections — 8.1 Today's baseline (1 patch — `patch_vrx.sh` for upstream issue #876, well under threshold), 8.2 Trigger conditions (4: patch growth past ~3, project-specific changes upstream wouldn't accept, Phase 5+ sim-side dependencies, long-term maintenance balance flips), 8.3 What forking would NOT solve (3: upstream merge cadence, real-hardware bring-up, test-environment custom worlds), 8.4 Cost estimate + alternatives (3-row table: continue patches / fork / contribute upstream), 8.5 Explicit "not now". Existing §8 Revision log renumbered to §9 with a 30/04 entry.
+
+Diff: `Board.md` +1 line; `wiki/Roadmap.md` +44 / -1. Pushed.
 
 ---
 
@@ -276,21 +295,25 @@ Shifted from Friday per Labour Day.
 
    Skeleton: Mon-Thu (no Fri, no public holiday this week). Mon 04/05 picks up the deferred RTF investigation as the lead item.
 
-**Outcome.** [To fill]
+**Outcome.** Linux-side wrap complete. This commit fills the `[To fill]` placeholders for Blocks D / E / F / G; adds 30/04 milestone rows to `Board.md` Timeline for Blocks E / D / F; bumps `Board.md` `Last Updated` stamps (header L11 + Acknowledgments L365) from 29/04 → 30/04.
+
+Block A (Wed PPT-spillover finish: A1 visual placement / A2 timing pass / A3 rehearsal pass 3 / A4 10-item review), Block B (final dry-run rehearsal — Linux pre-flight N/A per recorded-clips choice), and Block C (delivery + supervisor asks capture: CCU low-level architecture / Phase A parameter set / hardware-arrival window) outcomes remain Windows-side / post-delivery — to be filled in a follow-on commit once the supervisor meeting has happened and asks are captured.
+
+Week 9 scaffold creation (`Research_intern_IMT_NE/working_diary/Week9_04_05-08_05.md` Mon-Thu skeleton with Mon 04/05 picking up the RTF investigation kickoff as lead item) flagged as Windows-side action — not landable from Linux.
 
 ---
 
 ## Verification summary — 30/04 (check at end of day)
 
-- [ ] Wed spillover finished (Block A: A1-A4 all landed)
-- [ ] Final dry-run passed; readiness verdict recorded (Block B)
-- [ ] Presentation delivered; supervisor asks captured; Phase A parameter-set decision recorded (Block C)
-- [ ] Repo markdown + code-comment cleanup pass complete; per-class commits pushed (Block D)
-- [ ] Cold-start re-test passed; no Apport, zero `BrokenPipeError` in probe log (Block E)
-- [ ] VRX fork scheme recorded in `Board.md` + `wiki/Roadmap.md` (Block F)
-- [ ] Week 8 wrapped; 30/04 Board milestone row added; Week 9 scaffold created (Block G)
-- [ ] This diary section filled
-- [ ] Pre-commit grep clean
+- [ ] Wed spillover finished (Block A: A1-A4 all landed) — Windows-side
+- [ ] Final dry-run passed; readiness verdict recorded (Block B) — Windows-side; Linux pre-flight N/A (recorded clips)
+- [ ] Presentation delivered; supervisor asks captured; Phase A parameter-set decision recorded (Block C) — Windows-side / post-delivery
+- [x] Repo markdown + code-comment cleanup pass complete (Block D) — bundled into single commit `2dfa650`, 3 classes covered
+- [x] Cold-start re-test passed; no Apport, zero `BrokenPipeError` in probe log (Block E) — 43 s launch, 5 nodes up
+- [x] VRX fork scheme recorded in `Board.md` + `wiki/Roadmap.md` (Block F) — `626ce96`, §8 in Roadmap, Timeline TBD row in Board
+- [ ] Week 8 wrapped; 30/04 Board milestone row added; Week 9 scaffold created (Block G) — partial: wrap + Board rows ✅; Week 9 scaffold pending Windows-side
+- [ ] This diary section filled — partial: D / E / F / G filled; A / B / C pending Windows-side
+- [x] Pre-commit grep clean
 
 ---
 

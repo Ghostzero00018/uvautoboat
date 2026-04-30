@@ -8,7 +8,7 @@
 |---|---|
 | **Project** | AutoBoat Navigation System |
 | **Repository** | [Ghostzero00018/uvautoboat](https://github.com/Ghostzero00018/uvautoboat) |
-| **Last Updated** | 29/04/2026 |
+| **Last Updated** | 30/04/2026 |
 | **Status** | 🟢 Simulation ready (A* path planning + one-click launcher + wiki docs + dashboard config system + MP/QGC install). Real-hardware deployment prep ongoing — Pi 5 walked through 23/04/2026, bench delivery pending. |
 
 ---
@@ -287,6 +287,9 @@ The whole repo is expected to run on the Pi 5. Long-term (Phase 5.2+): dashboard
 | 28/04/2026 | Cold-start JSON-serialization race fixed in `/control/anti_stuck_status` (`6ec20af`): inline `_safe()` maps `inf` / NaN → `None` in `publish_anti_stuck_status` and the dormant mirror at `publish_status` `obstacle_distance` (caught by class-instance sweep on `_publish_json` callers); init sentinels at L286-289 and the L968 gate left untouched. `wiki/Common_Issues.md` gains a `### Known Startup Warnings (Cosmetic)` subsection cataloguing 4 upstream categories (`kdl_parser` / `libEGL` / Gazebo Follow `(deprecated)` / VRX `WaveVisual` SDF) with origin + why-cosmetic + a `grep -vE` filter recipe (`134e52c`) | ✅ |
 | 29/04/2026 | Cold-boot launcher validation: 28/04 readiness-poll patch (`2c0194a`) holds — fresh-reboot run shows all 5 expected nodes up, no `wait_for_*` timeout warnings, no fatal nav-stack tab exits. Side finding `wait_for_topic` SIGPIPE-trapped `ros2 topic info` (`grep -q` exits early on `Publisher count:` match, closing the pipe; `ros2cli` raises unhandled `BrokenPipeError` on the trailing `Subscription count:` print → Apport `_opt_ros_jazzy_bin_ros2.crash` popup; `set -e` without `pipefail` masked the failure so launcher proceeded). Fixed by capture-then-grep refactor in `wait_for_topic` (`62636e9`). Gazebo RTF throttle flagged out-of-scope (LiDAR `/points` ~2 Hz vs 10 Hz nominal; libEGL DRI2 fallback on NVIDIA RTX A2000 as working hypothesis), deferred to week of 04/05 | ✅ |
 | 29/04/2026 | Launcher prints `Total launch time: N s (Mm Ss)` after success header (`3822e54`): `$SECONDS`-based bash arithmetic, total only (no per-stage breakdown). First observation post-feature-deploy: 52 s on the Linux workstation. Baseline data point for next week's RTF investigation cold-vs-warm comparisons | ✅ |
+| 30/04/2026 | Block E cold-start re-test PASS (first fresh boot since `62636e9` capture-then-grep refactor in `wait_for_topic`): zero `BrokenPipeError` in `/tmp/autoboat_launcher_probe.log`, no new today-dated `/var/crash/_opt_ros_jazzy*.crash` (only pre-fix 29/04 crash file untouched), all 5 expected nodes up, no Apport popup. Launch time 43 s. SIGPIPE fix holds | ✅ |
+| 30/04/2026 | Block D markdown + docstring cleanup pass (`2dfa650`): 3 classes bundled into one commit (+8 / -14 across 6 files). (a) docstring Subscribes/Publishes drift in `waypoint_planner.py` (+2 subs) and `heading_controller.py` (+1 sub / +2 pubs); (b) stale `Last Updated` stamps in `USER_MANUAL.md` (24/04→27/04) and `web_dashboard/autoboat/README_autoboat_dashboard.md` (24/04→28/04) bumped to last-edit dates; (c) 6 broken Next-Steps wiki cross-references in `Quick_Start.md` and `Installation_Guide.md` removed (`scripts/sync_wiki.sh` confirmed not to rewrite anchors — they were genuinely broken on the published wiki too). Verified clean: TODO inventory (1 well-formed forward-looking note), 16/04 rename residue (intentional historical), `*_DEFAULTS` residue (intentional historical), cold-start time + health-check count claims | ✅ |
+| 30/04/2026 | Block F VRX upstream-fork scheme captured (`626ce96`): scheme-only entries in `Board.md` Timeline (new TBD row 🔜) and `wiki/Roadmap.md` §8 "Sim infrastructure — VRX upstream fork" with 5 subsections (today's baseline, trigger conditions, what forking won't solve, cost+alternatives, explicit "not now"). Revision log renumbered §8 → §9. Reserves the future fork-or-don't decision behind explicit triggers (patch count >3, custom mods upstream wouldn't accept, Phase 5+ sim-side dependencies, maintenance balance flip) so the call gets made on evidence | ✅ |
 | TBD | Real-hardware deployment (Pi 5 as confirmed target, visual-verified 23/04/2026; MAVLink autopilot as working hypothesis; low-level CCU architecture TBD) | 🔜 |
 | TBD | VRX upstream fork (scheme only — triggers / cost / explicit "not now" framing captured in `wiki/Roadmap.md` §8) | 🔜 |
 | TBD | Coverage Planning | ⏸️ |
@@ -362,7 +365,7 @@ Current position ──>│  (in Planner)       │
 
 ## 📜 Acknowledgments
 
-**Document Version**: 9.9 | **Last Updated**: 29/04/2026
+**Document Version**: 9.9 | **Last Updated**: 30/04/2026
 
 **Maintained By**: AutoBoat Development Team
 
