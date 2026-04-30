@@ -30,6 +30,7 @@ Topics:
         /planning/current_target (String) - Current navigation target
         /perception/obstacle_info (String) - Obstacle detection data
         /planning/mission_status (String) - Mission state (for E-Stop gate)
+        /planning/mission_command (String) - High-priority mission commands (STOP/RESUME) from CLI / dashboard
         /planning/set_config (String) - runtime parameter updates from dashboard
         /planning/emergency_stop (Bool, latched RELIABLE depth=1) - dedicated E-Stop channel
 
@@ -38,6 +39,8 @@ Topics:
         /wamv/thrusters/right/thrust (Float64) - Right thruster command
         /control/status (String) - Controller status
         /control/anti_stuck_status (String) - Anti-stuck system status
+        /control/replan_request (String) - Request planner reroute when path is blocked
+        /planning/skip_waypoint (String) - Request waypoint skip after multiple stuck attempts
         /control/heading_error (Float64) - body-frame angle-to-target, published per control tick for perception VFH targeting
         /control/param_ranges (String) - JSON [min, max, default] 3-tuples; dashboard syncs HTML min/max + populates liveDefaults for (default: X) hints
 """

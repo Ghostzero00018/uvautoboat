@@ -187,15 +187,6 @@ pkill -9 -f rosbridge
 
 ---
 
-## Next Steps
-
-- **[First Mission Tutorial](First-Mission-Tutorial)** — Detailed step-by-step walkthrough
-- **[Terminal Mission Control](Terminal-Mission-Control)** — Advanced CLI usage
-- **[Web Dashboard Guide](Web-Dashboard-Guide)** — Dashboard features and configuration
-- **[Configuration & Tuning](Configuration-and-Tuning)** — Optimize performance
-
----
-
 ## Troubleshooting Quick Fixes
 
 ### Boat Not Moving

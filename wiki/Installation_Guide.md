@@ -228,9 +228,7 @@ pip3 install numpy matplotlib
 
 Once installation is complete:
 
-1. **[Quick Start](Quick_Start)** — Launch your first mission
-2. **[First Mission Tutorial](First-Mission-Tutorial)** — Detailed walkthrough
-3. **[Configuration & Tuning](Configuration-and-Tuning)** — Customize parameters
+- **[Quick Start](Quick_Start)** — Launch your first mission
 
 ---
 

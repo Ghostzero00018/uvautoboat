@@ -30,6 +30,8 @@ Topics:
         /planning/set_config (String) - runtime parameter updates from dashboard
         /planning/emergency_stop (Bool, latched RELIABLE depth=1) - dedicated E-Stop channel
         /control/replan_request (String) - reroute trigger from controller when blocked
+        /planning/detour_request (String) - side-detour trigger from controller (blocked but not yet stuck)
+        /planning/skip_waypoint (String) - skip-waypoint trigger from controller after stuck attempts exhausted
 
     Publishes:
         /planning/waypoints (String) - JSON list of waypoints
