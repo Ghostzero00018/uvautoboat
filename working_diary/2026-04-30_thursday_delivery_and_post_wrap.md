@@ -457,6 +457,52 @@ Documentation landing:
 - IoT-local network constraint is now explicit, with clear mitigation paths and prep-order ranking. No silent assumption of open internet anywhere in the user-facing docs.
 - Two Board.md milestone rows added (Pi 5 bring-up doc + IoT-local analysis).
 
+---
+
+## Block I — Stale-doc audit thread (3 sweep passes, late evening, **unplanned**)
+
+Triggered by *"check if there are stale comments / docstrings / docs"*. Three cumulative sweeps through the active tree, each catching what the previous missed; 14 fixes total + two drift-resistant structural improvements.
+
+### I1 — First sweep (`8935c6a`)
+
+Two cosmetic findings:
+
+- `launch/autoboat.launch.yaml` header listed 3 nodes; the file actually launches 5 (also `waypoint_visualizer` + `health_check_service`).
+- `plan/plan/waypoint_visualizer.py` module docstring said "subscribes to mission status and waypoints"; code also subscribes to `/wamv/sensors/gps/gps/fix`.
+
+### I2 — Six-phase "ultraplan" audit (`09ff5cd`)
+
+User asked for *"ultraplan, do it seriously"* — six phases: code-comment line-num refs, wiki cross-link integrity, parameter/numeric consistency, wiki content drift, README + USER_MANUAL feature claims, `legacy/DEPRECATED.md` inventory. Findings:
+
+- `heading_controller.py:819` cited `L782` for `force_turn_after_reverse` setter; actual is `L807`.
+- `Quick_Start.md` sample log claimed bilingual "MISSION DÉMARRÉE ! | MISSION STARTED!"; actual code emits English-only "🚀 MISSION STARTED!" (`waypoint_planner.py:465`).
+- `Quick_Start.md` "deprecated `ros2 run plan autoboat`" note pointed at non-existent entry point; rephrased to point at `legacy/all_in_one/vostok1_integrated.py`.
+- `README.md` "VFH steering bias 🔧 Planned (also partially tested)" — VFH is fully implemented per Design_Rationale §"Why VFH disabled by default" (4 tunable params, target-aware logic, 3 of 4 dashboard presets enable it); updated to "✅ Working (off by default — opt-in via `use_vfh_bias` or dashboard preset)".
+- `Installation_Guide.md` `pip3 install numpy matplotlib` would fail under Ubuntu 24.04 PEP 668; added `apt install python3-numpy python3-matplotlib` + `pipx` alternatives.
+- `Design_Rationale.md` §"Why two stop channels" had 4 stale code-cite line numbers (`waypoint_planner.py:338` → `:341`, `:329` → `:330`, `heading_controller.py:384` → `:386`, `:740` → `:744`).
+- `legacy/DEPRECATED.md` L4 + L19 claimed "current system uses modular Vostok1 (OKO + SPUTNIK + BURAN)" + referenced non-existent `launch_vostok1_complete.sh` — stale post-16/04 rename. CLAUDE.md §1.3 normally bans `legacy/` edits, but the rule's intent is preserving frozen *code* not locking misleading current-state documentation; user explicitly authorised the exception.
+
+7 fixes landed.
+
+### I3 — Audit-feedback follow-on (`82d79b5`)
+
+External audit pass caught five more — most painful: I2's `Design_Rationale.md` line-cite fixes had **already drifted again** (`app.js:3354` → `:3432`, `:1841` → `:1900`) because dashboard commits today had shifted line numbers. Solution: stop citing `app.js` line numbers entirely.
+
+- `Design_Rationale.md` no longer cites `app.js` line numbers — switched to function-name references with an explicit note about drift. **Drift-resistance baked in.**
+- `Design_Rationale.md` "Why two stop channels" `waypoint_planner.py:336` cite → `--- SERVICES ---` comment-block name reference (the L336 cite was already stale; line is now blank, retry/ACK comments at 338-340).
+- `Roadmap.md` §3 row — `[Pi5_Bringup_Smoke_Test.md](Pi5_Bringup_Smoke_Test.md)` → `[Pi5_Bringup_Smoke_Test](Pi5_Bringup_Smoke_Test)` per wiki convention (no `.md` suffix; see `UPLOAD_INSTRUCTIONS.md`).
+- `Roadmap.md` §2 + §3 status headers reframed: "as of 24/04/2026" → "foundation baseline 24/04/2026; later deltas appended". **Drift-resistant pattern** — no date bump needed when rows are added.
+- `Roadmap.md` §2 "Regional dataset validation ❌ (blocked on dataset access)" → "❌ removed from scope 30/04/2026 — replaced by same-day cross-validation. See §1.1 + §6 Phase E."
+- Diary 30/04 5× Block A1/A2/A3/A4/B `**Outcome.** [To fill]` placeholders → "Superseded by day-of update (delivery rescheduled); PPT prep artefacts carry forward to the rescheduled session, same deck + same Asks."
+
+### Outcome
+
+- 14 stale doc-items fixed across the three sweeps.
+- Two drift-resistant structural improvements baked in:
+  - `Design_Rationale.md` no longer cites `app.js` line numbers; function-name references only, with explicit drift note.
+  - `Roadmap.md` §2 + §3 use "baseline + delta" framing rather than single fixed-date labels.
+- Active tree is now clean across all checked staleness classes: rename residue (post-16/04), removed-feature residue (`*_DEFAULTS` / `data-default` / smoke detection), Subscribes/Publishes/Services lists, line-num cites, parameter / numeric consistency, wiki cross-links, sample-output drift, Last-Updated stamps, TODO/FIXME inventory.
+
 ### Other deferred
 
 - **P1 pier/bank stuck investigation** — diagnostic plan in `working_diary/2026-04-24_pier_bank_stuck_and_rate_probe.md` Block A.
