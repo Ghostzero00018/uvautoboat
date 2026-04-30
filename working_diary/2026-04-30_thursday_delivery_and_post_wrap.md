@@ -41,13 +41,13 @@ Yesterday's Block B from `working_diary/2026-04-29_*.md` L41-65. Open the deck +
 
 After each slide, eyeball at presentation zoom (View → Reading View / F5) — assets must read at projection size, not just laptop-zoom legible.
 
-**Outcome.** [To fill]
+**Outcome.** Superseded by day-of update (delivery rescheduled); PPT prep artefacts carry forward to the rescheduled session, same deck + same Asks.
 
 ### A2 — Speaker-note timing pass (~30 min)
 
 Yesterday's Block C step 1 (L67-77). Open Notes view; read each slide's EN block aloud, timed; total target 22-26 min EN-primary spoken. Mark overruns in the slide margin.
 
-**Outcome.** [To fill]
+**Outcome.** Superseded by day-of update (delivery rescheduled); PPT prep artefacts carry forward to the rescheduled session, same deck + same Asks.
 
 ### A3 — Rehearsal pass 3 (~1 h)
 
@@ -55,7 +55,7 @@ Yesterday's Block C step 2 (L78-83). Full end-to-end with deck open in front; En
 
 Mark any slide that breaks the rhythm — asset not loading, note too dense, transition feels forced.
 
-**Outcome.** [To fill]
+**Outcome.** Superseded by day-of update (delivery rescheduled); PPT prep artefacts carry forward to the rescheduled session, same deck + same Asks.
 
 ### A4 — Wed-evening 10-item review (~30 min)
 
@@ -70,7 +70,7 @@ Known items from 28/04:
 
 Items 5-10: pull from the outline file at review time.
 
-**Outcome.** [To fill]
+**Outcome.** Superseded by day-of update (delivery rescheduled); PPT prep artefacts carry forward to the rescheduled session, same deck + same Asks.
 
 ---
 
@@ -90,7 +90,7 @@ ros2 node list | grep -E 'heading_controller|lidar_perception|waypoint_planner|w
 # Expect 5 hits.
 ```
 
-**Outcome.** [To fill]
+**Outcome.** Superseded by day-of update (delivery rescheduled); PPT prep artefacts carry forward to the rescheduled session, same deck + same Asks.
 
 ---
 

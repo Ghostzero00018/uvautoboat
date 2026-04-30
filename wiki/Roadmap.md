@@ -134,7 +134,7 @@ Status row added to §3 Phase 5 status table: "Dashboard offline-capable for IoT
 
 ---
 
-## 2. Current state (as of 24/04/2026)
+## 2. Current state (foundation baseline 24/04/2026; later deltas appended in §3 status table + §1.1 / §1.3 30/04 entries)
 
 ### Navigation foundation — ready for hardware
 
@@ -155,7 +155,7 @@ Status row added to §3 Phase 5 status table: "Dashboard offline-capable for IoT
 | Cellular-automata spatio-temporal model | ❌ |
 | Water-quality map visualization in dashboard | ❌ |
 | Real probe integration | ❌ (blocked on hardware) |
-| Regional dataset validation | ❌ (blocked on dataset access) |
+| Regional dataset validation | ❌ removed from scope 30/04/2026 — accessible regional historical data insufficient; replaced by same-day cross-validation. See §1.1 + §6 Phase E. |
 | ML for trend / anomaly detection | ❌ (time-permitting) |
 
 ---
@@ -171,7 +171,7 @@ Status row added to §3 Phase 5 status table: "Dashboard offline-capable for IoT
 - **Transition path:** paper design is a two-layer remap — `topic_tools/relay` from VRX `/wamv/*` names to neutral `/sensors` / `/actuators` names (layer A), plus an optional bridge node for real-hardware protocol translation (layer B). The three pipeline nodes continue to subscribe to VRX names during Phase 5.0; no code churn required until layer A is proven.
 - **Phase 5.2+ dashboard integration (longer-term, prof request 23/04):** web dashboard should eventually issue waypoints and read telemetry *through* MP/QGC as the autopilot front-end, rather than directly against ROS 2 nodes. Requires a MAVLink bridge on the Pi 5 (`mavros` / `mavsdk` / similar) plus dashboard-side MAVLink emit/subscribe. Explicitly out of Phase 5.0 bring-up scope; preserved current dashboard UX as the behavioural target the MAVLink-bridged version must match.
 
-### Status of prep tasks (as of 24/04/2026)
+### Status of prep tasks (baseline 24/04/2026; rows added 30/04/2026 for bring-up doc + IoT-local dashboard prep)
 
 | Task | Status |
 |:-----|:------:|
@@ -182,7 +182,7 @@ Status row added to §3 Phase 5 status table: "Dashboard offline-capable for IoT
 | Launcher readiness polls (pre-requisite for Pi 5 slower-CPU timing) | ✅ landed 20/04/2026 |
 | Profile `/perception/obstacle_info` Hz in VRX; baseline for Pi 5 comparison | ✅ 20.00 Hz at RTF ≈ 1.0 (22/04/2026); rate tracks Gazebo RTF |
 | Install Mission Planner + QGroundControl on Linux workstation (prof-requested toolchain) | ✅ 24/04/2026 — MP 1.3.9384.38258 + QGC stable-daily 09/10/2025; MP-under-Mono GDAL / OGR / OSR degraded (Windows `.msi` fallback held for GIS demos) |
-| Pi 5 ↔ flight-controller bring-up smoke-test procedure documented | ✅ 30/04/2026 — see [Pi5_Bringup_Smoke_Test.md](Pi5_Bringup_Smoke_Test.md): SSH + UART + dialout setup, MAVProxy install (with PEP 668 caveat for Ubuntu 24.04), heartbeat verify, `stream_data.py` IMU smoke test with 8 known issues catalogued + suggested fixes |
+| Pi 5 ↔ flight-controller bring-up smoke-test procedure documented | ✅ 30/04/2026 — see [Pi5_Bringup_Smoke_Test](Pi5_Bringup_Smoke_Test): SSH + UART + dialout setup, MAVProxy install (with PEP 668 caveat for Ubuntu 24.04), heartbeat verify, `stream_data.py` IMU smoke test with 8 known issues catalogued + suggested fixes |
 | Dashboard offline-capable for IoT-local network deployment | ❌ — required for IoT IMT Nord Europe (no internet); analysis + 3-path mitigation in §1.3. Path A (vendor libs) + Path B (offline tile server) are the recommended pre-deployment work. |
 | Shore-comms plan (WiFi range test, 4G fallback) | ❌ |
 
