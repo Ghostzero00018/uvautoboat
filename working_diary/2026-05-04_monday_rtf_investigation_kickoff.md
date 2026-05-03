@@ -22,7 +22,27 @@ Active blocks for the day:
 2. **Block B — Visualizer JSON-parse warning verification** (~5 min, AM): confirm the 30/04 visualizer fix (`waypoint_visualizer.py` `mission_status_callback_modular` warns on bad JSON) actually fires when expected and stays silent under normal operation. Manual malformed-JSON injection.
 3. **Block C — Wiki sync propagation check** (~2 min, AM): GitHub Action on push-to-main probably synced the 30/04 doc commits over the weekend; verify on the published wiki; run `scripts/sync_wiki.sh` if not.
 4. **Block D — RTF investigation kickoff** (~rest of the day, AM-PM): the actual main work. First diagnostic `glxinfo | grep "OpenGL renderer"` + `ros2 topic hz /clock` to identify whether NVIDIA driver is actually active. Branch tree captured below.
-5. **Block E — Day wrap + Week 9 scaffold** (~30 min, evening): fill diary outcomes; Board.md milestone row(s); commit + push; create `Week9_04_05-08_05.md` scaffold in the external diary folder (carryover from 30/04 Block G).
+5. **Block E — Day wrap** (~20 min, evening): fill diary outcomes; Board.md milestone row(s); commit + push; fill the Mon "Outcome:" line in the existing external Week 9 diary (the scaffold was already landed Sunday — see "Pre-Monday work" section below).
+
+---
+
+## Pre-Monday work landed Sunday 03/05 (committed + pushed before Monday opens)
+
+Doc cleanup + invisibility hygiene + tomorrow's prep, all in `main` + Gist by the time the Monday session opens.
+
+- **Dashboard_Security refresh** — server-side `PARAM_RANGES` validation now noted in the security posture; XSS finding retargeted from `/rosout` (already safe via `textContent`) to `addLog()` `innerHTML`; "Unauthenticated commands within validated bounds" reframe; SRI finding marked resolved + reframed as CDN-availability risk pointing at Roadmap §1.3.
+- **README_WIKI restructure** — reclassified as synced wiki-meta page (matches actual sync — `UPLOAD_INSTRUCTIONS.md` is the only excluded file in both `scripts/sync_wiki.sh` and `.github/workflows/sync-wiki.yml`); inventory updated (`Roadmap.md` + `Pi5_Bringup_Smoke_Test.md` added); stale "Additional Pages Needed" wishlist removed (24 ghost pages including `Atlantis-Architecture.md`).
+- **A\* diagram topic fix** in `USER_MANUAL.md` + `Board.md` — `/perception/obstacles` → `/perception/obstacle_info` (the actual published topic).
+- **`waypoint_visualizer.py` JSON parse warning** — `mission_status_callback_modular` no longer silently swallows `JSONDecodeError`; now logs at WARN level (matches the sibling `waypoints_callback_modular` pattern). **Block B verifies this on Monday — only new code path from Sunday.**
+- **Conventions doc (Gist) trim** — §6 swapped from project-state pinning → canonical-source pointers + 3 method bullets; §10 collapsed to a one-line pointer; §12 smoke test reduced to method/behaviour-only (project-state questions deliberately removed); §1 / §2 / §5 / §11 wording aligned to the new method-only shape; static "Last updated" stamp removed.
+- **§1.6 invisibility sweep extended** — added `c2pa|claim_generator|softwareAgent` tokens, added `*.svg` to `--include`, added asset-metadata caveat noting base64-embedded raster blobs slip past unless decoded (recommend `exiftool -all=` or a PNG-chunk stripper for new asset commits).
+- **Main-repo invisibility cleanup** — stripped C2PA `caBX` chunks from `images/logo_autoboat_v2.svg` (SVG-embedded PNG, ~73 KB removed; same UUID-tagged C2PA box as the standalone source) and `images/LogoBase.png` (orphan source PNG, ~55 KB removed); both PNGs preserve IHDR / IDAT / IEND; logo renders unchanged. Dropped explicit conventions-file reference from `working_diary/2026-04-30_*.md` L483 per the invisibility blocklist (wording reframed inline).
+- **External Week 9 diary scaffold** created at `Research_intern_IMT_NE/working_diary/Week9_04_05-08_05.md` — Mon 04/05 detailed (cross-links this file's Block A-E); Tue/Wed/Thu blank pending Mon outcome; Fri 08/05 noted as V-E Day public holiday.
+- **Tomorrow's Linux-side test plan + this scaffold** drafted Sunday evening — Block A-E breakdown + branch trees + pass criteria + rollover conditions.
+
+**Implication for Monday:** the only new code path landed Sunday is the visualizer JSON warn (Block B verifies). Everything else is doc-only — no runtime test needed for those. Block D (RTF investigation) starts from the 29/04 working hypothesis — nothing landed Sunday on that front.
+
+**Final main-repo §1.6 sweep result before Sunday push:** zero matches across the full keyword set + all included file types (text + binary). Repo is invisibility-clean entering Monday.
 
 ---
 
