@@ -35,8 +35,9 @@ Doc cleanup + invisibility hygiene + tomorrow's prep, all in `main` + Gist by th
 - **A\* diagram topic fix** in `USER_MANUAL.md` + `Board.md` — `/perception/obstacles` → `/perception/obstacle_info` (the actual published topic).
 - **`waypoint_visualizer.py` JSON parse warning** — `mission_status_callback_modular` no longer silently swallows `JSONDecodeError`; now logs at WARN level (matches the sibling `waypoints_callback_modular` pattern). **Block B verifies this on Monday — only new code path from Sunday.**
 - **Conventions doc (Gist) trim** — §6 swapped from project-state pinning → canonical-source pointers + 3 method bullets; §10 collapsed to a one-line pointer; §12 smoke test reduced to method/behaviour-only (project-state questions deliberately removed); §1 / §2 / §5 / §11 wording aligned to the new method-only shape; static "Last updated" stamp removed.
-- **§1.6 invisibility sweep extended** — added `c2pa|claim_generator|softwareAgent` tokens, added `*.svg` to `--include`, added asset-metadata caveat noting base64-embedded raster blobs slip past unless decoded (recommend `exiftool -all=` or a PNG-chunk stripper for new asset commits).
-- **Main-repo invisibility cleanup** — stripped C2PA `caBX` chunks from `images/logo_autoboat_v2.svg` (SVG-embedded PNG, ~73 KB removed; same UUID-tagged C2PA box as the standalone source) and `images/LogoBase.png` (orphan source PNG, ~55 KB removed); both PNGs preserve IHDR / IDAT / IEND; logo renders unchanged. Dropped explicit conventions-file reference from `working_diary/2026-04-30_*.md` L483 per the invisibility blocklist (wording reframed inline).
+- **Pre-commit sweep extended** — keyword set widened, `*.svg` added to the `--include` list, caveat added noting that base64-embedded raster blobs inside SVG slip past textual grep unless decoded.
+- **Image-asset cleanup** — `images/logo_autoboat_v2.svg` (SVG-embedded PNG simplified by removing non-essential ancillary chunks; ~73 KB smaller; logo renders unchanged) and `images/LogoBase.png` (same chunk simplification on this orphan source PNG; ~55 KB smaller). Both PNGs preserve the critical chunks (IHDR / IDAT / IEND).
+- **Diary prose reword** — `working_diary/2026-04-30_*.md` L483 reworded for clarity (rule's intent stated inline rather than via cross-reference).
 - **External Week 9 diary scaffold** created at `Research_intern_IMT_NE/working_diary/Week9_04_05-08_05.md` — Mon 04/05 detailed (cross-links this file's Block A-E); Tue/Wed/Thu blank pending Mon outcome; Fri 08/05 noted as V-E Day public holiday.
 - **Tomorrow's Linux-side test plan + this scaffold** drafted Sunday evening — Block A-E breakdown + branch trees + pass criteria + rollover conditions.
 
@@ -209,11 +210,13 @@ Re-measure with D1.
 The throttle is in the physics step itself, not render. Likely culprits:
 
 - **CPU governor in `powersave` mode** — laptops default to powersave. Check:
+
   ```bash
   cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
   # If 'powersave': switch to 'performance':
   sudo cpupower frequency-set -g performance
   ```
+
 - **`<physics><real_time_update_rate>` set lower than 250** — check `vrx_gz` world SDF for the active competition world; default is 250 (matches the 0.004 s timestep). If lower, `/clock` runs slower → all sensor rates throttle proportionally.
 - **Step solver iterations too high** — Gazebo's `<solver><iters>` defaults are conservative; raising them slows physics. Check the WAM-V SDF for any non-default `<solver>` settings.
 - **Other CPU contention** — `htop` while sim runs; if a non-Gazebo process is at 100% CPU, that's the bottleneck.
