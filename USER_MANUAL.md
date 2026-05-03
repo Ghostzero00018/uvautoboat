@@ -1602,10 +1602,10 @@ The Waypoint Planner now has A* path planning algorithm for navigating to points
 
 ```text
 
-/perception/obstacles ────>┌─────────────────────┐
-                    │  AStarSolver        │────> Detour waypoints inserted into /planning/waypoints
-Current position ──>│  (in Planner)       │
-                    └─────────────────────┘
+/perception/obstacle_info ────>┌─────────────────────┐
+                        │  AStarSolver        │────> Detour waypoints inserted into /planning/waypoints
+Current position ──────>│  (in Planner)       │
+                        └─────────────────────┘
 
 ```
 

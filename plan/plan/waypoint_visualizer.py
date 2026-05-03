@@ -85,13 +85,19 @@ class WaypointVisualizer(Node):
             self.path_points.pop(0)
             
     def mission_status_callback_modular(self, msg):
-        """Parse mission status from waypoint planner (modular mode)"""
+        """Parse mission status from waypoint planner (modular mode).
+
+        Logs decode errors at WARN level (matches the sibling
+        waypoint callback below). A silent `pass` would let RViz keep
+        showing a stale current waypoint indefinitely with no operator
+        hint that the publisher is sending malformed data.
+        """
         try:
             data = json.loads(msg.data)
             if 'current_waypoint' in data:
                 self.current_wp_index = data['current_waypoint'] - 1  # Convert 1-indexed to 0-indexed
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as e:
+            self.get_logger().warn(f"Mission status parse error: {e}")
 
     def waypoints_callback_modular(self, msg):
         """Receive waypoint list from waypoint planner - handles both formats"""

@@ -14,8 +14,8 @@ Security posture, known vulnerabilities, and recommended mitigations for the Aut
 | Authorization | None — all users have full control (start mission, emergency stop, modify parameters) |
 | Transport encryption | None — plain HTTP (8002), WS (9090), HTTP (8080) |
 | Network binding | `0.0.0.0` on all 3 ports — accessible to entire LAN |
-| Input validation | Client-side only (HTML `min`/`max` attributes in `index.html`) |
-| XSS protection | Partial — world banner escaped, but rosout log messages inserted via `innerHTML` without escaping |
+| Input validation | **Two-layer (since 17/04/2026):** client-side HTML `min`/`max` attributes + server-side `PARAM_RANGES` rejection in each Python node (`heading_controller`, `waypoint_planner`, `lidar_perception`). Out-of-range values rejected with `Rejected <name>=<value> (valid range: lo–hi)` at WARN level. |
+| XSS protection | Partial — world banner + rosout terminal both safe (`textContent`); residual risk in `addLog()` which still uses `innerHTML` interpolation. |
 
 ### Open Ports
 
@@ -38,14 +38,16 @@ Anyone on the same network can access `http://<boat-ip>:8002` and immediately co
 - **Files:** entire dashboard (`app.js`, `index.html`)
 - **Impact:** full unauthorized control
 
-#### 2. XSS in terminal log panel
+#### 2. XSS via `addLog()` event-log helper
 
-ROS log messages from `/rosout` are inserted into the DOM via `innerHTML` without HTML escaping.
+The generic `addLog(message, type)` helper (`app.js`) builds its DOM via `innerHTML` template literal with the message body interpolated unescaped. Any caller that forwards untrusted text (e.g., free-text fields, rosbridge-relayed strings, future remote sources) into `addLog()` opens the dashboard to script execution.
 
-- **File:** `web_dashboard/autoboat/app.js` (log display function)
-- **Attack vector:** a ROS node publishes a log message containing `<script>` tags — the dashboard executes it
+- **File:** `web_dashboard/autoboat/app.js` — `addLog()` function (around L1419)
+- **Attack vector:** an attacker controls the value passed to `addLog()` — typically via something the dashboard quotes back from a remote source — and includes `<script>` tags or `<img onerror=...>`
 - **Impact:** arbitrary JavaScript execution in the operator's browser
-- **Note:** the world banner text IS properly escaped (`<` → `&lt;`), but the log panel is not
+- **Already mitigated (no longer a finding):**
+  - **Rosout terminal panel** — `addTerminalLine()` builds the row wrapper via `innerHTML` but writes the actual log message body via `.textContent`, so `<script>` in a ROS log message renders as text. **Safe.**
+  - **World banner text** — properly escaped (`<` → `&lt;`).
 
 #### 3. Unencrypted WebSocket
 
@@ -63,12 +65,14 @@ The HTTP server, rosbridge, and web_video_server all bind to all network interfa
 
 ### High
 
-#### 5. No server-side parameter validation
+#### 5. Unauthenticated commands within validated bounds (operational risk)
 
-PID gains, speeds, safety distances, and A* settings are validated only by HTML `min`/`max` attributes in the browser. A network attacker bypassing the dashboard can send arbitrary values directly to rosbridge.
+PID gains, speeds, safety distances, A* settings, and other tunables are now validated **server-side** against `PARAM_RANGES` in each Python node (added 17/04/2026). Out-of-range values are rejected with `Rejected <name>=<value> (valid range: lo–hi)` at WARN level, surfaced as a red toast on the dashboard. So `max_speed: 99999` no longer lands.
 
-- **File:** `web_dashboard/autoboat/app.js` — config send functions
-- **Impact:** dangerous parameter values (e.g., `max_speed: 99999`) accepted by ROS nodes
+**Residual risk:** any LAN client (no auth — see #1) can still send **valid-but-tactically-dangerous** values **within** the allowed bounds — e.g., `max_speed: 800` (the upper bound) at the wrong moment, an emergency-stop release during a near-collision, or a `waypoint_tolerance` so loose the boat skips real targets. Range validation is a guard against numeric mistakes, not against an adversary inside the bounds.
+
+- **Files:** `control/control/heading_controller.py` (`_validate`), `plan/plan/waypoint_planner.py` (`_validate`), `plan/plan/lidar_perception.py` (range check inside config callback)
+- **Impact:** range-out values rejected; valid-but-unsafe operational commands still succeed without authentication.
 
 #### 6. Camera topic input — only syntactic validation, no type check
 
@@ -87,12 +91,11 @@ rosbridge allows any connected client to publish to `/wamv/thrusters/left/thrust
 
 ### Medium
 
-#### 8. CDN dependencies without Subresource Integrity
+#### 8. ~~CDN dependencies without Subresource Integrity~~ — Resolved; downgraded to availability risk
 
-`roslib.js` and `leaflet.js` are loaded from CDNs (`cdn.jsdelivr.net`, `unpkg.com`) without SRI hashes.
+**Resolved.** `roslib.min.js`, `leaflet.js`, and `leaflet.css` in `web_dashboard/autoboat/index.html` (L18–26) all carry `integrity="sha384-…"` + `crossorigin="anonymous"` attributes — a compromised CDN cannot serve malicious replacement code without breaking the SRI check.
 
-- **File:** `web_dashboard/autoboat/index.html` — `<script>` tags
-- **Impact:** if the CDN is compromised, malicious JavaScript runs in the dashboard
+**Adjacent risk now in scope:** CDN *availability*. On a network without internet (e.g., the IoT IMT Nord Europe institutional WiFi used for Phase 5 hardware bring-up), the CDNs are unreachable and the dashboard loses critical functionality (no roslib → no boat connection; no Leaflet → no map). Three mitigation paths captured in [Roadmap §1.3](Roadmap#13-iot-imt-nord-europe--local-only-network-constraint-analysed-30042026): vendor libs locally / offline tile server / map-less fallback.
 
 #### 9. GPS coordinates exposed to OpenStreetMap
 
@@ -125,9 +128,9 @@ The `/rosout` subscription displays all debug/info/warning/error messages from a
 
 | Fix | What to do | Files |
 |:----|:-----------|:------|
-| Fix XSS | Escape HTML entities in rosout messages before `innerHTML` assignment (use `textContent` or manual escaping) | `app.js` |
+| Fix XSS in `addLog()` | Replace the `innerHTML` template literal in `addLog(message, type)` (around `app.js:L1419`) with `textContent` for the message body, mirroring the rosout fix in `addTerminalLine()`. The rosout terminal path is already safe — this is the actual residual surface. | `app.js` |
 | Bind to localhost | Add `-b 127.0.0.1` to `python3 -m http.server 8002` in the launch script and docs | `launch_autoboat_complete.sh`, `autoboat.launch.yaml` |
-| Add SRI hashes | Add `integrity` and `crossorigin` attributes to CDN `<script>` tags | `index.html` |
+| ~~Add SRI hashes~~ | **Already done** — `index.html` `<script>` tags for `roslib`, `leaflet.js`, and `leaflet.css` carry `integrity="sha384-…"` + `crossorigin="anonymous"` attributes. | (no action) |
 
 ### Moderate hardening (~3-5 hours)
 
@@ -136,7 +139,7 @@ The `/rosout` subscription displays all debug/info/warning/error messages from a
 | Basic authentication | Use nginx as a reverse proxy with `htpasswd` for HTTP basic auth in front of all 3 ports |
 | Enable WSS/HTTPS | Configure nginx TLS termination with a self-signed certificate for LAN use |
 | Whitelist camera topics | **Partially implemented 23/04/2026** — combobox dropdown is restricted to topics advertising `sensor_msgs/Image` via `/rosapi/topics_for_type`, plus an `image_raw`/`image_rect`/etc. name-pattern filter. Remaining gap: free-text input in the same field still bypasses the whitelist; a complete fix would reject non-image topics at `updateCameraStream` entry before hitting web_video_server. |
-| Server-side param bounds | Add `min`/`max` range checks in the Python nodes' `config_callback` functions |
+| ~~Server-side param bounds~~ | **Already done 17/04/2026** — `PARAM_RANGES` rejection in each node's config callback (`heading_controller`, `waypoint_planner`, `lidar_perception`). See finding #5 above for the residual operational risk (valid-but-tactically-dangerous values within bounds + missing auth). |
 
 ### Full hardening (future architecture)
 

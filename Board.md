@@ -334,10 +334,10 @@ The whole repo is expected to run on the Pi 5. Long-term (Phase 5.2+): dashboard
 ### A* Path Planning (Implemented)
 
 ```text
-/perception/obstacles ────>┌─────────────────────┐
-                    │  AStarSolver        │────> Detour waypoints inserted into /planning/waypoints
-Current position ──>│  (in Planner)       │
-                    └─────────────────────┘
+/perception/obstacle_info ────>┌─────────────────────┐
+                        │  AStarSolver        │────> Detour waypoints inserted into /planning/waypoints
+Current position ──────>│  (in Planner)       │
+                        └─────────────────────┘
 ```
 
 - Occupancy grid (3m cells) with 8-connected A*

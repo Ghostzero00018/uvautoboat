@@ -1,108 +1,62 @@
 # AutoBoat Wiki Documentation
 
-This directory contains wiki pages for the AutoBoat GitHub Wiki.
+This directory contains wiki pages for the AutoBoat GitHub Wiki at <https://github.com/Ghostzero00018/uvautoboat/wiki>.
 
 ---
 
-## Created Wiki Pages
+## Wiki Pages (synced to GitHub Wiki)
 
-The following pages have been created and are ready for upload:
+The following pages are published to the wiki by `scripts/sync_wiki.sh`:
 
-| Page | Description | Status |
-|:-----|:------------|:------:|
-| **Home.md** | Wiki landing page with navigation | ✅ Ready |
-| **Installation_Guide.md** | Complete setup instructions | ✅ Ready |
-| **Quick_Start.md** | 5-minute getting started guide | ✅ Ready |
-| **System_Overview.md** | Architecture and design philosophy | ✅ Ready |
-| **Glossary.md** | Plain-language definitions of every technical term | ✅ Ready |
-| **Design_Rationale.md** | Why each architecture/algorithm/parameter choice was made | ✅ Ready |
-| **SASS.md** | Simple Anti-Stuck recovery system (active) | ✅ Ready |
-| **3D_LIDAR_Processing.md** | LiDAR Perception system explained (includes VFH and threshold rationale) | ✅ Ready |
-| **Common_Issues.md** | Troubleshooting guide | ✅ Ready |
-| **Dashboard_Security.md** | Security assessment, vulnerabilities, and mitigation recommendations | ✅ Ready |
-| **Node_Naming_Refactor_Plan.md** | Completed rename of OKO/SPUTNIK/BURAN → functional names | ✅ Ready |
-| **UPLOAD_INSTRUCTIONS.md** | How to upload these pages | ✅ Ready |
+| Page | Description |
+|:-----|:------------|
+| **Home.md** | Wiki landing page with navigation |
+| **Installation_Guide.md** | Complete setup instructions |
+| **Quick_Start.md** | 5-minute getting started guide |
+| **System_Overview.md** | Architecture and design philosophy |
+| **Glossary.md** | Plain-language definitions of every technical term |
+| **Design_Rationale.md** | Why each architecture / algorithm / parameter choice was made |
+| **Roadmap.md** | Internship objectives, scope clarifications, Phase 5 prep, research extensions, open questions, sim-infrastructure VRX-fork scheme |
+| **SASS.md** | Simple Anti-Stuck recovery system (active) |
+| **3D_LIDAR_Processing.md** | LiDAR Perception system explained (VFH + threshold rationale) |
+| **Pi5_Bringup_Smoke_Test.md** | Manual procedure to verify Pi 5 ↔ flight-controller serial link via MAVProxy + a `pymavlink` script, before `mavros2` enters the picture |
+| **Common_Issues.md** | Troubleshooting guide |
+| **Dashboard_Security.md** | Security assessment, vulnerabilities, and mitigation recommendations |
+| **Node_Naming_Refactor_Plan.md** | Completed rename of OKO / SPUTNIK / BURAN → functional names (16/04/2026) |
+| **README_WIKI.md** (this file) | Wiki-meta page — listing of synced pages + sync workflow + content sourcing |
+
+### Repo-only files (NOT synced to wiki)
+
+| File | Description | Why excluded |
+|:-----|:------------|:-------------|
+| **UPLOAD_INSTRUCTIONS.md** | Manual / git-based upload steps for the wiki repo | Explicitly removed by both `scripts/sync_wiki.sh` (`EXCLUDE_FILE`) and `.github/workflows/sync-wiki.yml` (`rm -f wiki-repo/UPLOAD_INSTRUCTIONS.md`) — repo-only meta documentation |
 
 ---
 
-## Upload Instructions
+## Sync Workflow
 
-See **[UPLOAD_INSTRUCTIONS.md](UPLOAD_INSTRUCTIONS.md)** for detailed steps.
+Two equivalent paths sync `wiki/*.md` to the published wiki, both excluding only `UPLOAD_INSTRUCTIONS.md`:
 
-### Quick Upload (Git Method)
+- **Manual:** `scripts/sync_wiki.sh` — clones the wiki repo (or pulls if the clone already exists), copies `wiki/*.md`, removes `UPLOAD_INSTRUCTIONS.md`, and pushes.
+- **Automatic:** `.github/workflows/sync-wiki.yml` — runs on every push to `main` that touches `wiki/**`; same copy + exclude logic via the GitHub Action runner.
+
+To run the manual path:
 
 ```bash
-# From uvautoboat directory
-git clone https://github.com/Ghostzero00018/uvautoboat.wiki.git wiki-repo
-cp wiki/*.md wiki-repo/
-cd wiki-repo
-git add *.md
-git commit -m "Add comprehensive wiki documentation"
-git push origin master
+# From uvautoboat repo root:
+scripts/sync_wiki.sh                     # default commit message
+scripts/sync_wiki.sh "Custom message"    # custom commit message
 ```
 
----
+The script clones to `../uvautoboat.wiki/` (sibling of the main repo) on first run, pulls + rebases on subsequent runs, and skips the push if no diff resulted from the copy. Requires SSH access to `git@github.com`.
 
-## Additional Pages Needed
-
-These pages are referenced in the wiki but not yet created:
-
-### Priority 1 (High Usage)
-
-- [ ] `Terminal-Mission-Control.md` — CLI usage guide
-- [ ] `Web-Dashboard-Guide.md` — Dashboard features
-- [ ] `Configuration-and-Tuning.md` — Parameter reference
-- [ ] `Astar-Path-Planning.md` — A* algorithm details
-- [ ] `FAQ.md` — Frequently asked questions
-
-### Priority 2 (Architecture)
-
-- [ ] `AutoBoat-Architecture.md` — Integrated system
-- [ ] `Modular-Architecture.md` — Perception-Planner-Controller
-- [ ] `Atlantis-Architecture.md` — Control group approach
-- [ ] `ROS2-Topic-Flow.md` — Topic communication diagrams
-
-### Priority 3 (Concepts)
-
-- [ ] `GPS-Navigation.md` — Coordinate systems
-- [ ] `PID-Control.md` — Controller fundamentals
-- [ ] `Differential-Thrust.md` — Two-thruster control
-- [ ] `Kalman-Filtering.md` — State estimation theory
-
-### Priority 4 (Features)
-
-- [ ] `Waypoint-Skip-Strategy.md` — Skip logic
-- [ ] `Obstacle-Avoidance-Loop.md` — Continuous control
-- [ ] `First-Mission-Tutorial.md` — Step-by-step walkthrough
-
-### Priority 5 (Development)
-
-- [ ] `Contributing.md` — Contribution guidelines
-- [ ] `Code-Review-Standards.md` — Best practices
-- [ ] `Testing-Guide.md` — Unit tests
-- [ ] `API-Reference.md` — ROS 2 API docs
-
-### Priority 6 (Misc)
-
-- [ ] `Keyboard-Teleop.md` — Manual control
-- [ ] `Launch-Files-Reference.md` — Launch file guide
-- [ ] `Debug-Commands.md` — Advanced diagnostics
-- [ ] `ROS2-Resources.md` — External links
-- [ ] `VRX-Competition.md` — Competition info
-- [ ] `Related-Projects.md` — Similar work
+For manual upload steps (without the script), see **[UPLOAD_INSTRUCTIONS.md](UPLOAD_INSTRUCTIONS.md)**.
 
 ---
 
 ## Content Sources
 
-Wiki content was extracted and reorganized from:
-
-- `README.md` (main documentation)
-- `LIDAR_OBSTACLE_AVOIDANCE_GUIDE.md`
-- `MISSION_CONTROL_GUIDE.md`
-- `LAUNCH_YAML_GUIDE.md`
-- `CODE_REVIEW.md`
-- `web_dashboard/autoboat/README_autoboat_dashboard.md`
+Wiki content originates from the active code, the launch YAML, the dashboard, the working diary, and the repo-root [README.md](https://github.com/Ghostzero00018/uvautoboat/blob/main/README.md) and [USER_MANUAL.md](https://github.com/Ghostzero00018/uvautoboat/blob/main/USER_MANUAL.md). Page sourcing is per-page rather than from a fixed inventory of intermediate guides.
 
 ---
 
@@ -186,5 +140,5 @@ When contributing to the wiki:
 
 ---
 
-**Last Updated**: 24/04/2026
+**Last Updated**: 30/04/2026
 **Maintained By**: AutoBoat Development Team
