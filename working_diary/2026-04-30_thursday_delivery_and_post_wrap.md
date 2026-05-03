@@ -480,7 +480,7 @@ User asked for *"ultraplan, do it seriously"* — six phases: code-comment line-
 - `README.md` "VFH steering bias 🔧 Planned (also partially tested)" — VFH is fully implemented per Design_Rationale §"Why VFH disabled by default" (4 tunable params, target-aware logic, 3 of 4 dashboard presets enable it); updated to "✅ Working (off by default — opt-in via `use_vfh_bias` or dashboard preset)".
 - `Installation_Guide.md` `pip3 install numpy matplotlib` would fail under Ubuntu 24.04 PEP 668; added `apt install python3-numpy python3-matplotlib` + `pipx` alternatives.
 - `Design_Rationale.md` §"Why two stop channels" had 4 stale code-cite line numbers (`waypoint_planner.py:338` → `:341`, `:329` → `:330`, `heading_controller.py:384` → `:386`, `:740` → `:744`).
-- `legacy/DEPRECATED.md` L4 + L19 claimed "current system uses modular Vostok1 (OKO + SPUTNIK + BURAN)" + referenced non-existent `launch_vostok1_complete.sh` — stale post-16/04 rename. CLAUDE.md §1.3 normally bans `legacy/` edits, but the rule's intent is preserving frozen *code* not locking misleading current-state documentation; user explicitly authorised the exception.
+- `legacy/DEPRECATED.md` L4 + L19 claimed "current system uses modular Vostok1 (OKO + SPUTNIK + BURAN)" + referenced non-existent `launch_vostok1_complete.sh` — stale post-16/04 rename. The legacy folder is normally treated as frozen, but the underlying intent is to preserve historical *code*, not to lock misleading current-state documentation in place; user explicitly authorised the exception for this file.
 
 7 fixes landed.
 
