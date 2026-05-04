@@ -323,6 +323,8 @@ Should `one_click_launch_all/launch_autoboat_complete.sh` bake the prime-offload
 
 This is a code change to a `.sh` file — flagged here, deferred to the maintainer's call. For now the recommended invocation is documented in `wiki/Common_Issues.md`.
 
+**Resolution (same day, post-wrap):** the maintainer picked the `--use-nvidia` flag option (over silent auto-set or auto-detect via `command -v nvidia-smi`) and bundled the low-risk `trap 'cleanup; exit 130' INT TERM` fix in the same commit. Shipped as `2b36ae7 feat(launch): --use-nvidia prime-offload flag + clean Ctrl+C trap exit`. Wiki follow-up `78ee622 docs: promote --use-nvidia as canonical in Common_Issues + diary tweak` promoted the flag as the canonical fix path in `wiki/Common_Issues.md` "Gazebo Running Slow", with the env-prefix invocation kept as the manual fallback for one-off `ros2 launch` tests. Default remains off — opt-in only — so non-NVIDIA hosts (Pi 5 / VM / desktop with single GPU) are unaffected by the flag's existence; on Pi 5 specifically, accidentally enabling `--use-nvidia` would error fast and visibly at GL context creation rather than silently degrade, by design.
+
 ### Pitfall caught mid-investigation (worth carrying forward)
 
 `pkill -9 -f <pattern>` from any shell whose own argv contains a `<pattern>` substring will **SIGKILL itself** — pkill scans system-wide and matches its own caller. The launcher's `cleanup()` function pkills 14 patterns including `gz sim`, `rosbridge_websocket`, `lidar_perception`, `waypoint_planner`, `heading_controller`, `waypoint_visualizer`, `health_check_service`, `web_video_server`, `autoboat.launch.yaml`, `web_dashboard/autoboat`, `rviz`, `http.server 8002`, `gzserver`, `gzclient`. Any verification script that puts those literal strings in echo lines / case patterns / pgrep arguments gets killed the moment the launcher's trap fires, OR the moment the script itself runs one of those pkills — same self-kill on either side.
@@ -366,6 +368,16 @@ docs: log 04/05 RTF investigation — prime-offload fixes Gazebo throttle
 Body (multi-paragraph not requested; one-liner is the default per house style — happy to expand on request).
 
 The full launcher run with `__NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia` prefix was **left alive in the background at wrap time** (started ~09:53, success header at +44 s), useful for any visual dashboard checks before pushing. Follow-up check found the recorded `gz sim server` PID `38911` no longer present, so treat the sim as already stopped unless a fresh `pgrep -af 'gz sim'` says otherwise. Tear-down recipe when needed: `bash /tmp/kill_sim.sh` (the pattern-isolated cleanup script saved during today's pkill self-kill workaround), then verify ports 8002 / 8080 / 9090 vacant via `ss -tlnp`.
+
+**Post-wrap shipping (same day, after the docs commit pushed):** the maintainer picked the `--use-nvidia` flag, bundled the trap fix, shipped both as `2b36ae7`; wiki canonical-path promotion landed as `78ee622`. Final state on `origin/main` for 04/05 — three commits stacked atop the Sunday `f9b135c` push:
+
+```text
+78ee622 docs: promote --use-nvidia as canonical in Common_Issues + diary tweak
+2b36ae7 feat(launch): --use-nvidia prime-offload flag + clean Ctrl+C trap exit
+7c8e991 docs: log 04/05 RTF investigation — prime-offload fixes Gazebo throttle
+```
+
+End-of-day verified: launcher patch tested live with `--use-nvidia` (42 s launch, `gz sim server` SM 32 % on GPU 0 alongside `gz sim gui` + `rviz2`), tree clean, §1.6 sweep rc=1 (zero matches across 10 file types), sim fully stopped (ports vacant, `ros2 node list` empty). Orphan launcher PID `38746` (pre-fix invocation from earlier in the day, stuck in `while true; do sleep 6; done` after `pkill gz/ros2/rosbridge` killed the components but couldn't reach the parent script's loop) SIGKILLed during the wrap sweep — one-time class of issue: every launcher started after `2b36ae7` exits cleanly on Ctrl+C with the new `trap 'cleanup; exit 130'`, so this won't recur for invocations on or after the patch landing.
 
 ---
 
@@ -427,3 +439,4 @@ Use this section to capture anything surprising — file state drift, unexpected
 - **24/04 housekeeping carry-overs** — `mono-xsp4` port-8084 disable; `tools/qos_scan.py` single-pass QoS inventory companion to `rate_probe.py`.
 - **Dashboard scaffold-without-write audit** — surfaced as a 29/04 Mission Progress architectural lesson; worth a focused audit pass at some point.
 - **Dashboard offline-capable for IoT-local network deployment** (per Roadmap §1.3) — Path A vendor libs first, then Path B offline tile server before first on-water deployment.
+- **`--use-nvidia` discoverability follow-up** — five user-facing docs show the plain launcher invocation without surfacing the new flag for hybrid-graphics laptop users: `README.md:94`, `wiki/Quick_Start.md:102`, `USER_MANUAL.md:1471-1483` (4 examples), `web_dashboard/autoboat/README_autoboat_dashboard.md:50`, `wiki/Common_Issues.md:396` (inside an unrelated troubleshooting recipe). Not stale — plain invocation works on every host — but a Linux dev on the campus workstation following README → Quick_Start lands in Mesa-iGPU mode by default and only finds the fix once they hit `Common_Issues.md` "Gazebo Running Slow" through troubleshooting search. Minimal close-the-gap shape: one line in README's Quick Start mentioning the flag for Optimus / PRIME-managed laptops with a pointer to the Common_Issues section, same in `Quick_Start.md`. Defer or take when the day allows.
