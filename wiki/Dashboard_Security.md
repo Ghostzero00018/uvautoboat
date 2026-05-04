@@ -2,7 +2,7 @@
 
 Security posture, known vulnerabilities, and recommended mitigations for the AutoBoat web dashboard.
 
-**Status:** Assessment completed 16/04/2026. No code fixes applied yet — documentation only.
+**Status:** Assessment completed 16/04/2026. Initial code fixes (SRI hashes, server-side `PARAM_RANGES` bounds) landed 17/04/2026; dashboard XSS rendering fixes landed 04/05/2026. Remaining items below.
 
 ---
 
@@ -15,7 +15,7 @@ Security posture, known vulnerabilities, and recommended mitigations for the Aut
 | Transport encryption | None — plain HTTP (8002), WS (9090), HTTP (8080) |
 | Network binding | `0.0.0.0` on all 3 ports — accessible to entire LAN |
 | Input validation | **Two-layer (since 17/04/2026):** client-side HTML `min`/`max` attributes + server-side `PARAM_RANGES` rejection in each Python node (`heading_controller`, `waypoint_planner`, `lidar_perception`). Out-of-range values rejected with `Rejected <name>=<value> (valid range: lo–hi)` at WARN level. |
-| XSS protection | Partial — world banner + rosout terminal both safe (`textContent`); residual risk in `addLog()` which still uses `innerHTML` interpolation. |
+| XSS protection | Improved — world banner, rosout terminal, event logs, mission history, and waypoint validation all write dynamic text via `textContent`; no Content Security Policy yet. |
 
 ### Open Ports
 
@@ -38,14 +38,15 @@ Anyone on the same network can access `http://<boat-ip>:8002` and immediately co
 - **Files:** entire dashboard (`app.js`, `index.html`)
 - **Impact:** full unauthorized control
 
-#### 2. XSS via `addLog()` event-log helper
+#### 2. ~~XSS via `addLog()` event-log helper~~ — Resolved 04/05/2026
 
-The generic `addLog(message, type)` helper (`app.js`) builds its DOM via `innerHTML` template literal with the message body interpolated unescaped. Any caller that forwards untrusted text (e.g., free-text fields, rosbridge-relayed strings, future remote sources) into `addLog()` opens the dashboard to script execution.
+Resolved. The generic `addLog(message, type)` helper previously built its DOM via an `innerHTML` template literal with the message body interpolated unescaped. Mission history and waypoint validation used the same string-rendering pattern. All three paths now create DOM nodes explicitly and write dynamic text with `textContent`.
 
 - **File:** `web_dashboard/autoboat/app.js` — `addLog()` function (around L1419)
-- **Attack vector:** an attacker controls the value passed to `addLog()` — typically via something the dashboard quotes back from a remote source — and includes `<script>` tags or `<img onerror=...>`
-- **Impact:** arbitrary JavaScript execution in the operator's browser
+- **Previous attack vector:** an attacker controls the value passed to a dashboard renderer — typically via something the dashboard quotes back from a remote source — and includes `<script>` tags or `<img onerror=...>`
+- **Previous impact:** arbitrary JavaScript execution in the operator's browser
 - **Already mitigated (no longer a finding):**
+  - **Event logs, mission history, waypoint validation** — dynamic text is written with `.textContent`. **Safe.**
   - **Rosout terminal panel** — `addTerminalLine()` builds the row wrapper via `innerHTML` but writes the actual log message body via `.textContent`, so `<script>` in a ROS log message renders as text. **Safe.**
   - **World banner text** — properly escaped (`<` → `&lt;`).
 
@@ -128,7 +129,7 @@ The `/rosout` subscription displays all debug/info/warning/error messages from a
 
 | Fix | What to do | Files |
 |:----|:-----------|:------|
-| Fix XSS in `addLog()` | Replace the `innerHTML` template literal in `addLog(message, type)` (around `app.js:L1419`) with `textContent` for the message body, mirroring the rosout fix in `addTerminalLine()`. The rosout terminal path is already safe — this is the actual residual surface. | `app.js` |
+| ~~Fix dashboard XSS renderers~~ | **Already done 04/05/2026** — `addLog()`, mission history, and waypoint validation now write dynamic text with `textContent`, mirroring the rosout terminal pattern. | `app.js` |
 | Bind to localhost | Add `-b 127.0.0.1` to `python3 -m http.server 8002` in the launch script and docs | `launch_autoboat_complete.sh`, `autoboat.launch.yaml` |
 | ~~Add SRI hashes~~ | **Already done** — `index.html` `<script>` tags for `roslib`, `leaflet.js`, and `leaflet.css` carry `integrity="sha384-…"` + `crossorigin="anonymous"` attributes. | (no action) |
 
