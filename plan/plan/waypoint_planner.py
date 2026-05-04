@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Waypoint Planner - GPS Waypoint Navigation Planning
+Waypoint Planner - GPS Waypoint Navigation Planning.
 
 Module: Waypoint Planner
 Role:   Generates waypoints, manages mission state, and publishes navigation targets.
-See also: LiDAR Perception (Perception) and Heading Controller (Control)
+See also: LiDAR Perception (Perception) and Heading Controller (Control).
 
 Part of the modular AutoBoat architecture.
 Generates lawnmower pattern waypoints, publishes navigation path.
@@ -15,51 +15,58 @@ Features:
     INIT -> WAITING_CONFIRM -> READY -> DRIVING -> FINISHED (happy path)
     PAUSED (via stop/resume), JOYSTICK (manual override), EMERGENCY_STOP (latched)
 - Multi-level obstacle handling:
-    (a) opportunistic side detour if lateral gap >= 8 m (planner-side, no waypoint insertion)
+    (a) opportunistic side detour if lateral gap >= 8 m
+        (planner-side, no waypoint insertion)
     (b) auto-detour waypoint insertion after 30 s blocked (14 m lateral offset)
     (c) A* reroute or waypoint skip after 45 s blocked
 - Runtime A* path planning (default on): 3 m grid, 12 m safety margin, 20k max expansions
-- Optional Hybrid Mode (astar_hybrid_mode=false by default): pre-plan full path once vs tick-by-tick replan
+- Optional Hybrid Mode (astar_hybrid_mode=false by default):
+    pre-plan full path once vs tick-by-tick replan
 - Return home mode with detour insertion
 
 Topics:
     Subscribes:
         /wamv/sensors/gps/gps/fix (NavSatFix) - GPS position
         /perception/obstacle_info (String) - obstacle detection for skip / detour logic
-        /planning/mission_command (String) - dashboard / CLI commands (start, resume, confirm, go_home, reset, joystick)
+        /planning/mission_command (String) - dashboard / CLI commands
+          (start, resume, confirm, go_home, reset, joystick)
         /planning/set_config (String) - runtime parameter updates from dashboard
         /planning/emergency_stop (Bool, latched RELIABLE depth=1) - dedicated E-Stop channel
         /control/replan_request (String) - reroute trigger from controller when blocked
-        /planning/detour_request (String) - side-detour trigger from controller (blocked but not yet stuck)
-        /planning/skip_waypoint (String) - skip-waypoint trigger from controller after stuck attempts exhausted
+        /planning/detour_request (String) - side-detour trigger from controller
+          (blocked but not yet stuck)
+        /planning/skip_waypoint (String) - skip-waypoint trigger from controller
+          after stuck attempts exhausted
 
     Publishes:
         /planning/waypoints (String) - JSON list of waypoints
         /planning/current_target (String) - JSON current target waypoint
         /planning/mission_status (String) - JSON mission state
         /planning/config (String) - runtime parameter snapshot
-        /planning/param_ranges (String) - JSON [min, max, default] 3-tuples; dashboard syncs HTML min/max + populates liveDefaults for (default: X) hints
+        /planning/param_ranges (String) - JSON [min, max, default] 3-tuples;
+          dashboard syncs HTML min/max + populates liveDefaults for
+          (default: X) hints
 
     Services:
         /planning/stop_mission (std_srvs/Trigger) - ACK-based stop (replaces retry-over-topic)
         /planning/generate_waypoints (std_srvs/Trigger) - ACK-based lawnmower generation
 """
 
+import heapq
+import json
+import math
+import time
+
 import rclpy
 from rclpy.node import Node
-import math
-import json
-import time
-import heapq
-from pathlib import Path
-
 from sensor_msgs.msg import NavSatFix
-from std_msgs.msg import String, Bool
+from std_msgs.msg import Bool, String
 from std_srvs.srv import Trigger
 
 
 class AStarSolver:
     """Lightweight 8-connected A* for local detours."""
+
     def __init__(self, resolution=3.0, safety_margin=10.0, max_expansions=20000):
         self.resolution = resolution
         self.safety_margin = safety_margin
@@ -85,6 +92,7 @@ class AStarSolver:
     def plan(self, start, goal, obstacles, inflate_radius):
         """
         Plan from start->goal avoiding circular obstacles.
+
         obstacles: list of (x, y)
         inflate_radius: extra meters to inflate obstacles
         """
@@ -168,7 +176,8 @@ class AStarSolver:
 
 class WaypointPlanner(Node):
     """
-    Waypoint Planner - Trajectory planning system
+    Waypoint Planner - Trajectory planning system.
+
     (Named after the first artificial satellite)
     """
 
@@ -193,7 +202,8 @@ class WaypointPlanner(Node):
         self.declare_parameter('scan_width', 30.0)
         self.declare_parameter('lanes', 10)
         self.declare_parameter('waypoint_tolerance', 3.5)
-        self.declare_parameter('waypoint_skip_timeout', 45.0)  # Skip waypoint if blocked for this long
+        # Skip waypoint if blocked for this long.
+        self.declare_parameter('waypoint_skip_timeout', 45.0)
         # World metadata (for dashboards)
         self.declare_parameter('world_name', 'unknown')
 
@@ -213,7 +223,8 @@ class WaypointPlanner(Node):
 
         # v2.2: Optional A* detour planner (ported from Atlantis)
         self.declare_parameter('astar_enabled', False)
-        self.declare_parameter('astar_hybrid_mode', False)  # Pre-plan A* between lawnmower waypoints
+        # Pre-plan A* between lawnmower waypoints.
+        self.declare_parameter('astar_hybrid_mode', False)
         self.declare_parameter('astar_resolution', 3.0)
         self.declare_parameter('astar_safety_margin', 12.0)
         self.declare_parameter('astar_max_expansions', 20000)
@@ -249,7 +260,8 @@ class WaypointPlanner(Node):
         self.min_obstacle_distance = float('inf')
         self.obstacle_blocking_time = 0.0  # Cumulative time obstacle detected near waypoint
         self.blocked_reason = ""  # Human-readable reason for blockage
-        self.declare_parameter('max_block_time', 30.0)  # Max seconds to wait before auto-detour/skip
+        # Max seconds to wait before auto-detour/skip.
+        self.declare_parameter('max_block_time', 30.0)
         self.max_block_time = float(self.get_parameter('max_block_time').value)
         # Flipped by config_callback on first successful /planning/set_config.
         # Health check reads this to distinguish baseline-vs-user-tuned values.
@@ -265,7 +277,8 @@ class WaypointPlanner(Node):
         self.detour_distance = 14.0  # Lateral distance for detour waypoints
         self.detour_forward_offset = 10.0  # Forward offset when inserting side detour
         self.detour_start_time = None
-        self.min_obstacle_distance_for_skip = 15.0  # Skip waypoints within this distance of obstacles
+        # Skip waypoints within this distance of obstacles.
+        self.min_obstacle_distance_for_skip = 15.0
 
         # --- SUBSCRIBERS ---
         self.create_subscription(
@@ -274,7 +287,7 @@ class WaypointPlanner(Node):
             self.gps_callback,
             10
         )
-        
+
         # Mission command subscriber for CLI/dashboard control
         self.create_subscription(
             String,
@@ -282,7 +295,7 @@ class WaypointPlanner(Node):
             self.mission_command_callback,
             10
         )
-        
+
         # Config subscriber for runtime parameter changes
         self.create_subscription(
             String,
@@ -290,7 +303,7 @@ class WaypointPlanner(Node):
             self.config_callback,
             10
         )
-        
+
         # Obstacle info subscriber for waypoint skip logic
         self.create_subscription(
             String,
@@ -298,7 +311,7 @@ class WaypointPlanner(Node):
             self.obstacle_callback,
             10
         )
-        
+
         # Detour request from heading controller
         self.create_subscription(
             String,
@@ -336,10 +349,18 @@ class WaypointPlanner(Node):
 
         # --- SERVICES ---
         # Replace retry/delay bandages on the client side with request/response ACK.
-        # stop_mission: CLI previously sent 3× with sleeps; dashboard sent 2× 200 ms apart.
-        # generate_waypoints: dashboard previously used 500 ms setTimeout after config publish.
-        self.srv_stop = self.create_service(Trigger, '/planning/stop_mission', self._srv_stop_mission)
-        self.srv_generate = self.create_service(Trigger, '/planning/generate_waypoints', self._srv_generate_waypoints)
+        # stop_mission: CLI previously sent 3x; dashboard sent 2x 200 ms apart.
+        # generate_waypoints: dashboard previously waited 500 ms after config publish.
+        self.srv_stop = self.create_service(
+            Trigger,
+            '/planning/stop_mission',
+            self._srv_stop_mission,
+        )
+        self.srv_generate = self.create_service(
+            Trigger,
+            '/planning/generate_waypoints',
+            self._srv_generate_waypoints,
+        )
 
         # --- PUBLISHERS ---
         self.pub_waypoints = self.create_publisher(String, '/planning/waypoints', 10)
@@ -354,22 +375,30 @@ class WaypointPlanner(Node):
         # Republish param ranges every 5s so late-subscribing dashboards always get them
         self.create_timer(5.0, self._publish_param_ranges)
         self._publish_param_ranges()  # initial publish on startup
-        
+
         # Publish config at 1Hz
         self.create_timer(1.0, self.publish_config)
-        
+
         # Publish mission status at 5Hz (always, not just during DRIVING)
         self.create_timer(0.2, self.publish_mission_status_timer)
 
         self.get_logger().info("=" * 50)
         self.get_logger().info("Waypoint Planner v2.2 - Trajectory Planning System")
         self.get_logger().info("=" * 50)
-        self.get_logger().info(f"Zone de balayage | Scan Area: {self.scan_length}m × {self.scan_width * self.lanes}m")
+        self.get_logger().info(
+            f"Zone de balayage | Scan Area: {self.scan_length}m × "
+            f"{self.scan_width * self.lanes}m"
+        )
         self.get_logger().info(f"Lanes: {self.lanes}, Width: {self.scan_width}m")
         if self.astar_hybrid_mode:
-            self.get_logger().info(f"A* Hybrid Mode: ENABLED (pre-plan routes between waypoints)")
+            self.get_logger().info(
+                "A* Hybrid Mode: ENABLED (pre-plan routes between waypoints)"
+            )
         elif self.astar_enabled:
-            self.get_logger().info(f"A* Runtime Detours: ENABLED (res={self.astar.resolution}m, margin={self.astar.safety_margin}m)")
+            self.get_logger().info(
+                f"A* Runtime Detours: ENABLED (res={self.astar.resolution}m, "
+                f"margin={self.astar.safety_margin}m)"
+            )
         else:
             self.get_logger().info("A* Detours: Disabled")
         self.get_logger().info("Waiting for GPS signal...")
@@ -380,7 +409,7 @@ class WaypointPlanner(Node):
         self._bad_json_last_warn: dict = {}
 
     def _log_bad_json(self, topic: str, exc: Exception, throttle_sec: float = 5.0) -> None:
-        """Warn once per `throttle_sec` when a subscribed topic delivers unparseable JSON."""
+        """Warn once per `throttle_sec` for unparseable subscribed topic JSON."""
         now = time.monotonic()
         last = self._bad_json_last_warn.get(topic, 0.0)
         if now - last >= throttle_sec:
@@ -388,21 +417,28 @@ class WaypointPlanner(Node):
             self._bad_json_last_warn[topic] = now
 
     def gps_callback(self, msg):
-        """Handle GPS updates"""
+        """Handle GPS updates."""
         self.current_gps = (msg.latitude, msg.longitude)
 
         # First GPS fix - store start position but wait for mission command
         if self.start_gps is None:
             self.start_gps = (msg.latitude, msg.longitude)
-            self.get_logger().info(f"Base Point: {self.start_gps[0]:.6f}, {self.start_gps[1]:.6f}")
-            self.get_logger().info("GPS acquired - run 'ros2 run plan autoboat_cli generate' to create waypoints")
-            
+            self.get_logger().info(
+                f"Base Point: {self.start_gps[0]:.6f}, {self.start_gps[1]:.6f}"
+            )
+            self.get_logger().info(
+                "GPS acquired - run 'ros2 run plan autoboat_cli generate' "
+                "to create waypoints"
+            )
+
     def _srv_stop_mission(self, request, response):
         """Service-based stop — ACK replaces the old retry loops."""
         prev_state = self.state
         self.state = "PAUSED"
         self.mission_armed = False
-        self.get_logger().info(f"🛑 MISSION STOPPED via service (was {prev_state} → now PAUSED)")
+        self.get_logger().info(
+            f"🛑 MISSION STOPPED via service (was {prev_state} → now PAUSED)"
+        )
         self.publish_mission_status_timer()
         response.success = True
         response.message = f"stopped (was {prev_state})"
@@ -431,28 +467,34 @@ class WaypointPlanner(Node):
         prev_state = self.state
         self.state = "EMERGENCY_STOP"
         self.mission_armed = False
-        self.get_logger().error(f"🚨 EMERGENCY STOP via latched topic (was {prev_state} → now EMERGENCY_STOP)")
+        self.get_logger().error(
+            f"🚨 EMERGENCY STOP via latched topic "
+            f"(was {prev_state} → now EMERGENCY_STOP)"
+        )
         self.publish_mission_status_timer()
 
     def mission_command_callback(self, msg):
-        """Handle mission commands from CLI/dashboard"""
+        """Handle mission commands from CLI/dashboard."""
         try:
             cmd = json.loads(msg.data)
             command = cmd.get('command', '')
-            
+
             self.get_logger().info(f"MISSION COMMAND: {command}")
-            
+
             if command == 'confirm_waypoints':
                 if self.waypoints:
                     self.state = "READY"
                     self.get_logger().info("Waypoints confirmed - ready to start")
                     self.publish_mission_status_timer()
-                    
+
             elif command == 'start_mission':
-                if self.waypoints and self.state in ["READY", "WAITING_CONFIRM", "PAUSED", "FINISHED"]:
+                if (
+                    self.waypoints
+                    and self.state in ["READY", "WAITING_CONFIRM", "PAUSED", "FINISHED"]
+                ):
                     if self.state == "FINISHED":
                         self.current_wp_index = 0
-                        # CRITICAL: Reset all home-mode and finish-related state when restarting from FINISHED
+                        # Reset home-mode and finish-related state when restarting.
                         self.go_home_mode = False  # Clear home mode flag
                         self.detour_waypoint_inserted = False
                         self.detour_count = 0
@@ -467,10 +509,19 @@ class WaypointPlanner(Node):
                     self.publish_mission_status_timer()
                     self._publish_current_target_immediate()
                 else:
-                    self.get_logger().warn(f"Cannot start - state={self.state}, waypoints={len(self.waypoints)}")
-                    
+                    self.get_logger().warn(
+                        f"Cannot start - state={self.state}, "
+                        f"waypoints={len(self.waypoints)}"
+                    )
+
             elif command == 'resume_mission':
-                resumable_states = {"PAUSED", "JOYSTICK", "EMERGENCY_STOP", "WAITING_CONFIRM", "READY"}
+                resumable_states = {
+                    "PAUSED",
+                    "JOYSTICK",
+                    "EMERGENCY_STOP",
+                    "WAITING_CONFIRM",
+                    "READY",
+                }
                 if self.waypoints and self.state in resumable_states:
                     self.state = "DRIVING"
                     self.mission_armed = True
@@ -484,8 +535,11 @@ class WaypointPlanner(Node):
                     # Force immediate target publish so controller has target right away
                     self._publish_current_target_immediate()
                 else:
-                    self.get_logger().warn(f"Cannot resume - state={self.state}, waypoints={len(self.waypoints)}")
-                    
+                    self.get_logger().warn(
+                        f"Cannot resume - state={self.state}, "
+                        f"waypoints={len(self.waypoints)}"
+                    )
+
             elif command == 'cancel_waypoints':
                 # Cancel waypoints, go back to init
                 self.waypoints = []
@@ -495,7 +549,7 @@ class WaypointPlanner(Node):
                 self.go_home_mode = False
                 self.get_logger().info("Waypoints CANCELLED")
                 self.publish_mission_status_timer()
-                    
+
             elif command == 'reset_mission':
                 self.waypoints = []
                 self.current_wp_index = 0
@@ -505,27 +559,30 @@ class WaypointPlanner(Node):
                 self.obstacle_blocking_time = 0.0
                 self.get_logger().info("🔄 MISSION RESET")
                 self.publish_mission_status_timer()
-                
+
             elif command == 'joystick_enable':
                 # Enable joystick override mode
                 self.state = "JOYSTICK"
                 self.mission_armed = False
                 self.get_logger().info("JOYSTICK MODE ENABLED")
                 self.publish_mission_status_timer()
-                
+
             elif command == 'joystick_disable':
                 # Disable joystick mode
-                # If we have waypoints, drop to PAUSED so RESUME works immediately; otherwise reset to INIT
+                # If waypoints exist, drop to PAUSED so RESUME works immediately.
                 self.state = "PAUSED" if self.waypoints else "INIT"
                 self.get_logger().info("JOYSTICK MODE DISABLED")
                 self.publish_mission_status_timer()
-            
+
             elif command == 'go_home':
                 # Navigate back to spawn point (one-click return home)
                 if self.start_gps is not None:
                     # Get current position and home position
                     if self.current_gps:
-                        curr_x, curr_y = self.latlon_to_meters(self.current_gps[0], self.current_gps[1])
+                        curr_x, curr_y = self.latlon_to_meters(
+                            self.current_gps[0],
+                            self.current_gps[1],
+                        )
                     else:
                         curr_x, curr_y = 0.0, 0.0
                     home_x, home_y = self.latlon_to_meters(self.start_gps[0], self.start_gps[1])
@@ -547,7 +604,7 @@ class WaypointPlanner(Node):
 
                     self.waypoints = [(home_x, home_y)]
                     self.current_wp_index = 0
-                    
+
                     # CRITICAL FIX: If already DRIVING, need to force state transition
                     # to reset controller's escape state. Set to READY first, then DRIVING.
                     if self.state == "DRIVING":
@@ -558,7 +615,7 @@ class WaypointPlanner(Node):
                         self.get_logger().info("🏠 GOING HOME! (Transitioning from DRIVING)")
                     else:
                         self.get_logger().info("🏠 GOING HOME!")
-                    
+
                     # Now transition to DRIVING
                     self.state = "DRIVING"
                     self.mission_armed = True
@@ -567,7 +624,10 @@ class WaypointPlanner(Node):
                     self.obstacle_blocking_time = 0.0
                     self.detour_waypoint_inserted = False
                     self.detour_count = 0
-                    self.get_logger().info(f"   Destination: {self.start_gps[0]:.6f}, {self.start_gps[1]:.6f}")
+                    self.get_logger().info(
+                        f"   Destination: {self.start_gps[0]:.6f}, "
+                        f"{self.start_gps[1]:.6f}"
+                    )
                     self.get_logger().info(f"   Position locale: ({home_x:.1f}m, {home_y:.1f}m)")
                     # Publish updated waypoints
                     self.publish_waypoints()
@@ -577,12 +637,12 @@ class WaypointPlanner(Node):
                     self._publish_current_target_immediate()
                 else:
                     self.get_logger().warn("Cannot go home - no spawn point recorded")
-                
+
         except Exception as e:
             self.get_logger().error(f"Mission command error: {e}")
-    
+
     def obstacle_callback(self, msg):
-        """Track obstacle detection for waypoint skip logic"""
+        """Track obstacle detection for waypoint skip logic."""
         try:
             data = json.loads(msg.data)
             self.obstacle_detected = data.get('obstacle_detected', False)
@@ -592,32 +652,42 @@ class WaypointPlanner(Node):
             self.right_clear = float(data.get('right_clear', float('inf')))
             # Capture clusters for A* detours
             clusters = data.get('clusters', [])
-            self.obstacle_clusters = [(c.get('x', 0.0), c.get('y', 0.0)) for c in clusters if 'x' in c and 'y' in c]
+            self.obstacle_clusters = [
+                (c.get('x', 0.0), c.get('y', 0.0))
+                for c in clusters
+                if 'x' in c and 'y' in c
+            ]
             # Note: detour_waypoint_inserted is only reset on waypoint reach,
             # advance, or detour timeout — NOT on momentary obstacle clears,
             # which caused a feedback loop inserting 300+ detour waypoints.
         except Exception as e:
             self._log_bad_json('/perception/obstacle_info', e)
-    
+
     def detour_request_callback(self, msg):
-        """Handle detour waypoint request from heading controller"""
+        """Handle detour waypoint request from heading controller."""
         try:
             data = json.loads(msg.data)
             # Support both 'x'/'y' and 'detour_x'/'detour_y' keys
             detour_x = data.get('detour_x') or data.get('x')
             detour_y = data.get('detour_y') or data.get('y')
-            
-            if detour_x is not None and detour_y is not None and self.state == "DRIVING":
+
+            if (
+                detour_x is not None
+                and detour_y is not None
+                and self.state == "DRIVING"
+            ):
                 # Insert detour waypoint before current target
                 detour_wp = (detour_x, detour_y)
                 self.waypoints.insert(self.current_wp_index, detour_wp)
-                self.get_logger().info(f"📍 Detour waypoint inserted at ({detour_x:.1f}, {detour_y:.1f})")
+                self.get_logger().info(
+                    f"📍 Detour waypoint inserted at ({detour_x:.1f}, {detour_y:.1f})"
+                )
                 self.publish_waypoints()
         except Exception as e:
             self.get_logger().warn(f"Detour request error: {e}")
 
     def replan_request_callback(self, msg):
-        """Handle replan request from heading controller when path is blocked"""
+        """Handle replan request from heading controller when path is blocked."""
         try:
             data = json.loads(msg.data)
             reason = data.get('reason', 'unknown')
@@ -628,12 +698,15 @@ class WaypointPlanner(Node):
                 # This will be handled by the A* detour logic in planning_loop
                 self.get_logger().info("A* detour planning will attempt alternative route")
             else:
-                self.get_logger().warn(f"Replan request ignored - A* disabled or not DRIVING (state={self.state})")
+                self.get_logger().warn(
+                    f"Replan request ignored - A* disabled or not DRIVING "
+                    f"(state={self.state})"
+                )
         except Exception as e:
             self.get_logger().warn(f"Replan request error: {e}")
 
     def skip_waypoint_callback(self, msg):
-        """Handle skip waypoint request from heading controller after multiple stuck attempts"""
+        """Handle skip waypoint request from heading controller after stuck attempts."""
         try:
             data = json.loads(msg.data)
             reason = data.get('reason', 'stuck_multiple_times')
@@ -641,14 +714,17 @@ class WaypointPlanner(Node):
             if self.state == "DRIVING" and self.current_wp_index < len(self.waypoints):
                 current_wp = self.waypoints[self.current_wp_index]
                 self.get_logger().warn(
-                    f"⏭️ Controller requested skip waypoint {self.current_wp_index + 1}/{len(self.waypoints)} "
+                    f"⏭️ Controller requested skip waypoint "
+                    f"{self.current_wp_index + 1}/{len(self.waypoints)} "
                     f"at ({current_wp[0]:.1f}, {current_wp[1]:.1f}) - reason: {reason}"
                 )
                 # Advance to next waypoint
                 self.advance_to_next_waypoint()
                 self.publish_waypoints()
             else:
-                self.get_logger().warn(f"Skip waypoint ignored - not DRIVING or at end (state={self.state})")
+                self.get_logger().warn(
+                    f"Skip waypoint ignored - not DRIVING or at end (state={self.state})"
+                )
         except Exception as e:
             self.get_logger().warn(f"Skip waypoint error: {e}")
 
@@ -663,8 +739,12 @@ class WaypointPlanner(Node):
         return False
 
     def _publish_json(self, publisher, payload, label):
-        """Safe JSON publish: refuses to emit NaN/Inf so dashboard parse can't
-        silently fail on malformed wire data."""
+        """
+        Publish JSON only when the payload can be encoded safely.
+
+        Refuses NaN/Inf so dashboard parsing cannot silently fail on malformed
+        wire data.
+        """
         try:
             encoded = json.dumps(payload, allow_nan=False)
         except (TypeError, ValueError) as e:
@@ -678,57 +758,63 @@ class WaypointPlanner(Node):
         publisher.publish(msg)
 
     def _publish_param_ranges(self):
-        """Publish validation ranges + launch defaults so the dashboard can sync
-        HTML min/max AND the (default: X) hint without hardcoding defaults on the
-        dashboard side. Lazy-captures launch-time defaults on first publish — at
-        that point get_parameter() returns YAML-or-Python-default values, before
-        any runtime config_callback can mutate them."""
+        """
+        Publish validation ranges and launch defaults for the dashboard.
+
+        Dashboard syncs HTML min/max and populates liveDefaults for
+        (default: X) hints without hardcoding defaults. Defaults are captured
+        lazily on first publish, before runtime config_callback updates can
+        mutate them.
+        """
         if not hasattr(self, '_launch_defaults'):
             self._launch_defaults = {
                 p: self.get_parameter(p).value for p in self.PARAM_RANGES.keys()
             }
         self._publish_json(
             self.pub_param_ranges,
-            {k: [lo, hi, self._launch_defaults.get(k)] for k, (lo, hi) in self.PARAM_RANGES.items()},
+            {
+                k: [lo, hi, self._launch_defaults.get(k)]
+                for k, (lo, hi) in self.PARAM_RANGES.items()
+            },
             'param_ranges',
         )
 
     def config_callback(self, msg):
-        """Handle runtime configuration changes"""
+        """Handle runtime configuration changes."""
         try:
             config = json.loads(msg.data)
-            regenerate = False
 
             if 'lanes' in config:
                 v = int(config['lanes'])
                 if self._validate('lanes', v):
                     self.lanes = v
-                    regenerate = True
             if 'scan_length' in config:
                 v = float(config['scan_length'])
                 if self._validate('scan_length', v):
                     self.scan_length = v
-                    regenerate = True
             if 'scan_width' in config:
                 v = float(config['scan_width'])
                 if self._validate('scan_width', v):
                     self.scan_width = v
-                    regenerate = True
 
             # Waypoint approach parameters
             if 'waypoint_tolerance' in config:
                 v = float(config['waypoint_tolerance'])
                 if self._validate('waypoint_tolerance', v):
                     self.waypoint_tolerance = v
-                    self.get_logger().info(f"Waypoint tolerance updated: {self.waypoint_tolerance}m")
+                    self.get_logger().info(
+                        f"Waypoint tolerance updated: {self.waypoint_tolerance}m"
+                    )
 
             # v2.2: A* detour planning runtime config
             if 'astar_enabled' in config:
                 self.astar_enabled = bool(config['astar_enabled'])
-                self.get_logger().info(f"A* runtime detours: {'ENABLED' if self.astar_enabled else 'DISABLED'}")
+                status = 'ENABLED' if self.astar_enabled else 'DISABLED'
+                self.get_logger().info(f"A* runtime detours: {status}")
             if 'astar_hybrid_mode' in config:
                 self.astar_hybrid_mode = bool(config['astar_hybrid_mode'])
-                self.get_logger().info(f"A* hybrid mode: {'ENABLED' if self.astar_hybrid_mode else 'DISABLED'}")
+                status = 'ENABLED' if self.astar_hybrid_mode else 'DISABLED'
+                self.get_logger().info(f"A* hybrid mode: {status}")
             if 'astar_resolution' in config:
                 v = float(config['astar_resolution'])
                 if self._validate('astar_resolution', v):
@@ -757,20 +843,26 @@ class WaypointPlanner(Node):
             ):
                 if cfg_key in config:
                     params_to_sync.append(
-                        rclpy.parameter.Parameter(cfg_key, value=getattr(self.astar, solver_attr))
+                        rclpy.parameter.Parameter(
+                            cfg_key,
+                            value=getattr(self.astar, solver_attr),
+                        )
                     )
             if params_to_sync:
                 self.set_parameters(params_to_sync)
 
-            self.get_logger().info(f"Config updated: lanes={self.lanes}, length={self.scan_length}, width={self.scan_width}")
+            self.get_logger().info(
+                f"Config updated: lanes={self.lanes}, "
+                f"length={self.scan_length}, width={self.scan_width}"
+            )
             if not self.get_parameter('config_tuned').value:
                 self.set_parameters([rclpy.parameter.Parameter('config_tuned', value=True)])
 
         except Exception as e:
             self.get_logger().error(f"Config parse error: {e}")
-            
+
     def publish_config(self):
-        """Publish current configuration"""
+        """Publish current configuration."""
         config = {
             'lanes': self.lanes,
             'scan_length': self.scan_length,
@@ -795,10 +887,10 @@ class WaypointPlanner(Node):
         self._publish_json(self.pub_config, config, 'config')
 
     def latlon_to_meters(self, lat, lon):
-        """Convert GPS coordinates to local meters"""
+        """Convert GPS coordinates to local meters."""
         if self.start_gps is None:
             return 0.0, 0.0
-            
+
         R = 6371000.0  # Earth radius in meters
         d_lat = math.radians(lat - self.start_gps[0])
         d_lon = math.radians(lon - self.start_gps[1])
@@ -809,7 +901,7 @@ class WaypointPlanner(Node):
         return y, x  # (East, North)
 
     def generate_lawnmower_path(self):
-        """Generate zigzag lawn mower pattern waypoints"""
+        """Generate zigzag lawn mower pattern waypoints."""
         # First generate main lawnmower waypoints
         main_waypoints = []
 
@@ -828,9 +920,15 @@ class WaypointPlanner(Node):
 
         # If hybrid mode enabled, use A* to find routes between main waypoints
         if self.astar_hybrid_mode and self.start_gps is not None:
-            self.get_logger().info(f"🧠 Hybrid Mode: Planning A* routes between {len(main_waypoints)} main waypoints...")
+            self.get_logger().info(
+                f"🧠 Hybrid Mode: Planning A* routes between "
+                f"{len(main_waypoints)} main waypoints..."
+            )
             self.waypoints = self._generate_hybrid_waypoints(main_waypoints)
-            self.get_logger().info(f"✓ Hybrid generation: {len(main_waypoints)} main → {len(self.waypoints)} total waypoints")
+            self.get_logger().info(
+                f"✓ Hybrid generation: {len(main_waypoints)} main → "
+                f"{len(self.waypoints)} total waypoints"
+            )
         else:
             self.waypoints = main_waypoints
             self.get_logger().info(f"Generated {len(self.waypoints)} waypoints (simple mode)")
@@ -841,6 +939,7 @@ class WaypointPlanner(Node):
     def _generate_hybrid_waypoints(self, main_waypoints):
         """
         Generate hybrid waypoints using A* between main lawnmower points.
+
         Returns expanded waypoint list with A* intermediate points.
         """
         if len(main_waypoints) < 2:
@@ -856,7 +955,11 @@ class WaypointPlanner(Node):
         inflate = self.plan_avoid_margin + self.hull_radius
 
         # Use obstacle clusters if available (from perception), otherwise empty
-        obstacles = self.obstacle_clusters if hasattr(self, 'obstacle_clusters') and self.obstacle_clusters else []
+        obstacles = (
+            self.obstacle_clusters
+            if hasattr(self, 'obstacle_clusters') and self.obstacle_clusters
+            else []
+        )
 
         # Plan from start to first waypoint
         first_wp = main_waypoints[0]
@@ -902,7 +1005,7 @@ class WaypointPlanner(Node):
         return hybrid_path
 
     def planning_loop(self):
-        """Main planning loop with AutoBoat-style logging"""
+        """Run the planning loop with AutoBoat-style logging."""
         if self.state != "DRIVING" or self.current_gps is None:
             return
 
@@ -974,15 +1077,15 @@ class WaypointPlanner(Node):
 
         # Publish current target
         self.publish_current_target(curr_x, curr_y, target_x, target_y, dist)
-        
+
         # Publish mission status
         self.publish_mission_status(curr_x, curr_y)
 
     def log_navigation_status(self, curr_x, curr_y, target_x, target_y, dist):
-        """Log navigation status in AutoBoat bilingual style"""
+        """Log navigation status in AutoBoat bilingual style."""
         wp_progress = f"{self.current_wp_index + 1}/{len(self.waypoints)}"
         heading = math.degrees(math.atan2(target_y - curr_y, target_x - curr_x))
-        
+
         self.get_logger().info(
             f"PT {wp_progress} | "  # PT = Point de Trajectoire (Waypoint)
             f"Pos: ({curr_x:.1f}, {curr_y:.1f}) | "  # Pos = Position
@@ -993,7 +1096,7 @@ class WaypointPlanner(Node):
         )
 
     def advance_to_next_waypoint(self):
-        """Move to next waypoint and reset skip tracking"""
+        """Move to next waypoint and reset skip tracking."""
         self.current_wp_index += 1
         self.waypoint_start_time = None
         self.obstacle_blocking_time = 0.0
@@ -1006,18 +1109,19 @@ class WaypointPlanner(Node):
     def check_waypoint_skip(self, curr_x, curr_y, dist):
         """
         Check if we should skip waypoint due to persistent obstacle blocking.
+
         In go_home_mode: Insert detour waypoints instead of skipping.
         In normal mode: Skip to next waypoint after timeout or repeated obstruction.
         """
         now = self.get_clock().now()
-        
+
         # Initialize waypoint start time
         if self.waypoint_start_time is None:
             self.waypoint_start_time = now
             self.obstacle_blocking_time = 0.0
             self.last_obstacle_check = now
             return
-        
+
         # Track obstacle blocking time if we're getting close to waypoint
         if dist < 30.0 and self.obstacle_detected:
             if self.last_obstacle_check is not None:
@@ -1029,26 +1133,34 @@ class WaypointPlanner(Node):
             if dist < 30.0:
                 self.obstacle_blocking_time = 0.0
                 self.blocked_reason = ""
-        
+
         self.last_obstacle_check = now
-        
+
         # GO HOME MODE: Insert detours instead of skipping
         if self.go_home_mode:
             # Insert detour after shorter timeout (15s) to avoid circling
-            if self.obstacle_blocking_time >= self.home_detour_timeout and not self.detour_waypoint_inserted:
+            if (
+                self.obstacle_blocking_time >= self.home_detour_timeout
+                and not self.detour_waypoint_inserted
+            ):
                 self.get_logger().warn(
-                    f"🏠 HOME MODE: Obstacle blocking for {self.obstacle_blocking_time:.0f}s - Inserting detour"
+                    f"🏠 HOME MODE: Obstacle blocking for "
+                    f"{self.obstacle_blocking_time:.0f}s - Inserting detour"
                 )
                 self.insert_detour_waypoint(curr_x, curr_y)
                 self.obstacle_blocking_time = 0.0  # Reset timer after inserting detour
                 self.blocked_reason = "detour_home"
             return  # Don't skip in home mode
-        
+
         # NORMAL MODE: Check if we should skip
         # If blocked too long, try a side detour automatically
-        if self.obstacle_blocking_time >= self.max_block_time and not self.detour_waypoint_inserted:
+        if (
+            self.obstacle_blocking_time >= self.max_block_time
+            and not self.detour_waypoint_inserted
+        ):
             self.get_logger().warn(
-                f"⏳ Obstacle blocking for {self.obstacle_blocking_time:.0f}s - inserting detour waypoint"
+                f"⏳ Obstacle blocking for {self.obstacle_blocking_time:.0f}s - "
+                "inserting detour waypoint"
             )
             self.insert_detour_waypoint(curr_x, curr_y)
             self.obstacle_blocking_time = 0.0
@@ -1057,10 +1169,10 @@ class WaypointPlanner(Node):
 
         # Skip condition 1: Timeout exceeded (reduced timeout for faster response)
         timeout_exceeded = self.obstacle_blocking_time >= self.waypoint_skip_timeout
-        
+
         # Skip condition 2: Obstacle detected AND we're very close (cluster of buoys)
         in_obstacle_cluster = dist < 8.0 and self.obstacle_detected
-        
+
         if timeout_exceeded or in_obstacle_cluster:
             if self.current_wp_index >= len(self.waypoints):
                 return  # Already past last waypoint
@@ -1073,12 +1185,13 @@ class WaypointPlanner(Node):
                 detour_path = self.plan_astar_detour(curr_x, curr_y, target_x, target_y)
                 if detour_path:
                     self.get_logger().info(
-                        f"🧭 A* DETOUR inserted for WP {wp_num}/{total_wp} ({len(detour_path)} segments)"
+                        f"🧭 A* DETOUR inserted for WP {wp_num}/{total_wp} "
+                        f"({len(detour_path)} segments)"
                     )
                     self.obstacle_blocking_time = 0.0
                     self.blocked_reason = "detour_astar"
                     return
-            
+
             reason = "timeout" if timeout_exceeded else "obstacle_cluster"
             self.get_logger().warn(
                 f"⏭️ SKIP WP {wp_num}/{total_wp} | Reason: {reason} | "
@@ -1089,9 +1202,12 @@ class WaypointPlanner(Node):
             self.skip_blocked_waypoints()
 
     def skip_blocked_waypoints(self):
-        """Skip current waypoint and any subsequent waypoints near known obstacles.
+        """
+        Skip current waypoint and subsequent waypoints near known obstacles.
+
         Handles long linear obstacles (e.g. piers) by skipping the entire blocked
-        stretch instead of trying each waypoint individually."""
+        stretch instead of trying each waypoint individually.
+        """
         skipped = 0
         while self.current_wp_index < len(self.waypoints):
             wx, wy = self.waypoints[self.current_wp_index]
@@ -1130,14 +1246,15 @@ class WaypointPlanner(Node):
         return True
 
     def insert_detour_waypoint(self, curr_x, curr_y):
-        """Insert a detour waypoint perpendicular to current heading"""
-        import time
+        """Insert a detour waypoint perpendicular to current heading."""
         now = time.time()
         if now - self.last_detour_time < self.detour_cooldown:
             return  # Cooldown active
         if self.detour_count >= self.max_detours_per_waypoint:
             self.get_logger().warn(
-                f"Detour cap reached ({self.detour_count}/{self.max_detours_per_waypoint}) — burst-skipping blocked waypoints"
+                f"Detour cap reached "
+                f"({self.detour_count}/{self.max_detours_per_waypoint}) — "
+                "burst-skipping blocked waypoints"
             )
             self.skip_blocked_waypoints()
             return
@@ -1160,11 +1277,17 @@ class WaypointPlanner(Node):
         # Validate detour point is not obstructed
         if not self._is_detour_clear(detour_x, detour_y):
             # Try opposite side
-            detour_angle = heading - math.pi / 2 if self.left_clear >= self.right_clear else heading + math.pi / 2
+            detour_angle = (
+                heading - math.pi / 2
+                if self.left_clear >= self.right_clear
+                else heading + math.pi / 2
+            )
             detour_x = curr_x + self.detour_distance * math.cos(detour_angle)
             detour_y = curr_y + self.detour_distance * math.sin(detour_angle)
             if not self._is_detour_clear(detour_x, detour_y):
-                self.get_logger().warn("Both detour sides obstructed — burst-skipping blocked waypoints")
+                self.get_logger().warn(
+                    "Both detour sides obstructed — burst-skipping blocked waypoints"
+                )
                 self.skip_blocked_waypoints()
                 return
 
@@ -1179,19 +1302,20 @@ class WaypointPlanner(Node):
             f"DETOUR {self.detour_count}/{self.max_detours_per_waypoint}! "
             f"Inserting at ({detour_x:.1f}, {detour_y:.1f})"
         )
-        
+
         # Publish updated waypoints
         self.publish_waypoints()
 
     def insert_side_detour(self, curr_x, curr_y, heading, side='left'):
         """Insert a perpendicular + forward detour based on obstacle side."""
-        import time
         now = time.time()
         if now - self.last_detour_time < self.detour_cooldown:
             return  # Cooldown active
         if self.detour_count >= self.max_detours_per_waypoint:
             self.get_logger().warn(
-                f"Detour cap reached ({self.detour_count}/{self.max_detours_per_waypoint}) — burst-skipping blocked waypoints"
+                f"Detour cap reached "
+                f"({self.detour_count}/{self.max_detours_per_waypoint}) — "
+                "burst-skipping blocked waypoints"
             )
             self.skip_blocked_waypoints()
             return
@@ -1210,7 +1334,10 @@ class WaypointPlanner(Node):
             detour_x = curr_x + lateral * math.cos(angle) + forward * math.cos(heading)
             detour_y = curr_y + lateral * math.sin(angle) + forward * math.sin(heading)
             if not self._is_detour_clear(detour_x, detour_y):
-                self.get_logger().warn("Both side detour directions obstructed — burst-skipping blocked waypoints")
+                self.get_logger().warn(
+                    "Both side detour directions obstructed — "
+                    "burst-skipping blocked waypoints"
+                )
                 self.skip_blocked_waypoints()
                 return
             side = opp_side
@@ -1221,7 +1348,8 @@ class WaypointPlanner(Node):
         self.last_detour_time = now
         self.detour_start_time = self.get_clock().now()
         self.get_logger().warn(
-            f"📍 Side detour {self.detour_count}/{self.max_detours_per_waypoint} ({side.upper()}): "
+            f"📍 Side detour {self.detour_count}/"
+            f"{self.max_detours_per_waypoint} ({side.upper()}): "
             f"({detour_x:.1f}, {detour_y:.1f}) | "
             f"Front={self.front_clear:.1f}m L={self.left_clear:.1f}m R={self.right_clear:.1f}m"
         )
@@ -1229,7 +1357,6 @@ class WaypointPlanner(Node):
 
     def plan_astar_detour(self, curr_x, curr_y, target_x, target_y):
         """Run A* to replace the current leg with a detour path."""
-        import time
         now = time.time()
         if now - self.last_detour_time < self.detour_cooldown:
             return None  # Cooldown active
@@ -1250,7 +1377,10 @@ class WaypointPlanner(Node):
 
         # Replace current waypoint with the planned segments (include goal)
         # Ensure we don't include the current position as a waypoint
-        filtered = [(x, y) for (x, y) in path if math.hypot(x - curr_x, y - curr_y) > 1.0]
+        filtered = [
+            (x, y) for (x, y) in path
+            if math.hypot(x - curr_x, y - curr_y) > 1.0
+        ]
         if not filtered:
             return None
 
@@ -1262,7 +1392,7 @@ class WaypointPlanner(Node):
         return filtered
 
     def finish_mission(self, final_x, final_y):
-        """Complete mission with AutoBoat-style summary"""
+        """Complete mission with AutoBoat-style summary."""
         elapsed = 0.0
         if self.mission_start_time:
             elapsed = (self.get_clock().now() - self.mission_start_time).nanoseconds / 1e9
@@ -1291,10 +1421,12 @@ class WaypointPlanner(Node):
             self.get_logger().info(f"Mission Time: {elapsed_min:.1f} minutes")
             self.get_logger().info("=" * 60)
             # Keep waypoints for potential restart
-            self.get_logger().info("Run 'start' to repeat mission or 'generate' for new waypoints.")
+            self.get_logger().info(
+                "Run 'start' to repeat mission or 'generate' for new waypoints."
+            )
 
     def publish_waypoints(self):
-        """Publish all waypoints"""
+        """Publish all waypoints."""
         self._publish_json(
             self.pub_waypoints,
             {'waypoints': self.waypoints, 'total': len(self.waypoints)},
@@ -1302,7 +1434,7 @@ class WaypointPlanner(Node):
         )
 
     def publish_current_target(self, curr_x, curr_y, target_x, target_y, dist):
-        """Publish current navigation target"""
+        """Publish current navigation target."""
         self._publish_json(
             self.pub_current_target,
             {
@@ -1319,18 +1451,18 @@ class WaypointPlanner(Node):
         )
 
     def publish_mission_status(self, curr_x, curr_y):
-        """Publish mission status"""
+        """Publish mission status."""
         elapsed = 0.0
         if self.mission_start_time:
             elapsed = (self.get_clock().now() - self.mission_start_time).nanoseconds / 1e9
 
         # Check GPS ready status with timeout fallback
         gps_ready = self.current_gps is not None
-        
+
         # Initialize GPS timeout tracking
         if self.gps_init_time is None and self.current_gps is None:
             self.gps_init_time = self.get_clock().now()
-        
+
         # GPS timeout: if no GPS after 30 seconds, assume ready anyway (fallback)
         if self.gps_init_time is not None and not gps_ready:
             gps_wait_time = (self.get_clock().now() - self.gps_init_time).nanoseconds / 1e9
@@ -1338,9 +1470,11 @@ class WaypointPlanner(Node):
                 gps_ready = True  # Fallback: consider GPS ready after timeout
                 if not self.gps_timeout_warned:
                     self.get_logger().warn(
-                        f"⚠️  GPS NOT RECEIVED after {self.gps_timeout}s - assuming GPS ready anyway (fallback mode)\n"
-                        f"   Check: 'ros2 topic echo /wamv/sensors/gps/gps/fix --once'\n"
-                        f"   Issue may be: wrong world file, Gazebo plugin problem, or VRX setup issue"
+                        f"⚠️  GPS NOT RECEIVED after {self.gps_timeout}s - "
+                        "assuming GPS ready anyway (fallback mode)\n"
+                        "   Check: 'ros2 topic echo /wamv/sensors/gps/gps/fix --once'\n"
+                        "   Issue may be: wrong world file, Gazebo plugin problem, "
+                        "or VRX setup issue"
                     )
                     self.gps_timeout_warned = True
 
@@ -1350,7 +1484,11 @@ class WaypointPlanner(Node):
                 'state': self.state,
                 'current_waypoint': min(self.current_wp_index + 1, len(self.waypoints)),
                 'total_waypoints': len(self.waypoints),
-                'progress_percent': round(100 * min(self.current_wp_index, len(self.waypoints)) / max(1, len(self.waypoints)), 1),
+                'progress_percent': round(
+                    100 * min(self.current_wp_index, len(self.waypoints))
+                    / max(1, len(self.waypoints)),
+                    1,
+                ),
                 'elapsed_time': round(elapsed, 1),
                 'position': [round(curr_x, 2), round(curr_y, 2)],
                 'mission_armed': self.mission_armed,
@@ -1364,7 +1502,7 @@ class WaypointPlanner(Node):
         )
 
     def publish_mission_status_timer(self):
-        """Timer callback to publish mission status continuously (even when not DRIVING)"""
+        """Publish mission status continuously, even when not DRIVING."""
         if self.current_gps is not None:
             curr_x, curr_y = self.latlon_to_meters(self.current_gps[0], self.current_gps[1])
         else:
@@ -1372,7 +1510,7 @@ class WaypointPlanner(Node):
         self.publish_mission_status(curr_x, curr_y)
 
     def _publish_current_target_immediate(self):
-        """Immediately publish current target (called on resume/go_home for instant controller response)"""
+        """Immediately publish current target for resume/go_home."""
         if self.current_gps is None:
             self.get_logger().warn("⚠️ Cannot publish target: GPS not available")
             return
@@ -1380,20 +1518,26 @@ class WaypointPlanner(Node):
             self.get_logger().warn("⚠️ Cannot publish target: No waypoints")
             return
         if self.current_wp_index >= len(self.waypoints):
-            self.get_logger().warn(f"⚠️ Cannot publish target: Waypoint index {self.current_wp_index} >= {len(self.waypoints)}")
+            self.get_logger().warn(
+                f"⚠️ Cannot publish target: Waypoint index "
+                f"{self.current_wp_index} >= {len(self.waypoints)}"
+            )
             return
 
         curr_x, curr_y = self.latlon_to_meters(self.current_gps[0], self.current_gps[1])
         target_x, target_y = self.waypoints[self.current_wp_index]
         dist = math.hypot(target_x - curr_x, target_y - curr_y)
         self.publish_current_target(curr_x, curr_y, target_x, target_y, dist)
-        self.get_logger().info(f"📍 Target published: ({target_x:.1f}, {target_y:.1f}) - {dist:.1f}m away")
+        self.get_logger().info(
+            f"📍 Target published: ({target_x:.1f}, {target_y:.1f}) - "
+            f"{dist:.1f}m away"
+        )
 
 
 def main(args=None):
     rclpy.init(args=args)
     node = WaypointPlanner()
-    
+
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:

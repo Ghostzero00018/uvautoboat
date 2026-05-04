@@ -1,17 +1,19 @@
 import os
+from pathlib import Path
 import re
 import subprocess
 import threading
-from pathlib import Path
 
-import rclpy
 from ament_index_python.packages import get_package_share_directory
+import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
 
 # Resolve via package share so the lookup matches both source and install layouts.
-SCRIPT_PATH = str(Path(get_package_share_directory('plan')) / 'scripts' / 'health_check_autoboat.sh')
+SCRIPT_PATH = str(
+    Path(get_package_share_directory('plan')) / 'scripts' / 'health_check_autoboat.sh'
+)
 ANSI_ESCAPE = re.compile(r'\x1b\[[0-9;]*m')
 
 
@@ -24,14 +26,17 @@ class HealthCheckService(Node):
         self._lock = threading.Lock()
         self._running = False
         self.get_logger().info(
-            f'Health check service ready: call /health_check/run, subscribe /health_check/line (script: {SCRIPT_PATH})'
+            'Health check service ready: call /health_check/run, subscribe '
+            f'/health_check/line (script: {SCRIPT_PATH})'
         )
 
     def handle_run(self, request, response):
         with self._lock:
             if self._running:
                 response.success = False
-                response.message = 'A health check is already running — wait for the current one to finish.'
+                response.message = (
+                    'A health check is already running — wait for the current one to finish.'
+                )
                 return response
             self._running = True
 
@@ -87,7 +92,10 @@ class HealthCheckService(Node):
             process.wait()
 
             if timed_out.is_set():
-                self._publish_line('[ERROR] Health check timed out after 90 seconds (script may have hung without output)')
+                self._publish_line(
+                    '[ERROR] Health check timed out after 90 seconds '
+                    '(script may have hung without output)'
+                )
                 self.get_logger().error('Health check timed out')
             else:
                 exit_ok = (process.returncode == 0)

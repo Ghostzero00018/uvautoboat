@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-LiDAR Perception - 3D LiDAR Point Cloud Processing (Enhanced v2.0)
+LiDAR Perception - 3D LiDAR Point Cloud Processing (Enhanced v2.0).
 
 Module: LiDAR Perception
 Role:   Processes 3D LiDAR point clouds and publishes obstacle information.
-See also: Waypoint Planner (Planning) and Heading Controller (Control)
+See also: Waypoint Planner (Planning) and Heading Controller (Control).
 
 Part of the modular AutoBoat architecture.
 Subscribes to 3D LiDAR data, processes point cloud, publishes obstacle information.
@@ -32,26 +32,30 @@ Topics:
 
     Publishes:
         /perception/obstacle_info (String) - JSON with obstacle distances per sector
-        /perception/param_ranges (String) - JSON [min, max, default] 3-tuples; dashboard syncs HTML min/max + populates liveDefaults for (default: X) hints
+        /perception/param_ranges (String) - JSON [min, max, default] 3-tuples;
+          dashboard syncs HTML min/max + populates liveDefaults for
+          (default: X) hints
 """
 
-import rclpy
-from rclpy.node import Node
-from rcl_interfaces.msg import SetParametersResult
+from collections import deque
+import json
 import math
 import struct
-import json
 import time
+
 import numpy as np
-from collections import deque
+from rcl_interfaces.msg import SetParametersResult
+import rclpy
+from rclpy.node import Node
 
 from sensor_msgs.msg import PointCloud2
-from std_msgs.msg import String, Float64
+from std_msgs.msg import Float64, String
 
 
 class LidarPerception(Node):
     """
     LiDAR Perception — 3D LiDAR obstacle detection and classification.
+
     Système de perception et détection d'obstacles
 
     Enhanced with temporal filtering, clustering, and velocity estimation.
@@ -83,25 +87,34 @@ class LidarPerception(Node):
         # Lake banks appear BELOW the LiDAR (negative Z values)
         self.declare_parameter('perception_min_safe_distance', 10.0)  # Detection threshold
         self.declare_parameter('perception_critical_distance', 5.5)   # Emergency stop threshold
-        self.declare_parameter('hysteresis_distance', 2.0) # Prevent oscillation
-        self.declare_parameter('min_height', -1.2)   # Lower threshold to detect low piers (LiDAR@1.8m: piers≈-1.0 to -0.3m)
-        self.declare_parameter('max_height', 1.5)    # Focus on navigation hazards, ignore tall structures
+        self.declare_parameter('hysteresis_distance', 2.0)  # Prevent oscillation
+        # Lower threshold to detect low piers.
+        # LiDAR@1.8m sees piers around -1.0 to -0.3m.
+        self.declare_parameter('min_height', -1.2)
+        # Focus on navigation hazards; ignore tall structures.
+        self.declare_parameter('max_height', 1.5)
         self.declare_parameter('min_range', 2.2)     # Keep closer returns, still filter hull
-        self.declare_parameter('max_range', 100.0)   # Extended range for early detection (LiDAR max: 130m)
+        self.declare_parameter('max_range', 100.0)   # Extended range; LiDAR max is 130m
         self.declare_parameter('sample_rate', 1)     # Process ALL points
-        
+
         # Enhanced parameters (v2.0)
         self.declare_parameter('temporal_history_size', 3)    # Reduced: faster response
         self.declare_parameter('temporal_threshold', 2)       # Reduced: 2/3 detections to confirm
-        self.declare_parameter('cluster_distance', 3.0)       # Cluster tolerance for high-density LiDAR (1875×16 samples)
-        self.declare_parameter('min_cluster_size', 8)         # Require more points due to higher point density
-        self.declare_parameter('water_plane_threshold', 0.32) # Balance water rejection vs dropouts
+        # Cluster tolerance for high-density LiDAR (1875×16 samples).
+        self.declare_parameter('cluster_distance', 3.0)
+        # Require more points due to higher point density.
+        self.declare_parameter('min_cluster_size', 8)
+        # Balance water rejection vs dropouts.
+        self.declare_parameter('water_plane_threshold', 0.32)
 
         # VFH / polar histogram tuning (opt-in via use_vfh_bias on controller)
-        self.declare_parameter('vfh_block_distance', 15.0)    # Distance at which a bin is marked blocked (m)
-        self.declare_parameter('vfh_bin_width_deg', 5.0)      # Angular bin width (degrees) — smaller = finer
-        self.declare_parameter('vfh_clearance_deg', 10.0)     # Inflation around blocked bins (degrees)
-        self.declare_parameter('vfh_polar_power', 1.0)        # Distance weighting exponent for polar histogram
+        # Distance at which a bin is marked blocked (m).
+        self.declare_parameter('vfh_block_distance', 15.0)
+        # Angular bin width (degrees); smaller = finer.
+        self.declare_parameter('vfh_bin_width_deg', 5.0)
+        # Inflation around blocked bins (degrees).
+        self.declare_parameter('vfh_clearance_deg', 10.0)
+        self.declare_parameter('vfh_polar_power', 1.0)        # Distance weighting exponent
         # Flipped by config_callback on first successful /planning/set_config.
         # Health check reads this to distinguish baseline-vs-user-tuned values.
         self.declare_parameter('config_tuned', False)
@@ -118,7 +131,7 @@ class LidarPerception(Node):
         self.front_clear = float('inf')
         self.left_clear = float('inf')
         self.right_clear = float('inf')
-        
+
         # Enhanced state (v2.0)
         # 1. Temporal filtering
         self.detection_history = deque(maxlen=self.temporal_history_size)
@@ -127,26 +140,26 @@ class LidarPerception(Node):
             'left': deque(maxlen=self.temporal_history_size),
             'right': deque(maxlen=self.temporal_history_size)
         }
-        
+
         # 2. Urgency scoring
         self.front_urgency = 0.0
         self.left_urgency = 0.0
         self.right_urgency = 0.0
         self.overall_urgency = 0.0
-        
+
         # 3. Obstacle clusters
         self.clusters = []  # List of (centroid_x, centroid_y, size, min_dist)
         self.gaps = []      # List of (angle_start, angle_end, width)
-        
+
         # 4. Adaptive sectors
         self.target_angle = 0.0  # Direction to target waypoint
         self.front_half_width = math.pi / 4  # Default ±45°
-        
+
         # 5. Ground plane
         self.water_plane_z = None  # Estimated water surface height
 
         # 6. Advanced steering state (polar histogram + VFH)
-        self.polar_bias = 0.0  # Left/right balance [-1:turn right, 0:balanced, +1:turn left]
+        self.polar_bias = 0.0  # Left/right balance [-1:right, 0:balanced, +1:left]
         self.vfh_steer = 0.0   # VFH steering angle (radians)
         # Body-frame heading error from controller (radians) — used as VFH target direction
         self.body_heading_error = 0.0
@@ -158,7 +171,7 @@ class LidarPerception(Node):
             self.lidar_callback,
             rclpy.qos.qos_profile_sensor_data
         )
-        
+
         # Subscribe to target for adaptive sectors
         self.create_subscription(
             String,
@@ -199,19 +212,30 @@ class LidarPerception(Node):
         self._publish_param_ranges()  # initial publish on startup
 
         self.get_logger().info("=" * 60)
-        self.get_logger().info("LiDAR Perception v2.1 - Enhanced Obstacle Detection with Dynamic Parameters")
+        self.get_logger().info(
+            "LiDAR Perception v2.1 - Enhanced Obstacle Detection with Dynamic Parameters"
+        )
         self.get_logger().info("=" * 60)
-        self.get_logger().info(f"Safe Distance: {self.min_safe_distance}m | Critical: {self.critical_distance}m")
+        self.get_logger().info(
+            f"Safe Distance: {self.min_safe_distance}m | "
+            f"Critical: {self.critical_distance}m"
+        )
         self.get_logger().info(f"Height Filter: {self.min_height}m to {self.max_height}m")
-        self.get_logger().info(f"Temporal Filter: {self.temporal_threshold}/{self.temporal_history_size} scans")
-        self.get_logger().info(f"Clustering: {self.cluster_distance}m eps, {self.min_cluster_size} min points")
+        self.get_logger().info(
+            f"Temporal Filter: {self.temporal_threshold}/"
+            f"{self.temporal_history_size} scans"
+        )
+        self.get_logger().info(
+            f"Clustering: {self.cluster_distance}m eps, "
+            f"{self.min_cluster_size} min points"
+        )
         self.get_logger().info("=" * 60)
 
         # Per-topic last-warn timestamps for _log_bad_json throttle.
         self._bad_json_last_warn: dict = {}
 
     def _log_bad_json(self, topic: str, exc: Exception, throttle_sec: float = 5.0) -> None:
-        """Warn once per `throttle_sec` when a subscribed topic delivers unparseable JSON."""
+        """Warn once per `throttle_sec` for unparseable subscribed topic JSON."""
         now = time.monotonic()
         last = self._bad_json_last_warn.get(topic, 0.0)
         if now - last >= throttle_sec:
@@ -219,7 +243,7 @@ class LidarPerception(Node):
             self._bad_json_last_warn[topic] = now
 
     def _load_parameters(self):
-        """Load/reload all parameters from parameter server"""
+        """Load/reload all parameters from parameter server."""
         # Basic parameters
         self.min_safe_distance = self.get_parameter('perception_min_safe_distance').value
         self.critical_distance = self.get_parameter('perception_critical_distance').value
@@ -244,15 +268,26 @@ class LidarPerception(Node):
         self.vfh_polar_power = self.get_parameter('vfh_polar_power').value
 
     def parameter_callback(self, params):
-        """Called when parameters are changed via set_parameters service (DYNAMIC UPDATES)"""
+        """Handle dynamic parameter updates from set_parameters calls."""
         for param in params:
             param_name = param.name
 
             # Check if it's one of our parameters
-            if param_name in ['perception_min_safe_distance', 'perception_critical_distance', 'hysteresis_distance',
-                             'min_height', 'max_height', 'min_range', 'max_range', 'sample_rate',
-                             'temporal_history_size', 'temporal_threshold', 'cluster_distance',
-                             'min_cluster_size', 'water_plane_threshold']:
+            if param_name in [
+                'perception_min_safe_distance',
+                'perception_critical_distance',
+                'hysteresis_distance',
+                'min_height',
+                'max_height',
+                'min_range',
+                'max_range',
+                'sample_rate',
+                'temporal_history_size',
+                'temporal_threshold',
+                'cluster_distance',
+                'min_cluster_size',
+                'water_plane_threshold',
+            ]:
 
                 # Reload all parameters
                 self._load_parameters()
@@ -281,7 +316,7 @@ class LidarPerception(Node):
         self.body_heading_error = float(msg.data)
 
     def target_callback(self, msg):
-        """Update target direction for adaptive sectors"""
+        """Update target direction for adaptive sectors."""
         try:
             data = json.loads(msg.data)
             target_heading = data.get('target_heading', 0.0)
@@ -290,13 +325,19 @@ class LidarPerception(Node):
             # Adaptive front sector width based on target direction
             # Narrower when heading straight, wider when turning
             heading_diff = abs(self.target_angle)
-            self.front_half_width = math.pi/6 + (math.pi/12) * min(1.0, heading_diff / (math.pi/2))
+            self.front_half_width = (
+                math.pi / 6 + (math.pi / 12) * min(1.0, heading_diff / (math.pi / 2))
+            )
         except Exception as e:
             self._log_bad_json('/planning/current_target', e)
 
     def _publish_json(self, publisher, payload, label):
-        """Safe JSON publish: refuses to emit NaN/Inf (e.g. empty-scan divisions)
-        so the dashboard parse can't silently fail on malformed wire data."""
+        """
+        Publish JSON only when the payload can be encoded safely.
+
+        Refuses NaN/Inf from empty-scan divisions so the dashboard parser cannot
+        silently fail on malformed wire data.
+        """
         try:
             encoded = json.dumps(payload, allow_nan=False)
         except (TypeError, ValueError) as e:
@@ -310,23 +351,29 @@ class LidarPerception(Node):
         publisher.publish(msg)
 
     def _publish_param_ranges(self):
-        """Publish validation ranges + launch defaults so the dashboard can sync
-        HTML min/max AND the (default: X) hint without hardcoding defaults on the
-        dashboard side. Lazy-captures launch-time defaults on first publish — at
-        that point get_parameter() returns YAML-or-Python-default values, before
-        any runtime config_callback can mutate them."""
+        """
+        Publish validation ranges and launch defaults for the dashboard.
+
+        Dashboard syncs HTML min/max and populates liveDefaults for
+        (default: X) hints without hardcoding defaults. Defaults are captured
+        lazily on first publish, before runtime config_callback updates can
+        mutate them.
+        """
         if not hasattr(self, '_launch_defaults'):
             self._launch_defaults = {
                 p: self.get_parameter(p).value for p in self.PARAM_RANGES.keys()
             }
         self._publish_json(
             self.pub_param_ranges,
-            {k: [lo, hi, self._launch_defaults.get(k)] for k, (lo, hi) in self.PARAM_RANGES.items()},
+            {
+                k: [lo, hi, self._launch_defaults.get(k)]
+                for k, (lo, hi) in self.PARAM_RANGES.items()
+            },
             'param_ranges',
         )
 
     def config_callback(self, msg):
-        """Handle runtime configuration changes from web dashboard"""
+        """Handle runtime configuration changes from web dashboard."""
         try:
             config = json.loads(msg.data)
             updated = []
@@ -357,7 +404,8 @@ class LidarPerception(Node):
                         lo, hi = self.PARAM_RANGES[config_key]
                         if not (lo <= new_val <= hi):
                             self.get_logger().warn(
-                                f"Rejected {attr_name}={new_val} (valid range: {lo}–{hi})")
+                                f"Rejected {attr_name}={new_val} (valid range: {lo}–{hi})"
+                            )
                             continue
                     setattr(self, attr_name, new_val)
                     # Sync to ROS parameter server so ros2 param get returns current values
@@ -373,7 +421,7 @@ class LidarPerception(Node):
             self.get_logger().error(f"Perception config parse error: {e}")
 
     def lidar_callback(self, msg):
-        """Process 3D LIDAR point cloud for obstacle detection (Enhanced v2.1)"""
+        """Process 3D LIDAR point cloud for obstacle detection (Enhanced v2.1)."""
         points = []
         all_z_values = []  # For water plane estimation
         total_points = 0
@@ -385,22 +433,21 @@ class LidarPerception(Node):
 
         point_step = msg.point_step
         data = msg.data
-        current_time = self.get_clock().now()
-        
+
         # Process points - sample every Nth point
         for i in range(0, len(data) - point_step, point_step * self.sample_rate):
             try:
                 x, y, z = struct.unpack_from('fff', data, i)
                 total_points += 1
-                
+
                 # Skip invalid points
                 if math.isnan(x) or math.isnan(y) or math.isnan(z):
                     continue
                 if math.isinf(x) or math.isinf(y) or math.isinf(z):
                     continue
-                
+
                 valid_points += 1
-                
+
                 # Collect Z values for water plane estimation
                 dist_2d = math.sqrt(x*x + y*y)
                 if self.min_range < dist_2d < self.max_range:
@@ -416,10 +463,10 @@ class LidarPerception(Node):
                 if dist < self.min_range or dist > self.max_range:
                     range_filtered += 1
                     continue
-                # BOAT SELF-FILTER for points behind the LiDARs (IF YOU WANT TO FILTER BEHIND THE BOAT)
+                # Boat self-filter for points behind the LiDARs.
                 # The WAM-V is approx 5m long and 2.4m wide.
                 # Filter out any points INSIDE this box.
-                
+
                 # Check if point is within the boat's width (Left/Right)
                 # Boat is ~2.4m wide, so +/- 1.3m covers the pontoons safely.
                 is_in_width = abs(y) < 1.3
@@ -439,17 +486,16 @@ class LidarPerception(Node):
                     if abs(z - self.water_plane_z) < self.water_plane_threshold:
                         water_filtered += 1
                         continue
-                
+
                 points.append((x, y, z, dist))
-                    
+
             except (struct.error, Exception):
                 continue
-        
+
         # 5. Update water plane estimate (lowest 5th percentile of Z values)
         if len(all_z_values) > 100:
             sorted_z = sorted(all_z_values)
             self.water_plane_z = sorted_z[len(sorted_z) // 20]  # 5th percentile
-
 
         # Debug logging (throttled)
         self.get_logger().info(
@@ -459,18 +505,18 @@ class LidarPerception(Node):
             f"behind={behind_filtered}, final={len(points)}",
             throttle_duration_sec=2.0
         )
-        
+
         if not points:
             self._handle_no_points()
             return
-        
+
         # Convert to numpy for efficient processing
         points_array = np.array(points)
-        
+
         # Get minimum distance
         distances = points_array[:, 3]
         raw_min_distance = np.min(distances)
-        
+
         # 2. Obstacle clustering
         self.clusters = self._cluster_obstacles(points_array)
         self.gaps = self._find_gaps(points_array)
@@ -481,7 +527,10 @@ class LidarPerception(Node):
         # VFH STEERING aimed at the controller's current waypoint direction (body frame)
 
         # VFH STEERING: Find best steering direction through gaps
-        self.vfh_steer = self._calculate_vfh_steering(points_array, target_angle=self.body_heading_error)
+        self.vfh_steer = self._calculate_vfh_steering(
+            points_array,
+            target_angle=self.body_heading_error,
+        )
 
         # 1. Temporal filtering for obstacle detection
         raw_detected = raw_min_distance < self.min_safe_distance
@@ -490,10 +539,10 @@ class LidarPerception(Node):
         # Confirm detection only if threshold met
         confirmed_detections = sum(self.detection_history)
         self.obstacle_detected = confirmed_detections >= self.temporal_threshold
-        
+
         # Use filtered min distance (median of recent scans for stability)
         self.min_obstacle_distance = raw_min_distance
-        
+
         # Hysteresis for obstacle detection
         if self.obstacle_detected:
             exit_threshold = self.min_safe_distance + self.hysteresis_distance
@@ -501,12 +550,12 @@ class LidarPerception(Node):
 
         # 4. Adaptive sector analysis
         self._analyze_sectors_adaptive(points_array)
-        
+
         # 2. Calculate urgency scores
         self._calculate_urgency()
 
     def _handle_no_points(self):
-        """Handle case when no valid points detected"""
+        """Handle case when no valid points detected."""
         self.min_obstacle_distance = self.max_range
         self.detection_history.append(False)
         if not self.obstacle_detected:
@@ -522,39 +571,40 @@ class LidarPerception(Node):
 
     def _cluster_obstacles(self, points):
         """
-        Simple distance-based clustering (no sklearn dependency)
-        Groups nearby points into obstacle clusters
+        Group nearby points into obstacle clusters.
+
+        Uses simple distance-based clustering without a sklearn dependency.
         """
         if len(points) < self.min_cluster_size:
             return []
-        
+
         clusters = []
         used = np.zeros(len(points), dtype=bool)
-        
+
         for i in range(len(points)):
             if used[i]:
                 continue
-            
+
             # Start new cluster
             cluster_indices = [i]
             used[i] = True
-            
+
             # Find all points within cluster_distance
             for j in range(i + 1, len(points)):
                 if used[j]:
                     continue
-                
+
                 # Check distance to any point in cluster
                 for ci in cluster_indices:
                     dx = points[j, 0] - points[ci, 0]
                     dy = points[j, 1] - points[ci, 1]
                     dist = math.sqrt(dx*dx + dy*dy)
-                    
+
                     if dist < self.cluster_distance:
                         cluster_indices.append(j)
                         used[j] = True
                         break
-            
+
             # Only keep significant clusters
             if len(cluster_indices) >= self.min_cluster_size:
                 cluster_points = points[cluster_indices]
@@ -562,18 +612,18 @@ class LidarPerception(Node):
                 centroid_y = np.mean(cluster_points[:, 1])
                 min_dist = np.min(cluster_points[:, 3])
                 size = len(cluster_indices)
-                
+
                 clusters.append({
                     'centroid': (centroid_x, centroid_y),
                     'size': size,
                     'min_distance': min_dist,
                     'angle': math.atan2(centroid_y, centroid_x)
                 })
-        
+
         return clusters
 
     def _find_gaps(self, points):
-        """Find gaps between obstacles that boat could pass through"""
+        """Find gaps between obstacles that boat could pass through."""
         if len(points) < 10:
             return []
 
@@ -614,6 +664,7 @@ class LidarPerception(Node):
     def _calculate_polar_histogram(self, points):
         """
         POLAR HISTOGRAM — weighted left/right free-space balance.
+
         Returns bias in [-1.0 (turn right), 0.0 (balanced), +1.0 (turn left)].
         Weighting exponent is tunable via the `vfh_polar_power` ROS parameter.
         """
@@ -690,9 +741,14 @@ class LidarPerception(Node):
             if blocked[i]:
                 continue
 
-            bin_angle = (i * bin_width_deg - 180)
-            error = abs(math.atan2(math.sin(math.radians(bin_angle - target_bin * bin_width_deg)),
-                                   math.cos(math.radians(bin_angle - target_bin * bin_width_deg))))
+            bin_angle = i * bin_width_deg - 180
+            target_deg = target_bin * bin_width_deg
+            error = abs(
+                math.atan2(
+                    math.sin(math.radians(bin_angle - target_deg)),
+                    math.cos(math.radians(bin_angle - target_deg)),
+                )
+            )
 
             if error < best_error:
                 best_error = error
@@ -702,80 +758,92 @@ class LidarPerception(Node):
             return None
 
         # Return steering angle
-        steer_deg = (best_bin * bin_width_deg - 180)
+        steer_deg = best_bin * bin_width_deg - 180
         return math.radians(steer_deg)
 
     def _analyze_sectors_adaptive(self, points):
-        """Adaptive sector analysis based on target direction"""
+        """Analyze adaptive sectors based on target direction."""
         front_points = []
         left_points = []
         right_points = []
-        
+
         # 4. Adaptive sectors - adjust based on target heading
         front_min = -self.front_half_width
         front_max = self.front_half_width
-        
+
         for i in range(len(points)):
             x, y, z, dist = points[i]
             angle = math.atan2(y, x)
-            
+
             if front_min < angle < front_max:  # Front (adaptive width)
                 front_points.append(dist)
-            elif angle >= front_max and angle <= math.pi * 3/4:  # Left
+            elif angle >= front_max and angle <= math.pi * 3 / 4:  # Left
                 left_points.append(dist)
-            elif angle <= front_min and angle >= -math.pi * 3/4:  # Right
+            elif angle <= front_min and angle >= -math.pi * 3 / 4:  # Right
                 right_points.append(dist)
-        
+
         # Calculate clearance per sector (10th percentile for robustness)
         raw_front = self._get_clearance(front_points)
         raw_left = self._get_clearance(left_points)
         raw_right = self._get_clearance(right_points)
-        
+
         # 1. Temporal filtering for sectors
         self.sector_history['front'].append(raw_front)
         self.sector_history['left'].append(raw_left)
         self.sector_history['right'].append(raw_right)
-        
+
         # Use median of recent values for stability
-        self.front_clear = np.median(list(self.sector_history['front'])) if self.sector_history['front'] else raw_front
-        self.left_clear = np.median(list(self.sector_history['left'])) if self.sector_history['left'] else raw_left
-        self.right_clear = np.median(list(self.sector_history['right'])) if self.sector_history['right'] else raw_right
+        self.front_clear = (
+            np.median(list(self.sector_history['front']))
+            if self.sector_history['front'] else raw_front
+        )
+        self.left_clear = (
+            np.median(list(self.sector_history['left']))
+            if self.sector_history['left'] else raw_left
+        )
+        self.right_clear = (
+            np.median(list(self.sector_history['right']))
+            if self.sector_history['right'] else raw_right
+        )
 
     def _calculate_urgency(self):
-        """Calculate distance-weighted urgency scores"""
+        """Calculate distance-weighted urgency scores."""
         self.front_urgency = self._distance_to_urgency(self.front_clear)
         self.left_urgency = self._distance_to_urgency(self.left_clear)
         self.right_urgency = self._distance_to_urgency(self.right_clear)
-        
+
         # Overall urgency is max of all sectors
         self.overall_urgency = max(self.front_urgency, self.left_urgency, self.right_urgency)
 
     def _distance_to_urgency(self, distance):
-        """Convert distance to urgency score (0.0 = safe, 1.0 = critical)"""
+        """Convert distance to urgency score (0.0 = safe, 1.0 = critical)."""
         if distance <= self.critical_distance:
             return 1.0
         elif distance >= self.min_safe_distance:
             return 0.0
         else:
             # Linear interpolation
-            return 1.0 - (distance - self.critical_distance) / (self.min_safe_distance - self.critical_distance)
+            return 1.0 - (
+                (distance - self.critical_distance)
+                / (self.min_safe_distance - self.critical_distance)
+            )
 
     def _get_clearance(self, distances):
-        """Get clearance distance using 10th percentile"""
+        """Get clearance distance using 10th percentile."""
         if not distances:
             return self.max_range
-        
+
         if isinstance(distances, np.ndarray):
             sorted_dists = np.sort(distances)
         else:
             sorted_dists = sorted(distances)
-        
+
         if len(sorted_dists) > 10:
             return min(self.max_range, sorted_dists[len(sorted_dists)//10])
         return min(self.max_range, sorted_dists[0])
 
     def publish_status(self):
-        """Publish enhanced obstacle information with bilingual logging"""
+        """Publish enhanced obstacle information with bilingual logging."""
         # Prepare cluster info for JSON
         cluster_info = []
         for cluster in self.clusters[:5]:  # Limit to 5 closest clusters
@@ -786,7 +854,7 @@ class LidarPerception(Node):
                 'distance': round(cluster['min_distance'], 2),
                 'angle_deg': round(math.degrees(cluster['angle']), 1)
             })
-        
+
         # Prepare gap info
         gap_info = []
         for gap in self.gaps[:3]:  # Limit to 3 best gaps
@@ -795,14 +863,17 @@ class LidarPerception(Node):
                 'width': round(gap['width'], 2),
                 'distance': round(gap['distance'], 2)
             })
-        
+
         # best_gap for controller consumption (direction in degrees, width in degrees)
         best_gap = None
         if self.gaps:
             best = max(self.gaps, key=lambda g: g['width'])
             best_gap = {
                 'direction': float(round(math.degrees(best['angle']), 1)),
-                'width': float(round(math.degrees(best['width'] / best['distance']), 1)) if best['distance'] > 0 else 0.0,
+                'width': (
+                    float(round(math.degrees(best['width'] / best['distance']), 1))
+                    if best['distance'] > 0 else 0.0
+                ),
                 'distance': float(round(best['distance'], 1))
             }
 
@@ -813,15 +884,27 @@ class LidarPerception(Node):
                 'direction': float(round(math.degrees(self.vfh_steer), 1)),  # +left / -right
                 'width': 30.0  # Nominal width
             }
-        
+
         # Publish detailed obstacle info as JSON (enhanced)
         # Convert numpy types to Python native types for JSON serialization
         obstacle_info = {
             'obstacle_detected': bool(self.obstacle_detected),
-            'min_distance': float(round(self.min_obstacle_distance, 2)) if math.isfinite(self.min_obstacle_distance) else 999.9,
-            'front_clear': float(round(self.front_clear, 2)) if math.isfinite(self.front_clear) else 999.9,
-            'left_clear': float(round(self.left_clear, 2)) if math.isfinite(self.left_clear) else 999.9,
-            'right_clear': float(round(self.right_clear, 2)) if math.isfinite(self.right_clear) else 999.9,
+            'min_distance': (
+                float(round(self.min_obstacle_distance, 2))
+                if math.isfinite(self.min_obstacle_distance) else 999.9
+            ),
+            'front_clear': (
+                float(round(self.front_clear, 2))
+                if math.isfinite(self.front_clear) else 999.9
+            ),
+            'left_clear': (
+                float(round(self.left_clear, 2))
+                if math.isfinite(self.left_clear) else 999.9
+            ),
+            'right_clear': (
+                float(round(self.right_clear, 2))
+                if math.isfinite(self.right_clear) else 999.9
+            ),
             'is_critical': bool(self.min_obstacle_distance < self.critical_distance),
             # Controller-consumed fields
             'urgency': float(round(self.overall_urgency, 3)),
@@ -834,39 +917,54 @@ class LidarPerception(Node):
             'overall_urgency': float(round(self.overall_urgency, 3)),
             'clusters': cluster_info,
             'gaps': gap_info,
-            'water_plane_z': float(round(self.water_plane_z, 2)) if self.water_plane_z else None,
-            'temporal_confidence': float(len(self.detection_history) / self.temporal_history_size),
+            'water_plane_z': (
+                float(round(self.water_plane_z, 2)) if self.water_plane_z else None
+            ),
+            'temporal_confidence': float(
+                len(self.detection_history) / self.temporal_history_size
+            ),
             # Advanced steering signals (polar histogram + VFH)
             'polar_bias': float(round(self.polar_bias, 3)),  # [-1:right, 0:balanced, +1:left]
-            'vfh_steer_deg': float(round(math.degrees(self.vfh_steer), 1)) if self.vfh_steer is not None else None,
+            'vfh_steer_deg': (
+                float(round(math.degrees(self.vfh_steer), 1))
+                if self.vfh_steer is not None else None
+            ),
             'vfh_gap': vfh_gap,
             'force_avoid_active': bool(self.obstacle_detected)
         }
-        
+
         self._publish_json(self.pub_obstacle_info, obstacle_info, 'obstacle_info')
-        
+
         # Bilingual logging (throttled)
         if self.obstacle_detected:
             if self.min_obstacle_distance < self.critical_distance:
                 self.get_logger().warn(
-                    f"🚨 CRITIQUE! {self.min_obstacle_distance:.1f}m (urgence={self.overall_urgency:.0%}) | "
-                    f"CRITICAL! (F:{self.front_clear:.1f} L:{self.left_clear:.1f} R:{self.right_clear:.1f})",
+                    f"🚨 CRITIQUE! {self.min_obstacle_distance:.1f}m "
+                    f"(urgence={self.overall_urgency:.0%}) | CRITICAL! "
+                    f"(F:{self.front_clear:.1f} L:{self.left_clear:.1f} "
+                    f"R:{self.right_clear:.1f})",
                     throttle_duration_sec=1.0
                 )
             else:
                 gap_hint = ""
                 if self.gaps:
                     best_gap = max(self.gaps, key=lambda g: g['width'])
-                    gap_hint = f" | GAP: {best_gap['width']:.1f}m @ {math.degrees(best_gap['angle']):.0f}°"
-                
+                    gap_hint = (
+                        f" | GAP: {best_gap['width']:.1f}m @ "
+                        f"{math.degrees(best_gap['angle']):.0f}°"
+                    )
+
                 self.get_logger().info(
-                    f"⚠️ OBSTACLE: {self.min_obstacle_distance:.1f}m (u={self.overall_urgency:.0%}) "
-                    f"(F:{self.front_clear:.1f} L:{self.left_clear:.1f} R:{self.right_clear:.1f}){gap_hint}",
+                    f"⚠️ OBSTACLE: {self.min_obstacle_distance:.1f}m "
+                    f"(u={self.overall_urgency:.0%}) "
+                    f"(F:{self.front_clear:.1f} L:{self.left_clear:.1f} "
+                    f"R:{self.right_clear:.1f}){gap_hint}",
                     throttle_duration_sec=2.0
                 )
         else:
             self.get_logger().info(
-                f"✅ DÉGAGÉ | CLEAR (F:{self.front_clear:.1f} L:{self.left_clear:.1f} R:{self.right_clear:.1f}) "
+                f"✅ DÉGAGÉ | CLEAR (F:{self.front_clear:.1f} "
+                f"L:{self.left_clear:.1f} R:{self.right_clear:.1f}) "
                 f"[{len(self.clusters)} clusters]",
                 throttle_duration_sec=5.0
             )
@@ -875,7 +973,7 @@ class LidarPerception(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = LidarPerception()
-    
+
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:

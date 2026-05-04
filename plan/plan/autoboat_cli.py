@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Mission CLI - Terminal-based mission control for AutoBoat
+Mission CLI - Terminal-based mission control for AutoBoat.
 
 Use this when the web dashboard is unavailable. Targets the modular
 Waypoint Planner + Heading Controller pipeline.
@@ -31,7 +31,8 @@ Usage:
     ros2 run plan autoboat_cli speed --base 500 --max 800
 
     # Generate with custom parameters (PID, speed, and turn angle)
-    ros2 run plan autoboat_cli generate --kp 500 --ki 20 --kd 150 --base 400 --max 800 --max-turn 20
+    ros2 run plan autoboat_cli generate --kp 500 --ki 20 --kd 150 \
+        --base 400 --max 800 --max-turn 20
 
     # Generate with anti-stuck parameters (for navigation tuning)
     ros2 run plan autoboat_cli generate --stuck-timeout 12.0 --stuck-threshold 1.0
@@ -40,7 +41,9 @@ Usage:
     ros2 run plan autoboat_cli generate --min-height -1.2
 
     # Full custom configuration (all parameters)
-    ros2 run plan autoboat_cli generate --kp 500 --base 400 --max 800 --max-turn 20 --stuck-timeout 12.0 --stuck-threshold 1.0 --min-height -1.2
+    ros2 run plan autoboat_cli generate --kp 500 --base 400 --max 800 \
+        --max-turn 20 --stuck-timeout 12.0 --stuck-threshold 1.0 \
+        --min-height -1.2
 
     # Show current status
     ros2 run plan autoboat_cli status
@@ -68,16 +71,15 @@ side. Use interactive mode for sequences, or verify with
 matters.
 """
 
+import argparse
+import json
+import time
+from typing import Optional, Tuple
+
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import String, Bool
+from std_msgs.msg import Bool, String
 from std_srvs.srv import Trigger
-import json
-import sys
-import argparse
-import time
-from pathlib import Path
-from typing import Optional, Tuple
 
 # Launch file path (relative to repo-root cwd; works in both source and install layouts).
 # Previous form derived from __file__ via parents[2], which broke under colcon install
@@ -143,6 +145,7 @@ class MissionCLI(Node):
     def _spin_for_status(self, timeout: float = 1.5) -> Tuple[Optional[dict], Optional[dict]]:
         """
         Spin briefly to refresh mission/config status.
+
         Returns (mission_status, config_status).
         """
         start = time.time()
@@ -160,6 +163,7 @@ class MissionCLI(Node):
     def _wait_for_state(self, expected: set, timeout: float = 2.0) -> Tuple[bool, str]:
         """
         Spin until mission_status.state is in `expected`, or timeout expires.
+
         Returns (reached, observed_state). `observed_state` is the last state
         seen (may be None-stringified 'unknown' if no status ever arrived).
         """
@@ -176,7 +180,8 @@ class MissionCLI(Node):
     def _waypoint_info(self) -> Tuple[int, str]:
         """
         Best-effort extraction of waypoint count and state across modes.
-        Returns (count, state_string)
+
+        Returns (count, state_string).
         """
         state = None
         count = 0
@@ -197,6 +202,7 @@ class MissionCLI(Node):
     def _auto_confirm_if_needed(self, for_command='start') -> bool:
         """
         Ensure waypoints are confirmed before starting/resuming.
+
         Returns True if we can proceed with start/resume.
         """
         self._spin_for_status()
@@ -247,7 +253,7 @@ class MissionCLI(Node):
             # Give time for the nav stack to process confirmation
             self._spin_for_status(timeout=1.0)
         return True
-        
+
     def mission_status_callback(self, msg):
         try:
             self.mission_status = json.loads(msg.data)
@@ -265,9 +271,9 @@ class MissionCLI(Node):
             self.controller_status = json.loads(msg.data)
         except Exception as e:
             self._log_bad_json('/control/status', e)
-    
+
     def wait_for_ready(self, timeout=5.0):
-        """Wait for navigation system to be ready"""
+        """Wait for navigation system to be ready."""
         print("⏳ Waiting for navigation system...")
         start = time.time()
         while time.time() - start < timeout:
@@ -278,38 +284,57 @@ class MissionCLI(Node):
         print("⚠️ Navigation system not responding. Is it running?")
         print(f"   Start with: ros2 launch {_LAUNCH_FILE}")
         return False
-    
+
     def send_command(self, command):
-        """Send mission command"""
+        """Send mission command."""
         msg = String()
         msg.data = json.dumps({'command': command})
         self.command_pub.publish(msg)
         self.get_logger().info(f"Sent command: {command}")
-        
+
     def send_config(self, config):
-        """Send configuration"""
+        """Send configuration."""
         msg = String()
         msg.data = json.dumps(config)
         self.config_pub.publish(msg)
         self.get_logger().info(f"Sent config: {config}")
-        
-    def generate_waypoints(self, lanes=8, length=50.0, width=20.0,
-                            kp=None, ki=None, kd=None, base_speed=None, max_speed=None, max_turn=None,
-                            stuck_timeout=None, stuck_threshold=None,
-                            min_height=None, safe_dist=None, perception_safe_dist=None, approach_dist=None, approach_factor=None,
-                            astar=False, astar_hybrid=False, astar_resolution=None, astar_safety=None, astar_max=None):
-        """Generate waypoints with specified parameters and optional PID/speed/turn/A* config"""
+
+    def generate_waypoints(
+        self,
+        lanes=8,
+        length=50.0,
+        width=20.0,
+        kp=None,
+        ki=None,
+        kd=None,
+        base_speed=None,
+        max_speed=None,
+        max_turn=None,
+        stuck_timeout=None,
+        stuck_threshold=None,
+        min_height=None,
+        safe_dist=None,
+        perception_safe_dist=None,
+        approach_dist=None,
+        approach_factor=None,
+        astar=False,
+        astar_hybrid=False,
+        astar_resolution=None,
+        astar_safety=None,
+        astar_max=None,
+    ):
+        """Generate waypoints with specified parameters and optional A* config."""
         # Wait for navigation system to be ready
         if not self.wait_for_ready():
             return False
-            
+
         # Waypoint config (for planner)
         config = {
             'lanes': lanes,
             'scan_length': length,
             'scan_width': width
         }
-        
+
         # Add PID/speed/turn if specified (controller also listens to /planning/set_config)
         if kp is not None:
             config['kp'] = kp
@@ -356,7 +381,7 @@ class MissionCLI(Node):
             config['astar_safety_margin'] = astar_safety
         if astar_max is not None:
             config['astar_max_expansions'] = astar_max
-            
+
         self.send_config(config)
         # Config is a topic (no ACK), generate is a service. rclpy's single-threaded
         # executor processes the config subscription before dispatching the service
@@ -375,7 +400,7 @@ class MissionCLI(Node):
         print(f"\n✅ Waypoints generated: {lanes} lanes × {length}m length × {width}m width")
         print(f"   Estimated waypoints: {lanes * 2 - 1}")
         print(f"   Estimated distance: {length * lanes + width * (lanes - 1):.0f}m")
-        
+
         # Show PID/speed if configured
         pid_info = []
         if kp is not None:
@@ -386,7 +411,7 @@ class MissionCLI(Node):
             pid_info.append(f"Kd={kd}")
         if pid_info:
             print(f"   PID: {', '.join(pid_info)}")
-            
+
         speed_info = []
         if base_speed is not None:
             speed_info.append(f"base={base_speed}")
@@ -394,9 +419,9 @@ class MissionCLI(Node):
             speed_info.append(f"max={max_speed}")
         if speed_info:
             print(f"   Speed: {', '.join(speed_info)}")
-        
+
     def start_mission(self):
-        """Start the mission"""
+        """Start the mission."""
         if not self._auto_confirm_if_needed(for_command='start'):
             return
         self.send_command('start_mission')
@@ -404,8 +429,11 @@ class MissionCLI(Node):
         if reached:
             print("\n🚀 Mission STARTED — state: DRIVING")
         else:
-            print(f"\n⚠️ Mission start sent, but state did not reach DRIVING within 2 s (current: {observed})")
-        
+            print(
+                "\n⚠️ Mission start sent, but state did not reach DRIVING "
+                f"within 2 s (current: {observed})"
+            )
+
     def stop_mission(self):
         """Stop the mission via service — ACK confirms delivery."""
         print("\n🛑 Stopping mission...")
@@ -422,19 +450,22 @@ class MissionCLI(Node):
             print(f"✅ Mission STOPPED — {result.message}")
         else:
             print(f"⚠️ Stop rejected: {result.message}")
-        
+
     def emergency_stop(self):
-        """Emergency stop — cuts thrust and latches stop override"""
+        """Emergency stop — cuts thrust and latches stop override."""
         print("\n🚨 EMERGENCY STOP...")
         self.estop_pub.publish(Bool(data=True))
         reached, observed = self._wait_for_state({"EMERGENCY_STOP"})
         if reached:
             print("🚨 EMERGENCY STOP confirmed. Use 'resume' or 'reset' to recover.")
         else:
-            print(f"⚠️ Emergency stop sent, but state did not reach EMERGENCY_STOP within 2 s (current: {observed})")
+            print(
+                "⚠️ Emergency stop sent, but state did not reach "
+                f"EMERGENCY_STOP within 2 s (current: {observed})"
+            )
 
     def resume_mission(self):
-        """Resume the mission"""
+        """Resume the mission."""
         if not self._auto_confirm_if_needed(for_command='resume'):
             return
         self.send_command('resume_mission')
@@ -442,15 +473,18 @@ class MissionCLI(Node):
         if reached:
             print("\n▶️ Mission RESUMED — state: DRIVING")
         else:
-            print(f"\n⚠️ Resume sent, but state did not reach DRIVING within 2 s (current: {observed})")
-        
+            print(
+                "\n⚠️ Resume sent, but state did not reach DRIVING "
+                f"within 2 s (current: {observed})"
+            )
+
     def reset_mission(self):
-        """Reset the mission"""
+        """Reset the mission."""
         self.send_command('reset_mission')
         print("\n🔄 Mission RESET command sent!")
-    
+
     def go_home(self):
-        """Navigate back to spawn point"""
+        """Navigate back to spawn point."""
         # go_home sets its own waypoints, so just check if GPS is ready
         self._spin_for_status()
         gps_ready = False
@@ -465,16 +499,19 @@ class MissionCLI(Node):
         if reached:
             print("\n🏠 GO HOME — state: DRIVING, returning to spawn point")
         else:
-            print(f"\n⚠️ Go home sent, but state did not reach DRIVING within 2 s (current: {observed})")
+            print(
+                "\n⚠️ Go home sent, but state did not reach DRIVING "
+                f"within 2 s (current: {observed})"
+            )
         print("   Note: After arriving home, run 'generate' to create new waypoints.")
-        
+
     def confirm_waypoints(self):
-        """Confirm waypoints"""
+        """Confirm waypoints."""
         self.send_command('confirm_waypoints')
         print("\n✅ Waypoints CONFIRMED!")
-        
+
     def set_pid(self, kp=None, ki=None, kd=None):
-        """Set PID parameters"""
+        """Set PID parameters."""
         config = {}
         if kp is not None:
             config['kp'] = kp
@@ -485,9 +522,9 @@ class MissionCLI(Node):
         if config:
             self.send_config(config)
             print(f"\n⚙️ PID parameters updated: {config}")
-            
+
     def set_speed(self, base=None, max_speed=None):
-        """Set speed parameters"""
+        """Set speed parameters."""
         config = {}
         if base is not None:
             config['base_speed'] = base
@@ -496,20 +533,20 @@ class MissionCLI(Node):
         if config:
             self.send_config(config)
             print(f"\n⚙️ Speed parameters updated: {config}")
-            
+
     def show_status(self):
-        """Show current status"""
+        """Show current status."""
         # Spin longer to ensure we receive status messages
         print("\n⏳ Waiting for status...")
         for _ in range(30):
             rclpy.spin_once(self, timeout_sec=0.1)
             if self.mission_status or self.config_status:
                 break
-            
+
         print("\n" + "=" * 50)
         print("AUTOBOAT STATUS")
         print("=" * 50)
-        
+
         # Mission status (only available during DRIVING state)
         if self.mission_status:
             state = self.mission_status.get('state', 'Unknown')
@@ -518,7 +555,7 @@ class MissionCLI(Node):
             progress = self.mission_status.get('progress_percent', '?')
             elapsed = self.mission_status.get('elapsed_time', '?')
             position = self.mission_status.get('position', ['?', '?'])
-            
+
             print(f"State: {state}")
             print(f"Waypoint: {waypoint}/{total}")
             print(f"Progress: {progress}%")
@@ -531,7 +568,7 @@ class MissionCLI(Node):
                 waypoint_count = self.config_status.get('waypoint_count', 0)
                 gps_ready = self.config_status.get('gps_ready', False)
                 mission_armed = self.config_status.get('mission_armed', False)
-                
+
                 print(f"State: {state}")
                 print(f"Waypoints: {waypoint_count} defined")
                 print(f"GPS: {'✅ Ready' if gps_ready else '⏳ Waiting...'}")
@@ -541,18 +578,18 @@ class MissionCLI(Node):
                 print("⚠️ No status received")
                 print("   Check if the navigation system is running:")
                 print(f"   ros2 launch {_LAUNCH_FILE}")
-        
+
         # Planner config (waypoint generation settings)
         if self.config_status:
-            print(f"\nPlanner Config (Waypoints):")
+            print("\nPlanner Config (Waypoints):")
             print(f"  Lanes: {self.config_status.get('lanes', '?')}")
             print(f"  Scan Length: {self.config_status.get('scan_length', '?')}m")
             print(f"  Scan Width: {self.config_status.get('scan_width', '?')}m")
             print(f"  Tolerance: {self.config_status.get('waypoint_tolerance', '?')}m")
-        
+
         # Controller status (obstacle avoidance)
         if self.controller_status:
-            print(f"\nController Status:")
+            print("\nController Status:")
             print(f"  Mode: {self.controller_status.get('mode', '?')}")
             avoidance = self.controller_status.get('avoidance_active', False)
             obstacle = self.controller_status.get('obstacle_detected', False)
@@ -560,7 +597,7 @@ class MissionCLI(Node):
             urgency = self.controller_status.get('urgency', 0.0)
             obs_count = self.controller_status.get('obstacle_count', 0)
             is_critical = self.controller_status.get('is_critical', False)
-            
+
             # Perception v2.0 enhanced display
             if is_critical:
                 print(f"  Obstacle: 🚨 CRITICAL ({distance}m) [{obs_count} clusters]")
@@ -568,21 +605,21 @@ class MissionCLI(Node):
                 print(f"  Obstacle: ⚠️ DETECTED ({distance}m) [{obs_count} clusters]")
             else:
                 print(f"  Obstacle: ✅ Clear ({distance}m)")
-            
+
             print(f"  Urgency: {urgency*100:.0f}%")
             print(f"  Avoidance: {'🔄 Active' if avoidance else 'Inactive'}")
             print(f"  Heading: {self.controller_status.get('current_yaw', '?')}°")
-        
+
         # Tip: PID/Speed and other controller params are synced to the ROS
         # parameter server on every /planning/set_config, so direct param
         # queries are authoritative.
-        print(f"\n💡 Verify runtime param values with e.g.:")
-        print(f"   ros2 param get /heading_controller_node kp")
-        
+        print("\n💡 Verify runtime param values with e.g.:")
+        print("   ros2 param get /heading_controller_node kp")
+
         print("=" * 50)
-        
+
     def interactive_mode(self):
-        """Interactive command mode"""
+        """Interactive command mode."""
         print("\n" + "=" * 60)
         print("AUTOBOAT INTERACTIVE MODE")
         print("=" * 60)
@@ -600,13 +637,13 @@ class MissionCLI(Node):
         print("  speed <base> <max>         - Set speed")
         print("  q                          - Quit")
         print("=" * 60)
-        
+
         while True:
             try:
                 cmd = input("\nautoboat> ").strip().lower().split()
                 if not cmd:
                     continue
-                    
+
                 if cmd[0] == 'q' or cmd[0] == 'quit':
                     print("Goodbye!")
                     break
@@ -637,10 +674,10 @@ class MissionCLI(Node):
                     self.set_speed(float(cmd[1]), float(cmd[2]))
                 else:
                     print("Unknown command. Type 'q' to quit.")
-                    
+
                 # Brief spin to process callbacks
                 rclpy.spin_once(self, timeout_sec=0.1)
-                    
+
             except KeyboardInterrupt:
                 print("\nInterrupted. Goodbye!")
                 break
@@ -658,56 +695,102 @@ def main():
 Examples:
   # Generate waypoints only
   ros2 run plan autoboat_cli generate --lanes 8 --length 50 --width 20
-  
+
   # Generate with PID and speed in one command
-  ros2 run plan autoboat_cli generate --lanes 10 --length 60 --width 25 --kp 400 --ki 20 --kd 100 --base 500 --max 800
-  
+  ros2 run plan autoboat_cli generate --lanes 10 --length 60 --width 25 \
+      --kp 400 --ki 20 --kd 100 --base 500 --max 800
+
   # Mission control
   ros2 run plan autoboat_cli confirm
   ros2 run plan autoboat_cli start
   ros2 run plan autoboat_cli status
   ros2 run plan autoboat_cli stop
   ros2 run plan autoboat_cli home
-  
+
   # Separate PID/speed commands
   ros2 run plan autoboat_cli pid --kp 500 --ki 25 --kd 120
   ros2 run plan autoboat_cli speed --base 600 --max 900
-  
+
   # Interactive mode
   ros2 run plan autoboat_cli interactive
         """
     )
-    
+
     subparsers = parser.add_subparsers(dest='command', help='Command to execute')
-    
+
     # Generate command with optional PID/speed
-    gen_parser = subparsers.add_parser('generate', help='Generate waypoints (with optional PID/speed/A*)')
+    gen_parser = subparsers.add_parser(
+        'generate',
+        help='Generate waypoints (with optional PID/speed/A*)',
+    )
     gen_parser.add_argument('--lanes', '-l', type=int, default=8, help='Number of lanes')
-    gen_parser.add_argument('--length', '-L', type=float, default=50.0, help='Lane length in meters')
+    gen_parser.add_argument(
+        '--length', '-L', type=float, default=50.0, help='Lane length in meters'
+    )
     gen_parser.add_argument('--width', '-w', type=float, default=20.0, help='Lane width in meters')
     gen_parser.add_argument('--kp', type=float, help='PID Proportional gain (optional)')
     gen_parser.add_argument('--ki', type=float, help='PID Integral gain (optional)')
     gen_parser.add_argument('--kd', type=float, help='PID Derivative gain (optional)')
     gen_parser.add_argument('--base', type=float, help='Base speed in N (optional)')
     gen_parser.add_argument('--max', type=float, help='Max speed in N (optional)')
-    gen_parser.add_argument('--max-turn', type=float, help='Max avoidance turn angle in degrees (optional, controller)')
+    gen_parser.add_argument(
+        '--max-turn',
+        type=float,
+        help='Max avoidance turn angle in degrees (optional, controller)',
+    )
     # Simple anti-stuck parameters (for controller)
-    gen_parser.add_argument('--stuck-timeout', type=float, help='Stuck detection timeout in seconds (optional, controller)')
-    gen_parser.add_argument('--stuck-threshold', type=float, help='Stuck detection threshold in meters (optional, controller)')
+    gen_parser.add_argument(
+        '--stuck-timeout',
+        type=float,
+        help='Stuck detection timeout in seconds (optional, controller)',
+    )
+    gen_parser.add_argument(
+        '--stuck-threshold',
+        type=float,
+        help='Stuck detection threshold in meters (optional, controller)',
+    )
     # Perception parameters
-    gen_parser.add_argument('--min-height', type=float, help='Min LiDAR height threshold in meters (optional, perception)')
+    gen_parser.add_argument(
+        '--min-height',
+        type=float,
+        help='Min LiDAR height threshold in meters (optional, perception)',
+    )
     # Controller distance parameters
-    gen_parser.add_argument('--safe-dist', type=float, help='Min safe distance in meters (optional, controller)')
-    gen_parser.add_argument('--perception-safe-dist', type=float, help='Perception detection safe distance in meters (optional, perception)')
-    gen_parser.add_argument('--approach-dist', type=float, help='Approach slow-down distance in meters (optional, controller)')
-    gen_parser.add_argument('--approach-factor', type=float, help='Approach slow-down speed factor 0-1 (optional, controller)')
+    gen_parser.add_argument(
+        '--safe-dist',
+        type=float,
+        help='Min safe distance in meters (optional, controller)',
+    )
+    gen_parser.add_argument(
+        '--perception-safe-dist',
+        type=float,
+        help='Perception detection safe distance in meters (optional, perception)',
+    )
+    gen_parser.add_argument(
+        '--approach-dist',
+        type=float,
+        help='Approach slow-down distance in meters (optional, controller)',
+    )
+    gen_parser.add_argument(
+        '--approach-factor',
+        type=float,
+        help='Approach slow-down speed factor 0-1 (optional, controller)',
+    )
     # A* options (forwarded to planner)
-    gen_parser.add_argument('--astar', action='store_true', help='Enable runtime A* detours (planner)')
-    gen_parser.add_argument('--astar-hybrid', action='store_true', help='Enable A* hybrid mode (pre-plan routes)')
+    gen_parser.add_argument(
+        '--astar',
+        action='store_true',
+        help='Enable runtime A* detours (planner)',
+    )
+    gen_parser.add_argument(
+        '--astar-hybrid',
+        action='store_true',
+        help='Enable A* hybrid mode (pre-plan routes)',
+    )
     gen_parser.add_argument('--astar-resolution', type=float, help='A* grid resolution (m)')
     gen_parser.add_argument('--astar-safety', type=float, help='A* safety margin (m)')
     gen_parser.add_argument('--astar-max', type=int, help='A* max expansions')
-    
+
     # Simple commands
     subparsers.add_parser('start', help='Start mission')
     subparsers.add_parser('stop', help='Stop mission')
@@ -718,41 +801,51 @@ Examples:
     subparsers.add_parser('confirm', help='Confirm waypoints')
     subparsers.add_parser('status', help='Show status')
     subparsers.add_parser('interactive', help='Interactive mode')
-    
+
     # PID command
     pid_parser = subparsers.add_parser('pid', help='Set PID parameters')
     pid_parser.add_argument('--kp', type=float, help='Proportional gain')
     pid_parser.add_argument('--ki', type=float, help='Integral gain')
     pid_parser.add_argument('--kd', type=float, help='Derivative gain')
-    
+
     # Speed command
     speed_parser = subparsers.add_parser('speed', help='Set speed parameters')
     speed_parser.add_argument('--base', type=float, help='Base speed')
     speed_parser.add_argument('--max', type=float, help='Max speed')
-    
+
     args = parser.parse_args()
-    
+
     if not args.command:
         parser.print_help()
         return
-    
+
     rclpy.init()
     cli = MissionCLI()
-    
+
     try:
         if args.command == 'generate':
             cli.generate_waypoints(
-                args.lanes, args.length, args.width,
-                kp=args.kp, ki=args.ki, kd=args.kd,
-                base_speed=args.base, max_speed=args.max, max_turn=args.max_turn,
-                stuck_timeout=args.stuck_timeout, stuck_threshold=args.stuck_threshold,
+                args.lanes,
+                args.length,
+                args.width,
+                kp=args.kp,
+                ki=args.ki,
+                kd=args.kd,
+                base_speed=args.base,
+                max_speed=args.max,
+                max_turn=args.max_turn,
+                stuck_timeout=args.stuck_timeout,
+                stuck_threshold=args.stuck_threshold,
                 min_height=args.min_height,
-                safe_dist=args.safe_dist, perception_safe_dist=args.perception_safe_dist,
+                safe_dist=args.safe_dist,
+                perception_safe_dist=args.perception_safe_dist,
                 approach_dist=args.approach_dist,
                 approach_factor=args.approach_factor,
-                astar=args.astar, astar_hybrid=args.astar_hybrid,
+                astar=args.astar,
+                astar_hybrid=args.astar_hybrid,
                 astar_resolution=args.astar_resolution,
-                astar_safety=args.astar_safety, astar_max=args.astar_max
+                astar_safety=args.astar_safety,
+                astar_max=args.astar_max,
             )
         elif args.command == 'start':
             cli.start_mission()
@@ -776,7 +869,7 @@ Examples:
             cli.set_pid(args.kp, args.ki, args.kd)
         elif args.command == 'speed':
             cli.set_speed(args.base, args.max)
-            
+
         # Keep alive longer to ensure messages are sent and processed
         time.sleep(0.5)
         rclpy.spin_once(cli, timeout_sec=0.2)
