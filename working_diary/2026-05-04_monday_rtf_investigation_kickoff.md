@@ -66,7 +66,15 @@ Pass criteria: all 5 nodes present, no `BrokenPipeError` in probe log, no Apport
 
 If anything fails: capture `/tmp/autoboat_launcher_probe.log` + `/tmp/autoboat_tab_*.log` + any new `/var/crash/_opt_ros_jazzy*.crash`; defer fix; do NOT proceed to Block D until resolved (RTF investigation needs a working baseline).
 
-**Outcome.** [To fill]
+**Outcome.** PASS.
+
+- Launcher reported `Total launch time: 43 s` — matches the 30/04 fresh-boot reading exactly.
+- `/tmp/autoboat_launcher_probe.log`: 99 bytes, **0** `BrokenPipeError` matches.
+- All 5 expected nodes up: `/heading_controller_node`, `/lidar_perception_node`, `/waypoint_planner_node`, `/waypoint_visualizer_node`, `/health_check_service`.
+- No new today-dated `/var/crash/_opt_ros_jazzy*.crash` (only the pre-fix 29/04 `_opt_ros_jazzy_bin_ros2.1002.crash` from 29/04 10:23, untouched).
+- No Apport popup; launcher session log clean through the success header.
+
+SIGPIPE fix (`62636e9`) + readiness gates (`2c0194a`) hold across the Labour Day weekend.
 
 ---
 
@@ -103,7 +111,17 @@ Pass criteria: silent during normal mission, exactly one warn line per malformed
 
 If the warn doesn't fire: check that the visualizer is actually subscribed to `/planning/mission_status` (`ros2 topic info /planning/mission_status` → expect at least one subscriber including `/waypoint_visualizer_node`).
 
-**Outcome.** [To fill]
+**Outcome.** PASS — with a recipe caveat worth recording for future verifications.
+
+- **Step 1 (silent under normal mission):** `autoboat_cli generate / confirm / start` ran clean; 30 s wait; `Mission status parse error` count in `/tmp/autoboat_tab_navigation.log` = **0**. `📍 Received 15 waypoints` info log fired twice (once on the initial CLI publish, once on confirm — both expected from `waypoints_callback_modular`). Visualizer nominal.
+- **Step 2 (force the failure path):** the playbook's `ros2 topic pub --once /planning/mission_status ...` recipe **did not fire the warn** — `topic info -v` shows three subs (rosbridge_websocket BEST_EFFORT, heading_controller_node RELIABLE, waypoint_visualizer_node RELIABLE). With `--once`, `ros2 topic pub` blocks for the *first* matching subscription (the BEST_EFFORT rosbridge sub matches near-instantly), publishes one message, then exits — the visualizer's RELIABLE sub is still in DDS discovery when the publisher tears down, so the message never lands.
+- **Workaround (used today):** `ros2 topic pub --rate 2 --times 5 ...` fans 5 publishes over 2.5 s. Early publishes can be lost in discovery; later publishes arrive after the visualizer sub is fully matched, and the warn fires:
+
+  ```text
+  [WARN] [waypoint_visualizer_node]: Mission status parse error: Expecting value: line 1 column 1 (char 0)
+  ```
+
+  Got 2 warn lines from 5 publishes — consistent with discovery latency. The fix itself works (source `plan/plan/waypoint_visualizer.py:99-100` `except json.JSONDecodeError → warn`). The Block B recipe in the playbook should switch to the multi-shot form for repeatable verification — `--once` is unreliable for late-discovering subs on a freshly-published topic.
 
 ---
 
@@ -124,7 +142,15 @@ Then visually verify on <https://github.com/Ghostzero00018/uvautoboat/wiki>:
 
 If anything mismatches: re-run `scripts/sync_wiki.sh` manually; check the GitHub Action's run history for failures.
 
-**Outcome.** [To fill]
+**Outcome.** PASS.
+
+- `scripts/sync_wiki.sh "Sync 30/04 + 03/05 doc-audit fixes"` first-run on this laptop: cloned `../uvautoboat.wiki/`, pulled (already up-to-date), copied `wiki/*.md`, no diff → "No wiki changes to sync." The GitHub Action picked up the weekend pushes.
+- Wiki repo tip: `46c9b39 Sync wiki from main repo @ f00d2338` — that's the 30/04 doc-audit commit, end-of-week marker.
+- Local-side spot-check (browser-side check skipped — `gh` not installed on this workstation):
+  - `wiki/Dashboard_Security.md:68` carries the finding-#5 reframe ("Unauthenticated commands within validated bounds (operational risk)"); `:96` + `:133` + `:142` mark SRI + server-side bounds as already done; SRI reframed as CDN-availability risk.
+  - `wiki/README_WIKI.md:19` lists `Roadmap.md`, `:22` lists `Pi5_Bringup_Smoke_Test.md`, `:32` flags `UPLOAD_INSTRUCTIONS.md` as the only excluded file (called out in both `scripts/sync_wiki.sh` `EXCLUDE_FILE` and the GitHub Action `rm -f` step).
+  - `wiki/Roadmap.md:186` shows the §3 Phase 5 row "Dashboard offline-capable for IoT-local network deployment ❌"; `:516` revision-log entry documents the 30/04 IoT-local analysis.
+- `diff <(ls wiki/*.md without UPLOAD_INSTRUCTIONS) <(ls ../uvautoboat.wiki/*.md)` → empty. Local wiki source = published wiki content.
 
 ---
 
@@ -227,7 +253,83 @@ Whatever the root cause: capture in the diary, push a one-line `Board.md` row + 
 
 If unfixable in a day: document the workaround (e.g., "accept ~20% RTF; multiply all timing budgets by 5 for reasoning") and resume the deferred Phase 5 prep work the rest of the week.
 
-**Outcome.** [To fill]
+**Outcome.** Root cause identified, fix verified end-to-end, documentation landed.
+
+### Hardware ID correction up-front
+
+`nvidia-smi` reports **NVIDIA RTX A3000 Laptop GPU, driver 580.142** — the A3000, not the A2000 the 29/04 diary entry and Sunday's Context section above carried forward. Both Ampere; same 5xx driver line so the working-hypothesis structure didn't shift, but the PCI ID `10de:24b8` claim (A2000-specific) was wrong. Sunday's Context block stays as historical record of the original hypothesis; this Outcome is the corrected reality.
+
+### D1 — baseline (Mesa Intel UHD active, default `prime-select on-demand`)
+
+| Metric | Reading | Window | Notes |
+|:--|:-:|:-:|:--|
+| `/wamv/sensors/lidars/lidar_wamv_sensor/points` | **2.48 Hz** | 73 samples / 30 s, std dev 0.18 s | 25 % of nominal 10 Hz |
+| `/clock` | **80.9 Hz** | 2414 samples / 30 s, std dev 0.023 s | RTF **0.32** (`/clock` Hz / 250) |
+
+LiDAR throttle (25 %) is *worse* than the overall RTF ratio (32 %) — flag for the GPU-bound `gpu_ray` raycasting being the dominant factor (the LiDAR shader runs on whatever GL provider Gazebo renders into).
+
+### D2 — Branch 2 confirmed (Mesa active despite NVIDIA driver loaded)
+
+```text
+OpenGL vendor:   Intel
+OpenGL renderer: Mesa Intel(R) UHD Graphics (TGL GT1)
+OpenGL version:  4.6 (Compatibility Profile) Mesa 25.2.8-0ubuntu0.24.04.1
+prime-select:    on-demand
+nvidia-smi pmon: only Xorg using GPU 0 — no Gazebo entry
+```
+
+The 29/04 hypothesis ("libEGL DRI2 fallback") was wrong on mechanism. The NVIDIA driver loads cleanly (`lsmod | grep ^nvidia` shows all four modules; libEGL providers in `ldconfig -p` include `libnvidia-eglcore.so.580.142`). What's actually happening: `prime-select on-demand` is Ubuntu's default, which means apps run on the iGPU unless they request offload. The launcher doesn't request offload, so Gazebo lands on the Intel UHD Graphics (TGL GT1) — adequate for desktop compositing, badly outmatched by VRX's `gpu_ray` LiDAR + scene rendering. The "wrong GL provider" framing was right; the libEGL-DRI2-fallback specifics were noise.
+
+Pre-flight env check (no sim disruption): `__NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia glxinfo` flips vendor/renderer to **NVIDIA RTX A3000 Laptop GPU/PCIe/SSE2, OpenGL 4.6.0 NVIDIA 580.142, direct rendering: Yes** — confirmed the env-override path works before disturbing anything.
+
+### D2 — fix verified
+
+Two A/B tests, both with `__NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia` prefix.
+
+| Configuration | `/points` Hz | `/clock` Hz | RTF | Verification |
+|:--|:-:|:-:|:-:|:--|
+| Standalone `ros2 launch vrx_gz competition.launch.py` | 8.95 | 195.9 | **0.78** | `nvidia-smi pmon`: `gz sim server` (PID 34435, SM 26 %) + `gz sim gui` on GPU 0 |
+| Full `bash one_click_launch_all/launch_autoboat_complete.sh` | 6.8 | 219.7 | **0.88** | `pmon`: `gz sim server` + `gz sim gui` + `rviz2` all on GPU 0; launch time 44 s |
+
+Headline numbers vs the Mesa baseline: **2.7× full-launcher LiDAR rate, 3.6× standalone LiDAR rate, 2.4–2.7× RTF.** The full-launcher reading is *higher* on `/clock` than the standalone (220 Hz vs 196 Hz) — a touch counter-intuitive but explained by the navigation stack pinning the simulation through the WAM-V controllers (Gazebo doesn't idle as much when there's a consumer holding a stable subscription). LiDAR is slightly lower in the full run (6.8 vs 8.95) likely because RViz2 + rosbridge_websocket are also drawing from the same GPU; not a regression worth chasing.
+
+Critically, the env vars **propagate cleanly through the launcher's `gnome-terminal --tab -- bash -i -c "..."` chain.** No launcher edits required for the prefix invocation to work — the parent's env is inherited through gnome-terminal-server → the spawned bash → `bash -i` (`.bashrc` doesn't unset these vars on this user) → `ros2 launch vrx_gz`. Gazebo Harmonic picks them up and routes rendering through `libGLX_nvidia.so`.
+
+### D3 — secondary factor identified, not yet tested
+
+CPU governor on **all 16 cores** is `powersave`; available governors are `performance powersave`. The orientation's D3 branch and standard practice both put this as the next-largest contributor after the GL provider. Switching needs sudo:
+
+```bash
+sudo cpupower frequency-set -g performance
+```
+
+The `!`-prefix shell can't prompt for the password — this one belongs in the user's real terminal. Estimated additional ≈ 10–15 % RTF on top of today's 0.88. Reverts on reboot unless persisted. Deferred for the user to run when convenient (recommended next session start).
+
+Thermal snapshot during the NVIDIA full run: `x86_pkg_temp 79 °C`, `TCPU 77 °C`, `TVGA 56 °C`. Well below the Tiger Lake throttle ceiling (~95 °C package), so no thermal headroom concern from the governor change.
+
+### D4 — documentation landed
+
+- `wiki/Common_Issues.md` — "Gazebo Running Slow" section rewritten with diagnostic flow, hybrid-graphics-laptop-only caveat (Pi 5 unaffected), and the measured A/B numbers above. Three numbered subsections: (1) GL provider check + prime-offload fix, (2) CPU governor, (3) other fallbacks (close apps / sensor resolution / headless / accept-and-multiply).
+- This diary's Block D outcome.
+- Board.md milestone row (Block E).
+
+### Open question for the maintainer
+
+Should `one_click_launch_all/launch_autoboat_complete.sh` bake the prime-offload env vars in by default? The trade-off:
+
+- **For (auto-set):** hands-free dev experience on the laptop; one less thing to forget; matches what every laptop run actually wants.
+- **Against (auto-set):** forces NVIDIA on hosts that don't have a discrete GPU (Pi 5 in Phase 5 — though `__NV_PRIME_RENDER_OFFLOAD=1` is harmless there since libnvidia isn't installed; the env vars become inert). Less surprising for new hires reading the script.
+- **Compromise:** add a `--use-nvidia` flag (or auto-detect via `command -v nvidia-smi`) that exports the vars; document it in the launcher header and the wiki. Cleaner than forcing.
+
+This is a code change to a `.sh` file — flagged here, deferred to the maintainer's call. For now the recommended invocation is documented in `wiki/Common_Issues.md`.
+
+### Pitfall caught mid-investigation (worth carrying forward)
+
+`pkill -9 -f <pattern>` from any shell whose own argv contains a `<pattern>` substring will **SIGKILL itself** — pkill scans system-wide and matches its own caller. The launcher's `cleanup()` function pkills 14 patterns including `gz sim`, `rosbridge_websocket`, `lidar_perception`, `waypoint_planner`, `heading_controller`, `waypoint_visualizer`, `health_check_service`, `web_video_server`, `autoboat.launch.yaml`, `web_dashboard/autoboat`, `rviz`, `http.server 8002`, `gzserver`, `gzclient`. Any verification script that puts those literal strings in echo lines / case patterns / pgrep arguments gets killed the moment the launcher's trap fires, OR the moment the script itself runs one of those pkills — same self-kill on either side.
+
+**Workaround used today (after burning three Bash calls to it):** keep pattern-bearing operations inside a separate script file (`bash /tmp/foo.sh` — outer caller's cmdline is just the path, no patterns visible to pkill). The script file's content is read from disk, not argv, so pkill can't see it. Saved as `/tmp/kill_sim.sh` + `/tmp/relaunch_full.sh` for the rest of the day.
+
+Worth a `wiki/Common_Issues.md` follow-up if this trap recurs in future investigations — for now logged here as a session lesson.
 
 ---
 
@@ -247,18 +349,34 @@ If unfixable in a day: document the workaround (e.g., "accept ~20% RTF; multiply
    git push
    ```
 
-**Outcome.** [To fill]
+**Outcome.**
+
+- Pre-commit invisibility sweep clean — `grep -rnIEi '(claude|anthropic|...)' --include='*.md' ...` against the full keyword set + 10 file types returned rc=1 (zero matches). Repo stays invisibility-clean.
+- Stale-doc audit on what Block D touched: cross-ref scan for "Gazebo Running Slow", "prime-select", "prime-offload", `__NV_PRIME_RENDER_OFFLOAD`, `__GLX_VENDOR` across all `*.md` / `*.py` / `*.sh` etc. surfaced 14 references — all current (today's edits + the 28/04 unrelated `### Known Startup Warnings (Cosmetic)` subsection of `Common_Issues.md`) or historical-immutable (29/04 + 30/04 working diary entries referencing the original A2000 hypothesis + `__GLX_VENDOR_LIBRARY_NAME=nvidia` recipe). The historical entries stay as-is; today's Block D outcome corrects forward, not back. No stale claims to fix.
+- Three files modified today, all markdown: `Board.md` (milestone rows + Last-Updated bump), `wiki/Common_Issues.md` ("Gazebo Running Slow" rewrite), `working_diary/2026-05-04_*.md` (Block A-E outcomes + Known Unknowns).
+- External `Research_intern_IMT_NE/working_diary/Week9_04_05-08_05.md` Mon "Outcome:" update **deferred to next Windows-laptop session** — the external diary folder lives on the Windows side per the machine-split work pattern; not accessible from this Linux workstation. The 30/04 Block G scaffold for Week 9 already landed Sunday so no fresh scaffold is needed, just the Mon outcome paragraph.
+- `git log --oneline -10` sanity: last commit `f9b135c docs(diary): reword 04/05 backfill bullets for clarity` (Sunday push), today's commit pending. No surprises.
+
+Suggested commit subject (≤72 chars, conventional commits):
+
+```text
+docs: log 04/05 RTF investigation — prime-offload fixes Gazebo throttle
+```
+
+Body (multi-paragraph not requested; one-liner is the default per house style — happy to expand on request).
+
+The full launcher run with `__NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia` prefix was **left alive in the background at wrap time** (started ~09:53, success header at +44 s), useful for any visual dashboard checks before pushing. Follow-up check found the recorded `gz sim server` PID `38911` no longer present, so treat the sim as already stopped unless a fresh `pgrep -af 'gz sim'` says otherwise. Tear-down recipe when needed: `bash /tmp/kill_sim.sh` (the pattern-isolated cleanup script saved during today's pkill self-kill workaround), then verify ports 8002 / 8080 / 9090 vacant via `ss -tlnp`.
 
 ---
 
 ## Verification summary — 04/05 (check at end of day)
 
-- [ ] Block A: cold-boot regression pass; SIGPIPE fix + readiness gates hold
-- [ ] Block B: visualizer warn fires on bad JSON, silent under normal operation
-- [ ] Block C: wiki sync propagated; published wiki shows 30/04 changes
-- [ ] Block D: RTF root cause identified (or scoped as deferred); current rate measured + recorded
-- [ ] Block E: Board.md row added; diary filled; Week 9 scaffold created in external folder
-- [ ] Pre-commit grep clean
+- [x] Block A: cold-boot regression pass; SIGPIPE fix + readiness gates hold (43 s launch, 0 BrokenPipeError, 5 nodes)
+- [x] Block B: visualizer warn fires on bad JSON, silent under normal operation (with `--rate 2 --times 5` workaround for the `--once` discovery race)
+- [x] Block C: wiki sync propagated; local wiki/ matches published wiki (Action handled the 30/04 push; tip `46c9b39 @ f00d2338`)
+- [x] Block D: RTF root cause identified + fixed end-to-end. Mesa Intel UHD → NVIDIA RTX A3000 via prime-offload env vars; RTF 0.32 → 0.88, LiDAR 2.48 → 6.8 Hz on the full launcher
+- [x] Block E: Board.md row added; diary filled; pre-commit grep clean
+- [ ] External Week 9 diary Mon "Outcome:" line — *deferred to next Windows session (path lives on the Windows laptop, not this workstation)*
 
 ---
 
@@ -277,6 +395,12 @@ If unfixable in a day: document the workaround (e.g., "accept ~20% RTF; multiply
 ## Known unknowns surfaced during the day
 
 Use this section to capture anything surprising — file state drift, unexpected behaviour, hardware quirks, supervisor-meeting reschedule confirmations. Each entry: `file:line` or command + observation + fix or follow-up.
+
+- `nvidia-smi` → **RTX A3000 Laptop GPU, driver 580.142**, *not* the A2000 the 29/04 entry + this scaffold's L9 + L133 carried forward. Hypothesis structure unchanged (both Ampere, same driver line), but the PCI-ID claim `10de:24b8` is wrong. Captured inline in Block D outcome; not back-edited into the Sunday Context block (preserves the original-hypothesis history).
+- `ros2 topic pub --once` is a **brittle verification tool** when the target topic has both BEST_EFFORT and RELIABLE subscribers — it waits only for the first matching sub, publishes once, and exits before the slower-discovering RELIABLE subs land. Block B's playbook recipe needs the multi-shot form (`--rate N --times M`) for repeatability. Worth a `wiki/Common_Issues.md` debug-commands note if this trap recurs.
+- `pkill -9 -f <pattern>` from any shell whose argv contains `<pattern>` substrings will SIGKILL itself. The launcher's `cleanup()` pkills 14 patterns; ANY verification script with those literal strings in echo lines, case patterns, or pgrep arguments is a self-kill. Workaround: keep pattern-bearing operations inside a separate script file (`bash /tmp/foo.sh` — outer caller cmdline is just the path). Documented in Block D outcome; possibly worth promoting to `wiki/Common_Issues.md` if it bites a future investigation.
+- Standalone `ros2 launch vrx_gz` in a freshly-cleaned graph shows `/wamv/sensors/lidars/lidar_wamv_sensor/points` advertised within ~0 s on the warm-cache second start of the day — the cold-boot 60 s wait_for_topic budget in the launcher is correct, but warm runs land near-instant. No action; just useful prior for any later launcher tuning.
+- Old launcher's `trap cleanup INT TERM` runs the cleanup function but **doesn't `exit`** afterwards — control returns to the `while true; do sleep 6; done` loop, so SIGINT alone leaves the launcher alive. SIGKILL on the launcher PID is the clean kill path, not SIGINT. Worth flagging as a launcher hygiene item the maintainer may want to address (`trap 'cleanup; exit 130' INT TERM`); deferred — code change in `.sh` file.
 
 ---
 

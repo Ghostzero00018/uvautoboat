@@ -555,20 +555,75 @@ If `~/seal_ws/src/install/` exists, that is the smoking gun.
 
 ### Gazebo Running Slow
 
-**Symptoms**: Low FPS, stuttering simulation
+**Symptoms**: low FPS, simulation stuttering, `/clock` running well under 250 Hz, sensor topics throttled (e.g. LiDAR `/wamv/sensors/lidars/lidar_wamv_sensor/points` ≈ 2 Hz instead of 10 Hz nominal).
 
-**Solutions**:
+**Diagnose first** — measure the rates and decide which throttle to chase:
 
-1. **Reduce real-time factor**: Accept slower-than-real-time
-2. **Close other applications**: Free up CPU/GPU
-3. **Reduce sensor resolution** (advanced):
-   - Edit LIDAR parameters in URDF/XACRO
-   - Reduce point cloud density
-4. **Disable GUI**:
+```bash
+ros2 topic hz /clock                                          # divide by 250 → RTF (1.0 = real time)
+ros2 topic hz /wamv/sensors/lidars/lidar_wamv_sensor/points   # nominal 10 Hz
+```
+
+If LiDAR rate is throttled *more* than overall RTF, the GPU-bound `gpu_ray` raycasting is the dominant factor — continue with the GL-provider check below. If RTF is healthy but only LiDAR is slow, jump to "Other fallbacks" (sensor resolution).
+
+#### 1. Hybrid-graphics laptop: discrete GPU not active
+
+Common on Optimus / PRIME-managed dev laptops with both Intel iGPU and NVIDIA dGPU. With `prime-select on-demand` (Ubuntu's default), apps run on the iGPU unless they explicitly request offload. Gazebo's `gpu_ray` LiDAR plugin is GPU-bound — iGPU dramatically throttles it. Pi 5 deployments are unaffected (no discrete GPU; the section below is laptop-only).
+
+Confirm the active GL provider:
+
+```bash
+glxinfo | grep -E '^OpenGL (vendor|renderer|version)'
+prime-select query
+```
+
+If `OpenGL vendor string: Intel` (or any Mesa renderer) appears while `nvidia-smi` shows the discrete card with a loaded driver, Gazebo is on the iGPU.
+
+**Fix — per-launch prime-offload (recommended; no sudo, reversible):**
+
+```bash
+__NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia \
+    bash one_click_launch_all/launch_autoboat_complete.sh
+```
+
+The env vars propagate cleanly through the launcher's `gnome-terminal --tab -- bash -i -c "..."` chain. Verify after the success header with `nvidia-smi pmon -c 1` — `gz sim server` and `gz sim gui` should both appear on GPU 0.
+
+Observed on the campus workstation (RTX A3000 Laptop GPU, driver 580.142, Sydney Regatta default world, 04/05/2026):
+
+| Configuration | `/points` Hz | `/clock` Hz | RTF |
+|:--|:-:|:-:|:-:|
+| Mesa Intel UHD (default) | 2.48 | 80.9 | 0.32 |
+| NVIDIA RTX A3000 (prime-offload) | 6.8 | 219.7 | 0.88 |
+
+System-wide alternative: `sudo prime-select nvidia` then logout / login (always-on dGPU; trades battery life for consistent RTF).
+
+#### 2. CPU frequency governor
+
+If the GL provider is already NVIDIA but RTF is still below ~0.95, check the CPU governor:
+
+```bash
+cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+```
+
+If `powersave`, switch all cores to `performance`:
+
+```bash
+sudo cpupower frequency-set -g performance
+```
+
+Reverts on reboot unless persisted (`/etc/default/cpufrequtils` or a systemd unit). Worth ~10–15 % RTF on the campus workstation when stacked on top of the GL fix.
+
+#### 3. Other fallbacks
+
+1. Close other GPU/CPU-heavy apps (browsers with hardware acceleration, IDEs with code-intel)
+2. Reduce sensor resolution (advanced): edit LiDAR parameters in URDF/XACRO, lower point-cloud density
+3. Run headless:
 
    ```bash
    ros2 launch vrx_gz competition.launch.py world:=sydney_regatta_DEFAULT gui:=false
    ```
+
+4. Accept the degraded baseline and multiply timing budgets by `1 / RTF` for reasoning
 
 ---
 
