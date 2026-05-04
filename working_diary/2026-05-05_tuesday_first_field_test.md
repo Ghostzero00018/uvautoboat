@@ -119,7 +119,30 @@ If the test is happening this afternoon, what gets carried to the lake? A short 
 - [ ] **Logging media** [phone for photos + video; USB drive for rosbag offload if the operator station can't carry it back directly]
 - [ ] **Permits / permissions** [TBD — park rules, prior notification given to whoever manages the lake]
 
-**Outcome.** [To fill — sanity run result + rosbag dry-run topic counts + deployment-bundle status.]
+### B4 — VRX fork-or-don't periodic re-evaluation (Windows-side, parallel — not Linux-blocking)
+
+Per `wiki/Roadmap.md` §8.5 ("re-open this section only when one of the §8.2 triggers fires"), Mon 04/05 evening review-pass found **0/4 triggers fired**:
+
+- Patch count growth: not fired (1 patch — `patch_vrx.sh`, upstream issue #876).
+- Custom worlds / sensors / WAM-V mods upstream wouldn't merge: not fired (custom content lives in `test_environment/`, independent of VRX repo layout).
+- Phase 5+ hardware integration with sim-side incompatibilities: not fired (Phase 5 not started; first wet test scaffolded for this very afternoon if A=GO).
+- Long-term maintenance balance flips: not fired (no upstream major release flagged).
+
+**Decision: HOLD.** Plan file with full feasibility assessment + ready-to-execute swap procedure (if a trigger ever fires) lives off-repo on the Windows-side machine (full path noted in Mon 04/05 evening session — kept out of tracked prose because the host directory is privacy-flagged). Two execution-detail corrections to fold into that plan-doc:
+
+1. **§3 reference-surface table — split into three semantic tiers.** Real swap face narrows from 14 lines to:
+   - **Must-swap (5 lines)** — `README.md` L62, `USER_MANUAL.md` L357, `wiki/Installation_Guide.md` L51 + L55 + L94. These are the active install/clone URLs.
+   - **Dual-link (1 line)** — `USER_MANUAL.md` L346, Installation prerequisites context: write as "depends on fork at `<URL>` (canonical project: `github.com/osrf/vrx`)" so the dependency arrow and the upstream-attribution arrow are both explicit.
+   - **Keep `osrf/vrx` (9 lines)** — `USER_MANUAL.md` L51 (Abstract / canonical project link), L477 (tutorial credit), L1702 (VRX Wiki), L1713 (Virtual RobotX project link); `wiki/Home.md` L78 (VRX Official Wiki); `wiki/Installation_Guide.md` L246 (reference link); `wiki/System_Overview.md` L14 (architecture text); `test_environment/sydney_regatta_DEFAULT.sdf` L8 + `test_environment/wamv_3d_lidar.xacro` L8 (copied-from-upstream attribution headers).
+2. **§5.1 fork-creation step — add directory-name invariant.** Fork repo basename must remain `vrx` so the checkout dir at `~/seal_ws/src/vrx` matches `patch_vrx.sh` L20 hardcoded path during the patch-as-safety-net transition (the patch script stays as idempotent no-op for ≥2 release cycles after fork-bake-in). Fallback if a future fork is renamed: `git clone <fork-URL> vrx` to force the directory name — but every contributor would need to remember the parameter. Preferred: don't rename the fork basename.
+
+P3 deferral: `wiki/Roadmap.md` §8.1 baseline wording is stale (`consumes upstream VRX via apt + patch` → actual is `source clone + colcon build + runtime patch`). Doesn't affect the HOLD/GO judgment; fix only when §8 narrative is next touched (i.e., if/when a trigger fires and §8 gets rewritten as the swap-rationale narrative).
+
+**Path-permission note:** if the off-repo plan-doc path isn't in the writable-roots set tomorrow, fall back to staging the corrected §3 + §5.1 sections in chat for manual paste — **do not** stage copies of the off-repo plan-doc inside the workspace (its host directory sits under privacy-flagged tooling state and any copy here would not survive a pre-commit invisibility sweep).
+
+Interrupt-safe — pause on 5 min notice if Block A returns a late green light.
+
+**Outcome.** [To fill — sanity run result (B1) + rosbag dry-run topic counts (B2) + deployment-bundle status (B3) + VRX HOLD logging confirmation + plan-doc §3/§5.1 correction status (B4, write-permission-dependent).]
 
 ---
 
