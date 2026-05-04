@@ -381,6 +381,89 @@ End-of-day verified: launcher patch tested live with `--use-nvidia` (42 s launch
 
 ---
 
+## Block F — Lint cleanup + dashboard XSS remediation (off-plan, evening)
+
+Spontaneous, post-Block-E work prompted by a "are there current problems?" check. Two compound efforts: (1) phased lint-debt cleanup across `control/` + `plan/`, (2) dashboard XSS audit + remediation. Five Block-F commits stacked on top of `ebe5b01`, all on `origin/main` by close.
+
+### F1 — Lint baseline
+
+Per-package linter tests fail: `pytest control/test/test_flake8.py` reports **2478 errors**, `pytest plan/test/test_pep257.py` caps at **500** (ament_pep257 hard cap). Bare `python3 -m flake8 .` reports a *higher* 3843 — directionally surprising. Cause: ament_flake8 loads `/opt/ros/jazzy/lib/python3.12/site-packages/ament_flake8/configuration/ament_flake8.ini` which sets `max-line-length=99`, `import-order-style=google`, plus an `extend-ignore` list (`B902,C816,D100-D107,D203,D212,D404,I202`); bare flake8 defaults to `max-line-length=79`, so every 80–99 char line that ament tolerates becomes a violation. With `--max-line-length=99` the bare run drops to 2774; the residual 296 to ament's 2478 is the `extend-ignore`. **Net: pytest/ament is the canonical signal — bare flake8 is not equivalent.**
+
+Class quirk: `pytest control/test plan/test` (both dirs in one invocation) hits `_pytest.pathlib.ImportPathMismatchError` because each ament_python package ships identically-named `test_copyright.py` / `test_flake8.py` / `test_pep257.py`. Per-package invocation or `colcon test --packages-select control plan` avoids it.
+
+Active-code-only distribution post-F2 scoping: ~179 flake8 + ~210 pep257 in `control`, ~459 flake8 + remainder in `plan`. **Q000 (`flake8-quotes` single-vs-double) accounts for 397 of the 986 active flake8 hits — 40 % — and the codebase mixes both styles**; Q001/Q002/Q003 don't fire (Q003 would actually be useful but isn't triggered here). Conclusion: ignoring just `Q000` is the right policy.
+
+### F2 — Test-harness scoping (`a120ef6 test: scope ament lint checks`)
+
+Two structural problems with the stock ament wrappers:
+
+1. **Wrappers scan from cwd.** `test_flake8.py` calls `main_with_errors(argv=[])` and `test_pep257.py` calls `main(argv=['.', 'test'])` — both resolve `.` against the pytest cwd, which is `~/seal_ws` when run from the workspace root. Result: every run scans `legacy/` (frozen by convention; kept out of builds via `legacy/COLCON_IGNORE`, but ament's lint tools don't honour it), inflating the headline count by hundreds of irrelevant entries.
+2. **No quote-style override.** `flake8-quotes` 3.4.0 is installed, Q000 fires on every double-quoted string. Bundled ament config doesn't relax it.
+
+Fix shape:
+
+- New `.linters/ament_flake8.ini` mirroring the bundled defaults but with `Q000` appended to `extend-ignore`. Single source of truth, version-controlled.
+- All four wrappers rewritten to compute paths from `Path(__file__).resolve().parents[1]` (package root) and pass package-local paths explicitly: `<pkg>/<inner-module>`, `<pkg>/setup.py`, `<pkg>/test`. flake8 wrappers also pass `--config <repo>/.linters/ament_flake8.ini`; pep257 wrappers don't (ament_pep257 doesn't accept `--config`). Inner module name (`'control'` / `'plan'`) hardcoded per wrapper rather than `PACKAGE_ROOT.name` — explicit-over-clever, so a future package that breaks the directory-name == module-name convention won't silently scan nothing.
+
+Post-fix wrappers: `pytest control/test` + `pytest plan/test` each pass (2 passed, 1 skipped).
+
+### F3 — Per-package lint cleanup (`5892a28`, `d2c45f5`)
+
+Cleanup categories: import ordering (google-style stdlib → third-party with blank-line separators; alphabetical within group), missing-period docstring summaries (D400/D415, ~166 of pep257 active), trailing whitespace, line-wrapping for the 99-char limit, unused imports/variables, static f-strings without placeholders, EOF newlines on `setup.py`. **No quote-style edits** — Q000 ignored by design, codebase keeps its mixed style.
+
+Two review rounds caught a regression class introduced by the first cleanup pass: **automated long-line fixes truncated informative content rather than wrapping**. Concrete losses included LiDAR dimensional rationale (`(LiDAR@1.8m: piers≈-1.0 to -0.3m)`, `(LiDAR max: 130m)`, `(1875×16 samples)`), VFH unit annotations (`(m)`, `(degrees)`, `smaller = finer`), A\* default-state hints (`(default on)`, `(astar_hybrid_mode=false by default)`), the planner-side-vs-waypoint-insertion detour distinction, the detour-vs-skip trigger conditions (`(blocked but not yet stuck)` / `(after stuck attempts exhausted)`), the dashboard `liveDefaults` sync notes (replicated across three docstrings), and the runtime-tunability disclaimer (`— change by code edit + rebuild`). All restored in two follow-up rounds using the comment-above-line pattern that `setup.py`'s line-wrap fix already established. Runtime-behaviour invariant held throughout — the simulation runs cleanly post-cleanup, no contract surface (topic / service / parameter names, message JSON keys, default values) shifted.
+
+### F4 — Dashboard audit findings
+
+Three findings from a focused audit of `web_dashboard/autoboat/app.js` + `wiki/Dashboard_Security.md`:
+
+| Severity | Finding | Site |
+|:--|:--|:--|
+| High | XSS via `innerHTML` interpolation in `addLog()` | `app.js:1425` |
+| High | Same XSS class in mission-history rendering | `app.js:3685` (construction at `:3678`) |
+| Medium | Health-check subscriptions go stale after rosbridge reconnect | `app.js:535-540` (close handler) + `app.js:4118` (subscribe gate early-returns on stale truthy vars) |
+| Low | `Dashboard_Security.md:5` "No code fixes applied yet" contradicted by L17 / L70 / L96 / L133 / L142 (SRI + server-side `PARAM_RANGES` already resolved 17/04/2026) | doc-only |
+
+Counter-evidence sweep — 13 `innerHTML` sites in `app.js`, 8 already safe (escape-replace at L314, static literals at L326 / L330 / L365 / L2128 / L3659, `textContent` for the dynamic body at L2099 in `addTerminalLine`, `escapeOnboardingText()` at L228, empty string at L4087). One additional site at L3801 (`displayValidationResults`) interpolates `${check.message}` and `${warning}` unescaped — currently not an active path (`check.warnings` populated only at L3751 from a numeric `obstacleCount > 10` gate; `check.message` only from static literals) but the bug-class fix shape is identical, so addressed in the same pass.
+
+### F5 — Dashboard fix commits (`a9d3f26`, `fc05c69`)
+
+Code change (`a9d3f26`, `app.js`, +79 / -42):
+
+- `addLog()` rebuilt with `document.createElement` + two spans, `.textContent = String(message)` for the dynamic body, `append(...)` to assemble. Container null-guard added.
+- Mission-history renderer rebuilt with `DocumentFragment` build loop, dedicated spans per dynamic field with `textContent = String(...)`, atomic `replaceChildren(fragment)`. Empty-state path also DOM-constructed.
+- Validation-results renderer rebuilt: element construction per check, `textContent` for both `check.message` and `${warning}`, `<strong>` structure preserved by element creation (not interpolation), atomic `replaceChildren(checksEl)`.
+- Rosbridge close handler now nulls `healthLineTopic` and `healthStatusTopic` alongside the four publishers; comment broadened from "publishers" to "ROS-bound handles".
+
+Doc change (`fc05c69`, `wiki/Dashboard_Security.md`, +9 / -6): L5 status line now reflects SRI + `PARAM_RANGES` (17/04/2026) and dashboard XSS (04/05/2026); XSS posture row from "Partial" to "Improved" with an honest "no Content Security Policy yet" residual; finding #2 strikethrough'd + dated; mitigations list extended; quick-fix table row marked done.
+
+### F6 — Verification
+
+- `node --check web_dashboard/autoboat/app.js`: clean.
+- `git diff --check`, pre-commit invisibility sweep: clean.
+- `pytest control/test` + `pytest plan/test` (re-run post lint cleanup): each 2 passed, 1 skipped.
+- `python3 -m compileall -q control/control plan/plan`: silent.
+- **XSS class probe** (browser DevTools console, live dashboard with sim running): payloads `<img src=x onerror="alert(...)">` + `<script>alert(...)</script>` injected via `addLog()`, `addHistoryEvent()`, `displayValidationResults({...})`. All three rendered as literal text; **no alert dialog fired**; no broken-image icons. Regression check via normal flows (waypoint generation + validation, mission start/stop, config send): timestamps, type-coloured message classes, mission-history icons, and validation `<strong>` bold values render correctly.
+- **Reconnect path** (DevTools console shortcut): `ros.emit('close')` → `healthLineTopic === null && healthStatusTopic === null` returns `true` (close handler nulled them), WebSocket reconnects (HTTP/1.1 101 Switching Protocols), `connectToROS()` + `subscribeHealthTopics()` → `healthLineTopic !== null && healthStatusTopic !== null` returns `true`. Full `pkill -f rosbridge_websocket` + manual restart variant also passed.
+
+### Final state on `origin/main` for 04/05
+
+```text
+fc05c69 docs(security): mark dashboard XSS + reconnect findings resolved
+a9d3f26 fix(dashboard): sanitize XSS renderers and reset health subs on reconnect
+d2c45f5 style: clean plan package lint
+5892a28 style: clean control package lint
+a120ef6 test: scope ament lint checks
+ebe5b01 docs(diary): close 04/05 with same-day --use-nvidia ship + follow-up
+78ee622 docs: promote --use-nvidia as canonical in Common_Issues + diary tweak
+2b36ae7 feat(launch): --use-nvidia prime-offload flag + clean Ctrl+C trap exit
+7c8e991 docs: log 04/05 RTF investigation — prime-offload fixes Gazebo throttle
+```
+
+Nine 04/05 commits total — four daytime RTF/launch/day-wrap commits, five Block-F evening commits.
+
+---
+
 ## Verification summary — 04/05 (check at end of day)
 
 - [x] Block A: cold-boot regression pass; SIGPIPE fix + readiness gates hold (43 s launch, 0 BrokenPipeError, 5 nodes)
@@ -388,6 +471,7 @@ End-of-day verified: launcher patch tested live with `--use-nvidia` (42 s launch
 - [x] Block C: wiki sync propagated; local wiki/ matches published wiki (Action handled the 30/04 push; tip `46c9b39 @ f00d2338`)
 - [x] Block D: RTF root cause identified + fixed end-to-end. Mesa Intel UHD → NVIDIA RTX A3000 via prime-offload env vars; RTF 0.32 → 0.88, LiDAR 2.48 → 6.8 Hz on the full launcher
 - [x] Block E: Board.md row added; diary filled; pre-commit grep clean
+- [x] Block F (off-plan evening): lint debt cleanup + dashboard XSS remediation; 5 commits `a120ef6` → `fc05c69`; XSS class closed, reconnect resilience verified, lint test scope corrected
 - [ ] External Week 9 diary Mon "Outcome:" line — *deferred to next Windows session (path lives on the Windows laptop, not this workstation)*
 
 ---
@@ -413,6 +497,8 @@ Use this section to capture anything surprising — file state drift, unexpected
 - `pkill -9 -f <pattern>` from any shell whose argv contains `<pattern>` substrings will SIGKILL itself. The launcher's `cleanup()` pkills 14 patterns; ANY verification script with those literal strings in echo lines, case patterns, or pgrep arguments is a self-kill. Workaround: keep pattern-bearing operations inside a separate script file (`bash /tmp/foo.sh` — outer caller cmdline is just the path). Documented in Block D outcome; possibly worth promoting to `wiki/Common_Issues.md` if it bites a future investigation.
 - Standalone `ros2 launch vrx_gz` in a freshly-cleaned graph shows `/wamv/sensors/lidars/lidar_wamv_sensor/points` advertised within ~0 s on the warm-cache second start of the day — the cold-boot 60 s wait_for_topic budget in the launcher is correct, but warm runs land near-instant. No action; just useful prior for any later launcher tuning.
 - Old launcher's `trap cleanup INT TERM` runs the cleanup function but **doesn't `exit`** afterwards — control returns to the `while true; do sleep 6; done` loop, so SIGINT alone leaves the launcher alive. SIGKILL on the launcher PID is the clean kill path, not SIGINT. Worth flagging as a launcher hygiene item the maintainer may want to address (`trap 'cleanup; exit 130' INT TERM`); deferred — code change in `.sh` file.
+- Bare `python3 -m flake8 .` is **not** a substitute for `ament_flake8` even when the same plugins are installed. ament loads its bundled config at `/opt/ros/jazzy/lib/python3.12/site-packages/ament_flake8/configuration/ament_flake8.ini` (`max-line-length=99`, `import-order-style=google`, `extend-ignore=B902,C816,D100-D107,D203,D212,D404,I202`); bare flake8 defaults to `max-line-length=79` and gives **higher** counts (3843 vs 2478 here on identical inputs). Canonical signal is `pytest <pkg>/test/test_flake8.py` or `ament_flake8 --config .linters/ament_flake8.ini ...`. Worth a `wiki/Common_Issues.md` debug-commands note if the trap recurs.
+- Automated long-line fixes can silently truncate comment content (LiDAR dimensional rationale, VFH units, A\* default flags, dashboard sync notes, etc.) instead of wrapping. Caught in Block F3 review and restored in two follow-up rounds. Lesson: line-length cleanup should wrap or move comments above the code, never delete parenthetical content. `setup.py`'s multi-line keywords list + parenthesised description string is the reference shape.
 
 ---
 
@@ -440,3 +526,4 @@ Use this section to capture anything surprising — file state drift, unexpected
 - **Dashboard scaffold-without-write audit** — surfaced as a 29/04 Mission Progress architectural lesson; worth a focused audit pass at some point.
 - **Dashboard offline-capable for IoT-local network deployment** (per Roadmap §1.3) — Path A vendor libs first, then Path B offline tile server before first on-water deployment.
 - **`--use-nvidia` discoverability follow-up** — five user-facing docs show the plain launcher invocation without surfacing the new flag for hybrid-graphics laptop users: `README.md:94`, `wiki/Quick_Start.md:102`, `USER_MANUAL.md:1471-1483` (4 examples), `web_dashboard/autoboat/README_autoboat_dashboard.md:50`, `wiki/Common_Issues.md:396` (inside an unrelated troubleshooting recipe). Not stale — plain invocation works on every host — but a Linux dev on the campus workstation following README → Quick_Start lands in Mesa-iGPU mode by default and only finds the fix once they hit `Common_Issues.md` "Gazebo Running Slow" through troubleshooting search. Minimal close-the-gap shape: one line in README's Quick Start mentioning the flag for Optimus / PRIME-managed laptops with a pointer to the Common_Issues section, same in `Quick_Start.md`. Defer or take when the day allows.
+- **Dashboard Content Security Policy** — `wiki/Dashboard_Security.md`'s posture row now flags "no Content Security Policy yet" as the residual XSS hardening surface after the 04/05 renderer-fix pass closed the active-injection sites. A CSP header on the dashboard HTTP server (`default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; ...`) would block any future innerHTML regression from executing inline scripts, plus catch DOM-clobbering and inline-event-handler vectors. Out of scope for the 04/05 round; worth a focused pass when the day allows.
