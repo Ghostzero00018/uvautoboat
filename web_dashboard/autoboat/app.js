@@ -532,11 +532,13 @@ function connectToROS() {
         if (DEBUG_MODE) console.log('Connection closed');
         connected = false;
         updateConnectionStatus(false);
-        // Clear publishers so they get recreated with the new ros object on reconnect
+        // Clear ROS-bound handles so they get recreated with the new ros object on reconnect.
         missionCommandPublisher = null;
         configPublisher = null;
         modularConfigPublisher = null;
         modularMissionCommandPublisher = null;
+        healthLineTopic = null;
+        healthStatusTopic = null;
         addLog('Connection closed. Retrying in 5s...', 'warning');
         setTimeout(connectToROS, 5000);
     });
@@ -1418,17 +1420,23 @@ function logBadJson(topicName, error) {
 
 function addLog(message, type = 'info') {
     const logsContainer = document.getElementById('logs');
+    if (!logsContainer) return;
+
     const logEntry = document.createElement('div');
     logEntry.className = `log-entry ${type}`;
-    
+
     const timestamp = new Date().toLocaleTimeString();
-    logEntry.innerHTML = `
-        <span class="timestamp">[${timestamp}]</span>
-        <span class="message">${message}</span>
-    `;
-    
+    const timestampEl = document.createElement('span');
+    timestampEl.className = 'timestamp';
+    timestampEl.textContent = `[${timestamp}]`;
+
+    const messageEl = document.createElement('span');
+    messageEl.className = 'message';
+    messageEl.textContent = String(message);
+
+    logEntry.append(timestampEl, messageEl);
     logsContainer.insertBefore(logEntry, logsContainer.firstChild);
-    
+
     // Keep only last 50 logs
     while (logsContainer.children.length > 50) {
         logsContainer.removeChild(logsContainer.lastChild);
@@ -3656,11 +3664,14 @@ function updateHistoryDisplay() {
     countEl.textContent = `(${missionHistory.length} events)`;
 
     if (missionHistory.length === 0) {
-        logEl.innerHTML = '<div class="history-empty">No events yet | Aucun événement</div>';
+        const empty = document.createElement('div');
+        empty.className = 'history-empty';
+        empty.textContent = 'No events yet | Aucun événement';
+        logEl.replaceChildren(empty);
         return;
     }
 
-    let html = '';
+    const fragment = document.createDocumentFragment();
     missionHistory.forEach(event => {
         const iconMap = {
             'state': '🔄',
@@ -3675,14 +3686,26 @@ function updateHistoryDisplay() {
         const icon = iconMap[event.type] || '•';
         const className = `history-entry history-${event.type}`;
 
-        html += `<div class="${className}">
-            <span class="history-time">${event.time}</span>
-            <span class="history-icon">${icon}</span>
-            <span class="history-message">${event.message}</span>
-        </div>`;
+        const entry = document.createElement('div');
+        entry.className = className;
+
+        const timeEl = document.createElement('span');
+        timeEl.className = 'history-time';
+        timeEl.textContent = String(event.time);
+
+        const iconEl = document.createElement('span');
+        iconEl.className = 'history-icon';
+        iconEl.textContent = icon;
+
+        const messageEl = document.createElement('span');
+        messageEl.className = 'history-message';
+        messageEl.textContent = String(event.message);
+
+        entry.append(timeEl, iconEl, messageEl);
+        fragment.appendChild(entry);
     });
 
-    logEl.innerHTML = html;
+    logEl.replaceChildren(fragment);
 
     // Auto-scroll to top if expanded
     if (historyExpanded) {
@@ -3768,37 +3791,50 @@ function displayValidationResults(validation) {
 
     panel.style.display = 'block';
 
-    let html = '<div class="validation-checks">';
+    const checksEl = document.createElement('div');
+    checksEl.className = 'validation-checks';
 
     // Display all checks
-    for (const [key, check] of Object.entries(validation.checks)) {
-        html += `<div class="validation-check ${check.pass ? 'pass' : 'warning'}">
-            ${check.message}
-        </div>`;
+    for (const check of Object.values(validation.checks)) {
+        const checkEl = document.createElement('div');
+        checkEl.className = `validation-check ${check.pass ? 'pass' : 'warning'}`;
+        checkEl.textContent = String(check.message);
 
         if (check.warnings && check.warnings.length > 0) {
             check.warnings.forEach(warning => {
-                html += `<div class="validation-warning">⚠️ ${warning}</div>`;
+                const warningEl = document.createElement('div');
+                warningEl.className = 'validation-warning';
+                warningEl.textContent = `⚠️ ${warning}`;
+                checkEl.appendChild(warningEl);
             });
         }
+
+        checksEl.appendChild(checkEl);
     }
 
     // Display estimates
     const minutes = Math.floor(validation.estimates.duration / 60);
     const seconds = Math.floor(validation.estimates.duration % 60);
-    html += `
-        <div class="validation-estimates">
-            <div class="validation-estimate">
-                ℹ️ Total distance: <strong>${validation.estimates.distance.toFixed(0)}m</strong>
-            </div>
-            <div class="validation-estimate">
-                ℹ️ Estimated completion: <strong>${minutes}m ${seconds}s</strong>
-            </div>
-        </div>
-    `;
+    const estimatesEl = document.createElement('div');
+    estimatesEl.className = 'validation-estimates';
 
-    html += '</div>';
-    resultsEl.innerHTML = html;
+    const distanceEl = document.createElement('div');
+    distanceEl.className = 'validation-estimate';
+    distanceEl.append('ℹ️ Total distance: ');
+    const distanceValue = document.createElement('strong');
+    distanceValue.textContent = `${validation.estimates.distance.toFixed(0)}m`;
+    distanceEl.appendChild(distanceValue);
+
+    const completionEl = document.createElement('div');
+    completionEl.className = 'validation-estimate';
+    completionEl.append('ℹ️ Estimated completion: ');
+    const completionValue = document.createElement('strong');
+    completionValue.textContent = `${minutes}m ${seconds}s`;
+    completionEl.appendChild(completionValue);
+
+    estimatesEl.append(distanceEl, completionEl);
+    checksEl.appendChild(estimatesEl);
+    resultsEl.replaceChildren(checksEl);
 
     // Log validation
     addHistoryEvent('info', `Waypoints validated: ${validation.waypoints.length} waypoints, ${validation.estimates.distance.toFixed(0)}m`);
