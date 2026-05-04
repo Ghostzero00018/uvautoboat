@@ -1,12 +1,14 @@
-from setuptools import find_packages, setup
-import os
 from glob import glob
+import os
+
+from setuptools import find_packages, setup
 
 package_name = 'plan'
 
 setup(
     name=package_name,
-    version='2.2.0',  # Updated: v2.2 with A* detour planning & simple anti-stuck
+    # v2.2: A* detour planning and simple anti-stuck.
+    version='2.2.0',
     packages=find_packages(exclude=['test']),
     data_files=[
         ('share/ament_index/resource_index/packages',
@@ -14,8 +16,11 @@ setup(
         ('share/' + package_name, ['package.xml']),
         # Install rviz config files
         (os.path.join('share', package_name, 'rviz'), glob('rviz/*.rviz')),
-        # Install health-check shell script so the in-process service can locate it via the package share dir.
-        (os.path.join('share', package_name, 'scripts'), glob('../one_click_launch_all/health_check_*.sh')),
+        # Install health-check script for the in-process service.
+        (
+            os.path.join('share', package_name, 'scripts'),
+            glob('../one_click_launch_all/health_check_*.sh'),
+        ),
     ],
     install_requires=[
         'setuptools',
@@ -26,9 +31,20 @@ setup(
     maintainer_email='yinpuchen0@gmail.com',
     author='Ghostzero00018',
     author_email='yinpuchen0@gmail.com',
-    description='Planning and perception package for VRX autonomous navigation with A* detour planning, LiDAR perception v2.1, and waypoint planner v2.2.',
+    description=(
+        'Planning and perception package for VRX autonomous navigation with '
+        'A* detour planning, LiDAR perception v2.1, and waypoint planner v2.2.'
+    ),
     license='Apache-2.0',
-    keywords=['ROS2', 'VRX', 'autonomous navigation', 'path planning', 'obstacle detection', 'LiDAR', 'A*'],
+    keywords=[
+        'ROS2',
+        'VRX',
+        'autonomous navigation',
+        'path planning',
+        'obstacle detection',
+        'LiDAR',
+        'A*',
+    ],
     tests_require=['pytest'],
     python_requires='>=3.10',
     classifiers=[
