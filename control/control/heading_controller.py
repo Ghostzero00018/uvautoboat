@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
 """
-Heading Controller - Motion Control System
+Heading Controller - Motion Control System.
 
 Module: Heading Controller
 Role:   PID heading control, thruster output, and obstacle avoidance maneuvers.
-See also: LiDAR Perception (Perception) and Waypoint Planner (Planning)
+See also: LiDAR Perception (Perception) and Waypoint Planner (Planning).
 
 Part of the modular AutoBoat architecture.
 Subscribes to planner targets and perception data, outputs thruster commands.
 
 Features:
 - PID heading control with anti-windup
-- Simple Anti-Stuck: turn toward the clearer side (left/right based on sector clearance) until front is clear
-- 2D linear Kalman filter for water/wind drift estimation, applied as feed-forward thrust compensation
+- Simple Anti-Stuck: turn toward the clearer side (left/right based on
+  sector clearance) until front is clear
+- 2D linear Kalman filter for water/wind drift estimation, applied as
+  feed-forward thrust compensation
 - LiDAR Perception v2.1 VFH/polar histogram obstacle avoidance integration
 
 Control constants (module-scope, not ROS parameters — change by code edit + rebuild):
@@ -30,7 +32,8 @@ Topics:
         /planning/current_target (String) - Current navigation target
         /perception/obstacle_info (String) - Obstacle detection data
         /planning/mission_status (String) - Mission state (for E-Stop gate)
-        /planning/mission_command (String) - High-priority mission commands (STOP/RESUME) from CLI / dashboard
+        /planning/mission_command (String) - High-priority mission commands
+          (STOP/RESUME) from CLI / dashboard
         /planning/set_config (String) - runtime parameter updates from dashboard
         /planning/emergency_stop (Bool, latched RELIABLE depth=1) - dedicated E-Stop channel
 
@@ -41,18 +44,22 @@ Topics:
         /control/anti_stuck_status (String) - Anti-stuck system status
         /control/replan_request (String) - Request planner reroute when path is blocked
         /planning/skip_waypoint (String) - Request waypoint skip after multiple stuck attempts
-        /control/heading_error (Float64) - body-frame angle-to-target, published per control tick for perception VFH targeting
-        /control/param_ranges (String) - JSON [min, max, default] 3-tuples; dashboard syncs HTML min/max + populates liveDefaults for (default: X) hints
+        /control/heading_error (Float64) - body-frame angle-to-target,
+          published per control tick for perception VFH targeting
+        /control/param_ranges (String) - JSON [min, max, default] 3-tuples;
+          dashboard syncs HTML min/max + populates liveDefaults for
+          (default: X) hints
 """
 
+import json
+import math
+
+import numpy as np
 import rclpy
 from rclpy.node import Node
-import math
-import json
-import numpy as np
 
-from sensor_msgs.msg import NavSatFix, Imu
-from std_msgs.msg import Float64, String, Bool
+from sensor_msgs.msg import Imu, NavSatFix
+from std_msgs.msg import Bool, Float64, String
 
 
 # =============================================================================
@@ -111,19 +118,19 @@ ESCAPE_TURN_POWER = 450.0    # Newtons - differential thrust for stuck-escape sp
 class KalmanDriftEstimator:
     """
     2D Kalman Filter for estimating water/wind drift.
-    
+
     BAYESIAN INTERPRETATION:
         Prior:      Previous drift estimate with uncertainty P
         Likelihood: How well observed velocity matches predicted velocity
         Posterior:  Updated drift estimate after measurement
-    
+
     State: [drift_x, drift_y] - velocity components (m/s)
-    
+
     Tuning:
         High Q, Low R → Trust measurements, respond quickly
         Low Q, High R → Trust model, smooth out noise
     """
-    
+
     def __init__(self, process_noise=0.01, measurement_noise=0.5):
         self.n = 2
         self.x = np.zeros((self.n, 1))  # State estimate
@@ -133,11 +140,11 @@ class KalmanDriftEstimator:
         self.Q = np.eye(self.n) * process_noise    # Process noise
         self.R = np.eye(self.n) * measurement_noise  # Measurement noise
         self.last_kalman_gain = np.zeros((self.n, self.n))
-        
+
     def predict(self):
         self.x = self.F @ self.x
         self.P = self.F @ self.P @ self.F.T + self.Q
-        
+
     def update(self, z):
         z = np.array(z).reshape((self.n, 1))
         y = z - self.H @ self.x
@@ -146,18 +153,19 @@ class KalmanDriftEstimator:
         self.last_kalman_gain = K.copy()
         self.x = self.x + K @ y
         self.P = (np.eye(self.n) - K @ self.H) @ self.P
-        
+
     def get_drift(self):
         return (float(self.x[0, 0]), float(self.x[1, 0]))
-    
+
     def get_uncertainty(self):
         return (float(np.sqrt(self.P[0, 0])), float(np.sqrt(self.P[1, 1])))
 
 
 class HeadingController(Node):
     """
-    Heading Controller - Boat controller with PID navigation
-    Enhanced with simple anti-stuck system and Kalman drift compensation
+    Heading Controller - Boat controller with PID navigation.
+
+    Enhanced with simple anti-stuck system and Kalman drift compensation.
     """
 
     # Single source of truth for parameter validation ranges.
@@ -221,9 +229,11 @@ class HeadingController(Node):
         self.declare_parameter('reverse_timeout', 4.0)  # Reverse timeout (synced to YAML)
         self.declare_parameter('max_reverse_distance', 25.0)  # Max meters to reverse during escape
         # Softer avoidance steering to avoid sharp pivots
-        self.declare_parameter('avoid_diff_gain', 18.0)  # VFH/polar differential steering gain (synced to YAML)
+        # VFH/polar differential steering gain (synced to YAML)
+        self.declare_parameter('avoid_diff_gain', 18.0)
         self.declare_parameter('use_vfh_bias', False)    # Enable/disable VFH/polar steering bias
-        self.declare_parameter('max_avoidance_turn_deg', 45.0)  # Maximum turn angle during obstacle avoidance (degrees)
+        # Maximum turn angle during obstacle avoidance (degrees)
+        self.declare_parameter('max_avoidance_turn_deg', 45.0)
 
         # Simple anti-stuck parameters
         self.declare_parameter('stuck_timeout', 12.0)
@@ -231,11 +241,12 @@ class HeadingController(Node):
         # Shoreline/bank protection: slow down when very close to obstacles (e.g., banks)
         self.declare_parameter('bank_slow_distance', 6.0)
         self.declare_parameter('bank_slow_factor', 0.25)
-        
+
         # Kalman filter parameters
         self.declare_parameter('kalman_process_noise', 0.01)
         self.declare_parameter('kalman_measurement_noise', 0.5)
-        # Drift compensation: feed-forward gain scaling Kalman drift estimate to thrust (N per m/s × 100)
+        # Drift compensation gain scaling Kalman drift estimate to thrust.
+        # Units: N per m/s x 100.
         self.declare_parameter('drift_compensation_gain', 0.3)
         # Flipped by config_callback on first successful /planning/set_config.
         # Health check reads this to distinguish baseline-vs-user-tuned values.
@@ -259,7 +270,7 @@ class HeadingController(Node):
         self.avoid_diff_gain = float(self.get_parameter('avoid_diff_gain').value)
         self.max_avoidance_turn_deg = float(self.get_parameter('max_avoidance_turn_deg').value)
         self.use_vfh_bias = bool(self.get_parameter('use_vfh_bias').value)
-        
+
         # Simple anti-stuck parameters
         self.stuck_timeout = self.get_parameter('stuck_timeout').value
         self.stuck_threshold = self.get_parameter('stuck_threshold').value
@@ -279,7 +290,7 @@ class HeadingController(Node):
         self.current_x = 0.0
         self.current_y = 0.0
         self.distance_to_target = float('inf')
-        
+
         # Mission state (from planner)
         self.mission_active = False  # True only when planner is in DRIVING state
         # Highest-priority STOP latch (cleared only by explicit resume/clear)
@@ -312,7 +323,7 @@ class HeadingController(Node):
         # GPS state
         self.first_gps_seen = False
         self.current_gps = None
-        
+
         # Simple anti-stuck state
         self.last_position = None
         self.stuck_check_time = None
@@ -356,7 +367,7 @@ class HeadingController(Node):
             self.obstacle_callback,
             10
         )
-        
+
         # Subscribe to mission status to know when to stop
         self.create_subscription(
             String,
@@ -371,7 +382,7 @@ class HeadingController(Node):
             self.mission_command_callback,
             10
         )
-        
+
         # Subscribe to runtime config updates (PID, speed) - modular architecture
         self.create_subscription(
             String,
@@ -395,10 +406,10 @@ class HeadingController(Node):
         self.pub_right = self.create_publisher(Float64, '/wamv/thrusters/right/thrust', 10)
         self.pub_status = self.create_publisher(String, '/control/status', 10)
         self.pub_anti_stuck = self.create_publisher(String, '/control/anti_stuck_status', 10)
-        
+
         # Request replan from planner (when path is blocked)
         self.pub_replan_request = self.create_publisher(String, '/control/replan_request', 10)
-        
+
         # Request waypoint skip (after multiple stuck attempts)
         self.pub_skip_request = self.create_publisher(String, '/planning/skip_waypoint', 10)
         self.pub_param_ranges = self.create_publisher(String, '/control/param_ranges', 10)
@@ -411,7 +422,7 @@ class HeadingController(Node):
         # Republish param ranges every 5s so late-subscribing dashboards always get them
         self.create_timer(5.0, self._publish_param_ranges)
         self._publish_param_ranges()  # initial publish on startup
-        
+
         # Anti-stuck status publisher at 2Hz
         self.create_timer(0.5, self.publish_anti_stuck_status)
 
@@ -420,24 +431,27 @@ class HeadingController(Node):
         self.get_logger().info("+ Simple Anti-Stuck (turn toward clearer side)")
         self.get_logger().info(f"PID Gains: Kp={self.kp}, Ki={self.ki}, Kd={self.kd}")
         self.get_logger().info(f"Speed: {self.base_speed} (max: {self.max_speed})")
-        self.get_logger().info(f"Anti-Stuck: timeout={self.stuck_timeout}s, threshold={self.stuck_threshold}m")
+        self.get_logger().info(
+            f"Anti-Stuck: timeout={self.stuck_timeout}s, "
+            f"threshold={self.stuck_threshold}m"
+        )
         self.get_logger().info("=" * 50)
 
     def gps_callback(self, msg):
-        """Handle GPS updates"""
+        """Handle GPS updates."""
         self.current_gps = (msg.latitude, msg.longitude)
         if not self.first_gps_seen:
             self.first_gps_seen = True
 
     def imu_callback(self, msg):
-        """Extract yaw from IMU quaternion"""
+        """Extract yaw from IMU quaternion."""
         q = msg.orientation
         siny_cosp = 2 * (q.w * q.z + q.x * q.y)
         cosy_cosp = 1 - 2 * (q.y * q.y + q.z * q.z)
         self.current_yaw = math.atan2(siny_cosp, cosy_cosp)
 
     def target_callback(self, msg):
-        """Receive current navigation target from planner"""
+        """Receive current navigation target from planner."""
         try:
             data = json.loads(msg.data)
             self.current_x, self.current_y = data['current_position']
@@ -447,7 +461,7 @@ class HeadingController(Node):
             self.get_logger().warn(f"Invalid target message: {e}")
 
     def obstacle_callback(self, msg):
-        """Receive obstacle information from perception (v2.0 compatible)"""
+        """Receive obstacle information from perception (v2.0 compatible)."""
         try:
             data = json.loads(msg.data)
             self.obstacle_detected = data.get('obstacle_detected', False)
@@ -469,18 +483,21 @@ class HeadingController(Node):
             self.get_logger().warn(f"Invalid obstacle message: {e}")
 
     def mission_status_callback(self, msg):
-        """Receive mission status from planner - stop if not DRIVING"""
+        """Receive mission status from planner - stop if not DRIVING."""
         try:
             data = json.loads(msg.data)
             state = data.get('state', '')
             # Only active when planner is in DRIVING state
             was_active = self.mission_active
             self.mission_active = (state == "DRIVING")
-            
+
             # Debug log every status change
             if was_active != self.mission_active:
-                self.get_logger().info(f"🔄 Mission status changed: {was_active} → {self.mission_active} (state={state})")
-            
+                self.get_logger().info(
+                    f"🔄 Mission status changed: {was_active} → "
+                    f"{self.mission_active} (state={state})"
+                )
+
             # If mission just became inactive, clear target and stop IMMEDIATELY
             if was_active and not self.mission_active:
                 self.target_x = None
@@ -489,21 +506,28 @@ class HeadingController(Node):
                 # CRITICAL: Stop immediately and multiple times to ensure thrusters cut off
                 self.stop()
                 self.send_thrust(0.0, 0.0)  # Double-stop - zero thrust explicitly
-                self.get_logger().info(f"🛑 Mission IMMEDIATELY inactive (state={state}) - stopping & resetting all states")
-            
-            # If mission just became active (e.g., go_home, resume), reset escape state for fresh start
+                self.get_logger().info(
+                    f"🛑 Mission IMMEDIATELY inactive (state={state}) - "
+                    "stopping & resetting all states"
+                )
+
+            # If mission just became active, reset escape state for fresh start.
             elif not was_active and self.mission_active:
                 self._reset_all_escape_state()
                 # Reset stuck detection timing for fresh start
                 self.last_position = (self.current_x, self.current_y)
                 self.stuck_check_time = self.get_clock().now()
-                self.get_logger().info(f"✅ Mission active (state={state}) - escape state reset for fresh start")
-                
+                self.get_logger().info(
+                    f"✅ Mission active (state={state}) - "
+                    "escape state reset for fresh start"
+                )
+
         except (json.JSONDecodeError, KeyError) as e:
             self.get_logger().warn(f"Invalid mission status: {e}")
 
     def mission_command_callback(self, msg):
-        """Clear STOP override when a resume-family command arrives.
+        """
+        Clear STOP override when a resume-family command arrives.
 
         The safety STOP latch itself lives on the /planning/emergency_stop
         latched Bool (see emergency_stop_latched_callback); this callback only
@@ -525,7 +549,7 @@ class HeadingController(Node):
                 # drift measurement on the first post-resume update.
                 self.position_history.clear()
             self.stop_override = False
-    
+
     def emergency_stop_latched_callback(self, msg):
         """Safety-critical E-Stop entry point. Bool(data=True) latches stop_override."""
         if msg.data:
@@ -544,7 +568,7 @@ class HeadingController(Node):
         )
 
     def _reset_all_escape_state(self):
-        """Reset all escape/stuck/avoidance state variables"""
+        """Reset all escape/stuck/avoidance state variables."""
         self.escape_mode = False
         self.is_stuck = False
         self.escape_direction = 'IDLE'
@@ -567,8 +591,12 @@ class HeadingController(Node):
         return False
 
     def _publish_json(self, publisher, payload, label):
-        """Safe JSON publish: refuses to emit NaN/Inf (bad Kalman tick, uninit
-        float) so downstream parse can't silently fail on malformed wire data."""
+        """
+        Publish JSON only when the payload can be encoded safely.
+
+        Refuses NaN/Inf from bad Kalman ticks or uninitialized floats so
+        downstream parsing cannot silently fail on malformed wire data.
+        """
         try:
             encoded = json.dumps(payload, allow_nan=False)
         except (TypeError, ValueError) as e:
@@ -582,23 +610,29 @@ class HeadingController(Node):
         publisher.publish(msg)
 
     def _publish_param_ranges(self):
-        """Publish validation ranges + launch defaults so the dashboard can sync
-        HTML min/max AND the (default: X) hint without hardcoding defaults on the
-        dashboard side. Lazy-captures launch-time defaults on first publish — at
-        that point get_parameter() returns YAML-or-Python-default values, before
-        any runtime config_callback can mutate them."""
+        """
+        Publish validation ranges and launch defaults for the dashboard.
+
+        Dashboard syncs HTML min/max and populates liveDefaults for
+        (default: X) hints without hardcoding defaults. Defaults are captured
+        lazily on first publish, before runtime config_callback updates can
+        mutate them.
+        """
         if not hasattr(self, '_launch_defaults'):
             self._launch_defaults = {
                 p: self.get_parameter(p).value for p in self.PARAM_RANGES.keys()
             }
         self._publish_json(
             self.pub_param_ranges,
-            {k: [lo, hi, self._launch_defaults.get(k)] for k, (lo, hi) in self.PARAM_RANGES.items()},
+            {
+                k: [lo, hi, self._launch_defaults.get(k)]
+                for k, (lo, hi) in self.PARAM_RANGES.items()
+            },
             'param_ranges',
         )
 
     def config_callback(self, msg):
-        """Handle runtime configuration changes for PID and speed"""
+        """Handle runtime configuration changes for PID and speed."""
         try:
             config = json.loads(msg.data)
             updated = []
@@ -739,7 +773,7 @@ class HeadingController(Node):
             self.get_logger().error(f"Config parse error: {e}")
 
     def control_loop(self):
-        """Main control loop - PID heading control with obstacle avoidance and simple anti-stuck"""
+        """Run PID heading control with obstacle avoidance and anti-stuck handling."""
         # Highest priority STOP latch (works even during escape mode)
         if self.stop_override:
             self.stop()
@@ -751,17 +785,17 @@ class HeadingController(Node):
             self.stop()
             self.send_thrust(0.0, 0.0)  # Ensure thrust is zero if mission became inactive
             return
-            
+
         # Check if we have a target
         if self.target_x is None or self.target_y is None:
             self.stop()
             return
-        
+
         # Initialize stuck detection on first run
         if self.last_position is None:
             self.last_position = (self.current_x, self.current_y)
             self.stuck_check_time = self.get_clock().now()
-        
+
         # Update position history for drift estimation
         self.update_position_history()
 
@@ -778,14 +812,17 @@ class HeadingController(Node):
         if self.is_critical and self.min_obstacle_distance < self.critical_distance:
             # If we've already hit reverse limits, skip reverse and go to turning
             if self.force_turn_after_reverse:
-                self.get_logger().warn("Reverse limit reached - turning instead of further reversing")
+                self.get_logger().warn(
+                    "Reverse limit reached - turning instead of further reversing"
+                )
             else:
                 if self.reverse_start_time is None:
                     self.reverse_start_time = self.get_clock().now()
                     self.reverse_start_pos = (self.current_x, self.current_y)
                     self.integral_error = 0.0
                     self.get_logger().warn(
-                        f"CRITICAL OBSTACLE {self.min_obstacle_distance:.1f}m - Reversing (CQB micro-steps)"
+                        f"CRITICAL OBSTACLE {self.min_obstacle_distance:.1f}m - "
+                        "Reversing (CQB micro-steps)"
                     )
 
                 elapsed = (self.get_clock().now() - self.reverse_start_time).nanoseconds / 1e9
@@ -800,7 +837,8 @@ class HeadingController(Node):
                 # Stop reversing if time or distance exceeded
                 if elapsed > self.reverse_timeout or reverse_dist > self.max_reverse_distance:
                     self.get_logger().warn(
-                        f"Reverse limit reached (t={elapsed:.1f}s, d={reverse_dist:.1f}m) - switching to turn"
+                        f"Reverse limit reached (t={elapsed:.1f}s, "
+                        f"d={reverse_dist:.1f}m) - switching to turn"
                     )
                     self.reverse_start_time = None
                     self.reverse_start_pos = None
@@ -833,7 +871,7 @@ class HeadingController(Node):
                 self.previous_error = 0.0
                 self.avoidance_mode = True
                 self.get_logger().info("Avoidance mode - PID reset")
-                
+
                 # Request A* replan if obstacle is blocking and urgency is high
                 if self.urgency > 0.5 and self.front_clear < self.min_safe_distance:
                     self.request_replan(reason="path_blocked")
@@ -861,7 +899,8 @@ class HeadingController(Node):
             angle_error = self.normalize_angle(avoidance_heading - self.current_yaw)
 
             self.get_logger().warn(
-                f"🚨 OBSTACLE {self.min_obstacle_distance:.1f}m (urgency:{self.urgency*100:.0f}%) - "
+                f"🚨 OBSTACLE {self.min_obstacle_distance:.1f}m "
+                f"(urgency:{self.urgency*100:.0f}%) - "
                 f"Virage {direction} (G:{self.left_clear:.1f}m D:{self.right_clear:.1f}m)",
                 throttle_duration_sec=1.0
             )
@@ -895,7 +934,7 @@ class HeadingController(Node):
         )
 
         self.previous_error = angle_error
-        
+
         # Limit turn power
         turn_power = max(-TURN_POWER_LIMIT, min(TURN_POWER_LIMIT, turn_power))
 
@@ -914,7 +953,10 @@ class HeadingController(Node):
             speed = self.base_speed
 
         # Distance-based slowdown (precision near waypoint) - linear ramp
-        if math.isfinite(self.distance_to_target) and self.distance_to_target < self.approach_slow_distance:
+        if (
+            math.isfinite(self.distance_to_target)
+            and self.distance_to_target < self.approach_slow_distance
+        ):
             frac = max(0.0, min(1.0, self.distance_to_target / self.approach_slow_distance))
             speed *= (self.approach_slow_factor + (1.0 - self.approach_slow_factor) * frac)
             # Maintain minimum speed for control authority (prevent drifting/circling)
@@ -931,7 +973,10 @@ class HeadingController(Node):
                 speed *= self.obstacle_slow_factor
 
         # Shoreline/bank protection: clamp speed when very close to obstacles
-        if math.isfinite(self.min_obstacle_distance) and self.min_obstacle_distance < self.bank_slow_distance:
+        if (
+            math.isfinite(self.min_obstacle_distance)
+            and self.min_obstacle_distance < self.bank_slow_distance
+        ):
             # Linear ramp: at 0m → bank_slow_factor, at bank_slow_distance → 1.0
             frac = max(0.0, min(1.0, self.min_obstacle_distance / self.bank_slow_distance))
             speed *= (self.bank_slow_factor + (1.0 - self.bank_slow_factor) * frac)
@@ -964,8 +1009,12 @@ class HeadingController(Node):
             diff_bias = 0.0
             vfh_dir = None
 
-            # Skip steering bias if we're seeing only phantom/self hits (far min distance + low urgency)
-            allow_bias = (self.min_obstacle_distance <= self.min_safe_distance) or (self.urgency > 0.1) or self.is_critical
+            # Skip steering bias for phantom/self hits with far min distance and low urgency.
+            allow_bias = (
+                self.min_obstacle_distance <= self.min_safe_distance
+                or self.urgency > 0.1
+                or self.is_critical
+            )
 
             if allow_bias:
                 # 1. Left/right clearance bias (steer toward clearer side)
@@ -1014,13 +1063,13 @@ class HeadingController(Node):
         self.prev_right_thrust = right_thrust
 
         self.send_thrust(left_thrust, right_thrust)
-        
+
         # Publish status
         mode = "AVOIDANCE" if self.avoidance_mode else "NAVIGATION"
         self.publish_status(mode)
 
     def normalize_angle(self, angle):
-        """Normalize angle to [-pi, pi]"""
+        """Normalize angle to [-pi, pi]."""
         while angle > math.pi:
             angle -= 2.0 * math.pi
         while angle < -math.pi:
@@ -1028,20 +1077,18 @@ class HeadingController(Node):
         return angle
 
     def _slew_limit(self, previous: float, target: float) -> float:
-        """
-        Limit thrust change per cycle to avoid abrupt reversals and jerk.
-        """
+        """Limit thrust change per cycle to avoid abrupt reversals and jerk."""
         delta = target - previous
         delta = max(-self.slew_rate_limit, min(self.slew_rate_limit, delta))
         return previous + delta
 
     def send_thrust(self, left, right):
-        """Publish thruster commands - with mission safety check"""
+        """Publish thruster commands - with mission safety check."""
         # SAFETY: If mission is not active, force zero thrust
         if not self.mission_active:
             left = 0.0
             right = 0.0
-        
+
         left_msg = Float64()
         left_msg.data = left
         self.pub_left.publish(left_msg)
@@ -1051,11 +1098,11 @@ class HeadingController(Node):
         self.pub_right.publish(right_msg)
 
     def stop(self):
-        """Stop the boat"""
+        """Stop the boat."""
         self.send_thrust(0.0, 0.0)
 
     def publish_status(self, mode):
-        """Publish controller status with perception v2.0 enhanced info"""
+        """Publish controller status with perception v2.0 enhanced info."""
         def _safe(v, decimals=3):
             # Replace inf/NaN with None so JSON serialization succeeds.
             # min_obstacle_distance is inf-init at boot until perception fires.
@@ -1084,16 +1131,16 @@ class HeadingController(Node):
         )
 
     # ==================== SIMPLE ANTI-STUCK SYSTEM ====================
-    
+
     def update_position_history(self):
-        """Update position history for drift estimation"""
+        """Update position history for drift estimation."""
         self.position_history.append((self.current_x, self.current_y, self.get_clock().now()))
         if len(self.position_history) > 100:
             self.position_history.pop(0)
         self.estimate_drift()
-    
+
     def check_stuck_condition(self):
-        """Detect if boat is truly stuck (not moving with clear path or blocked completely)"""
+        """Detect whether the boat is truly stuck."""
         if self.escape_mode:
             return
 
@@ -1138,7 +1185,10 @@ class HeadingController(Node):
 
                     # Request waypoint skip after 3 failed attempts
                     if self.consecutive_stuck_count >= 3:
-                        self.get_logger().error(f"Stuck {self.consecutive_stuck_count} times - requesting waypoint skip")
+                        self.get_logger().error(
+                            f"Stuck {self.consecutive_stuck_count} times - "
+                            "requesting waypoint skip"
+                        )
                         self.request_waypoint_skip()
                         self.consecutive_stuck_count = 0
                         self.is_stuck = False
@@ -1155,14 +1205,17 @@ class HeadingController(Node):
                 # Reset consecutive stuck counter if making good progress
                 if distance_moved > self.stuck_threshold * 2.0:
                     if self.consecutive_stuck_count > 0:
-                        self.get_logger().info(f"Good progress - resetting stuck counter (was {self.consecutive_stuck_count})")
+                        self.get_logger().info(
+                            "Good progress - resetting stuck counter "
+                            f"(was {self.consecutive_stuck_count})"
+                        )
                     self.consecutive_stuck_count = 0
 
             self.last_position = (self.current_x, self.current_y)
             self.stuck_check_time = self.get_clock().now()
-    
+
     def execute_smart_escape(self):
-        """Escape: turn toward clearer side until path is clear, then resume navigation"""
+        """Turn toward the clearer side until the path clears."""
         # SAFETY: Abort escape immediately if mission is no longer active
         if not self.mission_active:
             self._reset_all_escape_state()
@@ -1191,10 +1244,11 @@ class HeadingController(Node):
             self.escape_direction = direction
             self.get_logger().info(
                 f"🔄 Escape turning {direction} "
-                f"(front: {self.front_clear:.1f}m L: {self.left_clear:.1f}m R: {self.right_clear:.1f}m)",
+                f"(front: {self.front_clear:.1f}m L: {self.left_clear:.1f}m "
+                f"R: {self.right_clear:.1f}m)",
                 throttle_duration_sec=1.0
             )
-    
+
     def estimate_drift(self):
         """Estimate drift using Kalman filter for optimal estimation."""
         if len(self.position_history) < 20:
@@ -1202,16 +1256,16 @@ class HeadingController(Node):
             self.drift_kalman.predict()
             self.drift_vector = self.drift_kalman.get_drift()
             return
-        
+
         # Prediction step
         self.drift_kalman.predict()
-        
+
         # Measurement from position history
         recent = self.position_history[-20:]
         total_dx = recent[-1][0] - recent[0][0]
         total_dy = recent[-1][1] - recent[0][1]
         time_diff = (recent[-1][2] - recent[0][2]).nanoseconds / 1e9
-        
+
         # Gate update on commanded-stationary: during active navigation the measured
         # position delta is dominated by commanded motion, not environmental drift.
         # Only absorb measurements when the last thrust command was near zero (idle,
@@ -1224,9 +1278,9 @@ class HeadingController(Node):
             self.drift_kalman.update([measured_drift_x, measured_drift_y])
 
         self.drift_vector = self.drift_kalman.get_drift()
-    
+
     def request_waypoint_skip(self):
-        """Request planner to skip current waypoint after too many stuck attempts"""
+        """Request planner to skip current waypoint after too many stuck attempts."""
         msg = String()
         msg.data = json.dumps({
             'type': 'skip',
@@ -1234,10 +1288,13 @@ class HeadingController(Node):
             'reason': f'stuck_{self.consecutive_stuck_count}_times'
         })
         self.pub_skip_request.publish(msg)
-        self.get_logger().warn(f"⏭️ Waypoint skip requested after {self.consecutive_stuck_count} stuck attempts")
+        self.get_logger().warn(
+            f"⏭️ Waypoint skip requested after "
+            f"{self.consecutive_stuck_count} stuck attempts"
+        )
 
     def request_replan(self, reason="unknown"):
-        """Request planner to replan path via A* when current path is blocked"""
+        """Request planner to replan path via A* when current path is blocked."""
         msg = String()
         msg.data = json.dumps({
             'type': 'replan',
@@ -1248,7 +1305,7 @@ class HeadingController(Node):
         self.get_logger().warn(f"Replan requested: {reason}")
 
     def publish_anti_stuck_status(self):
-        """Publish anti-stuck system status for dashboard"""
+        """Publish anti-stuck system status for dashboard."""
         drift_uncertainty = self.drift_kalman.get_uncertainty()
 
         def _safe(v, decimals=3):
@@ -1283,7 +1340,7 @@ class HeadingController(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = HeadingController()
-    
+
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
