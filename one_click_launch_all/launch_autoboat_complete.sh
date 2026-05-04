@@ -49,6 +49,11 @@
 #   --skip-dashboard           Skip web dashboard (default: launch dashboard)
 #   --skip-camera              Skip web video server (default: launch camera)
 #   --no-browser               Do not open browser (default: open browser)
+#   --use-nvidia               Force Gazebo onto the NVIDIA dGPU via prime-offload
+#                              (Optimus / PRIME-managed laptops with Intel iGPU +
+#                              NVIDIA dGPU; default off — runs on whatever the
+#                              system picks). See wiki/Common_Issues.md
+#                              "Gazebo Running Slow".
 #   --help                     Show this help message
 #
 # Prerequisites:
@@ -104,7 +109,7 @@ cleanup() {
 }
 
 # Only clean up on user/system signals, not on normal exit.
-trap cleanup INT TERM
+trap 'cleanup; exit 130' INT TERM
 
 # Default options
 WORLD="sydney_regatta_DEFAULT"
@@ -112,6 +117,7 @@ LAUNCH_RVIZ=true
 LAUNCH_DASHBOARD=true
 LAUNCH_CAMERA=true
 OPEN_BROWSER=true
+LAUNCH_NVIDIA=false
 
 # Parse command-line arguments
 while [[ $# -gt 0 ]]; do
@@ -136,6 +142,10 @@ while [[ $# -gt 0 ]]; do
             OPEN_BROWSER=false
             shift
             ;;
+        --use-nvidia)
+            LAUNCH_NVIDIA=true
+            shift
+            ;;
         --help)
             cat << 'EOF'
 AutoBoat — Complete Launch Script
@@ -148,6 +158,9 @@ Options:
   --skip-dashboard           Skip web dashboard launch
   --skip-camera              Skip web video server launch
   --no-browser               Do not open browser
+  --use-nvidia               Force Gazebo onto the NVIDIA dGPU via prime-offload
+                             (Optimus laptops; default off — runs on whatever
+                             the system picks)
   --help                     Show this help message
 
 Example:
@@ -341,6 +354,21 @@ rm -f /tmp/autoboat_tab_*.log /tmp/autoboat_launcher_probe.log
 # T1: Launch Gazebo (VRX Simulation)
 # Apply upstream VRX patches (issue #876 workaround — LiDAR at origin fix)
 bash "$(dirname "$0")/patch_vrx.sh"
+
+# Optional NVIDIA prime-offload (gated on --use-nvidia). Exports propagate
+# parent → gnome-terminal → `bash -i` → `ros2 launch` and route Gazebo's
+# `gpu_ray` LiDAR rendering through the discrete GPU. Recommended on Optimus
+# / PRIME-managed laptops where Gazebo otherwise lands on the Intel iGPU and
+# the LiDAR shader throttles the sim. Only enable on hosts that actually have
+# the NVIDIA userspace stack installed — `__GLX_VENDOR_LIBRARY_NAME=nvidia`
+# without `libGLX_nvidia.so` present fails GL context creation rather than
+# falling back. See wiki/Common_Issues.md "Gazebo Running Slow" for the
+# diagnostic + measured A/B.
+if [ "$LAUNCH_NVIDIA" = true ]; then
+    export __NV_PRIME_RENDER_OFFLOAD=1
+    export __GLX_VENDOR_LIBRARY_NAME=nvidia
+    print_status "NVIDIA prime-offload enabled (__NV_PRIME_RENDER_OFFLOAD=1, __GLX_VENDOR_LIBRARY_NAME=nvidia)"
+fi
 
 print_status "Launching Gazebo (Sydney Regatta - $WORLD)..."
 gnome-terminal --wait --tab --title="gazebo" -- bash -i -c "
