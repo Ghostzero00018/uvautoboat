@@ -351,7 +351,7 @@ Worth a `wiki/Common_Issues.md` follow-up if this trap recurs in future investig
 
 **Outcome.**
 
-- Pre-commit invisibility sweep clean — `grep -rnIEi '(claude|anthropic|...)' --include='*.md' ...` against the full keyword set + 10 file types returned rc=1 (zero matches). Repo stays invisibility-clean.
+- Pre-commit invisibility sweep clean — full blocklist grep across the configured text file types returned rc=1 (zero matches). Repo stays invisibility-clean.
 - Stale-doc audit on what Block D touched: cross-ref scan for "Gazebo Running Slow", "prime-select", "prime-offload", `__NV_PRIME_RENDER_OFFLOAD`, `__GLX_VENDOR` across all `*.md` / `*.py` / `*.sh` etc. surfaced 14 references — all current (today's edits + the 28/04 unrelated `### Known Startup Warnings (Cosmetic)` subsection of `Common_Issues.md`) or historical-immutable (29/04 + 30/04 working diary entries referencing the original A2000 hypothesis + `__GLX_VENDOR_LIBRARY_NAME=nvidia` recipe). The historical entries stay as-is; today's Block D outcome corrects forward, not back. No stale claims to fix.
 - Three files modified today, all markdown: `Board.md` (milestone rows + Last-Updated bump), `wiki/Common_Issues.md` ("Gazebo Running Slow" rewrite), `working_diary/2026-05-04_*.md` (Block A-E outcomes + Known Unknowns).
 - External `Research_intern_IMT_NE/working_diary/Week9_04_05-08_05.md` Mon "Outcome:" update **deferred to next Windows-laptop session** — the external diary folder lives on the Windows side per the machine-split work pattern; not accessible from this Linux workstation. The 30/04 Block G scaffold for Week 9 already landed Sunday so no fresh scaffold is needed, just the Mon outcome paragraph.

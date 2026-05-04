@@ -579,14 +579,22 @@ prime-select query
 
 If `OpenGL vendor string: Intel` (or any Mesa renderer) appears while `nvidia-smi` shows the discrete card with a loaded driver, Gazebo is on the iGPU.
 
-**Fix — per-launch prime-offload (recommended; no sudo, reversible):**
+**Fix — launcher prime-offload flag (recommended; no sudo, reversible):**
+
+```bash
+bash one_click_launch_all/launch_autoboat_complete.sh --use-nvidia
+```
+
+The flag exports the required prime-offload variables before spawning the launcher tabs, so the environment propagates through the launcher's `gnome-terminal --tab -- bash -i -c "..."` chain.
+
+Manual equivalent for older checkouts or one-off `ros2 launch` tests:
 
 ```bash
 __NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia \
     bash one_click_launch_all/launch_autoboat_complete.sh
 ```
 
-The env vars propagate cleanly through the launcher's `gnome-terminal --tab -- bash -i -c "..."` chain. Verify after the success header with `nvidia-smi pmon -c 1` — `gz sim server` and `gz sim gui` should both appear on GPU 0.
+Verify after the success header with `nvidia-smi pmon -c 1` — `gz sim server` and `gz sim gui` should both appear on GPU 0.
 
 Observed on the campus workstation (RTX A3000 Laptop GPU, driver 580.142, Sydney Regatta default world, 04/05/2026):
 
