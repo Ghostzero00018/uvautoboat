@@ -65,7 +65,7 @@
                     </div>
                     <div class="info-item">
                         <span class="label">Detour:</span>
-                        <span id="detour-badge" class="value badge" style="display:none;background:#f39c12;color:#fff;">Active</span>
+                        <span id="detour-badge" class="value badge detour-badge is-hidden">Active</span>
                         <span class="info-tooltip" title="Lateral detour waypoint is currently inserted (after prolonged block)">ℹ️</span>
                     </div>
                 </div>
@@ -227,10 +227,10 @@
                 </div>
 
                 <!-- Mission Progress Bar -->
-                <div id="mission-progress-section" class="mission-progress-section" style="display: none;">
+                <div id="mission-progress-section" class="mission-progress-section is-hidden">
                     <h3>📊 Mission Progress | Progrès de la Mission</h3>
                     <div class="progress-bar-container">
-                        <div id="mission-progress-bar" class="mission-progress-bar" style="width: 0%">
+                        <div id="mission-progress-bar" class="mission-progress-bar">
                             <span id="mission-progress-text" class="progress-text">0%</span>
                         </div>
                     </div>
@@ -269,7 +269,7 @@
                         <span class="history-title">Mission History | Historique Mission</span>
                         <span id="history-count" class="history-count">(0 events)</span>
                     </button>
-                    <div id="mission-history-content" class="mission-history-content" style="display: none;">
+                    <div id="mission-history-content" class="mission-history-content is-hidden">
                         <div class="history-controls">
                             <button id="btn-clear-history" class="history-btn">Clear | Effacer</button>
                             <button id="btn-export-history" class="history-btn">Export JSON</button>
@@ -323,8 +323,8 @@
                                 </label>
                             </div>
                         </div>
-                        <div id="astar-advanced-params" style="display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid #dee2e6;">
-                            <label style="font-weight: 600; margin-bottom: 8px; display: block; color: #495057;">A* Advanced Parameters | Paramètres Avancés A*:</label>
+                        <div id="astar-advanced-params" class="astar-advanced-params is-hidden">
+                            <label class="astar-subhead">A* Advanced Parameters | Paramètres Avancés A*:</label>
                             <div class="param-row config-item">
                                 <label for="cfg-astar-resolution">Grid Resolution (m):</label>
                                 <input type="number" id="cfg-astar-resolution" min="0.5" max="20" step="any" value="3.0">
@@ -340,9 +340,9 @@
                                 <input type="number" id="cfg-astar-max" min="100" max="100000" step="any" value="20000">
                                 <span class="info-tooltip" title="Maximum A* search iterations before giving up. Higher = searches more area but takes longer | Itérations max de recherche A*">ℹ️</span>
                             </div>
-                            <div style="margin-top: 8px; display: flex; gap: 8px;">
-                                <button id="btn-apply-astar" class="apply-btn" style="flex: 1;">Apply A* | Appliquer A*</button>
-                                <button id="btn-reset-astar" class="reset-btn" style="flex: 0;" disabled title="Waiting for ROS launch defaults...">Reset</button>
+                            <div class="astar-actions">
+                                <button id="btn-apply-astar" class="apply-btn flex-1">Apply A* | Appliquer A*</button>
+                                <button id="btn-reset-astar" class="reset-btn flex-0" disabled title="Waiting for ROS launch defaults...">Reset</button>
                             </div>
                         </div>
                     </div>
@@ -351,7 +351,7 @@
                 <div class="step-hint">➡️ Next | Ensuite: review the waypoints on the map, then click ✅ CONFIRM in Step 2 | vérifiez les points puis cliquez ✅ CONFIRMER</div>
 
                 <!-- Waypoint Validation Results -->
-                <div id="waypoint-validation-panel" class="mission-step validation-panel" style="display: none;">
+                <div id="waypoint-validation-panel" class="mission-step validation-panel is-hidden">
                     <h3>📋 Waypoint Validation | Validation des Points</h3>
                     <div id="validation-results" class="validation-results">
                         <div class="validation-loading">
@@ -393,12 +393,12 @@
                             🔄 RESET | RÉINITIALISER
                         </button>
                     </div>
-                    <div class="mission-buttons-row" style="margin-top: 10px;">
+                    <div class="mission-buttons-row mt-10">
                         <button id="btn-go-home" class="mission-btn home">
                             🏠 RETURN HOME | RETOUR BASE
                         </button>
                     </div>
-                    <div class="mission-buttons-row" style="margin-top: 15px;">
+                    <div class="mission-buttons-row mt-15">
                         <button id="btn-emergency-stop" class="mission-btn emergency">
                             🚨 EMERGENCY STOP | ARRÊT D'URGENCE
                         </button>
@@ -604,13 +604,13 @@
                             <span class="section-title">LiDAR Perception Parameters</span>
                             <span class="section-node">/lidar_perception_node</span>
                         </button>
-                        <div id="perception-params" class="tuning-section-content" style="display: none;">
-                            <p style="font-size: 0.9em; color: #666; margin: 0 0 15px 0; padding: 10px; background: #fff3cd; border-left: 3px solid #ffc107; border-radius: 4px;">
+                        <div id="perception-params" class="tuning-section-content is-hidden">
+                            <p class="section-info section-info--warning">
                                 <strong>💡 Tip:</strong> Use presets at top for quick tuning. Advanced params below for fine control.
                             </p>
 
                             <!-- Basic Filtering Section -->
-                            <h3 style="font-size: 14px; color: #007bff; margin: 15px 0 10px 0; padding-bottom: 5px; border-bottom: 2px solid #007bff;">📐 Basic Filtering</h3>
+                            <h3 class="subsection-heading subsection-heading--basic">📐 Basic Filtering</h3>
                             <div class="param-grid">
                                 <div class="param-group">
                                     <h4>Height Filtering | Filtrage Hauteur</h4>
@@ -662,7 +662,7 @@
                             </div>
 
                             <!-- Advanced Filtering Section -->
-                            <h3 style="font-size: 14px; color: #28a745; margin: 20px 0 10px 0; padding-bottom: 5px; border-bottom: 2px solid #28a745;">🔬 Advanced Filtering</h3>
+                            <h3 class="subsection-heading subsection-heading--advanced">🔬 Advanced Filtering</h3>
                             <div class="param-grid">
                                 <div class="param-group">
                                     <h4>Clustering | Regroupement</h4>
@@ -728,13 +728,13 @@
                             <span class="section-title">Heading Controller Parameters</span>
                             <span class="section-node">/heading_controller</span>
                         </button>
-                        <div id="controller-params" class="tuning-section-content" style="display: none;">
-                            <p style="font-size: 0.9em; color: #666; margin: 0 0 15px 0; padding: 10px; background: #d4edda; border-left: 3px solid #28a745; border-radius: 4px;">
+                        <div id="controller-params" class="tuning-section-content is-hidden">
+                            <p class="section-info section-info--success">
                                 <strong>⚙️ Control:</strong> Simple anti-stuck system (turn toward clearer side until path is safe). Adjust PID gains in preset section above.
                             </p>
 
                             <!-- Obstacle Response Section -->
-                            <h3 style="font-size: 14px; color: #dc3545; margin: 15px 0 10px 0; padding-bottom: 5px; border-bottom: 2px solid #dc3545;">🚨 Obstacle Response</h3>
+                            <h3 class="subsection-heading subsection-heading--alert">🚨 Obstacle Response</h3>
                             <div class="param-grid">
                                 <div class="param-group">
                                     <h4>Distance Thresholds | Seuils Distance</h4>
@@ -801,7 +801,7 @@
                             </div>
 
                             <!-- Anti-Stuck System Section -->
-                            <h3 style="font-size: 14px; color: #ffc107; margin: 20px 0 10px 0; padding-bottom: 5px; border-bottom: 2px solid #ffc107;">🔄 Simple Anti-Stuck System</h3>
+                            <h3 class="subsection-heading subsection-heading--warning">🔄 Simple Anti-Stuck System</h3>
                             <div class="param-grid">
                                 <div class="param-group">
                                     <h4>Stuck Detection | Détection Blocage</h4>
@@ -881,7 +881,7 @@
                     <h2>Front Camera Feed | Flux Caméra Avant</h2>
                     <div class="camera-container">
                         <div id="camera-feed">
-                            <img id="camera-image" src="data:," alt="Camera feed not available" style="width: 100%; height: auto; border-radius: 4px;">
+                            <img id="camera-image" class="camera-image" src="data:," alt="Camera feed not available">
                             <div id="camera-status" class="camera-status">Waiting for camera feed... | En attente du flux...</div>
                         </div>
                     </div>

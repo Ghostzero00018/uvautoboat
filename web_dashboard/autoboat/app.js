@@ -3004,7 +3004,7 @@ function initTuningPanel() {
             const content = document.getElementById(targetId);
             const icon = this.querySelector('.section-icon');
 
-            if (content.style.display === 'none') {
+            if (window.getComputedStyle(content).display === 'none') {
                 content.style.display = 'block';
                 icon.textContent = '▼';
             } else {

@@ -2486,3 +2486,112 @@ h2 {
     background: #c62828;
     color: #fff;
 }
+
+/* ========== UTILITY CLASSES (CSP-prep, 05/05/2026) ========== */
+/* Generic visibility toggle — replaces inline style="display: none" on
+   elements that JS still shows/hides via .style.display until (D)-runtime. */
+.is-hidden {
+    display: none;
+}
+
+/* Flex utilities — used by the A* actions row buttons (flex-1 / flex-0) */
+.flex-1 {
+    flex: 1;
+}
+.flex-0 {
+    flex: 0;
+}
+
+/* Margin-top utilities — used by mission-buttons-row variants */
+.mt-10 {
+    margin-top: 10px;
+}
+.mt-15 {
+    margin-top: 15px;
+}
+
+/* ========== ELEMENT CLASSES (CSP-prep, 05/05/2026) ========== */
+
+/* Detour badge — orange "Active" indicator on the perception status row */
+.detour-badge {
+    background: #f39c12;
+    color: #fff;
+}
+
+/* A* advanced parameters block — collapsible section under the main config */
+.astar-advanced-params {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #dee2e6;
+}
+
+/* A* subhead — label above the collapsible advanced params */
+.astar-subhead {
+    font-weight: 600;
+    margin-bottom: 8px;
+    display: block;
+    color: #495057;
+}
+
+/* A* actions row — flex container for Apply / Reset buttons */
+.astar-actions {
+    margin-top: 8px;
+    display: flex;
+    gap: 8px;
+}
+
+/* Section info banner — base + warning (yellow) / success (green) variants */
+.section-info {
+    font-size: 0.9em;
+    color: #666;
+    margin: 0 0 15px 0;
+    padding: 10px;
+    border-left-style: solid;
+    border-left-width: 3px;
+    border-radius: 4px;
+}
+.section-info--warning {
+    background: #fff3cd;
+    border-left-color: #ffc107;
+}
+.section-info--success {
+    background: #d4edda;
+    border-left-color: #28a745;
+}
+
+/* Subsection headings — base + 4 colour/spacing variants
+   (basic = blue, advanced = green, alert = red, warning = yellow) */
+.subsection-heading {
+    font-size: 14px;
+    padding-bottom: 5px;
+    border-bottom-style: solid;
+    border-bottom-width: 2px;
+    margin-bottom: 10px;
+}
+.subsection-heading--basic {
+    color: #007bff;
+    border-bottom-color: #007bff;
+    margin-top: 15px;
+}
+.subsection-heading--advanced {
+    color: #28a745;
+    border-bottom-color: #28a745;
+    margin-top: 20px;
+}
+.subsection-heading--alert {
+    color: #dc3545;
+    border-bottom-color: #dc3545;
+    margin-top: 15px;
+}
+.subsection-heading--warning {
+    color: #ffc107;
+    border-bottom-color: #ffc107;
+    margin-top: 20px;
+}
+
+/* Camera image — fills container with rounded corners */
+.camera-image {
+    width: 100%;
+    height: auto;
+    border-radius: 4px;
+}
