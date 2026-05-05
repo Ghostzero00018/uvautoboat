@@ -17,9 +17,9 @@ import sys
 
 CSP = (
     "default-src 'self'; "
-    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; "
-    "style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com; "
-    "font-src 'self' https://fonts.gstatic.com data:; "
+    "script-src 'self' 'unsafe-inline'; "
+    "style-src 'self' 'unsafe-inline'; "
+    "font-src 'self' data:; "
     "img-src 'self' data: https://*.tile.openstreetmap.org "
     "http://localhost:8080 http://127.0.0.1:8080; "
     "connect-src 'self' ws://localhost:9090 ws://127.0.0.1:9090; "

@@ -15,7 +15,7 @@ Security posture, known vulnerabilities, and recommended mitigations for the Aut
 | Transport encryption | None — plain HTTP (8002), WS (9090), HTTP (8080) |
 | Network binding | `0.0.0.0` on all 3 ports — accessible to entire LAN |
 | Input validation | **Two-layer (since 17/04/2026):** client-side HTML `min`/`max` attributes + server-side `PARAM_RANGES` rejection in each Python node (`heading_controller`, `waypoint_planner`, `lidar_perception`). Out-of-range values rejected with `Rejected <name>=<value> (valid range: lo–hi)` at WARN level. |
-| XSS protection | Improved — world banner, rosout terminal, event logs, mission history, and waypoint validation all write dynamic text via `textContent`; no Content Security Policy yet (proposal drafted 05/05/2026 — see [Proposed Content Security Policy](#proposed-content-security-policy-research-05052026) below). |
+| XSS protection | Improved — world banner, rosout terminal, event logs, mission history, and waypoint validation all write dynamic text via `textContent`. CSP wrapper deployed 05/05/2026 (CDN-free after Roadmap §1.3 path A vendoring landed same day) — see [Proposed Content Security Policy](#proposed-content-security-policy-research-05052026) below. |
 
 ### Open Ports
 
@@ -158,13 +158,12 @@ The `/rosout` subscription displays all debug/info/warning/error messages from a
 
 A CSP header on the dashboard's HTTP server (port 8002) would block any future regression that re-introduces an `innerHTML`-style injection from executing scripts loaded from non-allowed origins. Complementary to the 04/05/2026 renderer-fix pass, which closed the active injection sites at the source.
 
-#### Inventory of external loads
+#### Inventory of external loads (post-path-A)
+
+CDN libraries (`roslibjs`, Leaflet JS + CSS + 5 marker / layer images, Google Fonts CSS + 7 WOFF2 files) vendored under `web_dashboard/autoboat/vendor/` since 05/05/2026 (~516 KB); dashboard now self-serves them. Three external loads remain:
 
 | Resource | Origin | Source line |
 |:--|:--|:--|
-| `roslib.min.js` | `https://cdn.jsdelivr.net` | `index.html:18` |
-| `leaflet.js` + `leaflet.css` | `https://unpkg.com` | `index.html:21, 24` |
-| Google Fonts CSS + WOFF2 | `https://fonts.googleapis.com` + `https://fonts.gstatic.com` | `style_merged.css:4` |
 | OSM tiles | `https://*.tile.openstreetmap.org` | `app.js:342` |
 | rosbridge WebSocket | `ws://<host>:9090` | `app.js:509` |
 | MJPEG camera stream | `http://<host>:8080` | dashboard `<img>` element |
@@ -181,9 +180,9 @@ A CSP header on the dashboard's HTTP server (port 8002) would block any future r
 
 ```text
 default-src 'self';
-script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com;
-style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com;
-font-src 'self' https://fonts.gstatic.com data:;
+script-src 'self' 'unsafe-inline';
+style-src 'self' 'unsafe-inline';
+font-src 'self' data:;
 img-src 'self' data: https://*.tile.openstreetmap.org http://localhost:8080 http://127.0.0.1:8080;
 connect-src 'self' ws://localhost:9090 ws://127.0.0.1:9090;
 frame-ancestors 'none';
@@ -195,9 +194,9 @@ object-src 'none';
 | Directive | Why |
 |:--|:--|
 | `default-src 'self'` | Deny-by-default fallback for any directive not explicitly listed |
-| `script-src` | CDN sources for roslibjs + Leaflet (SRI already in place per finding #8) + `'unsafe-inline'` for the 2 inline blocks |
-| `style-src` | Leaflet CSS + Google Fonts CSS + `'unsafe-inline'` for the 21 inline `style="…"` attributes |
-| `font-src` | Google Fonts WOFF2 + `data:` fallback |
+| `script-src` | `'self'` only — CDN libraries (roslibjs, Leaflet) vendored locally 05/05/2026 (path A); `'unsafe-inline'` retained for the 2 inline blocks pending separate refactor |
+| `style-src` | `'self'` only — Leaflet CSS + Google Fonts CSS vendored locally 05/05/2026 (path A); `'unsafe-inline'` retained for the 21 inline `style="…"` attributes pending separate refactor |
+| `font-src` | `'self'` only — Google Fonts WOFF2 vendored locally 05/05/2026 (path A); `data:` for any inline-encoded fallback fonts |
 | `img-src` | OSM tiles (3-subdomain wildcard) + MJPEG stream + `data:` for inline favicons / canvas exports. Field deployment must append the boat IP at `:8080`, mirroring `connect-src`. |
 | `connect-src` | Specific `ws://` hosts the dashboard targets — localhost variants for dev; field deployment must append the boat IP |
 | `frame-ancestors 'none'` | Anti-clickjacking — the dashboard is full-page, never embedded |
@@ -209,21 +208,18 @@ object-src 'none';
 
 | Option | Cost | Mechanism |
 |:--|:--|:--|
-| **A — Wrapper Python script (recommended for first landing)** | ~20 LOC, single new file | `web_dashboard/autoboat/serve_dashboard.py` subclassing `SimpleHTTPRequestHandler`, overriding `end_headers()` to inject `Content-Security-Policy` + `X-Content-Type-Options: nosniff` + `Referrer-Policy: strict-origin-when-cross-origin` (modern-browser default; satisfies OSM tile-server's Referer-required policy while still stripping path/query from cross-origin requests). Drop-in replacement for `python3 -m http.server 8002` in the launch script + docs |
+| **A — Wrapper Python script** ✅ landed 05/05/2026 (commit `50ae2af`) | ~50 LOC, single new file | `web_dashboard/autoboat/serve_dashboard.py` subclasses `SimpleHTTPRequestHandler`, overrides `end_headers()` to inject `Content-Security-Policy` + `X-Content-Type-Options: nosniff` + `Referrer-Policy: strict-origin-when-cross-origin` (modern-browser default; satisfies OSM tile-server's Referer-required policy while still stripping path/query from cross-origin requests). Drop-in replacement for `python3 -m http.server 8002` in the launch script + docs. |
 | **B — Reverse-proxy header injection** | bigger arch change | nginx in front of all 3 ports with `add_header` directive; aligns with the Moderate-hardening plan above (auth + TLS + CSP all behind one proxy) |
 | **C — Caddy / external static webserver** | new runtime dependency | Caddy supports `header` directives natively in its Caddyfile |
 
-Recommended: land Option A first (low blast radius, single Python file, auditable); Option B is the long-term destination once auth lands.
+Option A landed 05/05/2026 — confirmed end-to-end via curl + browser hard-refresh on the live :8002. Option B remains the long-term destination once auth lands.
 
-**Tightening path (later, not blocking).** Once [Roadmap §1.3](Roadmap#13-iot-imt-nord-europe--local-only-network-constraint-analysed-30042026) path A vendors `roslibjs` + Leaflet + Google Fonts locally, the CSP loses three CDN allowances:
+**Tightening status.** [Roadmap §1.3](Roadmap#13-iot-imt-nord-europe--local-only-network-constraint-analysed-30042026) **path A landed 05/05/2026** — `roslibjs` + Leaflet (JS + CSS + 5 marker / layer images) + Google Fonts (CSS + 7 WOFF2 files for 4 weights × 7 unicode subsets) all vendored under `web_dashboard/autoboat/vendor/`, ~516 KB total. Three CDN allowances dropped from the live CSP (`script-src` no longer `cdn.jsdelivr.net` + `unpkg.com`; `style-src` no longer `unpkg.com` + `fonts.googleapis.com`; `font-src` no longer `fonts.gstatic.com`). Dashboard now runs offline-capable for the 3 main library deps; only OSM tiles + MJPEG stream remain external.
 
-```text
-script-src 'self' 'unsafe-inline';
-style-src 'self' 'unsafe-inline';
-font-src 'self' data:;
-```
+Two remaining hardening passes:
 
-Plus the OSM tile path needs a local tile-server replacement (Roadmap §1.3 path B); once that lands, `img-src` drops `https://*.tile.openstreetmap.org` and instead allows the local tile origin. `'unsafe-inline'` removal is a separate refactor — move the 2 inline `<script>` blocks to external files (or add `nonce-`s) and the 21 inline `style="…"` attributes to CSS classes; not blocking, can land independently.
+1. **OSM tile vendoring** — Roadmap §1.3 path B: pre-generate MBTiles for the test region, serve from a local tile server. Once that lands, `img-src` drops `https://*.tile.openstreetmap.org` and instead allows the local tile origin. Required before first IoT-network deployment.
+2. **`'unsafe-inline'` removal** — separate refactor: move the 2 inline `<script>` blocks (`index.html:11`, `:977`) to external files (or add per-load `nonce-`s), AND move the 21 inline `style="…"` attributes to CSS classes. Once both done, `'unsafe-inline'` comes off both `script-src` and `style-src`.
 
 **Catches / doesn't catch.** Catches any future regression that re-introduces an `innerHTML` attack surface — a malicious payload still cannot fetch `script-src` from a non-allowed origin and inline-`eval` is the only remaining vector (excluded via no `'unsafe-eval'`); also catches DOM-clobbering and inline-event-handler vectors. Does **not** catch the operational risk surfaced as finding #5 (valid-but-tactically-dangerous values within bounds, no auth) — that's a different layer, addressed via auth + token-RBAC per the Moderate-hardening / Full-hardening tables above.
 
