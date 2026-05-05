@@ -22,11 +22,12 @@ The Thursday scaffold copy-forward is a hard requirement before Thu AM — witho
 **Active blocks:**
 
 1. **Block A — Thu scaffold copy-forward** (~10 min, AM): copy Tue diary to Thu file, re-blank `[To fill]` placeholders, update date references throughout.
-2. **Block B — (D)-runtime-2: color/state mutations** (~30-45 min, AM): 5 `.style.color` writes + 3 misc state writes → state classes (`.text-warn`, `.text-ok`) + CSS variable for the dynamic drift-uncertainty color.
-3. **Block C — (D)-runtime-3: cssText + generated styles + misc** (~1.5-2 h, AM-PM): 3 `.style.cssText` blocks + 5 generated `style="…"` template literals + ~10 misc layout writes → class-driven.
-4. **Block D — CSP `'unsafe-inline'` drop** (~10 min + browser-test gate, PM): edit `serve_dashboard.py` CSP to drop `'unsafe-inline'` from `script-src` AND `style-src`. Browser-test gated.
-5. **Block E — Pre-Thu sim sanity + fallback queue picks** (~30-60 min, PM, time-permitting): re-run health_check post-CSP-drop. If time, P1 pier/bank stuck investigation OR Roadmap §1.3 path B prep.
-6. **Block F — Day wrap + Thu pre-deployment readiness** (~30 min, evening): final commits, push, diary close-out, confirm Thu scaffold ready, sim left alive.
+2. **Block A.5 — VRX §8.2 trigger re-eval** (~5 min, AM): periodic HOLD-maintenance check matching Tue B4 pattern. Verify 0/4 triggers still hold; if any flipped, escalate per `wiki/Roadmap.md` §8.2.
+3. **Block B — (D)-runtime-2: color/state mutations** (~30-45 min, AM): 5 `.style.color` writes + 3 misc state writes → state classes (`.text-warn`, `.text-ok`) + CSS variable for the dynamic drift-uncertainty color.
+4. **Block C — (D)-runtime-3: cssText + generated styles + misc** (~1.5-2 h, AM-PM): 3 `.style.cssText` blocks + 5 generated `style="…"` template literals + ~10 misc layout writes → class-driven.
+5. **Block D — CSP `'unsafe-inline'` drop** (~10 min + browser-test gate, PM): edit `serve_dashboard.py` CSP to drop `'unsafe-inline'` from `script-src` AND `style-src`. Browser-test gated.
+6. **Block E — Pre-Thu sim sanity + fallback queue picks** (~30-60 min, PM, time-permitting): re-run health_check post-CSP-drop. If time, P1 pier/bank stuck investigation OR Roadmap §1.3 path B prep.
+7. **Block F — Day wrap + Thu pre-deployment readiness** (~30 min, evening): final commits, push, diary close-out, confirm Thu scaffold ready, sim left alive.
 
 **Fallback if Block B/C run into trouble:**
 
@@ -59,6 +60,30 @@ cp working_diary/2026-05-05_tuesday_first_field_test.md \
 **Pass criteria:** Thu diary file exists, has `[To fill]` placeholders re-blanked, dates updated, no Tue-specific narrative (Fallback queue progress + post-A-slip subsections removed), pre-commit grep clean.
 
 **Outcome.** [To fill — confirmation that Thu scaffold is ready, what was stripped vs preserved.]
+
+---
+
+## Block A.5 — VRX §8.2 trigger re-eval (~5 min, AM)
+
+Periodic HOLD-maintenance check matching Tue B4 pattern. Confirms whether any of the four §8.2 triggers from `wiki/Roadmap.md` §8 has fired since the last re-eval (Tue 05/05 AM, 0/4 fired). If still 0/4 → HOLD stands; if any flipped → escalate per §8.2 (re-open the fork-or-don't decision with the now-fresh evidence). Re-eval cadence: weekly during active development, or whenever a candidate trigger event happens (new patch, new custom world, sim-incompat surfaced, upstream release).
+
+```bash
+# Trigger 1 — patch count growth (Tue baseline: 1 patch — `one_click_launch_all/patch_vrx.sh`)
+find . -maxdepth 3 \( -name 'patch_vrx*' -o -name '*.patch' \) -not -path './legacy/*' -not -path './.git/*' 2>/dev/null
+
+# Trigger 2 — custom worlds / sensors / WAM-V mods (Tue baseline: 2 files in test_environment/)
+ls test_environment/
+
+# Trigger 3 — Phase 5+ sim-side incompatibility surfaced
+# (passive — no automatic check; if Thu field test exposes a sim-incompat, that fires this)
+
+# Trigger 4 — upstream-release flag since Mon-evening
+# (passive — check `osrf/vrx` releases tab if internet available; OR `gh release list -R osrf/vrx --limit 5`)
+```
+
+**Pass criteria:** 0/4 triggers still fired → HOLD stands; record in Outcome below. If any trigger flipped, document which one + the evidence + the escalation path (re-open §8.2 fork-or-don't decision; do **not** auto-fork — the actual fork operation is a ~3-4 h dedicated task per Tue's evening estimate, not a Wed inline action).
+
+**Outcome.** [To fill — trigger states (1=?, 2=?, 3=?, 4=?) + HOLD/escalate decision + brief evidence per trigger.]
 
 ---
 
@@ -193,6 +218,7 @@ If health check passes + time remains, pick from fallback queue:
 ## Verification summary — 06/05 (check at end of day)
 
 - [ ] Block A: Thu scaffold copy-forward complete; placeholders re-blanked; dates updated
+- [ ] Block A.5: VRX §8.2 trigger states recorded (1-4); HOLD/escalate decision logged
 - [ ] Block B: (D)-runtime-2 landed; `\.style\.color\s*=` writes = 0
 - [ ] Block C: (D)-runtime-3 landed; `\.style\.X\s*=` writes in `app.js` reduced to expected residual (only CSSOM `setProperty` calls if any)
 - [ ] Block D: CSP `'unsafe-inline'` drop pass-or-fail recorded; final CSP shape committed in `serve_dashboard.py`
@@ -206,6 +232,7 @@ If health check passes + time remains, pick from fallback queue:
 | After | State | Rollover cost |
 |:------|:------|:--------------|
 | Block A | Thu scaffold ready | None — purely setup; if skipped, Thu opens with no diary |
+| Block A.5 | VRX trigger states recorded | None — purely periodic HOLD-maintenance |
 | Block B | runtime-2 mutations migrated | Low — color/state writes are localized |
 | Block C | runtime-3 mutations migrated | Medium — toast + Leaflet + onboarding are visible features; regressions easy to spot in browser test |
 | Block D | CSP `'unsafe-inline'` drop pass | Hard requirement for the day's headline goal — if browser test fails, document the alternative shape and ship the partial improvement |
