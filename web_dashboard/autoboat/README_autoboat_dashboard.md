@@ -62,7 +62,7 @@ Then open **<http://localhost:8002>**.
 | T2       | `ros2 launch rosbridge_server rosbridge_websocket_launch.xml delay_between_messages:=0.0`      | WebSocket bridge (port 9090)  |
 | T3       | `ros2 run web_video_server web_video_server`                                                   | Camera stream (port 8080)     |
 | T4       | `ros2 launch ~/seal_ws/src/uvautoboat/launch/autoboat.launch.yaml`                             | Navigation system             |
-| T5       | `cd ~/seal_ws/src/uvautoboat/web_dashboard/autoboat && python3 -m http.server 8002`            | Dashboard (port 8002)         |
+| T5       | `cd ~/seal_ws/src/uvautoboat/web_dashboard/autoboat && python3 serve_dashboard.py 8002`        | Dashboard (port 8002)         |
 
 > **Important:** The `delay_between_messages:=0.0` parameter is required for ROS 2 Jazzy.
 > Do NOT open `index.html` directly as a file (`file://`). Serve it via HTTP for WebSocket to work.
@@ -242,7 +242,7 @@ This is acceptable for local simulation but poses risks on shared networks or fi
 
 ```bash
 # Bind dashboard to localhost only (prevents remote access)
-python3 -m http.server -b 127.0.0.1 8002
+python3 serve_dashboard.py 8002 127.0.0.1
 ```
 
 ## License

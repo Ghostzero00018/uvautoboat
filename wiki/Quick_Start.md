@@ -81,7 +81,7 @@ ros2 launch ~/seal_ws/src/uvautoboat/launch/autoboat.launch.yaml
 
 ```bash
 cd ~/seal_ws/src/uvautoboat/web_dashboard/autoboat
-python3 -m http.server 8002
+python3 serve_dashboard.py 8002
 ```
 
 ### Open Dashboard

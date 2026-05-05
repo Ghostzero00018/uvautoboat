@@ -130,7 +130,7 @@ The `/rosout` subscription displays all debug/info/warning/error messages from a
 | Fix | What to do | Files |
 |:----|:-----------|:------|
 | ~~Fix dashboard XSS renderers~~ | **Already done 04/05/2026** — `addLog()`, mission history, and waypoint validation now write dynamic text with `textContent`, mirroring the rosout terminal pattern. | `app.js` |
-| Bind to localhost | Add `-b 127.0.0.1` to `python3 -m http.server 8002` in the launch script and docs | `launch_autoboat_complete.sh`, `autoboat.launch.yaml` |
+| Bind to localhost | Pass `127.0.0.1` as the bind arg to `serve_dashboard.py` (e.g., `python3 serve_dashboard.py 8002 127.0.0.1`) in the launch script and docs | `launch_autoboat_complete.sh`, `autoboat.launch.yaml` |
 | ~~Add SRI hashes~~ | **Already done** — `index.html` `<script>` tags for `roslib`, `leaflet.js`, and `leaflet.css` carry `integrity="sha384-…"` + `crossorigin="anonymous"` attributes. | (no action) |
 
 ### Moderate hardening (~3-5 hours)
@@ -207,7 +207,7 @@ object-src 'none';
 
 | Option | Cost | Mechanism |
 |:--|:--|:--|
-| **A — Wrapper Python script (recommended for first landing)** | ~20 LOC, single new file | `web_dashboard/autoboat/serve_dashboard.py` subclassing `SimpleHTTPRequestHandler`, overriding `end_headers()` to inject `Content-Security-Policy` + `X-Content-Type-Options: nosniff` + `Referrer-Policy: no-referrer`. Drop-in replacement for `python3 -m http.server 8002` in the launch script + docs |
+| **A — Wrapper Python script (recommended for first landing)** | ~20 LOC, single new file | `web_dashboard/autoboat/serve_dashboard.py` subclassing `SimpleHTTPRequestHandler`, overriding `end_headers()` to inject `Content-Security-Policy` + `X-Content-Type-Options: nosniff` + `Referrer-Policy: strict-origin-when-cross-origin` (modern-browser default; satisfies OSM tile-server's Referer-required policy while still stripping path/query from cross-origin requests). Drop-in replacement for `python3 -m http.server 8002` in the launch script + docs |
 | **B — Reverse-proxy header injection** | bigger arch change | nginx in front of all 3 ports with `add_header` directive; aligns with the Moderate-hardening plan above (auth + TLS + CSP all behind one proxy) |
 | **C — Caddy / external static webserver** | new runtime dependency | Caddy supports `header` directives natively in its Caddyfile |
 
@@ -251,7 +251,7 @@ Or bind services to localhost only (prevents all remote access):
 
 ```bash
 # In launch script, change the HTTP server command to:
-python3 -m http.server -b 127.0.0.1 8002
+python3 serve_dashboard.py 8002 127.0.0.1
 ```
 
 ### For field deployment

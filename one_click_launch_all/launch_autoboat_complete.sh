@@ -31,7 +31,7 @@
 #                        → launches waypoint_visualizer + health_check_service
 #   T4  Video Server   ros2 run web_video_server web_video_server                   :8080
 #   T5  RViz           ros2 launch vrx_gazebo rviz.launch.py                        (optional)
-#   T6  Dashboard      python3 -m http.server 8002                                  :8002
+#   T6  Dashboard      python3 serve_dashboard.py 8002                              :8002
 #                        → serves web_dashboard/autoboat/ (index.html, app.js, style_merged.css)
 #
 # ----------------------------------------------------------------------------
@@ -97,7 +97,7 @@ cleanup() {
     pkill -9 -f "waypoint_planner" || true
     pkill -9 -f "heading_controller" || true
     pkill -9 -f "lidar_perception" || true
-    pkill -9 -f "http.server 8002" || true
+    pkill -9 -f "serve_dashboard.py 8002" || true
     pkill -9 -f "rviz" || true
     pkill -9 -f "web_dashboard/autoboat" || true
     # Close gnome-terminal tabs we opened (if still running)
@@ -471,7 +471,7 @@ cd \"$WS_ROOT/src/uvautoboat/web_dashboard/autoboat\"
 echo 'Starting Web Dashboard HTTP server...'
 echo 'Dashboard available at: http://localhost:8002'
 echo 'Note: Wait for GPS to initialize (~10-30s) before opening dashboard'
-python3 -m http.server 8002
+python3 serve_dashboard.py 8002
 } 2>&1 | tee /tmp/autoboat_tab_dashboard.log
 " &
     DASHBOARD_PID=$!

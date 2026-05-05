@@ -461,7 +461,7 @@ ros2 launch ~/seal_ws/src/uvautoboat/launch/autoboat.launch.yaml
 | **T2** | `ros2 launch rosbridge_server rosbridge_websocket_launch.xml delay_between_messages:=0.0` | WebSocket bridge |
 | **T3** | `ros2 run web_video_server web_video_server` | MJPEG camera stream for dashboard (http://<host>:8080) |
 | **T4** | `ros2 launch ~/seal_ws/src/uvautoboat/launch/autoboat.launch.yaml` | Navigation (modular) |
-| **T5** | `cd ~/seal_ws/src/uvautoboat/web_dashboard/autoboat && python3 -m http.server 8002` | Dashboard web server |
+| **T5** | `cd ~/seal_ws/src/uvautoboat/web_dashboard/autoboat && python3 serve_dashboard.py 8002` | Dashboard web server |
 
 > **Important:** The `delay_between_messages:=0.0` parameter is required for ROS 2 Jazzy due to a parameter type bug.
 > This starts a WebSocket server on `ws://localhost:9090`.
@@ -1544,7 +1544,7 @@ ros2 launch ~/seal_ws/src/uvautoboat/launch/autoboat.launch.yaml
 
 # Dashboard
 ros2 launch rosbridge_server rosbridge_websocket_launch.xml delay_between_messages:=0.0
-cd ~/seal_ws/src/uvautoboat/web_dashboard/autoboat && python3 -m http.server 8002
+cd ~/seal_ws/src/uvautoboat/web_dashboard/autoboat && python3 serve_dashboard.py 8002
 ```
 
 ### A* Path Planning

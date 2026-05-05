@@ -106,7 +106,7 @@ Then open **<http://localhost:8002>** for the web dashboard.
 | T2 | `ros2 launch rosbridge_server rosbridge_websocket_launch.xml delay_between_messages:=0.0` | WebSocket bridge |
 | T3 | `ros2 run web_video_server web_video_server` | Camera stream (port 8080) |
 | T4 | `ros2 launch ~/seal_ws/src/uvautoboat/launch/autoboat.launch.yaml` | Navigation system |
-| T5 | `cd ~/seal_ws/src/uvautoboat/web_dashboard/autoboat && python3 -m http.server 8002` | Dashboard |
+| T5 | `cd ~/seal_ws/src/uvautoboat/web_dashboard/autoboat && python3 serve_dashboard.py 8002` | Dashboard |
 
 ### 🗺️ Running a Mission
 
