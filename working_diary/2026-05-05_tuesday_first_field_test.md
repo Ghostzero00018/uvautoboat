@@ -208,9 +208,9 @@ Interrupt-safe — pause on 5 min notice if Block A returns a late green light.
 
 ---
 
-## Fallback queue progress (while A pending, AM → 13:30)
+## Fallback queue progress (while A pending, AM → EOD ~16:00)
 
-While A's weather confirmation stayed pending past the 12:00 cutoff and the 13:00 NO-GO threshold, three deferred items landed end-to-end (Fallback #2, Fallback #3, and Roadmap §1.3 path A as a sibling deliverable to Fallback #3's wrapper). Today's commit stack at 13:30, **six commits** on top of Mon-evening's `4ea187a`:
+While A's weather confirmation stayed pending past the 12:00 cutoff and the 13:00 NO-GO threshold (then resolved at ~14:00 as **slip to Thu 07/05/2026**, see Block A Outcome), the day's energy went into deferred-queue items end-to-end: Fallback #2 (`--use-nvidia` doc spread), Fallback #3 (Dashboard CSP scoping → wrapper code), Roadmap §1.3 path A (vendor CDN libs locally — sibling to the CSP wrapper), then post-A-slip the (C)+(D) CSP-prep refactors paired in advance for the next CSP tightening pass. Today's commit stack at 16:00, **ten commits** on top of Mon-evening's `4ea187a`:
 
 - **`5f525ea` — `--use-nvidia` discoverability follow-up + AM diary fill** (Fallback #2 → done): 5 user-facing docs annotated for hybrid-graphics laptop users (Optimus / PRIME) — `README.md` Quick Start callout, `wiki/Quick_Start.md` parallel callout, `USER_MANUAL.md` flag example added to one-click-launch code block + combine line includes `--use-nvidia`, `web_dashboard/autoboat/README_autoboat_dashboard.md` callout, `wiki/Common_Issues.md` inline annotation in the rebuild-recipe at L396 forward-pointing to "Gazebo Running Slow". The 3 short callouts stay qualitative ("can throttle Gazebo heavily"); detailed RTF / LiDAR figures stay attributed in `wiki/Common_Issues.md:600`. Manual env-prefix fallback at `wiki/Common_Issues.md:594-595` left untouched (older-checkout / one-off `ros2 launch` equivalent). Bundled with the AM diary fill — Block B Outcome paragraph + Block C/D scope refinements + 3 Known Unknowns + B3 deployment-bundle fill-in form (replaces TBD bullet list). +90 / -11 across 6 files.
 
@@ -237,7 +237,19 @@ While A's weather confirmation stayed pending past the 12:00 cutoff and the 13:0
 
 - **`aecba9a` — `feat(dashboard): offline-capable path A (vendor CDN libs locally)`** (13:25, Roadmap §1.3 path A → done): vendored 3 CDN libraries under `web_dashboard/autoboat/vendor/`, ~516 KB across 16 new files — roslibjs (1 file, 66 KB), Leaflet (JS + CSS + 5 marker / layer PNGs, 169 KB), Google Fonts (rewritten CSS pointing at local paths + 7 WOFF2 files for 4 weights × 7 unicode subsets, 212 KB). SRI hashes of the 3 main libs verified against the `index.html` references **exactly** before vendoring (sha384 over file content; all three matched). `index.html` rewired (3 vendor refs replace 9 lines of CDN + SRI + crossorigin), `style_merged.css` `@import` swapped to local, `serve_dashboard.py` CSP tightened to drop 3 CDN allowances: `script-src` no longer `cdn.jsdelivr.net` + `unpkg.com`; `style-src` no longer `unpkg.com` + `fonts.googleapis.com`; `font-src` no longer `fonts.gstatic.com`. `wiki/Dashboard_Security.md` proposal section restructured to reflect deployed state (inventory now lists only 3 truly external loads — OSM tiles + WebSocket + MJPEG; rationale table updated; "Tightening status" section rewritten with what's still future: path B + `'unsafe-inline'` removal). `wiki/Roadmap.md` §3 status row "Dashboard offline-capable for IoT-local network deployment" `❌ → 🔄`. End-to-end verified on the live :8002 post-launcher-restart: `curl -sI` shows tightened CSP with zero CDN allowances; dashboard loads + map renders + rosbridge connects + fonts apply (all from `vendor/`); no new CSP violations (only the same pre-existing Leaflet `image-rendering` / `behavior` / `progid` parser warnings on `leaflet.css`, unrelated to vendoring — Leaflet's own legacy CSS).
 
-§1.6 invisibility sweep + `git diff --check` clean across all 6 commits. Field-test PM commitment hasn't been made yet, so today's afternoon energy stays available for either an A=GO branch (Blocks C/D narrowed scope per the AM refinement) or further fallback-queue picks — P1 pier/bank stuck investigation is interrupt-safe and the sim is already up, diagnostic plan in `working_diary/2026-04-24_pier_bank_stuck_and_rate_probe.md` Block A. Roadmap §1.3 path B (offline tile server, MBTiles for the test region) is the next strategic-value pick if (B)-style momentum continues.
+**Four more commits landed PM (post-A-slip, ~14:30 → 16:00):** with the field test slipped to Thu 07/05, today's afternoon energy went into the (C)+(D) CSP-prep refactors that pair in advance for the next CSP tightening pass. Three staged sub-commits + one fix:
+
+- **`da3ec76` — `refactor(dashboard): externalize 2 inline cache-bust scripts (CSP prep)`** (C done): `head-init.js` and `body-init.js` extracted from the 2 inline `<script>` blocks at `index.html:11` (head cache-bust CSS load) and `:971` (body cache-bust JS load). Pure refactor, no behavior change. Removes the `'unsafe-inline'` requirement on CSP `script-src` once the final drop lands.
+
+- **`a189b48` — `refactor(dashboard): 21 static inline styles → CSS classes (CSP prep)`** (D-static done): all 21 inline `style="…"` attributes in `index.html` replaced by CSS classes — 5 utilities (`.is-hidden`, `.flex-1`/`.flex-0`, `.mt-10`/`.mt-15`) + 11 element classes (`.detour-badge`, `.astar-advanced-params`, `.astar-subhead`, `.astar-actions`, `.section-info` + `--warning`/`--success`, `.subsection-heading` + 4 colour variants, `.camera-image`). User caught + fixed one regression in the same commit: the tuning-section toggle at `app.js:3007` read `content.style.display === 'none'`, which returns `""` for class-only state — interim fix to `window.getComputedStyle(content).display === 'none'` (later superseded by `isHidden()` in runtime-1). Net +109 / -21 across `index.html` + `style_merged.css`.
+
+- **`2b2cc8f` — `refactor(dashboard): display toggles → setHidden helper (D-runtime-1)`** (D-runtime visibility-toggle batch): added `setHidden(el, hidden)` and `isHidden(el)` helpers at `app.js:36-46`; migrated 14 `.style.display = …` writes + 2 read-checks (the `getComputedStyle` from `a189b48` + the `=== 'none' || === ''` at `expandTuningSection`) to the helpers. `is-hidden` class is now the single source of truth for hide/show on these 16 sites; the `getComputedStyle` stepping-stone removed. Net +26 / -27 across `app.js` (some if/else patterns collapsed into single `setHidden(el, !cond)` ternaries). Excluded from runtime-1 scope: `header.style.display = 'flex'` at `app.js:4326` (layout, not visibility — runtime-3).
+
+- **`ed088df` — `fix(dashboard): strip Leaflet source-map comment`** (path-A follow-up): vendored `vendor/leaflet/leaflet.js` ended with `//# sourceMappingURL=leaflet.js.map`, causing DevTools to 404 on the missing `.map` file (we deliberately did not vendor — Leaflet source debugging isn't part of our workflow). Stripped the trailing comment line; -36 bytes; one-file commit.
+
+Browser-test verified end-to-end after each push: dashboard loads, OSM tiles render (Leaflet's tile-pager auto-fetches `tile.openstreetmap.org/16/...` per pan/zoom), all visibility toggles work (perception/controller collapsibles, mission history pane, A* advanced params, validation panel, mission progress section + bar), no new CSP violations or console errors. Same pre-existing Leaflet noise (`mozPressure` / `image-rendering` / `behavior` / `progid` warnings on Leaflet's own JS+CSS) remains untouched per the explicit "leave upstream Leaflet warnings alone" directive.
+
+§1.6 invisibility sweep + `git diff --check` clean across all 10 commits. With A slipped to Thu 07/05/2026 (per Block A Outcome), today closed at the (D)-runtime-1 boundary; remaining work for **Wed 06/05**: (D)-runtime-2 (5 `.style.color` + ~3 misc state writes → state classes / CSS variables, ~30-45 min), (D)-runtime-3 (3 `.style.cssText` blocks + 5 generated `style="…"` template literals + ~10 misc layout writes → class-driven, ~1.5-2 h), and the final CSP `'unsafe-inline'` drop (browser-test gated — verify CSSOM `.style.X = …` writes still work under `style-src 'self'` before declaring the drop safe). P1 pier/bank stuck investigation remains as fallback-queue alternative; Roadmap §1.3 path B (offline tile server) is the strategic next pick before Thu's field test if scope allows.
 
 ---
 
@@ -337,11 +349,11 @@ If the field test happened, **also** write a short "first wet test" entry in the
 ## Verification summary — 05/05 (check at end of day)
 
 - [x] Block A: confirmation status determined; decision branch logged (slipped to Thu 07/05/2026; ~14:00)
-- [ ] Block B: B1 sim sanity pass, B2 rosbag dry-run pass, B3 deployment bundle status recorded
+- [x] Block B: B1 sim sanity pass (FINISHED 16/16, 0 fresh /var/crash), B2 rosbag dry-run pass (12 non-empty topics, 79 080 messages), B3 deployment bundle form ready (populate at bundling time on Thu); B4 VRX HOLD logging confirmed
 - [ ] Block C: hardware bring-up [pass / partial / abort + reason]
 - [ ] Block D: in-water scenarios [per-scenario status]
 - [ ] Block E: data offloaded, observations captured
-- [ ] Block F: diary filled; pre-commit sweep clean; Board.md updated
+- [partial] Block F: diary filled (10 commits logged); pre-commit sweep clean across all 10 commits; Board.md updated AM (commit `0c7ae38`); scaffold copy-forward to Thu 07/05 deferred to Wed AM
 - [ ] External Week 9 diary Tue "Outcome:" line *(deferred to next Windows session if field test ran)*
 
 ---
@@ -383,9 +395,9 @@ Same shape as yesterday — capture surprises with `file:line` / command + obser
 
 ### Active branch: field test slipped to Thu 07/05/2026
 
-Per Block A Outcome above. Today PM + Wed 06/05 → fallback queue continuation. P1 pier/bank stuck investigation is the natural next pick (sim still up; diagnostic plan in `working_diary/2026-04-24_pier_bank_stuck_and_rate_probe.md` Block A; interrupt-safe). Optional adjacent prep: (C) inline `<script>` extraction + (D) inline `style="…"` cleanup as paired refactors that unblock dropping `'unsafe-inline'` from CSP `script-src` + `style-src`.
+Per Block A Outcome above. **Today PM consumed by the (C) + (D)-static + (D)-runtime-1 CSP-prep refactors + a Leaflet source-map cleanup** (4 commits `da3ec76` → `ed088df`; see Fallback queue progress section above for the per-commit breakdown). Wed 06/05 → finish the CSP-prep tightening: (D)-runtime-2 (color/state mutations) → (D)-runtime-3 (cssText + Leaflet marker / onboarding generated styles + misc layout writes) → final CSP `'unsafe-inline'` drop (browser-test gated). P1 pier/bank stuck investigation remains in the fallback queue if Wed scope allows.
 
-**Block F wrap to-do (today or Wed):** copy this file to `working_diary/2026-05-07_thursday_first_field_test.md`, re-blank `[To fill]` placeholders, update dates throughout. Re-run Block B (B1 sim sanity + B2 rosbag dry-run + B3 bundle inventory) Thu AM as fresh pre-deployment check; today's prep should still hold but a 30-min re-verification before deployment is cheap insurance.
+**Block F wrap to-do (Wed AM):** copy this file to `working_diary/2026-05-07_thursday_first_field_test.md`, re-blank `[To fill]` placeholders, update dates throughout. Re-run Block B (B1 sim sanity + B2 rosbag dry-run + B3 bundle inventory) Thu AM as fresh pre-deployment check; today's prep should still hold but a 30-min re-verification before deployment is cheap insurance.
 
 ### Conditional on Thu 07/05 Block D outcome
 
