@@ -2488,8 +2488,8 @@ h2 {
 }
 
 /* ========== UTILITY CLASSES (CSP-prep, 05/05/2026) ========== */
-/* Generic visibility toggle — replaces inline style="display: none" on
-   elements that JS still shows/hides via .style.display until (D)-runtime. */
+/* Generic visibility toggle — replaces inline style="display: none"; JS
+   updates this through setHidden() / isHidden() in app.js. */
 .is-hidden {
     display: none;
 }

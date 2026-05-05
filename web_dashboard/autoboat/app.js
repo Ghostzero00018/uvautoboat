@@ -33,6 +33,18 @@ let lastTrajectoryUpdate = 0;
 let lastMapPan = 0;
 let pendingTrajectoryUpdate = false;
 
+// CSP-prep visibility helpers — `is-hidden` class is the source of truth for
+// hide/show (CSS rule in style_merged.css). Replaces direct `style.display`
+// writes and `style.display` read-checks during the (D)-runtime migration.
+function setHidden(el, hidden) {
+    if (!el) return;
+    el.classList.toggle('is-hidden', hidden);
+}
+
+function isHidden(el) {
+    return !!el && el.classList.contains('is-hidden');
+}
+
 // Camera feed elements
 let cameraImageEl = null;
 let cameraStatusEl = null;
@@ -1198,7 +1210,7 @@ function updateMissionStatus(data) {
 function updateDetourBadge(isActive) {
     const badge = document.getElementById('detour-badge');
     if (!badge) return;
-    badge.style.display = isActive ? 'inline-block' : 'none';
+    setHidden(badge, !isActive);
 }
 
 // Simulate obstacle data (would parse from PointCloud2 or custom topic)
@@ -1512,11 +1524,7 @@ function initConfigPanel() {
         radio.addEventListener('change', () => {
             navModeDirty = true;
             // Show advanced params if Runtime A* or Hybrid mode selected
-            if (radio.value === 'runtime' || radio.value === 'hybrid') {
-                advancedParams.style.display = 'block';
-            } else {
-                advancedParams.style.display = 'none';
-            }
+            setHidden(advancedParams, !(radio.value === 'runtime' || radio.value === 'hybrid'));
         });
     });
 
@@ -1832,7 +1840,7 @@ function updateConfigFromROS(data) {
         const rb = document.getElementById(`nav-mode-${navMode}`);
         if (rb) rb.checked = true;
         const advancedParams = document.getElementById('astar-advanced-params');
-        if (advancedParams) advancedParams.style.display = (navMode === 'runtime' || navMode === 'hybrid') ? 'block' : 'none';
+        setHidden(advancedParams, !(navMode === 'runtime' || navMode === 'hybrid'));
     } else if (navModeDirty) {
         // If incoming matches current selection, clear dirty
         const current = getSelectedNavMode();
@@ -3004,13 +3012,9 @@ function initTuningPanel() {
             const content = document.getElementById(targetId);
             const icon = this.querySelector('.section-icon');
 
-            if (window.getComputedStyle(content).display === 'none') {
-                content.style.display = 'block';
-                icon.textContent = '▼';
-            } else {
-                content.style.display = 'none';
-                icon.textContent = '▶';
-            }
+            const wasHidden = isHidden(content);
+            setHidden(content, !wasHidden);
+            icon.textContent = wasHidden ? '▼' : '▶';
         });
     });
 
@@ -3060,8 +3064,8 @@ const PRESET_INPUT_IDS = [
 function expandTuningSection(contentId) {
     const content = document.getElementById(contentId);
     if (!content) return;
-    if (content.style.display === 'none' || content.style.display === '') {
-        content.style.display = 'block';
+    if (isHidden(content)) {
+        setHidden(content, false);
         const header = document.querySelector(`.tuning-section-header[data-target="${contentId}"]`);
         if (header) {
             const icon = header.querySelector('.section-icon');
@@ -3587,13 +3591,8 @@ function initMissionHistory() {
         const content = document.getElementById('mission-history-content');
         const icon = document.querySelector('.history-icon');
 
-        if (historyExpanded) {
-            content.style.display = 'block';
-            icon.textContent = '▼';
-        } else {
-            content.style.display = 'none';
-            icon.textContent = '▶';
-        }
+        setHidden(content, !historyExpanded);
+        icon.textContent = historyExpanded ? '▼' : '▶';
     });
 
     // Clear history
@@ -3785,11 +3784,11 @@ function displayValidationResults(validation) {
     const resultsEl = document.getElementById('validation-results');
 
     if (!validation) {
-        panel.style.display = 'none';
+        setHidden(panel, true);
         return;
     }
 
-    panel.style.display = 'block';
+    setHidden(panel, false);
 
     const checksEl = document.createElement('div');
     checksEl.className = 'validation-checks';
@@ -3859,7 +3858,7 @@ function updateMissionProgress() {
     const runningStates = ['DRIVING', 'PAUSED'];
     if (runningStates.includes(missionState.state) && missionState.totalWaypoints > 0) {
         if (_prevProgress.visible !== true) {
-            progressSection.style.display = 'block';
+            setHidden(progressSection, false);
             _prevProgress.visible = true;
         }
 
@@ -3999,7 +3998,7 @@ function updateMissionProgress() {
 
     } else {
         if (_prevProgress.visible !== false) {
-            progressSection.style.display = 'none';
+            setHidden(progressSection, true);
             _prevProgress.visible = false;
             _prevProgress = { visible: false };
         }
