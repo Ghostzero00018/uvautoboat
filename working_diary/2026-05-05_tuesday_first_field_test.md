@@ -47,7 +47,7 @@ The trigger for the day's branch. Check whichever channel the field-test confirm
 - **Not confirmed by ~13:00** → fallback queue, re-check at ~15:00.
 - **Cancelled outright** → fallback queue full afternoon, carry the field-test scaffold forward to whichever day it lands on.
 
-**Outcome.** [To fill — confirmation status + decision branch + time of decision.]
+**Outcome.** Field test **slipped to Thu 07/05/2026** (news received ~14:00, weather-driven). Branch: "Confirmed but slipped (Wed/Thu)" per L46 — Block B already complete; remaining today PM + Wed 06/05 → fallback queue continuation; Block C/D/E framing carries forward to Thu 07/05 unchanged from this scaffold's narrowed scope (D1 + D2 only per the AM scope refinement). Scaffold copy-forward to `working_diary/2026-05-07_thursday_first_field_test.md` queued for Block F wrap (re-blank `[To fill]` placeholders, update dates throughout).
 
 ---
 
@@ -336,7 +336,7 @@ If the field test happened, **also** write a short "first wet test" entry in the
 
 ## Verification summary — 05/05 (check at end of day)
 
-- [ ] Block A: confirmation status determined; decision branch logged
+- [x] Block A: confirmation status determined; decision branch logged (slipped to Thu 07/05/2026; ~14:00)
 - [ ] Block B: B1 sim sanity pass, B2 rosbag dry-run pass, B3 deployment bundle status recorded
 - [ ] Block C: hardware bring-up [pass / partial / abort + reason]
 - [ ] Block D: in-water scenarios [per-scenario status]
@@ -363,7 +363,7 @@ If the field test happened, **also** write a short "first wet test" entry in the
 
 Same shape as yesterday — capture surprises with `file:line` / command + observation + follow-up. Pre-seeded with the categories most likely to surface; fill or delete as they resolve.
 
-- [Field-test confirmation timing — when did the green light arrive, if at all]
+- Field-test confirmation timing: news received ~14:00 from supervisor / teammate channel; decision = slip to Thu 07/05/2026, weather-driven.
 - [Hardware quirks surfaced during Block C bring-up]
 - [GPS lock time + accuracy in this specific park (sim assumes instant lock + perfect coordinates)]
 - [Thruster behaviour vs sim expectations — overshoot, undershoot, asymmetry, dead-zone]
@@ -379,13 +379,19 @@ Same shape as yesterday — capture surprises with `file:line` / command + obser
 
 ---
 
-## Next steps — Wed 06/05 onwards
+## Next steps — Wed 06/05 + Thu 07/05
 
-### Conditional on Block D outcome
+### Active branch: field test slipped to Thu 07/05/2026
 
-- **If field test ran cleanly:** sim-to-real comparison day on Wed — replay the rosbag through analysis tools, compare measured trajectories vs planner outputs, document any sim-to-real gaps in `wiki/`. Schedule a short report for the supervisor / teammate maintainer.
-- **If field test aborted partway:** debrief the abort cause (hardware fix? code fix? environmental factor?), schedule the fix, and re-attempt as soon as repaired and weather-permitting.
-- **If field test deferred to a later date:** carry this scaffold forward to whichever day actually happens — copy this file to the new date with `[To fill]` placeholders re-blanked.
+Per Block A Outcome above. Today PM + Wed 06/05 → fallback queue continuation. P1 pier/bank stuck investigation is the natural next pick (sim still up; diagnostic plan in `working_diary/2026-04-24_pier_bank_stuck_and_rate_probe.md` Block A; interrupt-safe). Optional adjacent prep: (C) inline `<script>` extraction + (D) inline `style="…"` cleanup as paired refactors that unblock dropping `'unsafe-inline'` from CSP `script-src` + `style-src`.
+
+**Block F wrap to-do (today or Wed):** copy this file to `working_diary/2026-05-07_thursday_first_field_test.md`, re-blank `[To fill]` placeholders, update dates throughout. Re-run Block B (B1 sim sanity + B2 rosbag dry-run + B3 bundle inventory) Thu AM as fresh pre-deployment check; today's prep should still hold but a 30-min re-verification before deployment is cheap insurance.
+
+### Conditional on Thu 07/05 Block D outcome
+
+- **If field test runs cleanly Thu:** sim-to-real comparison the following work day — V-E Day Fri 08/05 is holiday, so likely Mon 11/05 — replay the rosbag through analysis tools, compare measured trajectories vs planner outputs, document any sim-to-real gaps in `wiki/`. Schedule a short report for the supervisor / teammate maintainer.
+- **If field test aborted partway Thu:** debrief the abort cause (hardware fix? code fix? environmental factor?), schedule the fix, and re-attempt as soon as repaired and weather-permitting.
+- **If field test deferred again from Thu:** carry the scaffold forward to whichever day actually happens — same shape as today's slip (copy to a new dated file with placeholders re-blanked).
 
 ### Pending all week
 
@@ -397,7 +403,7 @@ Same shape as yesterday — capture surprises with `file:line` / command + obser
 
 - P1 pier/bank stuck investigation (diagnostic plan in `working_diary/2026-04-24_pier_bank_stuck_and_rate_probe.md` Block A) — fallback target for today.
 - Mock water quality sensor implementation (Phase A) — unblocked once supervisor confirms the parameter set.
-- Dashboard offline-capable for IoT-local network deployment (per Roadmap §1.3) — vendor `roslibjs` + Leaflet + Google Fonts locally; tightening path for the CSP wrapper landed today (drops 3 of 4 CDN allowances from `script-src` / `style-src` / `font-src` once vendored).
+- Roadmap §1.3 path B (offline tile server, pre-generated MBTiles for test area) — required before first IoT-network field deployment; path A (vendor libs locally) landed 05/05/2026 in commit `aecba9a`, dropped 3 of 4 CDN allowances from the CSP at the same time.
 - Dashboard CSP Option B (reverse-proxy header injection) and Option C (Caddy / external static webserver) — Option A landed today as the immediate hardening; Option B is the long-term destination once auth lands.
 - 24/04 housekeeping carry-overs: `mono-xsp4` port-8084 disable; `tools/qos_scan.py` single-pass QoS inventory.
 - Dashboard scaffold-without-write audit (29/04 architectural lesson).
