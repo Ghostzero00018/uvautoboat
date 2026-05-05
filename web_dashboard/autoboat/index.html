@@ -8,13 +8,7 @@
     <meta http-equiv="Expires" content="0">
     <title>AutoBoat Dashboard</title>
     <link rel="icon" href="data:,">
-    <script>
-        // Cache-bust: always load the latest CSS
-        const link = document.createElement('link');
-        link.rel = 'stylesheet';
-        link.href = 'style_merged.css?v=' + Date.now();
-        document.head.appendChild(link);
-    </script>
+    <script src="head-init.js"></script>
     <script src="vendor/roslib/roslib.min.js"></script>
     <script src="vendor/leaflet/leaflet.js"></script>
     <link rel="stylesheet" href="vendor/leaflet/leaflet.css" />
@@ -968,11 +962,6 @@
         🚨 E-STOP
     </button>
 
-    <script>
-        // Cache-bust: always load the latest app.js
-        const s = document.createElement('script');
-        s.src = 'app.js?v=' + Date.now();
-        document.body.appendChild(s);
-    </script>
+    <script src="body-init.js"></script>
 </body>
 </html>
