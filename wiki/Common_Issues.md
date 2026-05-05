@@ -282,16 +282,15 @@ ros2 launch rosbridge_server rosbridge_websocket_launch.xml delay_between_messag
 
 | Error | Meaning |
 |:------|:--------|
-| `Failed to load resource: roslib.min.js` | No internet — CDN dependency cannot load |
-| `Failed to load resource: leaflet.js` | No internet — map library cannot load |
+| `Failed to load resource: roslib.min.js` | Vendored roslib asset missing or path wrong — check `web_dashboard/autoboat/vendor/roslib/roslib.min.js` |
+| `Failed to load resource: leaflet.js` | Vendored Leaflet asset missing or path wrong — check `web_dashboard/autoboat/vendor/leaflet/leaflet.js` |
 | `WebSocket connection to 'ws://localhost:9090' failed` | rosbridge not running or port blocked |
 
-> **Internet required:** The dashboard loads `roslib.js` and `leaflet.js` from
-> CDNs. Without internet, the page partially renders and ROS connection never initializes.
-> For deployment on a local-only network (e.g. the IoT IMT Nord Europe network used
-> for Phase 5 hardware bring-up), see [Roadmap §1.3](Roadmap#13-iot-imt-nord-europe--local-only-network-constraint-analysed-30042026)
-> for the full impact analysis and three mitigation paths (vendor libs locally /
-> offline tile server / map-less fallback mode).
+> **Offline status:** `roslib.js`, Leaflet, and dashboard fonts are vendored under
+> `web_dashboard/autoboat/vendor/` as of 05/05/2026, so internet access is no
+> longer required for those libraries. OpenStreetMap tiles still require internet
+> until [Roadmap §1.3](Roadmap#13-iot-imt-nord-europe--local-only-network-constraint-analysed-30042026)
+> Path B (offline tile server) lands.
 
 **6. Firewall blocking?**
 

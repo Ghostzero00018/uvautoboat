@@ -790,7 +790,7 @@ Real-time monitoring interface with TNO Cold War aesthetic.
 
 ### Prerequisites
 
-The dashboard communicates with ROS 2 through **rosbridge_suite** (WebSocket bridge, port 9090) and displays camera feeds via **web_video_server** (MJPEG streaming, port 8080). The browser-side client is **roslibjs v1**, loaded from CDN.
+The dashboard communicates with ROS 2 through **rosbridge_suite** (WebSocket bridge, port 9090) and displays camera feeds via **web_video_server** (MJPEG streaming, port 8080). The browser-side client is **roslibjs v1**, self-served from `web_dashboard/autoboat/vendor/roslib/roslib.min.js`.
 
 ```bash
 sudo apt install ros-jazzy-rosbridge-suite ros-jazzy-web-video-server
@@ -1403,18 +1403,15 @@ ss -tuln | grep 8002
 
 | Error | Meaning |
 | :---- | :------ |
-| `Failed to load resource: roslib.min.js` | No internet — CDN dependency cannot load |
-| `Failed to load resource: leaflet.js` | No internet — map library cannot load |
+| `Failed to load resource: roslib.min.js` | Vendored roslib asset missing or path wrong — check `web_dashboard/autoboat/vendor/roslib/roslib.min.js` |
+| `Failed to load resource: leaflet.js` | Vendored Leaflet asset missing or path wrong — check `web_dashboard/autoboat/vendor/leaflet/leaflet.js` |
 | `WebSocket connection to 'ws://localhost:9090' failed` | rosbridge not running or port blocked |
-| `ReferenceError: ROSLIB is not defined` | roslib.js failed to load (internet required) |
+| `ReferenceError: ROSLIB is not defined` | Vendored roslib failed to load — check the local `vendor/roslib/` file and browser console |
 
-> **Internet required:** The dashboard loads `roslib.js` and `leaflet.js` from
-> CDNs (cdn.jsdelivr.net, unpkg.com). Without internet access, the page will
-> partially render and the ROS connection will never initialize. For deployment
-> on a local-only network (e.g. the IoT IMT Nord Europe network used for Phase 5
-> hardware bring-up), see [`wiki/Roadmap.md` §1.3](wiki/Roadmap.md) for the full
-> impact analysis and three mitigation paths (vendor libs locally / offline tile
-> server / map-less fallback mode).
+> **Offline status:** `roslib.js`, Leaflet, and dashboard fonts are vendored under
+> `web_dashboard/autoboat/vendor/` as of 05/05/2026, so internet access is no
+> longer required for the dashboard libraries. OpenStreetMap tiles still require
+> internet until Roadmap §1.3 Path B (offline tile server) lands.
 
 ### Step 6 — Check firewall (if all above pass but still disconnected)
 

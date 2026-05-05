@@ -185,7 +185,7 @@ The dashboard connects to ROS 2 through three components:
 |:----------|:--------|:-----|:-----|
 | **rosbridge_suite** | `ros-jazzy-rosbridge-suite` | 9090 | WebSocket ↔ ROS 2 bridge (JSON protocol). Dashboard uses `ROSLIB.Ros()` to subscribe/publish topics and call services. |
 | **web_video_server** | `ros-jazzy-web-video-server` | 8080 | Serves live MJPEG camera streams over HTTP from any `sensor_msgs/Image` topic. |
-| **roslibjs** | `roslib@1` (CDN) | — | Browser-side JavaScript client for rosbridge. Loaded via `<script src="https://cdn.jsdelivr.net/npm/roslib@1/build/roslib.min.js">`. |
+| **roslibjs** | `roslib@1` (vendored) | — | Browser-side JavaScript client for rosbridge. Self-served from `web_dashboard/autoboat/vendor/roslib/roslib.min.js`. |
 
 > **Not to be confused with:** [ros2-web-bridge](https://github.com/RobotWebTools/ros2-web-bridge) — a separate Node.js reimplementation of the rosbridge protocol. That project was **archived in November 2025**, last targeted ROS 2 Dashing (2019), and its README redirects users to `rosbridge_suite`. This project has always used `rosbridge_suite`, which is the actively maintained official package.
 

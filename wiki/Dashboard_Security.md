@@ -2,7 +2,7 @@
 
 Security posture, known vulnerabilities, and recommended mitigations for the AutoBoat web dashboard.
 
-**Status:** Assessment completed 16/04/2026. Initial code fixes (SRI hashes, server-side `PARAM_RANGES` bounds) landed 17/04/2026; dashboard XSS rendering fixes landed 04/05/2026. Remaining items below.
+**Status:** Assessment completed 16/04/2026. Initial code fixes (SRI hashes, server-side `PARAM_RANGES` bounds) landed 17/04/2026; dashboard XSS rendering fixes landed 04/05/2026; CSP wrapper + CDN-free Path A vendoring landed 05/05/2026. Remaining items below.
 
 ---
 
@@ -94,11 +94,11 @@ rosbridge allows any connected client to publish to `/wamv/thrusters/left/thrust
 
 ### Medium
 
-#### 8. ~~CDN dependencies without Subresource Integrity~~ — Resolved; downgraded to availability risk
+#### 8. ~~CDN dependencies without Subresource Integrity~~ — Resolved; OSM tile availability remains
 
-**Resolved.** `roslib.min.js`, `leaflet.js`, and `leaflet.css` in `web_dashboard/autoboat/index.html` (L18–26) all carry `integrity="sha384-…"` + `crossorigin="anonymous"` attributes — a compromised CDN cannot serve malicious replacement code without breaking the SRI check.
+**Resolved.** This was first mitigated with SRI on 17/04/2026, then superseded by Path A vendoring on 05/05/2026: `roslib.min.js`, Leaflet JS/CSS/images, and Google Fonts now self-load from `web_dashboard/autoboat/vendor/`. Same-origin loads no longer need CDN SRI, and the CDN-compromise vector is gone.
 
-**Adjacent risk now in scope:** CDN *availability*. On a network without internet (e.g., the IoT IMT Nord Europe institutional WiFi used for Phase 5 hardware bring-up), the CDNs are unreachable and the dashboard loses critical functionality (no roslib → no boat connection; no Leaflet → no map). Three mitigation paths captured in [Roadmap §1.3](Roadmap#13-iot-imt-nord-europe--local-only-network-constraint-analysed-30042026): vendor libs locally / offline tile server / map-less fallback.
+**Adjacent risk now in scope:** tile-server availability. On a network without internet (e.g., the IoT IMT Nord Europe institutional WiFi used for Phase 5 hardware bring-up), dashboard libraries load locally but OpenStreetMap tiles remain unreachable. Path B in [Roadmap §1.3](Roadmap#13-iot-imt-nord-europe--local-only-network-constraint-analysed-30042026) tracks the offline tile server + pre-generated MBTiles mitigation.
 
 #### 9. GPS coordinates exposed to OpenStreetMap
 
@@ -133,7 +133,7 @@ The `/rosout` subscription displays all debug/info/warning/error messages from a
 |:----|:-----------|:------|
 | ~~Fix dashboard XSS renderers~~ | **Already done 04/05/2026** — `addLog()`, mission history, and waypoint validation now write dynamic text with `textContent`, mirroring the rosout terminal pattern. | `app.js` |
 | Bind to localhost | Pass `127.0.0.1` as the bind arg to `serve_dashboard.py` (e.g., `python3 serve_dashboard.py 8002 127.0.0.1`) in the launch script and docs | `launch_autoboat_complete.sh`, `autoboat.launch.yaml` |
-| ~~Add SRI hashes~~ | **Already done** — `index.html` `<script>` tags for `roslib`, `leaflet.js`, and `leaflet.css` carry `integrity="sha384-…"` + `crossorigin="anonymous"` attributes. | (no action) |
+| ~~Add SRI hashes~~ | **Superseded by Path A 05/05/2026** — SRI was added on 17/04 for CDN loads, then removed when `roslib`, Leaflet, and fonts were vendored under same-origin `vendor/`. | (no action) |
 
 ### Moderate hardening (~3-5 hours)
 
@@ -170,9 +170,9 @@ CDN libraries (`roslibjs`, Leaflet JS + CSS + 5 marker / layer images, Google Fo
 
 #### Inline-content + eval scan (constraints on the policy)
 
-- 2 inline `<script>` blocks (`index.html:11`, `:977`) → `'unsafe-inline'` required for `script-src`.
-- 21 inline `style="…"` attributes → `'unsafe-inline'` required for `style-src`.
-- Both can be removed by refactoring inline `<script>` blocks to external files (or per-load `nonce-`s) and inline `style="…"` attributes to CSS classes; not blocking.
+- 2 inline `<script>` blocks (`index.html:11`, `:971`) → `'unsafe-inline'` required for `script-src`.
+- 21 static inline `style="…"` attributes in `index.html`, plus additional runtime style mutations / generated style attributes in `app.js` → `'unsafe-inline'` required for `style-src`.
+- Both can be removed by refactoring inline `<script>` blocks to external files (or per-load `nonce-`s), moving static inline `style="…"` attributes to CSS classes, and replacing generated / programmatic style writes with classes or CSS variables where practical; not blocking.
 - No `eval()` / `new Function()` / string-form `setTimeout` in `app.js` → `'unsafe-eval'` **not** needed.
 - No inline event handlers (`onclick=`, etc.) → modern listeners only.
 
@@ -195,7 +195,7 @@ object-src 'none';
 |:--|:--|
 | `default-src 'self'` | Deny-by-default fallback for any directive not explicitly listed |
 | `script-src` | `'self'` only — CDN libraries (roslibjs, Leaflet) vendored locally 05/05/2026 (path A); `'unsafe-inline'` retained for the 2 inline blocks pending separate refactor |
-| `style-src` | `'self'` only — Leaflet CSS + Google Fonts CSS vendored locally 05/05/2026 (path A); `'unsafe-inline'` retained for the 21 inline `style="…"` attributes pending separate refactor |
+| `style-src` | `'self'` only — Leaflet CSS + Google Fonts CSS vendored locally 05/05/2026 (path A); `'unsafe-inline'` retained for static `index.html` inline styles plus runtime `app.js` style writes pending separate refactor |
 | `font-src` | `'self'` only — Google Fonts WOFF2 vendored locally 05/05/2026 (path A); `data:` for any inline-encoded fallback fonts |
 | `img-src` | OSM tiles (3-subdomain wildcard) + MJPEG stream + `data:` for inline favicons / canvas exports. Field deployment must append the boat IP at `:8080`, mirroring `connect-src`. |
 | `connect-src` | Specific `ws://` hosts the dashboard targets — localhost variants for dev; field deployment must append the boat IP |
@@ -219,7 +219,7 @@ Option A landed 05/05/2026 — confirmed end-to-end via curl + browser hard-refr
 Two remaining hardening passes:
 
 1. **OSM tile vendoring** — Roadmap §1.3 path B: pre-generate MBTiles for the test region, serve from a local tile server. Once that lands, `img-src` drops `https://*.tile.openstreetmap.org` and instead allows the local tile origin. Required before first IoT-network deployment.
-2. **`'unsafe-inline'` removal** — separate refactor: move the 2 inline `<script>` blocks (`index.html:11`, `:977`) to external files (or add per-load `nonce-`s), AND move the 21 inline `style="…"` attributes to CSS classes. Once both done, `'unsafe-inline'` comes off both `script-src` and `style-src`.
+2. **`'unsafe-inline'` removal** — separate refactor: move the 2 inline `<script>` blocks (`index.html:11`, `:971`) to external files (or add per-load `nonce-`s), move the 21 static `index.html` inline `style="…"` attributes to CSS classes, and replace `app.js` runtime style writes / generated style attributes with classes or CSS variables where practical. Once both script and style surfaces are clean, `'unsafe-inline'` comes off both `script-src` and `style-src`.
 
 **Catches / doesn't catch.** Catches any future regression that re-introduces an `innerHTML` attack surface — a malicious payload still cannot fetch `script-src` from a non-allowed origin and inline-`eval` is the only remaining vector (excluded via no `'unsafe-eval'`); also catches DOM-clobbering and inline-event-handler vectors. Does **not** catch the operational risk surfaced as finding #5 (valid-but-tactically-dangerous values within bounds, no auth) — that's a different layer, addressed via auth + token-RBAC per the Moderate-hardening / Full-hardening tables above.
 

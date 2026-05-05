@@ -37,8 +37,8 @@ Real-time web-based monitoring and control dashboard for the AutoBoat autonomous
    sudo apt install ros-jazzy-web-video-server
    ```
 
-4. **Internet access** — the dashboard loads **roslibjs v1** and **Leaflet.js** from CDNs (`cdn.jsdelivr.net`, `unpkg.com`)
-5. **AutoBoat nodes** running via `autoboat.launch.yaml`
+4. **AutoBoat nodes** running via `autoboat.launch.yaml`
+5. **Internet access for map tiles only** — `roslibjs`, Leaflet, and fonts are vendored locally; OpenStreetMap tiles still require internet until Roadmap §1.3 Path B lands
 
 > **Not ros2-web-bridge.** A separate project ([ros2-web-bridge](https://github.com/RobotWebTools/ros2-web-bridge)) offered a Node.js-based alternative but was **archived in November 2025** (last targeted ROS 2 Dashing, 2019). This dashboard uses `rosbridge_suite`, the actively maintained official ROS package.
 
@@ -188,7 +188,7 @@ Perception and Controller share the `/planning/set_config` topic. Parameters wit
 
 ## Troubleshooting
 
-> **Offline / no-internet deployment** (e.g., the IoT IMT Nord Europe institutional network used for Phase 5 hardware bring-up): the dashboard currently loads `roslib`, Leaflet (JS + CSS), OSM tiles, and Google Fonts from the public internet. Three of these (everything except the font) are critical — without internet the dashboard cannot connect to the boat (`roslib`), the map panel cannot render (Leaflet), and the map background is missing (OSM tiles). Full inventory + three mitigation paths (vendor libs locally / offline tile server / map-less fallback) live in [`wiki/Roadmap.md` §1.3](../../wiki/Roadmap.md). Required pre-deployment work for IoT-local networks.
+> **Offline / no-internet deployment** (e.g., the IoT IMT Nord Europe institutional network used for Phase 5 hardware bring-up): `roslib`, Leaflet (JS + CSS + images), and Google Fonts are vendored under `vendor/` as of 05/05/2026, so the dashboard libraries self-load without internet. OpenStreetMap tiles still come from the public tile server; without internet the map background is missing, though boat markers / waypoints / path overlays can still draw. Roadmap §1.3 Path B tracks the required offline tile server + pre-generated MBTiles work before the first IoT-network field deployment.
 
 | Problem                           | Solution                                                              |
 | --------------------------------- | --------------------------------------------------------------------- |
@@ -197,9 +197,9 @@ Perception and Controller share the `/planning/set_config` topic. Parameters wit
 | Apply buttons stay grey           | Nodes not publishing `/planning/config` — check navigation is launched |
 | Reset then Apply sends old values | Fixed — Reset now marks inputs dirty to prevent ROS sync race         |
 | Camera feed not showing           | Check web_video_server: `ros2 run web_video_server web_video_server`  |
-| Map tiles not loading             | Requires internet for OpenStreetMap CDN. For offline deployment see Roadmap §1.3 Path B (offline tile server). |
-| ROSLIB not defined (console)      | Requires internet for CDN (roslibjs, Leaflet). For offline deployment see Roadmap §1.3 Path A (vendor libs locally). |
-| Half the page missing             | CDN failed — check internet or vendor libs; see browser console (F12). |
+| Map tiles not loading             | Requires internet for OpenStreetMap tiles. For offline deployment see Roadmap §1.3 Path B (offline tile server). |
+| ROSLIB not defined (console)      | Vendored roslib failed to load — check `vendor/roslib/roslib.min.js` and browser console (F12). |
+| Half the page missing             | Vendored dashboard asset failed to load — check `vendor/roslib/`, `vendor/leaflet/`, and browser console (F12). |
 | Parameter collision               | Perception params prefixed with `perception_` (e.g. `perception_critical_distance`) |
 
 ### Dashboard "Disconnected" Diagnostics
@@ -224,7 +224,7 @@ ss -tuln | grep 8002
 # Should show LISTEN.
 
 # 5. Check browser console (F12 → Console) for:
-#    - "Failed to load resource: roslib.min.js" → no internet
+#    - "Failed to load resource: roslib.min.js" → missing vendored asset or wrong path
 #    - "WebSocket connection failed" → rosbridge not running or port blocked
 
 # 6. Firewall?

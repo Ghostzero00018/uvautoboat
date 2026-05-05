@@ -53,22 +53,20 @@ Three architectural questions raised in the 30/04 meeting and sent in writing to
 
 ### 1.3 IoT IMT Nord Europe — local-only network constraint (analysed 30/04/2026)
 
-**Constraint.** The IoT IMT Nord Europe network is institutional / IoT-only — **no internet access**. Pi 5 ↔ Linux workstation traffic all stays on-LAN. This was implicitly assumed open-internet in the current dashboard design and breaks several runtime dependencies once we deploy on this network.
+**Constraint.** The IoT IMT Nord Europe network is institutional / IoT-only — **no internet access**. Pi 5 ↔ Linux workstation traffic all stays on-LAN. The original dashboard design implicitly assumed open internet; Path A (05/05/2026) removed the library/font dependencies, while Path B remains required for offline map tiles before IoT-network deployment.
 
-#### Current external runtime dependencies in the dashboard
+#### Runtime dependency status after Path A
 
-Inventoried 30/04/2026 across `web_dashboard/autoboat/`:
+Inventoried 30/04/2026 across `web_dashboard/autoboat/`; Path A landed 05/05/2026.
 
-| # | Source | Function | Severity without internet |
-|:-:|:-------|:---------|:--------------------------|
-| 1 | `cdn.jsdelivr.net/npm/roslib@1` (`index.html:18`) | rosbridge WebSocket JS client | **Critical** — dashboard cannot subscribe/publish any ROS topic; connection to boat dead |
-| 2 | `unpkg.com/leaflet@1.9.4` JS + CSS (`index.html:21, 24`) | Map rendering library | **Critical for map panel** — map cannot render; other panels still work |
-| 3 | `tile.openstreetmap.org` (`app.js:342`) | Map background tiles | **Critical for map background** — map area renders empty grey; boat marker / waypoints / path overlay still draw on top, but with no geographical context |
-| 4 | Google Fonts — Roboto Condensed (`style_merged.css:4`) | Typography | **Cosmetic** — browser falls back to system default sans-serif |
+| # | Source before Path A | Current source | Function | Severity without internet now |
+|:-:|:---------------------|:---------------|:---------|:------------------------------|
+| 1 | `cdn.jsdelivr.net/npm/roslib@1` (`index.html:18`) | `vendor/roslib/roslib.min.js` | rosbridge WebSocket JS client | **Resolved by Path A** — dashboard core connection no longer depends on internet |
+| 2 | `unpkg.com/leaflet@1.9.4` JS + CSS (`index.html:21, 24` before Path A) | `vendor/leaflet/` | Map rendering library | **Resolved by Path A** — Leaflet loads locally; map overlays can render without internet |
+| 3 | `tile.openstreetmap.org` (`app.js:342`) | unchanged external tile server | Map background tiles | **Still open** — map area renders empty grey without internet; boat marker / waypoints / path overlay still draw on top, but with no geographical context |
+| 4 | Google Fonts — Roboto Condensed (`style_merged.css:4`) | `vendor/google-fonts/roboto-condensed.css` + local WOFF2 files | Typography | **Resolved by Path A** — fonts load locally |
 
-**Combined impact.** Without internet, dashboard core functionality (telemetry, mission control, health check) is **dead** because of (1). Even if (1) somehow loaded, the map panel is dead because of (2). Even if both libs loaded, the map background is missing because of (3). Today's `wiki/Common_Issues.md` and dashboard README both call out (3) only — the more impactful (1) and (2) are not currently flagged.
-
-This is a **Phase 5 deployment blocker** in the dashboard's current state.
+**Combined impact after Path A.** Without internet, dashboard core functionality (telemetry, mission control, health check) and the Leaflet map library still load. The remaining blocker is map background context: OSM tiles are still external, so IoT-local deployment needs Path B (offline tile server + pre-generated MBTiles for the test area) before the first field deployment on that network.
 
 #### Mitigation paths
 
@@ -76,19 +74,19 @@ Three options, ordered by recommended priority.
 
 ##### Path A — Vendor libraries locally (low effort, removes 3 of 4 deps)
 
-Download `roslib.min.js`, `leaflet.js`, `leaflet.css`, and the Roboto Condensed font files; commit them under `web_dashboard/autoboat/vendor/`; reference via relative paths.
+Done 05/05/2026: `roslib.min.js`, `leaflet.js`, `leaflet.css`, Leaflet images, and the Roboto Condensed font files were committed under `web_dashboard/autoboat/vendor/` and referenced via relative paths.
 
 ```html
-<!-- Replace remote CDN refs with local vendored copies -->
-<script src="vendor/roslib.min.js"></script>
+<!-- Local vendored copies -->
+<script src="vendor/roslib/roslib.min.js"></script>
 <script src="vendor/leaflet/leaflet.js"></script>
 <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
 ```
 
-- **Cost:** ~2 MB of vendored assets in the repo; one-time download.
+- **Cost:** ~516 KB of vendored assets in the repo.
 - **Removes:** dependencies (1), (2), (4) — three of the four.
 - **License compliance:** Leaflet (BSD-2), roslib (BSD-3), Roboto (Apache 2.0) — all compatible with the project's Apache 2.0 license. Add a `vendor/LICENSE_NOTICES` file copying the upstream license texts.
-- **SRI integrity hashes** in current `<script integrity="sha384-…">` attributes become irrelevant with local vendoring; either drop them or compute hashes for the vendored copies.
+- **SRI integrity hashes:** dropped 05/05/2026 when the CDN loads were replaced with same-origin vendored files; the CDN-compromise vector is gone.
 - **Not just for IoT.** This is hardening worth doing regardless — removes any runtime jsdelivr / unpkg / Google Fonts outage from blocking the dashboard.
 
 ##### Path B — Offline tile server (required for map functionality on IoT)
@@ -124,13 +122,13 @@ Useful as a third-tier backup when even the local tile server is unavailable. Lo
 
 #### Recommended approach for Phase 5 deployment
 
-1. **Path A first**, before any deployment — vendor (1), (2), (4). Network-independent hardening.
+1. **Path A first**, before any deployment — ✅ landed 05/05/2026; vendored (1), (2), (4). Network-independent hardening.
 2. **Path B before first on-water deployment** — offline tile server + pre-generated tiles for the test-site area.
 3. **Path C optional** — keep as a documented backup, do not implement until Path B has been tried and found insufficient.
 
 #### Tracker
 
-Status row added to §3 Phase 5 status table: "Dashboard offline-capable for IoT-local network deployment ❌". `web_dashboard/autoboat/README_autoboat_dashboard.md` troubleshooting table updated to flag (1) and (2) alongside the existing (3) entry. `wiki/Common_Issues.md` follows the dashboard README on user-facing troubleshooting.
+Status row in §3 Phase 5 status table now records Path A landed 05/05/2026 and Path B still future. `web_dashboard/autoboat/README_autoboat_dashboard.md`, `wiki/Common_Issues.md`, and `USER_MANUAL.md` now distinguish missing vendored assets from the remaining OpenStreetMap tile dependency.
 
 ---
 
