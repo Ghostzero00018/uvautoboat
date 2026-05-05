@@ -49,6 +49,7 @@ Resolved. The generic `addLog(message, type)` helper previously built its DOM vi
   - **Event logs, mission history, waypoint validation** — dynamic text is written with `.textContent`. **Safe.**
   - **Rosout terminal panel** — `addTerminalLine()` builds the row wrapper via `innerHTML` but writes the actual log message body via `.textContent`, so `<script>` in a ROS log message renders as text. **Safe.**
   - **World banner text** — properly escaped (`<` → `&lt;`).
+- **Defense-in-depth (05/05/2026):** the CSP wrapper added today (`web_dashboard/autoboat/serve_dashboard.py`) blocks any future renderer regression from executing scripts loaded from non-allowed origins, plus inline `eval` is excluded entirely. See [Proposed Content Security Policy](#proposed-content-security-policy-research-05052026) below.
 
 #### 3. Unencrypted WebSocket
 
@@ -56,6 +57,7 @@ The dashboard connects to rosbridge via plain `ws://` (not `wss://`). All comman
 
 - **File:** `web_dashboard/autoboat/app.js` — WebSocket URL construction
 - **Impact:** MITM can read GPS, commands, config; inject fake messages
+- **Residual after 05/05/2026 CSP wrapper:** CSP `connect-src 'self' ws://localhost:9090 ws://127.0.0.1:9090` now prevents an injected script from redirecting the dashboard to a malicious `ws://` endpoint (XSS-redirect-WS vector closed), but does NOT address transport encryption — anyone on the LAN can still passively sniff or actively MITM the rosbridge connection. The proper fix remains WSS termination via reverse proxy (Moderate hardening table below).
 
 #### 4. All services bound to 0.0.0.0
 
