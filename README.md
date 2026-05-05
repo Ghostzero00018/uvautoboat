@@ -96,6 +96,8 @@ bash ~/seal_ws/src/uvautoboat/one_click_launch_all/launch_autoboat_complete.sh
 
 Then open **<http://localhost:8002>** for the web dashboard.
 
+> **Hybrid-graphics laptops (NVIDIA Optimus / PRIME):** append `--use-nvidia` to route Gazebo through the discrete GPU. Without it the iGPU fallback can throttle Gazebo heavily — see [`wiki/Common_Issues.md`](wiki/Common_Issues.md) section *Gazebo Running Slow* for diagnosis + measured figures + canonical recipe.
+
 ### Option B: Manual Launch (5 terminals)
 
 | Terminal | Command | Purpose |

@@ -109,15 +109,67 @@ Pass criteria — split by topic class:
 
 ### B3 — Deployment artifact bundle
 
-If the test is happening this afternoon, what gets carried to the lake? A short checklist worth writing down before the rush. Categories — actual contents are user-specific and depend on the hardware build:
+If the test is happening this afternoon, what gets carried to the lake. Concrete fill-in form below — populate at bundling time. `Y / N` flags + free-form blanks where specifics depend on the hardware build. Items grouped by category; check off in order before walking out.
 
-- [ ] **Boat hardware** [TBD inventory — battery state of charge, propellers, hull, sensor mounts, power-on order]
-- [ ] **Operator station** [TBD — laptop or Pi 5 + dashboard? Tethered or wireless rosbridge?]
-- [ ] **Network gear** [TBD — router / hotspot / direct ethernet?]
-- [ ] **Tools** [TBD — basic toolkit, multimeter, spare cables, charger]
-- [ ] **Recovery / safety** [TBD — boat hook / tether line / life preserver if working from shore]
-- [ ] **Logging media** [phone for photos + video; USB drive for rosbag offload if the operator station can't carry it back directly]
-- [ ] **Permits / permissions** [TBD — park rules, prior notification given to whoever manages the lake]
+#### Boat hardware
+
+- [ ] Battery starting voltage: `_____ V` (Block E captures final V → compute mission consumption)
+- [ ] Battery capacity / chemistry: `_____ Ah / _____`
+- [ ] Charged to ≥ 90 %: Y / N
+- [ ] Hull integrity (no cracks / leaks / loose mounts): Y / N — notes: `_____`
+- [ ] Propellers intact: left Y / N — right Y / N — spare on hand Y / N
+- [ ] Sensor mounts at spec: GPS antenna Y / N — IMU Y / N — LiDAR Y / N / N-A
+- [ ] Power-on + power-off orders documented (low-V control electronics → thrusters last; reverse on shutdown): Y / N
+
+#### Operator station
+
+- [ ] Device: campus Linux laptop / Pi 5 / other → `_____`
+- [ ] Charged ≥ 80 %; charger packed: Y / N
+- [ ] Dashboard URL planned: `http://_____:8002`
+- [ ] rosbridge mode: tethered ethernet / hotspot wifi / direct AP / mesh → `_____`
+- [ ] `ROS_DOMAIN_ID` matches between station + boat: Y / N
+- [ ] `--use-nvidia` flag in launch invocation (if NVIDIA hybrid graphics on station): Y / N / N-A
+- [ ] `one_click_launch_all/health_check_autoboat.sh` accessible from station: Y / N
+
+#### Network gear
+
+- [ ] Connection mode chosen: router / portable hotspot / direct ethernet / direct AP / mesh → `_____`
+- [ ] SSID + credentials documented (offline copy): Y / N
+- [ ] Boat fixed IP: `_____` — operator IP: `_____`
+- [ ] Coverage to operating area pre-verified: Y / N
+- [ ] Backup connection mode available: Y / N — fallback: `_____`
+
+#### Tools
+
+- [ ] Basic toolkit (screwdrivers / allen keys / pliers / cutters): Y / N
+- [ ] Multimeter: Y / N
+- [ ] Spare cables (USB-A / USB-C / ethernet / power): Y / N — gaps: `_____`
+- [ ] Chargers — boat battery + operator station: Y / N
+- [ ] Spare boat battery (if available): Y / N
+- [ ] Electrical tape + zip ties + duct tape: Y / N
+
+#### Recovery + safety
+
+- [ ] Boat hook or shore-recovery pole: Y / N
+- [ ] Tether line + hardware (carabiners / cleat): Y / N — length: `_____ m`
+- [ ] Life preserver / throw line per site rules: Y / N — items packed: `_____`
+- [ ] First aid kit: Y / N
+- [ ] Phone with emergency-contact list: Y / N
+
+#### Logging media
+
+- [ ] Phone for photos + video — battery charged: Y / N
+- [ ] USB drive (≥ 16 GB) for rosbag offload: Y / N
+- [ ] Notebook + pen for live observations: Y / N
+- [ ] Operator station ↔ phone time-sync verified (timestamp cross-reference): Y / N
+
+#### Permits + permissions
+
+- [ ] Park rules reviewed; relevant clauses: `_____`
+- [ ] Prior notification — when: `_____` — to whom: `_____` — channel (email / phone / in-person): `_____`
+- [ ] Insurance / liability for the test site: Y / N — document path: `_____`
+- [ ] Emergency contact for the day: `_____`
+- [ ] Right-of-recall noted (who can stop the test): `_____`
 
 ### B4 — VRX fork-or-don't periodic re-evaluation (Windows-side, parallel — not Linux-blocking)
 
@@ -142,19 +194,31 @@ P3 deferral: `wiki/Roadmap.md` §8.1 baseline wording is stale (`consumes upstre
 
 Interrupt-safe — pause on 5 min notice if Block A returns a late green light.
 
-**Outcome.** [To fill — sanity run result (B1) + rosbag dry-run topic counts (B2) + deployment-bundle status (B3) + VRX HOLD logging confirmation + plan-doc §3/§5.1 correction status (B4, write-permission-dependent).]
+**Outcome.** Block B fully executed AM with sim alive throughout (left up for any A=GO PM continuation). Pre-mission `bash one_click_launch_all/health_check_autoboat.sh` → 49 PASS / 0 FAIL / 0 WARN, state IDLE; rosbridge + dashboard + web_video_server all green on 9090 / 8002 / 8080.
+
+- **B1 — Sim sanity post-Block-F:** `--use-nvidia` launcher (warm) → 5/5 expected nodes (`heading_controller_node`, `lidar_perception_node`, `waypoint_planner_node`, `waypoint_visualizer_node`, `health_check_service`); probe-log `BrokenPipeError` count = 0; 0 fresh `/var/crash/_opt_ros_jazzy*.crash` from today's run. Full mission: `autoboat_cli generate` → `confirm` → `start` → state DRIVING → state FINISHED at 16/16 waypoints, 100 % progress, 405 s sim time (~7.7 min wall at RTF 0.88). The CLI's own defaults (`lanes=8 / scan_length=50 / scan_width=20`, "Estimated waypoints: 15" → 16 actual) overrode the launcher's planner params (`lanes=10 / scan_length=15 / scan_width=30`) for this run — surfaced as 3 TUNED entries on the post-mission health_check, expected behaviour, not a regression. Dashboard visual rendering of events log + mission history + waypoint-validation panes pending operator-side confirmation post-XSS-rewrite.
+
+- **B2 — Rosbag config dry-run:** 14 topics requested via the L93-101 recipe, 14 subscribed at recording start (per the `rosbag2_recorder` "Subscribed to topic" log lines). Recording 351.7 s, 79 080 messages, 21.5 MiB across 12 non-empty topics. Continuous-telemetry counts proportional to per-topic rates: IMU 31 234 (~89 Hz), thrusters 7 253 each (~21 Hz), `/control/status` 6 783, `/control/heading_error` 6 731, GPS 6 254 (~18 Hz), `/planning/mission_status` 5 152, `/perception/obstacle_info` 4 320, `/planning/current_target` 3 391, `/control/anti_stuck_status` 702, `/planning/waypoints` 3 (one publish each at generate / confirm / start). Event-driven: `/planning/emergency_stop` 4 of 5 fan-published (`ros2 topic pub --rate 2 --times 5 ... data: false`, harmless release on idle planner; 1 lost in initial discovery, recordability proven); `/health_check/line` + `/health_check/status` captured 0 — passes the scaffold L108 "OR confirm advertised" criterion (both PASS as publishers in pre-mission health_check). Bag's `metadata.yaml` did NOT write on SIGINT (signal swallowed by an `&`-backgrounded compound, see Known Unknowns); recovered cleanly via `ros2 bag reindex`. Field-deployment recipe should drive the bag from a clean terminal where Ctrl+C reaches the recorder directly.
+
+- **B3 — Deployment artifact bundle:** TBD bullet list replaced with concrete fill-in form (L110-170) — `Y / N` flags + free-form blanks across 7 categories (boat hardware / operator station / network gear / tools / recovery + safety / logging media / permits + permissions). Populate at bundling time per A=GO branch.
+
+- **B4 — VRX HOLD logging:** 4 §8.2 triggers re-checked Linux-side, still 0/4 fired — 1 patch (`one_click_launch_all/patch_vrx.sh`, upstream issue #876), `test_environment/` 2 files (`sydney_regatta_DEFAULT.sdf`, `wamv_3d_lidar.xacro`), no Phase 5 sim-incompat surfaced (first wet test still scaffolded, not yet run), no upstream-release flag since Mon-evening. HOLD stands. Off-repo plan-doc §3 / §5.1 corrections deferred to next Windows-side session per scaffold L141 path-permission rule.
+
+- **Post-mission health_check:** 46 PASS / 3 TUNED / 0 FAIL / 0 WARN, state IDLE. Subscriber counts up across the board vs pre-mission (rosbag2 lingering subs + any extra dashboard panel subs); all green.
 
 ---
 
 ## Block C — Hardware bring-up on-site (PM, conditional on A=GO)
+
+> **Scope refinement (AM 05/05, ~10:30):** even if A=GO, today's wet test is **first-bring-up only** — float (D1) + tethered console teleop with propeller direction + balance check (D2). D3–D5 (single-waypoint autonomy / untethered mission / obstacle handling) deferred to a subsequent test window. Block C narrows to items 1-3 + 6 (visual / power / sensor sanity / tethered thrust); item 4 (autonomy-stack network) deferred; item 5 narrows from autonomy `/planning/emergency_stop` latching validation (deferred) to **teleop stop / power cutoff verification** — release input → motor decel must be observable, AND a physical kill path on the boat (battery disconnect or hardware switch) must be exercised before water. Mandatory regardless of autonomy stack state. Rationale: confirm the boat is controllable AND immediately stoppable before stacking autonomy on top.
 
 First wet-test brings up the boat for the first time outside controlled bench conditions. Order of operations, dry-land before water:
 
 1. **Visual + mechanical inspection** — hull integrity, propeller condition, no loose connections, all sensors mounted at expected angles.
 2. **Power-on sequence** — match whatever the bench-tested order is (likely: low-voltage / control electronics first, thrusters last). Record battery starting voltage.
 3. **Sensor sanity (dry land)** — `ros2 topic echo --once /wamv/sensors/gps/gps/fix` (open-sky GPS lock — should converge within ~30 s of clear-sky boot in a park; record time-to-lock); `/wamv/sensors/imu/imu/data` (IMU orientation makes sense relative to physical orientation); LiDAR or any other sensors the real boat carries.
-4. **Network up** — operator station ↔ boat link verified. `ros2 node list` from operator station shows the boat's nodes; dashboard at the chosen port responds. **Watch for the rosbridge close-handler resilience verified yesterday in Block F6** — if the field network drops momentarily and reconnects, the dashboard should resubscribe cleanly without the operator clicking refresh.
-5. **E-stop test (dry land, motors disabled OR boat held off the ground)** — verify the dedicated `/planning/emergency_stop` path latches as expected. Click the dashboard's E-stop, watch the controller terminal log "E-Stop received", verify thrusters do not respond to subsequent commands until reset. Critical to do this BEFORE any in-water test.
+4. **Network smoke check (only if dashboard / remote teleop is used today)** — verify the operator station can reach the boat on the chosen link. Full autonomy-stack network validation (`ros2 node list`, rosbridge resilience, dashboard end-to-end checks) is deferred with D3-D5.
+5. **Teleop stop / power cutoff test (dry land, motors disabled OR boat held off the ground)** — verify release-input behavior returns thrust toward zero, then exercise the physical kill path on the boat (battery disconnect or hardware switch). Full autonomy `/planning/emergency_stop` latching validation is deferred with D3-D5.
 6. **Tethered short thruster test (dry-dock or boat lifted off ground)** — brief differential-thrust command via dashboard or `ros2 run control keyboard_teleop`; observe thrusters spin in expected direction (left command → left propeller, etc.). Cut power before anything's in the water.
 
 Pass criteria: every step green, no surprise warnings in any node's terminal.
@@ -166,6 +230,8 @@ If anything fails: capture the specific symptom + log + photo, abort the in-wate
 ---
 
 ## Block D — In-water test scenarios (PM, conditional on A=GO and C=PASS)
+
+> **Scope refinement (AM 05/05, ~10:30):** today's run is **D1 + D2 only** — float + tethered console teleop with propeller direction + balance verification. D3–D5 deferred (see Block C scope refinement). The full D1–D5 plan below remains the eventual coverage path; today's session exercises only the first two scenarios because boat-hardware maturity hasn't yet been validated end-to-end.
 
 Scope: a small artificial lake in a park is a bounded environment. Recommended scenario order, simplest first, each gated by the previous one passing. Tether is the ultimate abort path through D3 — keep it on as long as practical.
 
@@ -274,6 +340,9 @@ Same shape as yesterday — capture surprises with `file:line` / command + obser
 - [Battery drain per mission length — first real measurement]
 - [Whether the rosbridge reconnect resilience verified yesterday holds in field conditions (intermittent wifi, not just `pkill rosbridge_websocket`)]
 - [Perception behaviour at lake-edge transitions (water → bank) if LiDAR is on the boat]
+- **AM 05/05:** `/var/crash/_opt_ros_jazzy_bin_ament_{flake8,pep257}.1002.crash` files dated 2026-05-04 13:36-13:37 — collateral from Mon Block F lint runs. Apport monitors `/opt/ros/jazzy/bin/*`, so `ament_flake8` / `ament_pep257` exiting non-zero on the first lint violation writes a crash file even though the pytest wrapper converts that into a normal lint fail. Not blocking; Mon's tests pass at end of Block F. Worth a `wiki/Common_Issues.md` follow-up if the trap surfaces again ("ROS-jazzy lint binaries trigger Apport on non-zero exit").
+- **AM 05/05:** `ros2 bag` SIGINT path doesn't flush `metadata.yaml` when the recorder is killed via PID-targeted `kill -INT` from inside an `&`-backgrounded compound — the signal is swallowed by the subshell. Bag's `.mcap` is fine, only the metadata sidecar is missing; recovered cleanly via `ros2 bag reindex`. Field-deployment teardown recipe: drive the bag from a clean terminal where Ctrl+C reaches the recorder directly, not via tool-chain orchestration.
+- **AM 05/05:** `&&`-chain + `&` precedence trap — `bash -c "VAR=x && echo ... && cmd args &"` puts the **entire** AND-chain (including the assignment) into a backgrounded subshell; the variable is set in the subshell only, the parent sees it empty. Workaround: keep variable assignments out of the backgrounded compound (newline + bare assignment, then only the long command is `&`-backgrounded), OR isolate pattern-bearing operations in a script file (caller's argv = path only, no pattern leakage to `pkill -f`).
 
 ---
 

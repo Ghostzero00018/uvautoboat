@@ -104,6 +104,8 @@ bash ~/seal_ws/src/uvautoboat/one_click_launch_all/launch_autoboat_complete.sh
 
 This script opens multiple terminals automatically.
 
+> **Hybrid-graphics laptops (NVIDIA Optimus / PRIME):** append `--use-nvidia` to route Gazebo through the discrete GPU. Without it the iGPU fallback can throttle Gazebo heavily — see [Common_Issues.md](Common_Issues.md) section *Gazebo Running Slow* for diagnosis + measured figures + canonical recipe.
+
 ---
 
 ## Basic Mission Control

@@ -392,7 +392,8 @@ In practice the deadlock window has narrowed significantly since 23/04/2026 — 
    rm -rf build/ install/ log/
    colcon build --merge-install
    source install/setup.bash
-   # Relaunch the full system (kills old nodes and starts fresh)
+   # Relaunch the full system (kills old nodes and starts fresh).
+   # Append --use-nvidia on hybrid-graphics laptops — see "Gazebo Running Slow" below.
    bash ~/seal_ws/src/uvautoboat/one_click_launch_all/launch_autoboat_complete.sh
    ```
 

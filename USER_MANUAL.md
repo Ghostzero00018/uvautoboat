@@ -1479,8 +1479,11 @@ chmod +x one_click_launch_all/launch_autoboat_complete.sh
 # Launch without dashboard (headless)
 ./one_click_launch_all/launch_autoboat_complete.sh --skip-dashboard
 
+# Launch with NVIDIA prime-offload (hybrid-graphics laptops — Optimus / PRIME)
+./one_click_launch_all/launch_autoboat_complete.sh --use-nvidia
+
 # Combine options
-./one_click_launch_all/launch_autoboat_complete.sh --world sydney_regatta_DEFAULT --skip-dashboard
+./one_click_launch_all/launch_autoboat_complete.sh --world sydney_regatta_DEFAULT --skip-dashboard --use-nvidia
 ```
 
 **What it launches:**
