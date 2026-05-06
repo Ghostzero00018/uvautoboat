@@ -537,6 +537,8 @@ Re-derive the bake-in commit if upstream changes the relevant section of `wamv_g
 
 **Workspace branch:** `~/seal_ws/src/vrx/` should stay on `autoboat/main` for daily use. Switch to `jazzy` only for the sync operations above (then `git checkout autoboat/main` after pushing). Switching branches changes source files on disk — a `colcon build` is needed afterwards if the differences include built artifacts (typically yes for any URDF / mesh / plugin change).
 
+**Fresh-machine onboarding:** on a new clone of `~/seal_ws/src/vrx/` from the fork, `colcon build --merge-install` from `~/seal_ws/` is **mandatory** — there's no pre-existing `install/` tree, so the bake-in commit must be compiled into `wamv_gazebo` artifacts before the launcher will see it. On an existing workstation that already had VRX built before the fork landed (today's 06/05 case), `install/` already contains the bake-in's effect because the runtime patch had already applied + built — so the rebuild is optional. After any future bake-in or upstream-sync commit on `autoboat/main`, the rebuild becomes mandatory again.
+
 ---
 
 ## 9. Revision log

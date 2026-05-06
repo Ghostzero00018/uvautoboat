@@ -230,7 +230,7 @@ If health check passes + time remains, pick from fallback queue:
 5. Confirm `working_diary/2026-05-07_thursday_first_field_test.md` exists with re-blanked placeholders + correct dates.
 6. Sim left alive for Thu AM re-verification (no need to tear down).
 
-**Outcome.** Final commit stack today (06/05), **13 commits landed** (the day grew beyond Block F closure with two scope expansions — the Option B reverse-proxy doc polish and the late-afternoon VRX fork migration). User sequencing in two phases:
+**Outcome.** Final commit stack today (06/05), **13 substantive commits + N diary/meta cleanup commits** (the day grew beyond Block F closure with two scope expansions — the Option B reverse-proxy doc polish and the late-afternoon VRX fork migration; the diary/meta cleanups are this Block F update itself plus any markdownlint or similar passes that landed after, which would otherwise force a recursive "diary count of count" update). User sequencing of the 13 substantive commits in two phases:
 
 **Phase 1 — CSP arc + audit fixes (commits 1-7, the originally-planned Block F shape):**
 
@@ -251,7 +251,7 @@ If health check passes + time remains, pick from fallback queue:
 5. `docs(roadmap): VRX §8 rewrite (executed) + Board.md flip → ✅` — §8 narrative rewritten as executed-plan + new §8.6 Migration log + §8.7 Sync workflow; Board TBD `🔜` → ✅
 6. `docs(roadmap): two-branch fork model (jazzy + autoboat/main)` — added `autoboat/main` branch on the fork as the workspace-consumed branch; §8.6/§8.7 + Board updated for the two-branch sync workflow
 
-§1.6 invisibility sweep clean across all 13 commits. Sim NOT left alive (wasn't launched from this session); Thu AM Block B1 needs fresh sim launch — the launcher will see the same effective sim source (fork's `autoboat/main` HEAD = old `jazzy` HEAD = upstream `7609d1bd` + bake-in `e384cd65`), just sourced from the fork instead of `osrf/vrx` upstream.
+§1.6 invisibility sweep clean across all 13 substantive commits and the diary/meta cleanups that followed. Sim NOT left alive (wasn't launched from this session); Thu AM Block B1 needs fresh sim launch — the launcher will see the same effective sim source (fork's `autoboat/main` HEAD = old `jazzy` HEAD = upstream `7609d1bd` + bake-in `e384cd65`), just sourced from the fork instead of `osrf/vrx` upstream.
 
 ---
 
