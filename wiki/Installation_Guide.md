@@ -90,7 +90,7 @@ git clone https://github.com/Ghostzero00018/uvautoboat.git
 
 ### Step 3: Clone VRX (if not already done)
 
-> **Note:** AutoBoat consumes the fork branch `autoboat/main`; the fork's `jazzy` branch tracks upstream VRX plus bake-in fixes. See [wiki/Roadmap.md §8](Roadmap) for maintenance details. The `--branch autoboat/main` flag below pins the clone to the right branch independent of the fork's GitHub default-branch setting.
+> **Note:** AutoBoat consumes the fork branch `autoboat/main`; the fork's `jazzy` branch tracks upstream VRX plus bake-in fixes. See [wiki/Roadmap.md §8](Roadmap) for maintenance details. The `--branch autoboat/main` flag below pins the clone to the right branch independent of the fork's GitHub default-branch setting. **If you have an existing pre-06/05/2026 checkout pointing at `osrf/vrx` upstream**, use [VRX_Fork_Migration](VRX_Fork_Migration) instead — it has the in-place repoint recipe.
 
 ```bash
 git clone --branch autoboat/main https://github.com/Ghostzero00018/vrx.git

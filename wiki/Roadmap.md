@@ -464,6 +464,8 @@ Questions that unblock specific next steps. Organised by phase.
 ## 8. Sim infrastructure — VRX upstream fork (active since 06/05/2026)
 
 > **Status:** forked 06/05/2026 to `Ghostzero00018/vrx` (basename invariant — `patch_vrx.sh:20` hardcoded local path `$WS_ROOT/src/vrx/`). The original §8.5 "explicit not now" was overridden as a deliberate scope expansion: 0/4 §8.2 triggers had fired at the time of fork, but the call was taken ahead of upstream pressure to unblock future hardening (CI on the fork, freer custom-mod surface, the eventual Phase 5+ sim-side integrations). The decision-rationale framework below (§8.1-§8.5) is preserved as the audit trail of how the call gets made when triggers DO fire in future re-evaluations. See §8.6 Migration log for the landing detail and §8.7 for the sync workflow.
+>
+> **Teammates with a pre-06/05/2026 VRX checkout** (i.e., `~/seal_ws/src/vrx/` still pointing at `osrf/vrx` upstream) — see [VRX_Fork_Migration](VRX_Fork_Migration) for the repoint recipe. Two paths offered (in-place vs fresh clone) plus verification + troubleshooting.
 
 ### 8.1 Original baseline (pre-fork)
 
