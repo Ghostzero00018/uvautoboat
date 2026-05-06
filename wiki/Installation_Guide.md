@@ -48,11 +48,11 @@ sudo apt-get install gz-harmonic
 
 Clone the VRX repository:
 
-- **[VRX GitHub Repository](https://github.com/osrf/vrx)**
+- **[VRX GitHub Repository](https://github.com/Ghostzero00018/vrx)**
 
 ```bash
 cd ~/seal_ws/src
-git clone https://github.com/osrf/vrx.git
+git clone https://github.com/Ghostzero00018/vrx.git
 ```
 
 ### 4. rosbridge-suite
@@ -91,7 +91,7 @@ git clone https://github.com/Ghostzero00018/uvautoboat.git
 ### Step 3: Clone VRX (if not already done)
 
 ```bash
-git clone https://github.com/osrf/vrx.git
+git clone https://github.com/Ghostzero00018/vrx.git
 ```
 
 ### Step 4: Install Dependencies

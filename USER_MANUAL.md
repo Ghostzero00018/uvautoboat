@@ -343,7 +343,7 @@ When running in Gazebo, time moves differently than real-world time. The `use_si
 
 - **ROS 2 Jazzy**: [Installation Guide](https://docs.ros.org/en/jazzy/Installation.html)
 - **Gazebo Harmonic**: [Installation Guide](https://gazebosim.org/docs/harmonic/install_ubuntu/)
-- **VRX Simulation**: [GitHub Repository](https://github.com/osrf/vrx)
+- **VRX Simulation**: depends on fork at [Ghostzero00018/vrx](https://github.com/Ghostzero00018/vrx) (canonical project: [osrf/vrx](https://github.com/osrf/vrx))
 - **rosbridge-suite**: Required for web dashboard
 
 ### Step-by-Step Installation
@@ -354,7 +354,7 @@ mkdir -p ~/seal_ws/src && cd ~/seal_ws/src
 
 # 2. Clone repositories
 git clone https://github.com/Ghostzero00018/uvautoboat.git
-git clone https://github.com/osrf/vrx.git
+git clone https://github.com/Ghostzero00018/vrx.git
 
 # 3. Install dependencies
 cd ~/seal_ws
