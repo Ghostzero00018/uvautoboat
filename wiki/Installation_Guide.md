@@ -52,7 +52,7 @@ Clone the VRX repository:
 
 ```bash
 cd ~/seal_ws/src
-git clone https://github.com/Ghostzero00018/vrx.git
+git clone --branch autoboat/main https://github.com/Ghostzero00018/vrx.git
 ```
 
 ### 4. rosbridge-suite
@@ -90,8 +90,10 @@ git clone https://github.com/Ghostzero00018/uvautoboat.git
 
 ### Step 3: Clone VRX (if not already done)
 
+> **Note:** AutoBoat consumes the fork branch `autoboat/main`; the fork's `jazzy` branch tracks upstream VRX plus bake-in fixes. See [wiki/Roadmap.md §8](Roadmap) for maintenance details. The `--branch autoboat/main` flag below pins the clone to the right branch independent of the fork's GitHub default-branch setting.
+
 ```bash
-git clone https://github.com/Ghostzero00018/vrx.git
+git clone --branch autoboat/main https://github.com/Ghostzero00018/vrx.git
 ```
 
 ### Step 4: Install Dependencies

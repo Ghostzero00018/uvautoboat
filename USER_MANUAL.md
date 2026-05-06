@@ -354,7 +354,8 @@ mkdir -p ~/seal_ws/src && cd ~/seal_ws/src
 
 # 2. Clone repositories
 git clone https://github.com/Ghostzero00018/uvautoboat.git
-git clone https://github.com/Ghostzero00018/vrx.git
+# VRX is consumed from a project fork pinned to the autoboat/main branch — see wiki/Roadmap.md §8 for why
+git clone --branch autoboat/main https://github.com/Ghostzero00018/vrx.git
 
 # 3. Install dependencies
 cd ~/seal_ws

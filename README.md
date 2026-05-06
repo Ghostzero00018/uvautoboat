@@ -59,7 +59,8 @@ GPS/IMU ──> Planner ──> waypoints/targets ──> Controller ──> thr
 # 1. Create workspace and clone
 mkdir -p ~/seal_ws/src && cd ~/seal_ws/src
 git clone https://github.com/Ghostzero00018/uvautoboat.git
-git clone https://github.com/Ghostzero00018/vrx.git
+# VRX is consumed from a project fork pinned to the autoboat/main branch — see wiki/Roadmap.md §8 for why
+git clone --branch autoboat/main https://github.com/Ghostzero00018/vrx.git
 
 # 2. Install dependencies
 cd ~/seal_ws
