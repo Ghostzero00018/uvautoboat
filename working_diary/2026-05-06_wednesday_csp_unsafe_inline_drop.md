@@ -59,7 +59,7 @@ cp working_diary/2026-05-05_tuesday_first_field_test.md \
 
 **Pass criteria:** Thu diary file exists, has `[To fill]` placeholders re-blanked, dates updated, no Tue-specific narrative (Fallback queue progress + post-A-slip subsections removed), pre-commit grep clean.
 
-**Outcome.** [To fill — confirmation that Thu scaffold is ready, what was stripped vs preserved.]
+**Outcome.** Thu scaffold ready at `working_diary/2026-05-07_thursday_first_field_test.md` (349 lines, vs 423 for Tue source). Stripped: entire `## Fallback queue progress` section (Tue PM commit-history narrative, including the post-A-slip subsection). Preserved with re-blanked placeholders: Block A-F Outcomes, Verification summary checkboxes, "Field-test confirmation timing" entry in Known unknowns. Updated: header date `2026-05-05` → `2026-05-07`, weekday Tuesday → Thursday, week-shape recap (Mon/Tue/Wed all history; Thu = today; Fri = V-E Day holiday); Block A re-cast as "AM confirmation re-check"; Block B "B4 — VRX HOLD periodic re-eval" condensed to a 2-line "weekly cadence covered by Wed Block A.5; skip unless trigger event fires today" note; Block F commit-message templates updated to 07/05; Verification summary date updated to 07/05; Next steps section restructured for Thu's POV (Active branch = today; Fri 08/05 = V-E Day; conditional on today's Block D outcome). Pre-commit `§1.6` grep clean. Followup correction surfaced by review pass: Thu L12 commit-count claim "ten commits total" was incorrect (Tue had 16 commits per `git log --since='2026-05-05 00:00' --until='2026-05-06 00:00'`); fixed to "16 commits total (10 work commits narrated below + 6 docs/scaffold meta-commits)".
 
 ---
 
@@ -83,7 +83,7 @@ ls test_environment/
 
 **Pass criteria:** 0/4 triggers still fired → HOLD stands; record in Outcome below. If any trigger flipped, document which one + the evidence + the escalation path (re-open §8.2 fork-or-don't decision; do **not** auto-fork — the actual fork operation is a ~3-4 h dedicated task per Tue's evening estimate, not a Wed inline action).
 
-**Outcome.** [To fill — trigger states (1=?, 2=?, 3=?, 4=?) + HOLD/escalate decision + brief evidence per trigger.]
+**Outcome.** 0/4 triggers fired — HOLD stands. Trigger 1 (patch growth): not fired — 1 patch (`one_click_launch_all/patch_vrx.sh`), same as Tue baseline. Trigger 2 (custom worlds / sensors / WAM-V mods): not fired — 2 files in `test_environment/` (`sydney_regatta_DEFAULT.sdf`, `wamv_3d_lidar.xacro`), same as Tue baseline. Trigger 3 (Phase 5+ sim-side incompatibility): not fired — first wet test still pending Thu 07/05; passive trigger, fires only on field-test outcome. Trigger 4 (upstream-release flag since Mon-evening): not fired — no signal received; passive check (`gh` CLI not installed on workstation, network API blocked from this session env, falling back to "no signal received"). Next scheduled re-eval: Mon 11/05 AM (weekly cadence; Thu skipped per the Thu B4 carry-over note).
 
 ---
 
@@ -108,7 +108,7 @@ Continuation of yesterday's CSP-prep arc. 5 `.style.color` writes + 3 misc state
 
 **Pass criteria:** `node --check app.js` OK; `\.style\.color\s*=` writes count drops to 0 (verify via grep); `\.style\.background\s*=` + `\.style\.animation\s*=` writes also down to 0 (modulo runtime-3 scope); browser-test confirms drift-uncertainty color, status colors, grid-toggle button styling, emergency-flash animation all still work.
 
-**Outcome.** [To fill — count of mutations migrated, any tricky cases, pre-existing color values reused vs new.]
+**Outcome.** 8 sites migrated; all `\.style\.color\s*=` + `\.style\.background\s*=` + `\.style\.animation\s*=` direct writes dropped to 0. Drift uncertainty (1) → `data-drift-level="high|mid|low"` attribute + `#drift-uncertainty[data-drift-level="..."]` CSS rules — chose data-attribute over CSS-variable-via-`setProperty` because pure DOM mutation isn't subject to `style-src` enforcement (more robust under tightened CSP). Warn span (2) → `.text-warn` via `classList.toggle('text-warn', !matches)` (also clears class on revert to canonical, cleaner than the original which only set color on mismatch). Status warn (3) → `.text-warn` (canonicalised `#f39c12` → `#ff9800`; visual diff <5%, resolved the Tue Known Unknown). Status ok (4) → `.text-ok` with explicit `remove('text-warn')` → `add('text-ok')` toggle pair. Grid-toggle btn (5+6) → single `classList.toggle('is-active', gridEnabled)` call replaces the bg+fg pair; **C1's grid-btn cssText folded into Block B** (since coupled to the bg/fg state) — width/height/border/cursor/font-size/line-height/padding moved to `.grid-toggle-btn` base class + `.grid-toggle-btn.is-active` modifier flips to active-state colors (`#fff`/`#333`), inactive defaults baked in (`#ddd`/`#999`); C1's planned 3 sites narrowed to 2. Emergency-flash start/clear (7+8) → `classList.add('is-flashing')` / `classList.remove('is-flashing')`. New CSS section appended at end of `style_merged.css`: `STATE / TEXT-COLOR CLASSES (CSP-prep, 06/05/2026)`, ~50 LOC. **Follow-up specificity fix surfaced by browser test:** `.is-flashing` (selector specificity 0,1,0) lost to the existing `.mission-btn.emergency` rule (0,2,0), which has its own `animation: emergency-btn-glow 2s ease-in-out infinite`; original inline `style.animation = ...` had implicit inline-style specificity that masked the conflict. Fix: bump `.is-flashing` selector to `.mission-btn.emergency.is-flashing` (0,3,0). Verified via browser computed-style: `emergency-flash | 0.5s | 6`.
 
 ---
 
@@ -142,7 +142,11 @@ The biggest sub-batch. Three sub-areas — recommend committing as 3 separate su
 
 **Pass criteria:** `node --check app.js` OK; all `\.style\.X\s*=` writes in `app.js` reduced to **0** (or whatever residual count is justified by CSSOM-via-setProperty paths); browser-test confirms toast appearance + animation, Leaflet waypoint markers (colours per state), grid-toggle button, mission progress bar fill, export-button header layout, clipboard-fallback flow all still work.
 
-**Outcome.** [To fill — count migrated per sub-area; any residuals that couldn't be migrated; browser-test result.]
+**Outcome.** All `cssText =` writes + generated `style="..."` strings dropped to 0; 17 misc `\.style\.X\s*=` direct writes dropped to 0 (with 2 justified residuals via CSSOM `setProperty('--bar-width', ...)` for thrust + mission progress bar dynamic widths, deemed acceptable per the pre-diary's "0 residual modulo setProperty paths" criterion). Browser test confirmed all paths behave normally.
+
+- **C1 (cssText, 2 sites — grid-btn folded into Block B):** Toast container (3349) → `.toast-container` class. Toast item (3385) → `.toast` base + `.toast-info | -success | -warning | -error` modifier classes for bg + border-left-color, plus `.toast.toast--leaving` for slideOut. Removed dead switch statement that was computing `bgColor` / `borderColor`.
+- **C2 (generated style strings, 4 sites):** Onboarding back-btn `style="visibility: hidden;"` → `.is-invisible` utility class (distinct from `.is-hidden` since it preserves layout flow). Onboarding flex-row → `.onboarding-flex-row`. Leaflet `L.divIcon` waypoint marker → `waypoint-marker waypoint-marker--{passed,target,pending}` className + inner `.waypoint-marker-dot` carries the visible styling (border + shadow + cursor + `box-sizing: border-box` so `iconSize` controls the visible footprint, not border-expanded). Popup span color → `.wp-status--{passed,target,pending}` modifiers. Popup `<hr style="margin: 4px 0; border-color: #ddd;">` → updated existing `.waypoint-tooltip hr` CSS rule (added margin + changed border-color from #eee to #ddd to preserve the original inline visual).
+- **C3 (misc layout writes, 7 sites):** Thrust bar width + mission progress bar width (1136, 3843) → `bar.style.setProperty('--bar-width', X + '%')` + CSS `width: var(--bar-width, 0%)` on `.thrust-fill` and `.mission-progress-bar`. Export-button header layout (4274-4276) → `.panel-header-with-export` class (single `classList.add` replaces 3 inline writes). Clipboard fallback textarea (4313-4314) → `.clipboard-fallback-textarea` class with `position: fixed; top: 0; left: -10000px; opacity: 0` (added `top` + `left` for proper off-screen placement). Toast slideOut animation (3408 — extra residual not in pre-diary's 7 sites) → `classList.add('toast--leaving')` (handled in C1's CSS rule).
 
 ---
 
@@ -175,7 +179,22 @@ Browser-test gate (verify-not-assume — the user's earlier review insisted on t
 
 **Pass criteria:** dashboard fully functional with `script-src 'self'` + `style-src 'self'`; zero new CSP violations in console; all the above interactive paths behave identically to today.
 
-**Outcome.** [To fill — pass/fail of browser test; if pass, the final CSP shape that landed; if fail, what triggered the violation and what alternative shape was used.]
+**Outcome.** PASS. Final CSP shape that landed:
+
+```text
+default-src 'self';
+script-src 'self';                                          (no 'unsafe-inline')
+style-src 'self';                                           (no 'unsafe-inline')
+font-src 'self' data:;
+img-src 'self' data: https://*.tile.openstreetmap.org
+        http://localhost:8080 http://127.0.0.1:8080
+        http://<host>:8080;                                  (per-request derived)
+connect-src 'self' ws://localhost:9090 ws://127.0.0.1:9090
+            ws://<host>:9090;                                (per-request derived)
+frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none';
+```
+
+`<host>` derived per-request from HTTP `Host` header — see Block F audit-fixes section for context (Fix #1 was originally a startup-time `detect_host()`, replaced with per-request `parse_request_host()` after review pass surfaced LAN-network-shape edge cases). 4 curl tests against fabricated Host headers all passed: `Host: localhost:8002` → `ws://localhost:9090`; `Host: 10.1.163.158:8002` → `ws://10.1.163.158:9090`; `Host: boat-pi.local:8002` → `ws://boat-pi.local:9090`; `Host: evil; rm -rf /` → fallback to `ws://localhost:9090` (regex validation rejects malformed input). Browser test on Firefox/Chrome (workstation): all 11 interactive paths green after the Block B `.is-flashing` follow-up fix; **Leaflet's internal CSSOM `transform: translate3d(...)` writes NOT blocked under `style-src 'self'`** (the critical risk anticipated in Known Unknowns) — map pan/zoom + waypoint marker positioning all work normally; both `setProperty('--bar-width', ...)` calls also work (CSS-custom-property writes via CSSOM are accepted by Firefox + Chrome under tightened CSP, at least on their current versions). Zero CSP violations in DevTools console.
 
 ---
 
@@ -195,7 +214,7 @@ If health check passes + time remains, pick from fallback queue:
 - **Roadmap §1.3 path B prep** — research MBTiles tile-server options (TileServer GL + pre-generated MBTiles for the test region). Not strictly blocking for Thu (the test site likely has internet via hotspot), but it's the next strategic-value pick before the Thu field test.
 - **Mock water-quality sensor (Phase A)** — blocked on supervisor reply; skip if that's still pending.
 
-**Outcome.** [To fill — health check result; fallback work picked + how far it got.]
+**Outcome.** DEFERRED — sim was not launched from this session. Browser test for Block D was driven via direct `serve_dashboard.py` + manual paths exercise, not via a full sim run. Pre-Thu sim health_check + fallback queue picks carry forward to Thu AM as part of Block B1 (sim sanity post-Wed-CSP-drop). No fallback work picked.
 
 ---
 
@@ -211,19 +230,46 @@ If health check passes + time remains, pick from fallback queue:
 5. Confirm `working_diary/2026-05-07_thursday_first_field_test.md` exists with re-blanked placeholders + correct dates.
 6. Sim left alive for Thu AM re-verification (no need to tear down).
 
-**Outcome.** [To fill at end of day.]
+**Outcome.** Anticipated commit stack today (06/05), 7 commits — user sequencing:
+
+1. `docs(diary): scaffold 07/05 Thu first field test (copy from Tue)` — Block A
+2. `refactor(dashboard): runtime-2 color/state → classes (D-runtime-2)` — Block B portion (carries the original `.is-flashing` specificity bug — fixed in #3)
+3. `refactor(dashboard): runtime-3 + .is-flashing fix (D-runtime-3)` — C1+C2+C3 combined plus the Block B follow-up specificity bump on `.is-flashing` (one-line CSS edit, folded in since it touches the same file as runtime-3 changes; bisect note in Block B outcome above)
+4. `docs(diary): correct Tue 05/05 commit count (10 narrated → 16 total)` — Tue diary fix
+5. `chore(vendor): add LICENSE_NOTICES for vendored CDN libs` — vendor compliance
+6. `refactor(dashboard): drop CSP 'unsafe-inline' + per-request Host` — serve_dashboard.py + wiki/Dashboard_Security.md (browser-test-gated, gate passed)
+7. `docs(diary): close 06/05 — CSP drop + Thu scaffold + audit fixes` — this diary
+
+§1.6 invisibility sweep clean across all changed files. Sim NOT left alive (wasn't launched from this session); Thu AM Block B1 needs fresh sim launch.
+
+---
+
+## Mid-session audit pass — pre-Block-D review
+
+A review pass run between Block C completion and Block D's CSP drop surfaced 4 findings + 1 follow-up regression. All addressed before the live browser test.
+
+| # | Finding | Fix |
+|--:|:--|:--|
+| 1 | CSP allowlist hardcoded `localhost`/`127.0.0.1` only — broke LAN access (`http://<workstation-IP>:8002` would fail because `app.js` uses `window.location.hostname` for rosbridge + camera URLs). Regression introduced by Tue's `50ae2af` CSP wrapper. | Refactored `serve_dashboard.py` to derive host **per-request** from the HTTP `Host` header via `parse_request_host()` — validated by regex (alphanumeric + dot + hyphen, length ≤253; falls back to `localhost` on bad input). Argv override available for explicit lock. Cleaner than the v1 fix (startup-time `detect_host()` UDP-routing trick) — handles all field-network shapes (LAN IP, mDNS hostnames like `boat-pi.local`, direct AP IP) without launcher changes. |
+| 2 | `wiki/Dashboard_Security.md` stale across 9 sections after the CSP `'unsafe-inline'` drop + per-request Host changes (L60, L173-175, L182-191, L197-198, L200-201, L211, L217-222). | Refreshed (post-change doc audit pattern). Section heading "Proposed Content Security Policy (research, 05/05/2026)" → "Content Security Policy". Updated CSP code block to deployed shape. Updated directive table for `script-src` / `style-src` / `img-src` / `connect-src`. Updated Option A description for the per-request Host model. Rewrote "Tightening status" + "remaining hardening passes" (item 2 done, removed; only OSM-tile vendoring remains as Path B). Updated `app.js` line refs (354 / 518 / 1432). |
+| 3 | `vendor/LICENSE_NOTICES` missing — `wiki/Roadmap.md:88` explicitly committed to adding it; vendored Leaflet (BSD-2) + roslibjs (BSD-3) + Roboto (Apache-2.0) had no notices file. Compliance gap, no runtime impact. | Added `web_dashboard/autoboat/vendor/LICENSE_NOTICES` (~295 lines) with verbatim upstream license texts + per-asset attribution + modification log. Apache 2.0 full text included for Roboto. |
+| 4 | Tue 05/05 diary "ten commits" claim inaccurate at L213 + L252 + L356 — Tue's `git log` count is 16. The diary's narrative explicitly enumerates 10 work commits (3 + 3 + 4 in three batches); the 6 unnarrated are docs/scaffold meta-commits (`9b5e879`, `473c195`, `9cbddc9`, `4aa15e0`, `6244691`, `ff7d55c`). | User authorised override of §1.3 frozen-diary rule for this factual correction. Updated all 3 sites to "16 commits total (10 work commits narrated + 6 docs/scaffold meta)". |
+
+**Block B follow-up (surfaced by Block D's browser test):** `.is-flashing` CSS rule lost specificity battle to the existing `.mission-btn.emergency` rule (which has its own persistent `animation: emergency-btn-glow ...`). Original inline `style.animation = ...` had implicit inline-style specificity that masked the conflict. Fixed by bumping selector to `.mission-btn.emergency.is-flashing` (specificity 0,3,0 > the existing rule's 0,2,0). Verified via browser computed-style — `emergency-flash | 0.5s | 6`.
+
+**Audit-pass meta:** 2 review rounds. Round 1 surfaced findings #1, #2, #3, #4 + flagged staging discipline (untracked + unstaged files between commits). Round 2 verified the v1 fixes + raised "residual field-access risk in CSP host detection" (auto-detect's no-route fallback to localhost wouldn't help LAN clients) → drove the v2 per-request fix. Round 3 confirmed all fixes hold. Browser test then surfaced the `.is-flashing` regression as the only remaining issue.
 
 ---
 
 ## Verification summary — 06/05 (check at end of day)
 
-- [ ] Block A: Thu scaffold copy-forward complete; placeholders re-blanked; dates updated
-- [ ] Block A.5: VRX §8.2 trigger states recorded (1-4); HOLD/escalate decision logged
-- [ ] Block B: (D)-runtime-2 landed; `\.style\.color\s*=` writes = 0
-- [ ] Block C: (D)-runtime-3 landed; `\.style\.X\s*=` writes in `app.js` reduced to expected residual (only CSSOM `setProperty` calls if any)
-- [ ] Block D: CSP `'unsafe-inline'` drop pass-or-fail recorded; final CSP shape committed in `serve_dashboard.py`
-- [ ] Block E: pre-Thu health_check pass; fallback work picked (or skipped — note which)
-- [ ] Block F: diary filled; pre-commit sweep clean across all today's commits; Thu scaffold confirmed ready
+- [x] Block A: Thu scaffold copy-forward complete; placeholders re-blanked; dates updated
+- [x] Block A.5: 0/4 VRX §8.2 triggers fired; HOLD stands; next re-eval Mon 11/05 AM
+- [x] Block B: (D)-runtime-2 landed; `\.style\.color\s*=` + `\.style\.background\s*=` + `\.style\.animation\s*=` direct writes all = 0; `.is-flashing` specificity follow-up applied
+- [x] Block C: (D)-runtime-3 landed; `\.style\.X\s*=` writes in `app.js` = 0 except 2 justified CSSOM `setProperty('--bar-width', ...)` paths; cssText + generated `style="..."` strings = 0
+- [x] Block D: CSP `'unsafe-inline'` drop PASS; final CSP `script-src 'self'` + `style-src 'self'` + per-request `<host>` derivation in `img-src` / `connect-src`
+- [skip] Block E: pre-Thu health_check + fallback queue deferred to Thu AM Block B1 (sim wasn't launched from this session)
+- [x] Block F: diary filled; pre-commit sweep clean; Thu scaffold confirmed ready; mid-session audit pass folded in (4 fixes + 1 follow-up)
 
 ---
 
