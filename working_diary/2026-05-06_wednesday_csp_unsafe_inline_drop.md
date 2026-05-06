@@ -230,7 +230,9 @@ If health check passes + time remains, pick from fallback queue:
 5. Confirm `working_diary/2026-05-07_thursday_first_field_test.md` exists with re-blanked placeholders + correct dates.
 6. Sim left alive for Thu AM re-verification (no need to tear down).
 
-**Outcome.** Anticipated commit stack today (06/05), 7 commits — user sequencing:
+**Outcome.** Final commit stack today (06/05), **13 commits landed** (the day grew beyond Block F closure with two scope expansions — the Option B reverse-proxy doc polish and the late-afternoon VRX fork migration). User sequencing in two phases:
+
+**Phase 1 — CSP arc + audit fixes (commits 1-7, the originally-planned Block F shape):**
 
 1. `docs(diary): scaffold 07/05 Thu first field test (copy from Tue)` — Block A
 2. `refactor(dashboard): runtime-2 color/state → classes (D-runtime-2)` — Block B portion (carries the original `.is-flashing` specificity bug — fixed in #3)
@@ -238,9 +240,18 @@ If health check passes + time remains, pick from fallback queue:
 4. `docs(diary): correct Tue 05/05 commit count (10 narrated → 16 total)` — Tue diary fix
 5. `chore(vendor): add LICENSE_NOTICES for vendored CDN libs` — vendor compliance
 6. `refactor(dashboard): drop CSP 'unsafe-inline' + per-request Host` — serve_dashboard.py + wiki/Dashboard_Security.md (browser-test-gated, gate passed)
-7. `docs(diary): close 06/05 — CSP drop + Thu scaffold + audit fixes` — this diary
+7. `docs(diary): close 06/05 — CSP drop + Thu scaffold + audit fixes` — this diary (initial close)
 
-§1.6 invisibility sweep clean across all changed files. Sim NOT left alive (wasn't launched from this session); Thu AM Block B1 needs fresh sim launch.
+**Phase 2 — Post-close scope expansions (commits 8-13):**
+
+8. `docs(diary): note Wed per-request Host CSP in Thu scaffold` — small follow-up to the Thu scaffold (Wed-reference accuracy at L13/L25/L58/L62)
+9. `refactor(diary): update mission progress bar dynamic width to use CSS variables` — your inline diary edit (1-line wording fix, intentional per system reminder)
+10. `docs(security): polish Option B reverse-proxy + A→B triggers` — wiki/Dashboard_Security.md row L214 expanded from 1-line stub to depth-matched cell + L142/L143 cross-references + new A→B triggers paragraph (drafted via /ultraplan, applied locally after the remote session timed out)
+11. `docs(vrx): swap install/clone URLs to Ghostzero00018/vrx fork` — VRX fork landed (`Ghostzero00018/vrx` with bake-in commit `e384cd65` on the fork's `jazzy` branch); 5 install/clone URLs swapped + 1 dual-link entry rewritten with both arrows
+12. `docs(roadmap): VRX §8 rewrite (executed) + Board.md flip → ✅` — §8 narrative rewritten as executed-plan + new §8.6 Migration log + §8.7 Sync workflow; Board TBD `🔜` → ✅
+13. `docs(roadmap): two-branch fork model (jazzy + autoboat/main)` — added `autoboat/main` branch on the fork as the workspace-consumed branch; §8.6/§8.7 + Board updated for the two-branch sync workflow
+
+§1.6 invisibility sweep clean across all 13 commits. Sim NOT left alive (wasn't launched from this session); Thu AM Block B1 needs fresh sim launch — the launcher will see the same effective sim source (fork's `autoboat/main` HEAD = old `jazzy` HEAD = upstream `7609d1bd` + bake-in `e384cd65`), just sourced from the fork instead of `osrf/vrx` upstream.
 
 ---
 
