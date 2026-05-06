@@ -105,14 +105,14 @@ Watch the launcher output for **`[patch_vrx] OK: publish_model_pose already true
 
 ## Don't forget the `uvautoboat` side
 
-While you're updating things, pull the latest project repo too — today's 06/05 commit batch includes the VRX install-doc updates, Roadmap §8 rewrite, and Board.md fork-landing entry:
+While you're updating things, pull the latest `uvautoboat` repo too — the post-fork commit batch (landed 06/05/2026) includes the updated VRX install paths, the Roadmap §8 rewrite explaining the fork model, and the Board.md fork-landing entry:
 
 ```bash
 cd ~/seal_ws/src/uvautoboat
 git pull origin main
 ```
 
-Nothing in this batch breaks anything; it's just docs + the Wed diary. Safe to pull at any time.
+These are doc-only changes — safe to pull at any time.
 
 ---
 
