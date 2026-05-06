@@ -22,7 +22,7 @@ A small artificial lake in a park is a **bounded-risk first wet test**: small en
 Active blocks (conditional on test confirmation, marked PM-only as such):
 
 1. **Block A — AM confirmation re-check** (~5 min, opening): is the field test still on this afternoon? Branch on the answer (Tue's slip context still applies; weather hasn't been re-cleared as of scaffold write Wed 06/05).
-2. **Block B — Pre-deployment workstation prep** (~30-60 min, AM): irrespective of A, do the prep that's cheap and useful in either branch — final sim sanity, rosbag config dry-run, deployment artifact bundle. Today's prep is fresh re-verification on top of Tue's; the dashboard CSP shape changed Wed (`'unsafe-inline'` removed; per-request Host derivation added so LAN access works without launcher changes) and is worth re-checking.
+2. **Block B — Pre-deployment workstation prep** (~10-15 min, AM, narrowed): D1+D2 hardware-only scope means **only B3 (deployment artifact bundle) is relevant** today — B1 (sim sanity), B2 (sim-topic rosbag dry-run), and B4 (VRX HOLD re-eval) are skipped because the autonomy stack and VRX simulation backend are not on trial in D1+D2. Skipped sub-blocks' content kept below for reference / for when the test scope expands to D3+.
 3. **Block C — Hardware bring-up on-site** (PM, **conditional on A=GO**): physical setup, sensor calibration, dry-land sanity, network up.
 4. **Block D — In-water test scenarios** (PM, **conditional on A=GO and C=PASS**): the actual mission cases, with abort criteria spelled out per scenario.
 5. **Block E — Post-test data capture + debrief** (early evening, **conditional on A=GO**): rosbag offload, immediate observations, photo / video index.
@@ -53,11 +53,13 @@ The trigger for the day's branch. Check whichever channel the field-test confirm
 
 ---
 
-## Block B — Pre-deployment workstation prep (~30-60 min, AM)
+## Block B — Pre-deployment workstation prep (~10-15 min, AM, narrowed)
 
-Cheap prep that's worth doing whether or not the test runs today. Re-verification on top of Tue's prep — most of Tue's B1/B2 outcomes should still hold, but the dashboard CSP shape changed Wed (now `'unsafe-inline'`-free on `script-src` + `style-src`; per-request Host derivation in `img-src` / `connect-src` so LAN clients work); a fresh end-to-end check is cheap insurance.
+> **Scope note (carried from Tue 05/05 AM, ~10:30; reaffirmed Wed 06/05 evening):** today's wet test is **D1 + D2 only** — float verification + tethered console teleop with propeller direction + balance check. The autonomy stack and VRX simulation backend are NOT being tested. Block B narrows accordingly: **only B3 (deployment artifact bundle) is relevant tomorrow morning**. B1 (sim sanity), B2 (sim-topic rosbag dry-run), and B4 (VRX HOLD re-eval) are skipped — content kept below for reference / for when the test scope expands to D3+ (single-waypoint autonomy / untethered mission / obstacle handling, where the autonomy stack + sim-vs-real comparison become relevant).
 
 ### B1 — Final sim sanity post-Wed-CSP-drop
+
+> **Skipped tomorrow** — D1+D2 hardware-only scope; the sim isn't on trial. Content kept for reference / for D3+ test windows where sim-vs-real comparison matters.
 
 Wed's evening landed the CSP `'unsafe-inline'` drop + per-request Host derivation. Sim was tested per the Wed Block D browser-test gate, but a full mission run end-to-end on Thu AM confirms nothing in the dashboard interactive paths regressed under the tightened CSP:
 
@@ -75,6 +77,8 @@ ros2 run plan autoboat_cli start
 Pass criteria: 5/5 nodes up, dashboard connects + renders correctly (events log / mission history / waypoint validation, no CSP violations in DevTools console), mission generates + confirms + starts + completes (or pauses cleanly), no fresh crashes in `/var/crash/`.
 
 ### B2 — Rosbag config dry-run
+
+> **Skipped tomorrow** — this dry-run records sim topics; D1+D2 don't exercise the autonomy stack so there's nothing meaningful to dry-run. Field-side telemetry recording from the real boat (e.g., thrust commands + IMU + GPS during D2 teleop) is a separate concern; defer to operator judgment based on what hardware is actually hooked up and what topics are publishing on the boat side. Content below kept for reference / for D3+ test windows.
 
 Decide what topics to record in the field. Likely scope for the autonomy stack:
 
@@ -177,7 +181,7 @@ If the test is happening this afternoon, what gets carried to the lake. Concrete
 
 ### B4 — VRX fork-or-don't periodic re-evaluation
 
-Weekly cadence; Wed 06/05 Block A.5 already executed this week's check (see `working_diary/2026-05-06_wednesday_csp_unsafe_inline_drop.md` Block A.5 outcome). Skip re-running on Thu unless a candidate trigger event fires today (e.g., the wet test exposes a sim-incompat — that fires Trigger 3). If skipped, the next scheduled re-eval is Mon 11/05 AM.
+> **Skipped tomorrow** — D1+D2 hardware-only scope can't fire any §8.2 trigger (Trigger 3 = sim-side incompatibility surfaces during Phase 5+ HARDWARE integration; D1+D2 don't touch the sim). Plus weekly cadence is already covered by Wed 06/05 Block A.5 (0/4 fired). Next scheduled re-eval: Mon 11/05 AM.
 
 **Outcome.** [To fill — pass / partial / abort across B1, B2, B3; B4 typically "skipped, covered by Wed Block A.5".]
 
@@ -279,7 +283,7 @@ If the field test happened, **also** write a short "first wet test" entry in the
 ## Verification summary — 07/05 (check at end of day)
 
 - [ ] Block A: confirmation status determined; decision branch logged
-- [ ] Block B: B1 sim sanity (post-Wed CSP-drop), B2 rosbag dry-run, B3 deployment bundle populated; B4 covered by Wed Block A.5
+- [ ] Block B (D1+D2-narrowed scope): B3 deployment bundle populated; B1 / B2 / B4 skipped per scope refinement (autonomy stack + sim backend not on trial — see Block B intro for rationale)
 - [ ] Block C: hardware bring-up [pass / partial / abort + reason]
 - [ ] Block D: in-water scenarios D1 + D2 [per-scenario status]
 - [ ] Block E: data offloaded, observations captured
