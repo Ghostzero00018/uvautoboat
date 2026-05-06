@@ -1359,7 +1359,7 @@ Lane 3: End <────────────────────┘
 | **A* too slow** | Reduce `astar_max_expansions` or increase `astar_resolution` |
 | **Waypoints not generating** | Check GPS: ensure `/wamv/sensors/gps/gps/fix` is publishing |
 | **Mission stuck in INIT** | Run `ros2 run plan autoboat_cli generate` to create waypoints |
-| **LiDAR at world origin** | Run `bash one_click_launch_all/patch_vrx.sh` — fixes VRX `publish_model_pose` (issue #876) |
+| **LiDAR at world origin** | Pre-fixed in source via fork bake-in commit `e384cd65` on `autoboat/main` (VRX issue #876); launcher's `patch_vrx.sh` short-circuits with "OK: publish_model_pose already true". If you see "Applying ..." instead, your VRX checkout is stale — see [VRX_Fork_Migration](wiki/VRX_Fork_Migration.md) |
 | **Health check false FAILs** | Usually a `ros2 daemon` stale cache — run `ros2 daemon stop && ros2 daemon start` and re-run. The health check itself polls DDS discovery on startup so transient lag should self-heal. |
 
 ### Dashboard Connection Diagnostics
@@ -1488,7 +1488,7 @@ chmod +x one_click_launch_all/launch_autoboat_complete.sh
 
 | Component | Description |
 | :---------- | :------------ |
-| VRX Patch | Applies `patch_vrx.sh` to fix LiDAR model pose |
+| VRX Patch (safety net) | Runs `patch_vrx.sh`; post-fork it short-circuits cleanly because the bake-in commit `e384cd65` on `autoboat/main` already has the fix in source. Kept as no-op safety net per [Roadmap §8.6](wiki/Roadmap.md) |
 | Gazebo Simulation | VRX simulation world |
 | rosbridge WebSocket | Dashboard communication (port 9090) |
 | web_video_server | Camera MJPEG stream (port 8080) |

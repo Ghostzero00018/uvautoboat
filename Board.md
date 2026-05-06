@@ -213,7 +213,7 @@ The whole repo is expected to run on the Pi 5. Long-term (Phase 5.2+): dashboard
 | Perception/Controller param collision (critical_distance) | Renamed Perception's to `perception_critical_distance` |
 | Dashboard sending all params on Apply | Added dirty-params filtering (only changed fields sent) |
 | Dashboard stale HTML defaults | Synced 17 HTML defaults to match launch YAML |
-| VRX LiDAR at world origin | `patch_vrx.sh` fixes `publish_model_pose` (issue #876) |
+| VRX LiDAR at world origin | Initial fix: runtime `patch_vrx.sh` (issue #876). Superseded 06/05/2026 by fork bake-in commit `e384cd65` on `autoboat/main`; script retained as idempotent no-op safety net |
 | Dead code in setup.py / nodes | Removed `_fixed` variants, unused utilities, dead states |
 | Missing `std_srvs` dependency | Added to plan/package.xml |
 | Dead `restart_mission` / `panic_stop` code | Removed from Controller, dashboard, CLI |
@@ -332,7 +332,7 @@ The whole repo is expected to run on the Pi 5. Long-term (Phase 5.2+): dashboard
 | **Emergency Stop** | ✅ Done | Latching stop from dashboard/CLI, EMERGENCY_STOP state |
 | **Dashboard Config System** | ✅ Done | 3 Apply panels, dirty-params, reset defaults, disabled until sync |
 | **Param Collision Fix** | ✅ Done | Perception params prefixed `perception_` to avoid Controller collision |
-| **VRX LiDAR Patch** | ✅ Done | `patch_vrx.sh` auto-fixes `publish_model_pose` |
+| **VRX LiDAR Patch** | ✅ Done | Fork bake-in commit `e384cd65` on `autoboat/main` (06/05/2026); `patch_vrx.sh` retained as idempotent no-op safety net for ≥2 release cycles |
 | **Repo Cleanup** | ✅ Done | Dead code, legacy moves, package.xml audit, setup.py cleanup |
 
 ### A* Path Planning (Implemented)

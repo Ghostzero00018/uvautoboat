@@ -222,7 +222,7 @@ uvautoboat/
 | Spinning in circles | Reduce Kp: `ros2 param set /heading_controller_node kp 300` |
 | Dashboard disconnected | Restart rosbridge, check port 9090 |
 | No obstacles detected | Check LiDAR: `ros2 topic hz /wamv/sensors/lidars/lidar_wamv_sensor/points` |
-| LiDAR at world origin | Run `bash one_click_launch_all/patch_vrx.sh` (VRX issue #876) |
+| LiDAR at world origin | Pre-fixed in source via fork bake-in commit `e384cd65` on `autoboat/main` (VRX issue #876); launcher's `patch_vrx.sh` short-circuits with "OK: publish_model_pose already true". If you see "Applying ..." instead, your VRX checkout is stale — see [VRX Fork Migration](wiki/VRX_Fork_Migration.md) |
 | Build failures | Clean: `rm -rf build install log && colcon build --merge-install` |
 | Dashboard stale after update | Clean build + relaunch + hard-refresh browser (`Ctrl+Shift+R`) |
 | Health check false FAILs | DDS discovery lag — wait 5s and re-run |

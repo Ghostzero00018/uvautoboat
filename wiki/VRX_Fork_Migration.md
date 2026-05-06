@@ -27,7 +27,7 @@ git remote -v
 
 ## Pre-migration checklist
 
-- **Sim not running.** Stop any active launcher (`Ctrl+C` in the launcher terminal, or `pkill -9 gz && pkill -9 ros2 && pkill -9 rosbridge`). The migration touches source files; running processes shouldn't see them shift mid-flight.
+- **Sim not running.** Stop any active launcher (`Ctrl+C` in the launcher terminal, or `pkill -9 gz; pkill -9 ros2; pkill -9 rosbridge` — semicolons, not `&&`, so each kill runs independently regardless of whether the previous one matched anything). The migration touches source files; running processes shouldn't see them shift mid-flight.
 - **Backup any custom uncommitted work in `~/seal_ws/src/vrx/`.** If you've done more than just letting `patch_vrx.sh` apply its sed substitution, `git stash` it first — Path A's `git checkout` would otherwise discard it. Most teammates have nothing custom here; only the runtime patch in `vrx_urdf/wamv_gazebo/urdf/wamv_gazebo.urdf.xacro`, which is fine to discard because the same change is committed on the fork's `autoboat/main`.
 - **Workspace builds today.** If your current setup is broken before migration, fix that first — don't compound issues.
 
@@ -39,9 +39,9 @@ git remote -v
 cd ~/seal_ws/src/vrx
 git status   # if you see uncommitted changes (typically wamv_gazebo.urdf.xacro modified by a previous patch_vrx.sh run), that's expected — we'll discard it below
 
-# Swap the remotes
-git remote rename origin upstream                            # current osrf/vrx remote → upstream
-git remote add origin git@github.com:Ghostzero00018/vrx.git  # fork → origin
+# Swap the remotes (HTTPS works without SSH key setup; switch to git@github.com:... if your account has SSH configured)
+git remote rename origin upstream                                # current osrf/vrx remote → upstream
+git remote add origin https://github.com/Ghostzero00018/vrx.git  # fork → origin
 git fetch origin
 git checkout autoboat/main                                    # the workspace-consumed branch
 git remote set-head origin -a                                 # refresh origin/HEAD to autoboat/main
