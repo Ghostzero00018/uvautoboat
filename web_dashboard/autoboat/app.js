@@ -243,8 +243,8 @@ function renderOnboardingStep() {
         <span class="onboarding-subtitle">${escapeOnboardingText(step.subtitle)}</span>
         <p>${escapeOnboardingText(step.body)}</p>
         <div class="onboarding-buttons">
-            <button class="onboarding-btn back" ${isFirst ? 'style="visibility: hidden;"' : ''}>${backLabel}</button>
-            <div style="display: flex; gap: 8px;">
+            <button class="onboarding-btn back${isFirst ? ' is-invisible' : ''}">${backLabel}</button>
+            <div class="onboarding-flex-row">
                 <button class="onboarding-btn skip">${skipLabel}</button>
                 <button class="onboarding-btn ${nextClass}">${nextLabel}</button>
             </div>
@@ -1133,7 +1133,7 @@ function updateThruster(side, value) {
     // Update thrust bar
     const bar = document.getElementById(`${side}-thrust-bar`);
     const percentage = Math.min(Math.abs(value) / 1000 * 100, 100);
-    bar.style.width = percentage + '%';
+    bar.style.setProperty('--bar-width', percentage + '%');
     
     // Color based on direction
     if (value < 0) {
@@ -2714,31 +2714,23 @@ function displayWaypointsOnMap(waypoints, fitToWaypoints = false) {
         const isCurrentTarget = idx === currentWpIndex;
         const isPassed = idx < currentWpIndex;
         
-        const markerColor = isPassed ? 'green' : (isCurrentTarget ? 'orange' : 'blue');
+        const stateClass = isPassed ? 'passed' : (isCurrentTarget ? 'target' : 'pending');
         const markerSize = isCurrentTarget ? 14 : 10;
         const statusText = isPassed ? '✓ Passed | Passé' : (isCurrentTarget ? '→ Target | Cible' : 'Pending | En attente');
-        
+
         const icon = L.divIcon({
-            className: 'waypoint-marker',
-            html: `<div style="
-                background-color: ${markerColor};
-                width: ${markerSize}px;
-                height: ${markerSize}px;
-                border-radius: 50%;
-                border: 2px solid white;
-                box-shadow: 0 0 4px rgba(0,0,0,0.5);
-                cursor: pointer;
-            "></div>`,
+            className: `waypoint-marker waypoint-marker--${stateClass}`,
+            html: '<div class="waypoint-marker-dot"></div>',
             iconSize: [markerSize, markerSize],
             iconAnchor: [markerSize/2, markerSize/2]
         });
-        
+
         // Detailed tooltip content
         const tooltipContent = `
             <div class="waypoint-tooltip">
                 <strong>Waypoint ${idx + 1}/${waypoints.length}</strong><br>
-                <span class="wp-status" style="color: ${markerColor}">${statusText}</span>
-                <hr style="margin: 4px 0; border-color: #ddd;">
+                <span class="wp-status wp-status--${stateClass}">${statusText}</span>
+                <hr>
                 <b>Local:</b> (${wp.x.toFixed(1)}, ${wp.y.toFixed(1)}) m<br>
                 <b>GPS:</b> ${wp.lat.toFixed(6)}°, ${wp.lon.toFixed(6)}°
             </div>
@@ -3348,58 +3340,13 @@ function showFeedback(message, type = 'info') {
     if (!toastContainer) {
         toastContainer = document.createElement('div');
         toastContainer.id = 'toast-container';
-        toastContainer.style.cssText = `
-            position: fixed;
-            top: 80px;
-            right: 20px;
-            z-index: 10000;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        `;
+        toastContainer.className = 'toast-container';
         document.body.appendChild(toastContainer);
     }
 
-    // Create toast element
+    // Create toast element — modifier class drives bg + border colour per type
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
-
-    // Set colors based on type
-    let bgColor, borderColor;
-    switch (type) {
-        case 'success':
-            bgColor = 'rgba(40, 167, 69, 0.95)';
-            borderColor = '#28a745';
-            break;
-        case 'error':
-            bgColor = 'rgba(220, 53, 69, 0.95)';
-            borderColor = '#dc3545';
-            break;
-        case 'warning':
-            bgColor = 'rgba(255, 193, 7, 0.95)';
-            borderColor = '#ffc107';
-            break;
-        default: // info
-            bgColor = 'rgba(23, 162, 184, 0.95)';
-            borderColor = '#17a2b8';
-    }
-
-    toast.style.cssText = `
-        background: ${bgColor};
-        color: white;
-        padding: 15px 20px;
-        border-radius: 8px;
-        border-left: 4px solid ${borderColor};
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-        min-width: 300px;
-        max-width: 400px;
-        font-size: 14px;
-        font-weight: 500;
-        line-height: 1.5;
-        animation: slideIn 0.3s ease-out;
-        white-space: pre-wrap;
-    `;
-
     toast.textContent = message;
     toastContainer.appendChild(toast);
 
@@ -3407,7 +3354,7 @@ function showFeedback(message, type = 'info') {
     const TOAST_DURATIONS = { error: 6500, warning: 5500, success: 3000, info: 3500 };
     const duration = TOAST_DURATIONS[type] || 3500;
     setTimeout(() => {
-        toast.style.animation = 'slideOut 0.3s ease-in';
+        toast.classList.add('toast--leaving');
         setTimeout(() => {
             toast.remove();
             // Remove container if empty
@@ -3893,7 +3840,7 @@ function updateMissionProgress() {
         const progressBar = document.getElementById('mission-progress-bar');
         const progressText = document.getElementById('mission-progress-text');
         if (_prevProgress.pct !== progressPct) {
-            progressBar.style.width = waypointProgress + '%';
+            progressBar.style.setProperty('--bar-width', waypointProgress + '%');
             progressText.textContent = progressPct;
             _prevProgress.pct = progressPct;
         }
@@ -4324,9 +4271,7 @@ function addExportButton(headerSelector, panelName, label) {
         e.stopPropagation();
         exportPanel(panelName);
     });
-    header.style.display = 'flex';
-    header.style.justifyContent = 'space-between';
-    header.style.alignItems = 'center';
+    header.classList.add('panel-header-with-export');
     header.appendChild(btn);
 }
 
@@ -4363,8 +4308,7 @@ function addCopyButton(controlsSelector, panelContentSelector, label) {
             // Fallback for older browsers / insecure contexts
             const ta = document.createElement('textarea');
             ta.value = text;
-            ta.style.position = 'fixed';
-            ta.style.opacity = '0';
+            ta.className = 'clipboard-fallback-textarea';
             document.body.appendChild(ta);
             ta.select();
             document.execCommand('copy');
