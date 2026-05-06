@@ -230,7 +230,7 @@ If health check passes + time remains, pick from fallback queue:
 5. Confirm `working_diary/2026-05-07_thursday_first_field_test.md` exists with re-blanked placeholders + correct dates.
 6. Sim left alive for Thu AM re-verification (no need to tear down).
 
-**Outcome.** Final commit stack today (06/05), **19 substantive commits in three phases + N diary/meta cleanup commits** (the day grew well beyond Block F closure with three successive scope expansions — Option B reverse-proxy doc polish, the late-afternoon VRX fork migration, and an evening newcomer/teammate onboarding-hardening pass; the diary/meta cleanups are this Block F update itself plus markdownlint or count-framing passes that landed after, which would otherwise force a recursive "diary count of count" update). User sequencing of the 19 substantive commits in three phases:
+**Outcome.** Final commit stack today (06/05), **19 substantive commits in three phases + N follow-up cleanup commits** (the day grew well beyond Block F closure with three successive scope expansions — Option B reverse-proxy doc polish, the late-afternoon VRX fork migration, and an evening newcomer/teammate onboarding-hardening pass; the follow-up cleanups are this Block F update itself plus markdownlint or count-framing passes that landed after, which would otherwise force a recursive "diary count of count" update). User sequencing of the 19 substantive commits in three phases:
 
 **Phase 1 — CSP arc + audit fixes (commits 1-7, the originally-planned Block F shape):**
 
@@ -262,7 +262,7 @@ If health check passes + time remains, pick from fallback queue:
 
 **Plus a process artefact (no commit):** drafted teammate-facing migration email in formal register, pointing at `wiki/VRX_Fork_Migration` page + `git pull origin main` for uvautoboat. Sent to the two team members still using upstream `osrf/vrx` per the fork-migration thread.
 
-§1.6 invisibility sweep clean across all 19 substantive commits and the diary/meta cleanups that followed. Sim NOT left alive (wasn't launched from this session); Thu AM Block B1 needs fresh sim launch — the launcher will see the same effective sim source (fork's `autoboat/main` HEAD = old `jazzy` HEAD = upstream `7609d1bd` + bake-in `e384cd65`), just sourced from the fork instead of `osrf/vrx` upstream.
+§1.6 invisibility sweep clean across all 19 substantive commits and the follow-up cleanups that followed. Sim NOT left alive (wasn't launched from this session); Thu AM Block B1 needs fresh sim launch — the launcher will see the same effective sim source (fork's `autoboat/main` HEAD = old `jazzy` HEAD = upstream `7609d1bd` + bake-in `e384cd65`), just sourced from the fork instead of `osrf/vrx` upstream.
 
 ---
 

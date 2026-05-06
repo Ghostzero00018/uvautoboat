@@ -19,8 +19,8 @@ git remote -v
 
 | What you see | What it means |
 |:--|:--|
-| `origin → git@github.com:osrf/vrx.git` (or `https://github.com/osrf/vrx.git`) | **You need to migrate.** Pick Path A or Path B below. |
-| `origin → git@github.com:Ghostzero00018/vrx.git` + `upstream → git@github.com:osrf/vrx.git` | Already migrated. Confirm branch is `autoboat/main` (`git branch --show-current`); if not, `git checkout autoboat/main`. |
+| `origin → osrf/vrx` (any URL form: `git@github.com:osrf/vrx.git` or `https://github.com/osrf/vrx.git`) | **You need to migrate.** Pick Path A or Path B below. |
+| `origin → Ghostzero00018/vrx` + `upstream → osrf/vrx` (either SSH `git@github.com:...` or HTTPS `https://github.com/...` form is fine for either remote — pick whichever matches your account's auth setup) | Already migrated. Confirm branch is `autoboat/main` (`git branch --show-current`); if not, `git checkout autoboat/main`. |
 | Anything else | Custom setup. Stop and ask before touching it. |
 
 ---
@@ -29,7 +29,7 @@ git remote -v
 
 - **Sim not running.** Stop any active launcher (`Ctrl+C` in the launcher terminal, or `pkill -9 gz; pkill -9 ros2; pkill -9 rosbridge` — semicolons, not `&&`, so each kill runs independently regardless of whether the previous one matched anything). The migration touches source files; running processes shouldn't see them shift mid-flight.
 - **Backup any custom uncommitted work in `~/seal_ws/src/vrx/`.** If you've done more than just letting `patch_vrx.sh` apply its sed substitution, `git stash` it first — Path A's `git checkout` would otherwise discard it. Most teammates have nothing custom here; only the runtime patch in `vrx_urdf/wamv_gazebo/urdf/wamv_gazebo.urdf.xacro`, which is fine to discard because the same change is committed on the fork's `autoboat/main`.
-- **Workspace builds today.** If your current setup is broken before migration, fix that first — don't compound issues.
+- **Current workspace builds.** If your setup is broken before migration, fix that first — don't compound issues.
 
 ---
 
@@ -67,8 +67,8 @@ mv ~/seal_ws/src/vrx ~/seal_ws/src/vrx.OLD-$(date +%Y%m%d)
 cd ~/seal_ws/src
 git clone --branch autoboat/main https://github.com/Ghostzero00018/vrx.git
 
-# Add upstream remote for future syncing per Roadmap §8.7
-cd vrx && git remote add upstream git@github.com:osrf/vrx.git
+# Add upstream remote for future syncing per Roadmap §8.7 (HTTPS works without SSH key setup; switch to git@github.com:... if your account has SSH configured)
+cd vrx && git remote add upstream https://github.com/osrf/vrx.git
 
 # Rebuild from scratch — fresh clone has no install/ artifacts for vrx packages
 cd ~/seal_ws && colcon build --merge-install
