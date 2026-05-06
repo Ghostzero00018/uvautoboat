@@ -125,7 +125,7 @@ uvautoboat/
 ├── one_click_launch_all/       # Automated launcher scripts
 │   ├── launch_autoboat_complete.sh   # One-click full system launch
 │   ├── health_check_autoboat.sh      # System health check (49 checks)
-│   └── patch_vrx.sh                 # VRX xacro fix (publish_model_pose)
+│   └── patch_vrx.sh                 # VRX xacro fix safety-net (publish_model_pose; baked into fork commit e384cd65)
 ├── scripts/                    # Repo-maintenance helpers
 │   └── sync_wiki.sh                # Sync `wiki/*.md` → published GitHub Wiki
 ├── tools/                      # Ad-hoc diagnostic / ops scripts (standalone rclpy)
