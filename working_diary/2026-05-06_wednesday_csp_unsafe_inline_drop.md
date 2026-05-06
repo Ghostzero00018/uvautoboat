@@ -136,7 +136,7 @@ The biggest sub-batch. Three sub-areas — recommend committing as 3 separate su
 | Lines | Pattern | Migration |
 |:--|:--|:--|
 | `app.js:4326-4328` | `header.style.display = 'flex'; header.style.justifyContent = 'space-between'; header.style.alignItems = 'center';` (export-button injection) | `.panel-header-with-export` class; single `header.classList.add(...)` |
-| `app.js:1125`, `:3895` | `bar.style.width = percentage + '%'` (mission progress bar dynamic width) | CSS variable: `bar.style.setProperty('--progress', `${percentage}%`)` + CSS rule `.mission-progress-bar { width: var(--progress, 0%); }`. Same CSSOM caveat as `setProperty` in Block B — verify under `style-src 'self'` |
+| `app.js:1125`, `:3895` | `bar.style.width = percentage + '%'` (mission progress bar dynamic width) | CSS variable: `bar.style.setProperty('--progress',`${percentage}%`)` + CSS rule `.mission-progress-bar { width: var(--progress, 0%); }`. Same CSSOM caveat as `setProperty` in Block B — verify under `style-src 'self'` |
 | `app.js:4365-4366` | `ta.style.position = 'fixed'; ta.style.opacity = '0'` (clipboard fallback textarea) | `.clipboard-fallback-textarea` class with `position: fixed; opacity: 0; left: -10000px;` (off-screen but still in DOM) |
 | (other) | residual `.style.X = …` mutations remaining post-runtime-1 | Class-based or CSS variable migration; re-grep `\.style\.[a-zA-Z]+\s*=` at start of Wed to find any I missed |
 
