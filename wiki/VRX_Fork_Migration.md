@@ -130,7 +130,7 @@ Nothing in this batch breaks anything; it's just docs + the Wed diary. Safe to p
 
 | Symptom | Likely cause | Fix |
 |:--|:--|:--|
-| Path A: `git fetch origin` errors with "Permission denied (publickey)" | Your SSH key isn't authorized on the fork repo | Use HTTPS instead: `git remote set-url origin https://github.com/Ghostzero00018/vrx.git` |
+| Path A (SSH variant only): `git fetch origin` errors with "Permission denied (publickey)" | You switched the Path A `git remote add origin ...` line to the SSH form (`git@github.com:...`) per the inline comment, but your GitHub account doesn't have an SSH key authorized | Either set up an SSH key (GitHub web → Settings → SSH and GPG keys → New SSH key), OR revert to the HTTPS form: `git remote set-url origin https://github.com/Ghostzero00018/vrx.git` |
 | Verification: `git log` shows a different top commit | You ended up on `jazzy` instead of `autoboat/main` (both currently at the same HEAD, but they will diverge once the first inside-VRX mod lands) | `git checkout autoboat/main` |
 | Verification: `grep` returns `<publish_model_pose>false</publish_model_pose>` | The bake-in isn't in your working tree — branch is wrong, or rebuild stale | Verify branch → `git checkout autoboat/main` → rebuild |
 | Launcher: `[patch_vrx] Applying publish_model_pose=true ...` instead of "OK" | Working tree was reset to upstream-clean state somehow (manual `git checkout`, accidental reset) | Re-check `git status` — if file is missing the patch, `git checkout autoboat/main` should restore it; if branch is correct, the patch script will re-apply on next launch and self-correct |
