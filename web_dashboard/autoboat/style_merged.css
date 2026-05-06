@@ -2595,3 +2595,52 @@ h2 {
     height: auto;
     border-radius: 4px;
 }
+
+/* ========== STATE / TEXT-COLOR CLASSES (CSP-prep, 06/05/2026) ========== */
+
+/* Status text colors — used for transient feedback (preset applying / applied,
+   default-value hints in tuning panel, etc.). Both warn / pending colors
+   canonicalised on #ff9800 (the existing #f39c12 use was visually equivalent). */
+.text-warn {
+    color: #ff9800;
+}
+.text-ok {
+    color: #27ae60;
+}
+
+/* Drift-uncertainty level — three states based on σ magnitude (high / mid / low
+   confidence). Driven by data-drift-level attribute set in updateAntiStuck(). */
+#drift-uncertainty[data-drift-level="high"] {
+    color: #4CAF50;
+}
+#drift-uncertainty[data-drift-level="mid"] {
+    color: #FFC107;
+}
+#drift-uncertainty[data-drift-level="low"] {
+    color: #FF9800;
+}
+
+/* Grid-toggle button (Leaflet control on the map) — base styling carries the
+   inactive-state colors; .is-active modifier flips to white bg / dark text.
+   Migrated from inline cssText + style.background / style.color writes. */
+.grid-toggle-btn {
+    width: 30px;
+    height: 30px;
+    background: #ddd;
+    color: #999;
+    border: 2px solid rgba(0, 0, 0, 0.2);
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 26px;
+    padding: 0;
+}
+.grid-toggle-btn.is-active {
+    background: #fff;
+    color: #333;
+}
+
+/* Emergency-flash trigger — apply via .is-flashing class on the E-stop button.
+   The @keyframes emergency-flash rule is defined earlier in this file. */
+.is-flashing {
+    animation: emergency-flash 0.5s ease-in-out 6;
+}

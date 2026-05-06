@@ -501,12 +501,11 @@ function addGridToggleControl() {
             btn.type = 'button';
             btn.title = 'Toggle grid overlay | Activer/désactiver la grille';
             btn.textContent = '⊞';
-            btn.style.cssText = 'width:30px;height:30px;background:#fff;border:2px solid rgba(0,0,0,0.2);cursor:pointer;font-size:18px;line-height:26px;padding:0;';
+            btn.classList.toggle('is-active', gridEnabled);
             L.DomEvent.disableClickPropagation(btn);
             btn.addEventListener('click', () => {
                 gridEnabled = !gridEnabled;
-                btn.style.background = gridEnabled ? '#fff' : '#ddd';
-                btn.style.color = gridEnabled ? '#333' : '#999';
+                btn.classList.toggle('is-active', gridEnabled);
                 addGridOverlay();
             });
             return btn;
@@ -1370,20 +1369,20 @@ function updateAntiStuckStatus(data) {
         const ux = data.drift_uncertainty[0];
         const uy = data.drift_uncertainty[1];
         const avgUncertainty = Math.hypot(ux, uy);
-        let uncText, uncColor;
+        let uncText, uncLevel;
         if (avgUncertainty < 0.1) {
             uncText = 'High conf. | Haute conf.';
-            uncColor = '#4CAF50';
+            uncLevel = 'high';
         } else if (avgUncertainty < 0.5) {
             uncText = `σ=${avgUncertainty.toFixed(2)}`;
-            uncColor = '#FFC107';
+            uncLevel = 'mid';
         } else {
             uncText = `σ=${avgUncertainty.toFixed(2)} (converging | convergence)`;
-            uncColor = '#FF9800';
+            uncLevel = 'low';
         }
         if (_prevAntiStuck.uncText !== uncText) {
             driftUncertainty.textContent = uncText;
-            driftUncertainty.style.color = uncColor;
+            driftUncertainty.dataset.driftLevel = uncLevel;
             _prevAntiStuck.uncText = uncText;
         }
     }
@@ -1754,8 +1753,8 @@ function updateValueDisplay(input) {
             ? (Array.from(input.options).find(o => o.value === String(canonical))?.textContent ?? canonical)
             : canonical;
         span.textContent = `(default: ${display})`;
-        span.style.color = '#ff9800';
     }
+    span.classList.toggle('text-warn', !matches);
 }
 
 // Update config inputs from ROS
@@ -2509,9 +2508,9 @@ function emergencyStop() {
     // 3. Visual feedback - flash the emergency stop button
     const emergencyBtn = document.getElementById('btn-emergency-stop');
     if (emergencyBtn) {
-        emergencyBtn.style.animation = 'emergency-flash 0.5s ease-in-out 6';
+        emergencyBtn.classList.add('is-flashing');
         setTimeout(() => {
-            emergencyBtn.style.animation = '';
+            emergencyBtn.classList.remove('is-flashing');
         }, 3000);
     }
 
@@ -3111,7 +3110,8 @@ function applyPreset(presetName) {
 
     const statusEl = document.getElementById('preset-status');
     statusEl.textContent = `Applying ${preset.name} preset...`;
-    statusEl.style.color = '#f39c12';
+    statusEl.classList.remove('text-ok');
+    statusEl.classList.add('text-warn');
 
     // Snapshot pre-change values so we can flash only the inputs that actually moved
     const before = {};
@@ -3150,9 +3150,11 @@ function applyPreset(presetName) {
 
     setTimeout(() => {
         statusEl.textContent = `✅ ${preset.name} preset applied — ${changed.length} field(s) changed`;
-        statusEl.style.color = '#27ae60';
+        statusEl.classList.remove('text-warn');
+        statusEl.classList.add('text-ok');
         setTimeout(() => {
             statusEl.textContent = '';
+            statusEl.classList.remove('text-ok');
         }, 4000);
     }, 500);
 
