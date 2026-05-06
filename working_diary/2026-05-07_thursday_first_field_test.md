@@ -10,7 +10,7 @@ Until now every claim about the autonomy stack has rested on VRX simulation beha
 
 - **Mon 04/05** — RTF investigation root-caused (`--use-nvidia` prime-offload, RTF 0.32 → 0.88); evening lint cleanup + dashboard XSS rewrite. Ten daytime + evening commits.
 - **Tue 05/05** — A=GO weather call slipped to Thu mid-day; AM + early PM landed Fallback #2 + #3 + Roadmap §1.3 path A vendoring + CSP wrapper; PM landed (C) + (D)-static + (D)-runtime-1 CSP-prep refactors + a Leaflet source-map cleanup; evening landed 05/05 diary close + Wed 06/05 scaffold; 16 commits total (per `git log --since='2026-05-05 00:00' --until='2026-05-06 00:00'`).
-- **Wed 06/05 (yesterday)** — finished the CSP `'unsafe-inline'` removal arc: (D)-runtime-2 (color/state mutations), (D)-runtime-3 (cssText + Leaflet marker / onboarding generated styles + misc layout writes), final CSP `'unsafe-inline'` drop on `script-src` + `style-src`. Thu scaffold copy-forward landed AM. (See `working_diary/2026-05-06_wednesday_csp_unsafe_inline_drop.md` for per-commit detail.)
+- **Wed 06/05 (yesterday)** — finished the CSP `'unsafe-inline'` removal arc: (D)-runtime-2 (color/state mutations), (D)-runtime-3 (cssText + Leaflet marker / onboarding generated styles + misc layout writes), final CSP `'unsafe-inline'` drop on `script-src` + `style-src` + per-request Host derivation in `img-src` / `connect-src` (CSP allowlist matches whatever URL the operator types — covers localhost / LAN IP / `.local` mDNS). Mid-session audit pass folded in 4 fixes (per-request Host, wiki refresh, vendor LICENSE_NOTICES, Tue diary count correction) + 1 follow-up (`.is-flashing` CSS specificity for the E-stop button, surfaced by the live browser test). Thu scaffold copy-forward landed AM. 7 commits total. (See `working_diary/2026-05-06_wednesday_csp_unsafe_inline_drop.md` for per-commit detail.)
 - **Thu 07/05 (today)** — first field test if A=GO confirms; D1 + D2 only per Tue AM scope refinement (D3-D5 deferred).
 - **Fri 08/05 (tomorrow)** — V-E Day public holiday, no work.
 - **Pending all week:** formal joint supervisor presentation reschedule (per 30/04); three Asks to teammate maintainer (Phase A parameter subset, CA placement, validation methodology).
@@ -22,7 +22,7 @@ A small artificial lake in a park is a **bounded-risk first wet test**: small en
 Active blocks (conditional on test confirmation, marked PM-only as such):
 
 1. **Block A — AM confirmation re-check** (~5 min, opening): is the field test still on this afternoon? Branch on the answer (Tue's slip context still applies; weather hasn't been re-cleared as of scaffold write Wed 06/05).
-2. **Block B — Pre-deployment workstation prep** (~30-60 min, AM): irrespective of A, do the prep that's cheap and useful in either branch — final sim sanity, rosbag config dry-run, deployment artifact bundle. Today's prep is fresh re-verification on top of Tue's; the dashboard CSP shape changed Wed (`'unsafe-inline'` removed) and is worth re-checking.
+2. **Block B — Pre-deployment workstation prep** (~30-60 min, AM): irrespective of A, do the prep that's cheap and useful in either branch — final sim sanity, rosbag config dry-run, deployment artifact bundle. Today's prep is fresh re-verification on top of Tue's; the dashboard CSP shape changed Wed (`'unsafe-inline'` removed; per-request Host derivation added so LAN access works without launcher changes) and is worth re-checking.
 3. **Block C — Hardware bring-up on-site** (PM, **conditional on A=GO**): physical setup, sensor calibration, dry-land sanity, network up.
 4. **Block D — In-water test scenarios** (PM, **conditional on A=GO and C=PASS**): the actual mission cases, with abort criteria spelled out per scenario.
 5. **Block E — Post-test data capture + debrief** (early evening, **conditional on A=GO**): rosbag offload, immediate observations, photo / video index.
@@ -55,11 +55,11 @@ The trigger for the day's branch. Check whichever channel the field-test confirm
 
 ## Block B — Pre-deployment workstation prep (~30-60 min, AM)
 
-Cheap prep that's worth doing whether or not the test runs today. Re-verification on top of Tue's prep — most of Tue's B1/B2 outcomes should still hold, but the dashboard CSP shape changed Wed (now `'unsafe-inline'`-free on `script-src` + `style-src`); a fresh end-to-end check is cheap insurance.
+Cheap prep that's worth doing whether or not the test runs today. Re-verification on top of Tue's prep — most of Tue's B1/B2 outcomes should still hold, but the dashboard CSP shape changed Wed (now `'unsafe-inline'`-free on `script-src` + `style-src`; per-request Host derivation in `img-src` / `connect-src` so LAN clients work); a fresh end-to-end check is cheap insurance.
 
 ### B1 — Final sim sanity post-Wed-CSP-drop
 
-Wed's evening landed the CSP `'unsafe-inline'` drop. Sim was tested per the Wed Block D browser-test gate, but a full mission run end-to-end on Thu AM confirms nothing in the dashboard interactive paths regressed under the tightened CSP:
+Wed's evening landed the CSP `'unsafe-inline'` drop + per-request Host derivation. Sim was tested per the Wed Block D browser-test gate, but a full mission run end-to-end on Thu AM confirms nothing in the dashboard interactive paths regressed under the tightened CSP:
 
 ```bash
 cd ~/seal_ws/src/uvautoboat
