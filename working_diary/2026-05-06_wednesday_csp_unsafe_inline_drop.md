@@ -244,12 +244,12 @@ If health check passes + time remains, pick from fallback queue:
 
 **Phase 2 — Post-close scope expansions (commits 8-13):**
 
-8. `docs(diary): note Wed per-request Host CSP in Thu scaffold` — small follow-up to the Thu scaffold (Wed-reference accuracy at L13/L25/L58/L62)
-9. `refactor(diary): update mission progress bar dynamic width to use CSS variables` — your inline diary edit (1-line wording fix, intentional per system reminder)
-10. `docs(security): polish Option B reverse-proxy + A→B triggers` — wiki/Dashboard_Security.md row L214 expanded from 1-line stub to depth-matched cell + L142/L143 cross-references + new A→B triggers paragraph (drafted via /ultraplan, applied locally after the remote session timed out)
-11. `docs(vrx): swap install/clone URLs to Ghostzero00018/vrx fork` — VRX fork landed (`Ghostzero00018/vrx` with bake-in commit `e384cd65` on the fork's `jazzy` branch); 5 install/clone URLs swapped + 1 dual-link entry rewritten with both arrows
-12. `docs(roadmap): VRX §8 rewrite (executed) + Board.md flip → ✅` — §8 narrative rewritten as executed-plan + new §8.6 Migration log + §8.7 Sync workflow; Board TBD `🔜` → ✅
-13. `docs(roadmap): two-branch fork model (jazzy + autoboat/main)` — added `autoboat/main` branch on the fork as the workspace-consumed branch; §8.6/§8.7 + Board updated for the two-branch sync workflow
+1. `docs(diary): note Wed per-request Host CSP in Thu scaffold` — small follow-up to the Thu scaffold (Wed-reference accuracy at L13/L25/L58/L62)
+2. `refactor(diary): update mission progress bar dynamic width to use CSS variables` — your inline diary edit (1-line wording fix, intentional per system reminder)
+3. `docs(security): polish Option B reverse-proxy + A→B triggers` — wiki/Dashboard_Security.md row L214 expanded from 1-line stub to depth-matched cell + L142/L143 cross-references + new A→B triggers paragraph (drafted via /ultraplan, applied locally after the remote session timed out)
+4. `docs(vrx): swap install/clone URLs to Ghostzero00018/vrx fork` — VRX fork landed (`Ghostzero00018/vrx` with bake-in commit `e384cd65` on the fork's `jazzy` branch); 5 install/clone URLs swapped + 1 dual-link entry rewritten with both arrows
+5. `docs(roadmap): VRX §8 rewrite (executed) + Board.md flip → ✅` — §8 narrative rewritten as executed-plan + new §8.6 Migration log + §8.7 Sync workflow; Board TBD `🔜` → ✅
+6. `docs(roadmap): two-branch fork model (jazzy + autoboat/main)` — added `autoboat/main` branch on the fork as the workspace-consumed branch; §8.6/§8.7 + Board updated for the two-branch sync workflow
 
 §1.6 invisibility sweep clean across all 13 commits. Sim NOT left alive (wasn't launched from this session); Thu AM Block B1 needs fresh sim launch — the launcher will see the same effective sim source (fork's `autoboat/main` HEAD = old `jazzy` HEAD = upstream `7609d1bd` + bake-in `e384cd65`), just sourced from the fork instead of `osrf/vrx` upstream.
 
