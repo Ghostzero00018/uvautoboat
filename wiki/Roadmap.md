@@ -503,8 +503,9 @@ Captured originally for traceability, not action: *re-open this section only whe
 ### 8.6 Migration log — 06/05/2026
 
 - **Fork created:** `Ghostzero00018/vrx` (basename invariant — must stay `vrx` so `patch_vrx.sh:20` hardcoded local path `$WS_ROOT/src/vrx/` resolves correctly).
-- **Branch scope:** jazzy-only at fork creation (other upstream branches accessible via the `upstream` remote if ever needed).
-- **Initial sync:** local `jazzy` started at upstream HEAD (commit `7609d1bd`, no divergence from `osrf/vrx`).
+- **Branch scope (initial):** jazzy-only at fork creation (other upstream branches accessible via the `upstream` remote if ever needed).
+- **Two-branch model adopted post-fork:** `jazzy` mirrors `osrf/vrx jazzy` plus upstream-bugfix bake-in commits (today: 1 — `e384cd65`); `autoboat/main` branches off `jazzy` and accumulates project-specific inside-VRX modifications — mesh adds/removes, sensor-config tweaks, hydrodynamics tuning, etc. (today: 0 commits beyond `jazzy`; created at the same HEAD as a clean starting point for the monthly-mod cadence). Workspace consumes `autoboat/main` (set via `git checkout autoboat/main` in `~/seal_ws/src/vrx/`). Rationale: separates "upstream-bugfix" history from "our project mods" history so sync conflicts can be resolved at the appropriate level.
+- **Initial sync:** local `jazzy` started at upstream HEAD (commit `7609d1bd`, no divergence from `osrf/vrx`); `autoboat/main` created at the same point.
 - **Bake-in commit (`e384cd65`):** the LiDAR-at-origin workaround (single sed substitution `<publish_model_pose>false → true` in `vrx_urdf/wamv_gazebo/urdf/wamv_gazebo.urdf.xacro:94`) landed as a real commit on the fork's `jazzy` branch. `patch_vrx.sh` becomes idempotent no-op (the `grep -q '<publish_model_pose>true</publish_model_pose>'` short-circuit at line 27-29 triggers immediately).
 - **Patch script retention:** kept as no-op safety-net for ≥2 release cycles; remove only after a fork upstream-merge cycle confirms the bake-in survives without re-derivation.
 - **Reference-surface migration:** 5 install/clone URLs (`README.md:62`, `USER_MANUAL.md:357`, `wiki/Installation_Guide.md:51 + 55 + 94`) → fork URL. 1 dual-link entry (`USER_MANUAL.md:346`) rewritten with both arrows: `depends on fork at <URL> (canonical project: github.com/osrf/vrx)`. 9 attribution / canonical-project / wiki-reference links to `osrf/vrx` preserved (USER_MANUAL.md:51 / 477 / 1702 / 1713; wiki/Home.md:78; wiki/Installation_Guide.md:246; wiki/System_Overview.md:14; test_environment/sydney_regatta_DEFAULT.sdf:8; test_environment/wamv_3d_lidar.xacro:8).
@@ -512,17 +513,29 @@ Captured originally for traceability, not action: *re-open this section only whe
 
 ### 8.7 Upstream sync workflow
 
-Two remotes: `origin` = `Ghostzero00018/vrx` (fork), `upstream` = `osrf/vrx` (canonical). Periodic sync recipe:
+Two remotes: `origin` = `Ghostzero00018/vrx` (fork), `upstream` = `osrf/vrx` (canonical). Two branches on the fork: `jazzy` (upstream-tracking + bake-ins) and `autoboat/main` (project-specific mods on top of `jazzy`). Periodic sync recipe:
 
 ```bash
 cd ~/seal_ws/src/vrx
+
+# Step 1: bring upstream changes into the tracking branch
 git fetch upstream
 git checkout jazzy
-git merge upstream/jazzy   # or rebase if linear history preferred
+git merge upstream/jazzy        # bake-ins may need re-derivation if upstream rewrote relevant lines
 git push origin jazzy
+
+# Step 2: bring fresh jazzy into the downstream branch
+git checkout autoboat/main
+git merge jazzy                  # project-specific mods may need re-derivation
+git push origin autoboat/main
+
+# Step 3 (if any source files changed in the merge): rebuild the workspace
+cd ~/seal_ws && colcon build --merge-install
 ```
 
 Re-derive the bake-in commit if upstream changes the relevant section of `wamv_gazebo.urdf.xacro` near line 94 (manual review of the merge result against `patch_vrx.sh:33` sed pattern). The script's idempotency check makes accidental double-application impossible.
+
+**Workspace branch:** `~/seal_ws/src/vrx/` should stay on `autoboat/main` for daily use. Switch to `jazzy` only for the sync operations above (then `git checkout autoboat/main` after pushing). Switching branches changes source files on disk — a `colcon build` is needed afterwards if the differences include built artifacts (typically yes for any URDF / mesh / plugin change).
 
 ---
 
