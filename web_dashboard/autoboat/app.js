@@ -1501,7 +1501,8 @@ function initConfigPanel() {
         'controller-critical-dist', 'controller-safe-dist', 'controller-bank-dist',
         'controller-obstacle-slow', 'controller-bank-slow', 'controller-avoid-gain',
         'controller-use-vfh', 'controller-max-turn', 'controller-stuck-timeout', 'controller-stuck-threshold',
-        'controller-reverse-timeout', 'controller-max-reverse', 'controller-turn-deadband', 'controller-slew-rate'
+        'controller-reverse-timeout', 'controller-max-reverse', 'controller-turn-deadband', 'controller-slew-rate',
+        'controller-drift-comp-gain'
     ];
 
     // Update dirty marker on input — only flag when value diverges from canonical
@@ -3048,7 +3049,8 @@ const PRESET_INPUT_IDS = [
     'controller-obstacle-slow', 'controller-bank-slow', 'controller-avoid-gain',
     'controller-use-vfh', 'controller-max-turn', 'controller-stuck-timeout',
     'controller-stuck-threshold', 'controller-reverse-timeout', 'controller-max-reverse',
-    'controller-turn-deadband', 'controller-slew-rate'
+    'controller-turn-deadband', 'controller-slew-rate',
+    'controller-drift-comp-gain'
 ];
 
 // Expand a collapsed tuning section and sync the caret
@@ -3202,6 +3204,9 @@ function updateControllerInputs(params) {
         document.getElementById('controller-turn-deadband').value = params.turn_deadband_deg;
     }
     document.getElementById('controller-slew-rate').value = params.slew_rate_limit;
+    if (params.drift_compensation_gain !== undefined) {
+        document.getElementById('controller-drift-comp-gain').value = params.drift_compensation_gain;
+    }
     // Programmatic value sets don't fire the `input` event; refresh the
     // (default: X) span for every controller input + the use-vfh select.
     Object.keys(liveDefaults).filter(id => id.startsWith('controller-')).forEach(id => {
@@ -3287,7 +3292,8 @@ function applyControllerParameters(presetParams = null) {
         'controller-use-vfh': 'use_vfh_bias', 'controller-max-turn': 'max_avoidance_turn_deg',
         'controller-stuck-timeout': 'stuck_timeout', 'controller-stuck-threshold': 'stuck_threshold',
         'controller-reverse-timeout': 'reverse_timeout', 'controller-max-reverse': 'max_reverse_distance',
-        'controller-turn-deadband': 'turn_deadband_deg', 'controller-slew-rate': 'slew_rate_limit'
+        'controller-turn-deadband': 'turn_deadband_deg', 'controller-slew-rate': 'slew_rate_limit',
+        'controller-drift-comp-gain': 'drift_compensation_gain'
     };
 
     // Get full parameters from UI (with validation) or preset
@@ -3306,7 +3312,8 @@ function applyControllerParameters(presetParams = null) {
         reverse_timeout: readInput('controller-reverse-timeout', 4.0),
         max_reverse_distance: readInput('controller-max-reverse', 25),
         turn_deadband_deg: readInput('controller-turn-deadband', 0.5),
-        slew_rate_limit: readInput('controller-slew-rate', 80)
+        slew_rate_limit: readInput('controller-slew-rate', 80),
+        drift_compensation_gain: readInput('controller-drift-comp-gain', 0.3)
     };
 
     if (hasValidationErrors()) {
@@ -3439,6 +3446,7 @@ const PARAM_TO_INPUT_IDS = {
     'max_reverse_distance': ['controller-max-reverse'],
     'turn_deadband_deg': ['controller-turn-deadband'],
     'slew_rate_limit': ['controller-slew-rate'],
+    'drift_compensation_gain': ['controller-drift-comp-gain'],
 };
 
 // Apply ranges received from a ROS node to HTML inputs at runtime.

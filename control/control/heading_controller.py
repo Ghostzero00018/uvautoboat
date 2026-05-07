@@ -730,6 +730,13 @@ class HeadingController(Node):
                     self.stuck_threshold = v
                     updated.append(f"stuck_threshold={self.stuck_threshold}")
 
+            # Drift compensation feed-forward
+            if 'drift_compensation_gain' in config:
+                v = float(config['drift_compensation_gain'])
+                if self._validate('drift_compensation_gain', v):
+                    self.drift_compensation_gain = v
+                    updated.append(f"drift_comp_gain={self.drift_compensation_gain}")
+
             # Control smoothness parameters
             if 'turn_deadband_deg' in config:
                 v = float(config['turn_deadband_deg'])

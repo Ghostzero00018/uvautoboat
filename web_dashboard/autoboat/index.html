@@ -849,6 +849,12 @@
                                         <span class="info-tooltip" title="Maximum change in thruster output per control step. Smooths acceleration and prevents mechanical jerk | Limite de variation de la poussée">ℹ️</span>
                                         <span class="param-hint">Max thrust change</span>
                                     </div>
+                                    <div class="param-item">
+                                        <label for="controller-drift-comp-gain">Drift Compensation Gain:</label>
+                                        <input type="number" id="controller-drift-comp-gain" step="any" min="0" max="2" value="0.3">
+                                        <span class="info-tooltip" title="Feed-forward gain on Kalman-estimated environmental drift. 0 disables compensation; default 0.3. Higher values correct drift more aggressively but can amplify estimator noise | Gain de compensation de dérive">ℹ️</span>
+                                        <span class="param-hint">Drift cancel strength</span>
+                                    </div>
                                 </div>
                             </div>
                             <div class="tuning-btn-row">
