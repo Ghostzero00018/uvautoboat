@@ -33,7 +33,7 @@
 13. [Technical Documentation](#technical-documentation)
     - [Performance Specifications](#performance-specifications)
     - [Waypoint Planner](#waypoint-planner)
-    - [A* Path Planning](#a-path-planning)
+    - [A\* Path Planning](#a-path-planning)
 14. [Troubleshooting](#troubleshooting)
 15. [Utility Scripts](#utility-scripts)
 16. [Command Cheatsheet](#command-cheatsheet)
@@ -523,7 +523,7 @@ The active navigation system is a modular 3-node ROS 2 pipeline:
 | Node | Name | Function |
 | :----- | :----- | :--------- |
 | **Perception** | `lidar_perception` | 3D LIDAR obstacle detection, obstacle clustering |
-| **Planner** | `waypoint_planner` | GPS waypoint planning, A* detour, mission management |
+| **Planner** | `waypoint_planner` | GPS waypoint planning, A\* detour, mission management |
 | **Controller** | `heading_controller` | PID heading control, obstacle avoidance, anti-stuck recovery |
 
 > **Note:** Earlier Atlantis and robust_avoidance systems have been deprecated. Their useful features (LiDAR processing, path validation) were integrated into the Perception/Planner/Controller modules. Legacy code is preserved in `legacy/` for reference.
@@ -1322,8 +1322,8 @@ Lane 3: End <────────────────────┘
 | :-------- | :------------ |
 | **Autonomous Navigation** | GPS-based waypoint following with lawnmower pattern generation |
 | **3D Obstacle Avoidance** | Real-time LIDAR point cloud processing with sector analysis |
-| **A\* Path Planning** | Integrated A* algorithm dynamically plans detours around obstacle clusters |
-| **Hybrid Route Generation** | Pre-calculates A* paths between waypoints to avoid known obstacles |
+| **A\* Path Planning** | Integrated A\* algorithm dynamically plans detours around obstacle clusters |
+| **Hybrid Route Generation** | Pre-calculates A\* paths between waypoints to avoid known obstacles |
 | **Simple Anti-Stuck** | Turn toward clearer side (bidirectional) recovery maneuver (Heading Controller) |
 | **XTE Path Correction** | "Lookahead" steering logic that actively pulls the boat back to the ideal path line |
 | **Waypoint Skip** | Automatic skip for blocked waypoints after timeout |
@@ -1355,8 +1355,8 @@ Lane 3: End <────────────────────┘
 | **No obstacles detected** | Check LIDAR: `ros2 topic hz /wamv/sensors/lidars/lidar_wamv_sensor/points` |
 | **Critical at spawn** | Increase `min_range` to 5.0 in launch file |
 | **Build failures** | Clean: `rm -rf build install log && colcon build` |
-| **A* not finding paths** | Reduce `astar_safety_margin` or increase `astar_resolution` |
-| **A* too slow** | Reduce `astar_max_expansions` or increase `astar_resolution` |
+| **A\* not finding paths** | Reduce `astar_safety_margin` or increase `astar_resolution` |
+| **A\* too slow** | Reduce `astar_max_expansions` or increase `astar_resolution` |
 | **Waypoints not generating** | Check GPS: ensure `/wamv/sensors/gps/gps/fix` is publishing |
 | **Mission stuck in INIT** | Run `ros2 run plan autoboat_cli generate` to create waypoints |
 | **LiDAR at world origin** | Pre-fixed in source via fork bake-in commit `e384cd65` on `autoboat/main` (VRX issue #876); launcher's `patch_vrx.sh` short-circuits with "OK: publish_model_pose already true". If you see "Applying ..." instead, your VRX checkout is stale — see [VRX_Fork_Migration](wiki/VRX_Fork_Migration.md) |
@@ -1545,7 +1545,7 @@ ros2 launch rosbridge_server rosbridge_websocket_launch.xml delay_between_messag
 cd ~/seal_ws/src/uvautoboat/web_dashboard/autoboat && python3 serve_dashboard.py 8002
 ```
 
-### A* Path Planning
+### A\* Path Planning
 
 ```bash
 # Enable A* runtime detours
@@ -1586,9 +1586,9 @@ gz service -s /world/sydney_regatta/set_pose \
 | **Coverage Planning** | Medium | Boustrophedon pattern for area coverage |
 | **Multi-Goal Navigation** | Medium | Navigate through sequence of random points |
 
-### A* Path Planning
+### A\* Path Planning
 
-The Waypoint Planner now has A* path planning algorithm for navigating to points that are blocked by obstacle fields:
+The Waypoint Planner now has A\* path planning algorithm for navigating to points that are blocked by obstacle fields:
 
 **How it works?**
 
@@ -1614,7 +1614,7 @@ Current position ──────>│  (in Planner)       │
 
 | Mode | Parameter | Description |
 | :----- | :---------- | :------------ |
-| **Hybrid** | `astar_hybrid_mode: true` | Pre-plans A* routes between lawnmower waypoints at generation time |
+| **Hybrid** | `astar_hybrid_mode: true` | Pre-plans A\* routes between lawnmower waypoints at generation time |
 | **Runtime** | `astar_enabled: true` | Plans detours on-the-voyage when WAMV-boat gets stuck |
 
 **Configuration:**
@@ -1730,7 +1730,7 @@ Open an issue on [GitHub](https://github.com/Ghostzero00018/uvautoboat/issues) w
 
 **Development Teams**:
 
-- Perception & Planning Team: LiDAR Perception (3D LiDAR Processing), Waypoint Planner (GPS Waypoint Navigation & A* Path Planning)
+- Perception & Planning Team: LiDAR Perception (3D LiDAR Processing), Waypoint Planner (GPS Waypoint Navigation & A\* Path Planning)
 - Control Team: Heading Controller (PID Control & Obstacle Avoidance)
 
 Project finished by IMT NORD EUROPE DNM DMI-2026

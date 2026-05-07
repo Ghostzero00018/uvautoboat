@@ -9,7 +9,7 @@
 | **Project** | AutoBoat Navigation System |
 | **Repository** | [Ghostzero00018/uvautoboat](https://github.com/Ghostzero00018/uvautoboat) |
 | **Last Updated** | 06/05/2026 |
-| **Status** | 🟢 Simulation ready (A* path planning + one-click launcher + wiki docs + dashboard config system + MP/QGC install). Real-hardware deployment prep ongoing — Pi 5 walked through 23/04/2026, bench delivery pending. |
+| **Status** | 🟢 Simulation ready (A\* path planning + one-click launcher + wiki docs + dashboard config system + MP/QGC install). Real-hardware deployment prep ongoing — Pi 5 walked through 23/04/2026, bench delivery pending. |
 
 ---
 
@@ -27,7 +27,7 @@
 
 | System | Architecture | Sensors | Features |
 |--------|--------------|---------|----------|
-| **AutoBoat Modular** | Modular (Perception + Planner + Controller) | 3D PointCloud | A* path planning, simple anti-stuck, runtime config, web dashboard + camera, waypoint persistence |
+| **AutoBoat Modular** | Modular (Perception + Planner + Controller) | 3D PointCloud | A\* path planning, simple anti-stuck, runtime config, web dashboard + camera, waypoint persistence |
 
 > **Note:** The integrated AutoBoat monolith has been deprecated and moved to `legacy/`. Use the modular system.
 
@@ -99,7 +99,7 @@
 | Web dashboard (map, mission, camera) | ✅ |
 | Terminal CLI | ✅ |
 | Min-range spawn fix (5m) | ✅ |
-| A* path planning (hybrid + runtime) | ✅ |
+| A\* path planning (hybrid + runtime) | ✅ |
 | One-click launcher script | ✅ |
 | Emergency stop (dashboard + CLI + nodes) | ✅ |
 | Latched E-Stop channel (`/planning/emergency_stop` Bool, RELIABLE QoS) | ✅ |
@@ -240,7 +240,7 @@ The whole repo is expected to run on the Pi 5. Long-term (Phase 5.2+): dashboard
 | 03/12/2025 | Waypoint Skip + Runtime Config | ✅ |
 | 03/12/2025 | Go Home Optimization (detour insertion) | ✅ |
 | 03/12/2025 | README Consolidation + Cleanup | ✅ |
-| 08/12/2025 | A* Path Planning (Hybrid + Runtime modes) | ✅ |
+| 08/12/2025 | A\* Path Planning (Hybrid + Runtime modes) | ✅ |
 | 09/12/2025 | One-Click Launcher Script | ✅ |
 | 11/12/2025 | Wiki Documentation + README Update | ✅ |
 | 14/12/2025 | LiDAR Smoke Detection (Spatial Density Filtering) | ✅ |
@@ -255,7 +255,7 @@ The whole repo is expected to run on the Pi 5. Long-term (Phase 5.2+): dashboard
 | 15/04/2026 | Pre-meeting dry-run after ROS 2 Jazzy apt upgrade — no regression, 46/46 PASS | ✅ |
 | 16/04/2026 | One-shot node rename: OKO/SPUTNIK/BURAN/Vostok1 → functional names (26 files, ~1100+ refs) | ✅ |
 | 16/04/2026 | Dashboard security: XSS fix, SRI hashes, server-side param validation, security wiki page | ✅ |
-| 16/04/2026 | Dashboard UX: reject-not-clamp validation, orange/red toasts, range tooltips, copy buttons, A* panel fixes | ✅ |
+| 16/04/2026 | Dashboard UX: reject-not-clamp validation, orange/red toasts, range tooltips, copy buttons, A\* panel fixes | ✅ |
 | 17/04/2026 | Param-range single source of truth: Python nodes publish `PARAM_RANGES`, dashboard auto-syncs HTML min/max | ✅ |
 | 17/04/2026 | Dashboard `JSON.parse` hardening: 8 subscribers wrapped in try/catch to tolerate malformed messages | ✅ |
 | 17/04/2026 | Dashboard UX polish: 31 hover tooltips, nav-mode restyle, preset confirm dialog, map grid performance | ✅ |
@@ -326,7 +326,7 @@ The whole repo is expected to run on the Pi 5. Long-term (Phase 5.2+): dashboard
 
 | Feature | Status | Description |
 |---------|:------:|-------------|
-| **A* Path Planning** | ✅ Done | Hybrid mode (pre-plan) + Runtime mode (detours) in Waypoint Planner |
+| **A\* Path Planning** | ✅ Done | Hybrid mode (pre-plan) + Runtime mode (detours) in Waypoint Planner |
 | **One-Click Launcher** | ✅ Done | `launch_autoboat_complete.sh` for full system startup |
 | **Wiki Documentation** | ✅ Done | Comprehensive wiki pages in `wiki/` folder |
 | **Emergency Stop** | ✅ Done | Latching stop from dashboard/CLI, EMERGENCY_STOP state |
@@ -335,7 +335,7 @@ The whole repo is expected to run on the Pi 5. Long-term (Phase 5.2+): dashboard
 | **VRX LiDAR Patch** | ✅ Done | Fork bake-in commit `e384cd65` on `autoboat/main` (06/05/2026); `patch_vrx.sh` retained as idempotent no-op safety net for ≥2 release cycles |
 | **Repo Cleanup** | ✅ Done | Dead code, legacy moves, package.xml audit, setup.py cleanup |
 
-### A* Path Planning (Implemented)
+### A\* Path Planning (Implemented)
 
 ```text
 /perception/obstacle_info ────>┌─────────────────────┐
@@ -344,7 +344,7 @@ Current position ──────>│  (in Planner)       │
                         └─────────────────────┘
 ```
 
-- Occupancy grid (3m cells) with 8-connected A*
+- Occupancy grid (3m cells) with 8-connected A\*
 - **Hybrid Mode**: Pre-plan routes between lawnmower waypoints
 - **Runtime Mode**: Plan detours when stuck or blocked
 

@@ -15,7 +15,7 @@ Real-time web-based monitoring and control dashboard for the AutoBoat autonomous
 - **JSON export** on Health Check, System Logs, ROS2 Terminal, and Mission Control panels
 - **Copy to clipboard** on Health Check, System Logs, and ROS2 Terminal panels
 - **Parameter validation** — out-of-range values rejected with orange toast, nothing sent to ROS
-- **A* Advanced Parameters** panel with Apply/Reset buttons and range-validated inputs
+- **A\* Advanced Parameters** panel with Apply/Reset buttons and range-validated inputs
 - **Emergency stop** with red pulsing badge and thrust cut
 - **Obstacle detection** with Front/Left/Right clearance, urgency scores, clusters, gaps
 - **Anti-stuck status** with Kalman drift uncertainty indicator
@@ -79,7 +79,7 @@ Then open **<http://localhost:8002>**.
 | **Thruster Output**        | Left/Right thrust with visual bars                                              |
 | **Anti-Stuck Status**      | Escape mode, live direction (LEFT/RIGHT/IDLE), front clearance, drift vector, Kalman sigma |
 | **Trajectory Map**         | Interactive Leaflet map with boat position, waypoints, trajectory               |
-| **Main Configuration**     | PID gains, speed, safe distance, waypoint tolerance, A* settings                |
+| **Main Configuration**     | PID gains, speed, safe distance, waypoint tolerance, A\* settings                |
 | **Perception Configuration**      | 12 perception params with 4 presets (Universal, Buoy Field, Pier Detect, Open Water) |
 | **Controller Configuration**    | 14 control params (safety distances, avoidance, anti-stuck, slew rate)          |
 | **Health Check**           | Live streaming 49-check system diagnostic with elapsed time                     |
@@ -95,7 +95,7 @@ Each section sends only its own parameters. With dirty-params filtering, only fi
 
 | Button           | Parameters                                          | Target Nodes    |
 | ---------------- | --------------------------------------------------- | --------------- |
-| **Apply Config** | PID, speed, lanes, waypoint tolerance, A* settings  | Planner + Controller |
+| **Apply Config** | PID, speed, lanes, waypoint tolerance, A\* settings  | Planner + Controller |
 | **Apply Perception** | Height/range filters, clustering, temporal | Perception           |
 | **Apply Controller** | Safety distances, avoidance gains, anti-stuck, slew | Controller         |
 

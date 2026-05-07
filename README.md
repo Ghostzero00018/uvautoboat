@@ -17,7 +17,7 @@ The system is a modular 3-node ROS 2 pipeline:
 | Node | Role | Description |
 | ------ | ------ | ------------- |
 | **Perception** | Perception | 3D LiDAR obstacle detection, temporal filtering, clustering |
-| **Planner** | Planning | Lawnmower waypoint generation, A* detour planning, mission state machine |
+| **Planner** | Planning | Lawnmower waypoint generation, A\* detour planning, mission state machine |
 | **Controller** | Control | PID heading control, reactive obstacle avoidance, anti-stuck recovery |
 
 > **Note:** Earlier development used U.S.S.R space-program code-names (OKO, SPUTNIK, BURAN). See [Glossary — Legacy Code-Names](wiki/Glossary.md#legacy-module-code-names-pre-v30) for the mapping.
@@ -237,7 +237,7 @@ uvautoboat/
 | 3D LiDAR obstacle detection (Perception) | ✅ Working |
 | PID heading control (Controller) | ✅ Working |
 | Anti-stuck recovery (SASS) | ✅ Working |
-| A* detour planning | ✅ Working |
+| A\* detour planning | ✅ Working |
 | Web dashboard with live map | ✅ Working |
 | Health check (49 checks) | ✅ Working |
 | CLI mission control | ✅ Working |

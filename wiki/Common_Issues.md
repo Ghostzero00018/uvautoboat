@@ -655,9 +655,9 @@ Reverts on reboot unless persisted (`/etc/default/cpufrequtils` or a systemd uni
 
 ---
 
-## A* Path Planning Issues
+## A\* Path Planning Issues
 
-### A* Not Finding Paths
+### A\* Not Finding Paths
 
 **Symptoms**: "No path found" errors, waypoint skip
 
@@ -692,7 +692,7 @@ Reverts on reboot unless persisted (`/etc/default/cpufrequtils` or a systemd uni
 
 ---
 
-### A* Planning Too Slow
+### A\* Planning Too Slow
 
 **Symptoms**: Long delays before boat moves
 
@@ -712,7 +712,7 @@ Reverts on reboot unless persisted (`/etc/default/cpufrequtils` or a systemd uni
    astar_max_expansions: 10000  # Reduce from 20000
    ```
 
-3. Disable hybrid mode (only use runtime A*):
+3. Disable hybrid mode (only use runtime A\*):
 
    ```bash
    ros2 topic pub /planning/set_config std_msgs/String \

@@ -70,7 +70,7 @@ The HTTP server, rosbridge, and web_video_server all bind to all network interfa
 
 #### 5. Unauthenticated commands within validated bounds (operational risk)
 
-PID gains, speeds, safety distances, A* settings, and other tunables are now validated **server-side** against `PARAM_RANGES` in each Python node (added 17/04/2026). Out-of-range values are rejected with `Rejected <name>=<value> (valid range: lo–hi)` at WARN level, surfaced as a red toast on the dashboard. So `max_speed: 99999` no longer lands.
+PID gains, speeds, safety distances, A\* settings, and other tunables are now validated **server-side** against `PARAM_RANGES` in each Python node (added 17/04/2026). Out-of-range values are rejected with `Rejected <name>=<value> (valid range: lo–hi)` at WARN level, surfaced as a red toast on the dashboard. So `max_speed: 99999` no longer lands.
 
 **Residual risk:** any LAN client (no auth — see #1) can still send **valid-but-tactically-dangerous** values **within** the allowed bounds — e.g., `max_speed: 800` (the upper bound) at the wrong moment, an emergency-stop release during a near-collision, or a `waypoint_tolerance` so loose the boat skips real targets. Range validation is a guard against numeric mistakes, not against an adversary inside the bounds.
 

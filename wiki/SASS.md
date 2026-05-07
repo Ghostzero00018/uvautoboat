@@ -278,7 +278,7 @@ ros2 param set /heading_controller stuck_threshold 1.0
 
 **Solution**:
 
-- Enable A* detour planning (`astar_enabled: true`, default) so the Planner routes around the obstacle cluster rather than relying on SASS to escape it
+- Enable A\* detour planning (`astar_enabled: true`, default) so the Planner routes around the obstacle cluster rather than relying on SASS to escape it
 - Use the waypoint skip strategy (automatic after the 45 s `waypoint_skip_timeout`) to move past difficult areas
 
 ---

@@ -24,7 +24,7 @@ Built on **ROS 2 Jazzy** and **Gazebo Harmonic**, the framework provides a robus
 - **Simple Anti-Stuck System**: Turn toward clearer side until path clear, with Kalman-filtered drift compensation
 - **Web Dashboard**: Real-time monitoring with visualization
 - **Waypoint Skip Strategy**: Automatic skip for blocked waypoints ensuring mission completion
-- **A* Path Planning**: Grid-based pathfinding for obstacle avoidance
+- **A\* Path Planning**: Grid-based pathfinding for obstacle avoidance
 
 ---
 
@@ -35,7 +35,7 @@ The **Modular (Perception–Planner–Controller)** three-node pipeline is the a
 | Node | Role | Description |
 |:-----|:-----|:------------|
 | **Perception** | Perception | 3D LiDAR obstacle detection, temporal filtering, clustering |
-| **Planner** | Planning | Lawnmower waypoint generation, A* detour planning, mission state machine |
+| **Planner** | Planning | Lawnmower waypoint generation, A\* detour planning, mission state machine |
 | **Controller** | Control | PID heading control, reactive obstacle avoidance, simple anti-stuck recovery |
 
 - Highly **configurable via YAML** (`autoboat.launch.yaml`)
@@ -91,7 +91,7 @@ The **Modular (Perception–Planner–Controller)** three-node pipeline is the a
 
 - **GPS Waypoint Navigation** (Waypoint Planner)
 - Lawnmower pattern generation
-- A* path planning for obstacles
+- A\* path planning for obstacles
 - Waypoint skip logic
 - Detour insertion
 
@@ -143,7 +143,7 @@ The **Modular (Perception–Planner–Controller)** three-node pipeline is the a
 - Go Home mode uses detour insertion instead
 - Ensures mission completion in complex environments
 
-### A* Path Planning
+### A\* Path Planning
 
 - Grid-based pathfinding (default: 3m cells)
 - Obstacle inflation for safe clearance
