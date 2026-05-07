@@ -117,6 +117,28 @@ which `getCanonicalDefault` then reads when painting `(default: X)` hints and wh
 Reset buttons fire. `index.html` `value="…"` attributes are cosmetic-only (initial
 paint before ROS sync) — change them only if the unconnected-page snapshot matters.
 
+### Tunable contract (`PARAM_RANGES` vs launch-only)
+
+Only params in a node's `PARAM_RANGES` class-level dict are dashboard-tunable.
+`PARAM_RANGES` is what gets published on `/<ns>/param_ranges` and consumed by
+the dashboard. Params declared via `self.declare_parameter()` but absent from
+`PARAM_RANGES` (e.g., `kalman_*` in `heading_controller`, `hull_radius` /
+`max_block_time` / `plan_avoid_margin` / `waypoint_skip_timeout` in
+`waypoint_planner`, `sample_rate` / `vfh_*` in `lidar_perception`) are
+intentionally launch-time-only — configured via `autoboat.launch.yaml`, not
+exposed on the dashboard; direct `ros2 param set` behavior is node-specific
+and may not affect already-cached runtime attributes. This keeps the operator
+surface focused on field-tunable knobs and avoids surfacing internal /
+algorithmic tuning as field footguns.
+
+To promote a launch-only param to dashboard-tunable, wire all eight surfaces:
+`PARAM_RANGES` range tuple + node `config_callback` branch + `PARAM_TO_INPUT_IDS`
+in `app.js` + apply function's local `idMap` (`controllerIdMap` /
+`perceptionIdMap` / `mainIdMap` in `sendConfig`) + apply function's `fullParams`
++ `allConfigInputs` (dirty-state listener) + `updateXxxInputs` guarded set +
+matching `<input>` in `index.html`. Add the DOM-id to `PRESET_INPUT_IDS` too if
+presets should diff/flash this field.
+
 ### Known Parameter Collisions (Resolved)
 
 Perception and Controller share the `/planning/set_config` topic. Parameters with the same name would collide:
@@ -251,4 +273,4 @@ Part of the uvautoboat project — Apache License 2.0.
 
 Built with [roslibjs](http://robotwebtools.org/), [Leaflet.js](https://leafletjs.com/), [OpenStreetMap](https://www.openstreetmap.org/).
 
-Last updated: 05/05/2026
+Last updated: 07/05/2026
