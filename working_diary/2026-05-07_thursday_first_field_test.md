@@ -49,7 +49,47 @@ The trigger for the day's branch. Check whichever channel the field-test confirm
 - **Not confirmed by ~13:00** → fallback queue, re-check at ~15:00.
 - **Cancelled outright** → fallback queue full afternoon, carry the field-test scaffold forward to whichever day it lands on.
 
-**Outcome.** [To fill — confirmation status (GO / slip / cancel) + decision branch chosen + time of decision.]
+**Outcome.** Pending as of late morning — interrupt-safe AM work in progress (see "Side activity" section below). Final outcome (PM gate at 13:00, last-call ~15:00) to fill at Block F.
+
+---
+
+## Side activity — Main-repo audit + dashboard hygiene (interrupt-safe AM, A pending)
+
+While Block A stayed pending past the AM open, used the holding window for a
+multi-pass main-repo audit + a real dashboard-sync gap fix surfaced mid-audit.
+4 commits this morning (all docs + 1 targeted Python callback branch — no other
+Python/YAML touched):
+
+1. **`b90a132`** — Round 1 audit fixes (10 across 6 files): 5 stale
+   `Last Updated` stamps anchored to wrong substantive-edit dates (Board.md
+   L11+L375, USER_MANUAL.md, wiki/README_WIKI, dashboard README); 2
+   `wiki/Roadmap.md` line-number drifts (`app.js:342` → `:354` at L66 + L109,
+   the latter an actively-misleading Path B implementation step); 3 wording
+   polishes (row-#1 "before Path A" caveat parity in §1.3 table, indexical
+   "today" → date-anchored in `wiki/Dashboard_Security.md` and
+   `wiki/Roadmap.md` §8.6).
+2. **`bab3778`** — Round 2 caught a published-but-unconsumed contract bug:
+   `heading_controller.py` published `drift_compensation_gain` on
+   `/control/param_ranges` but the dashboard had no DOM input + no map entries
+   + no `config_callback` branch (Apply silently dropped values). Fixed
+   end-to-end: `heading_controller.py` L734 callback branch + `index.html`
+   L853-857 DOM input + `app.js` 6 surfaces (`PARAM_TO_INPUT_IDS`,
+   `controllerIdMap`, `fullParams`, `allConfigInputs`,
+   `updateControllerInputs` guard, `PRESET_INPUT_IDS`). Runtime-verified in
+   sim: Apply 0.5 → `ros2 param get` returns 0.5; Reset → 0.3.
+3. **`fcede5a`** — fence-aware `A*` → `A\*` escape sweep (MD037), 34 lines
+   across 8 active docs. Python regex `A\*(?=[^*])` + fence-state machine
+   (lookahead skips bold markers and already-escaped occurrences). Post-sweep:
+   0 unescaped, 0 over-escaped (`A\\*`).
+4. **`68017dc`** — Round 3 audit confirmed no remaining `drift_comp`-style
+   gaps (40/40 `PARAM_RANGES` keys wired across 3 nodes); 11
+   declared-but-not-in-`PARAM_RANGES` params (`kalman_*`, `hull_radius`,
+   `vfh_*`, etc.) confirmed intentional launch-only. Codified policy +
+   8-surface promotion recipe in dashboard README's new "Tunable contract"
+   subsection.
+
+Block A signal still pending at section close; PM gate at 13:00, ~15:00
+last-call if ambiguous.
 
 ---
 
@@ -183,7 +223,7 @@ If the test is happening this afternoon, what gets carried to the lake. Concrete
 
 > **Skipped tomorrow** — D1+D2 hardware-only scope can't fire any §8.2 trigger (Trigger 3 = sim-side incompatibility surfaces during Phase 5+ HARDWARE integration; D1+D2 don't touch the sim). Plus weekly cadence is already covered by Wed 06/05 Block A.5 (0/4 fired). Next scheduled re-eval: Mon 11/05 AM.
 
-**Outcome.** [To fill — pass / partial / abort across B1, B2, B3; B4 typically "skipped, covered by Wed Block A.5".]
+**Outcome.** Not run during the AM holding window; B3 remains conditional on Block A confirmation / final branch. B1, B2, B4 already marked skipped per the D1+D2-only scope refinement above.
 
 ---
 
