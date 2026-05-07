@@ -57,8 +57,8 @@ The trigger for the day's branch. Check whichever channel the field-test confirm
 
 While Block A stayed pending past the AM open, used the holding window for a
 multi-pass main-repo audit + a real dashboard-sync gap fix surfaced mid-audit.
-4 commits this morning (all docs + 1 targeted Python callback branch — no other
-Python/YAML touched):
+The substantive AM side work covered 6 commits (all docs + 1 targeted Python
+callback branch — no other Python/YAML touched):
 
 1. **`b90a132`** — Round 1 audit fixes (10 across 6 files): 5 stale
    `Last Updated` stamps anchored to wrong substantive-edit dates (Board.md
@@ -70,8 +70,8 @@ Python/YAML touched):
    `wiki/Roadmap.md` §8.6).
 2. **`bab3778`** — Round 2 caught a published-but-unconsumed contract bug:
    `heading_controller.py` published `drift_compensation_gain` on
-   `/control/param_ranges` but the dashboard had no DOM input + no map entries
-   - no `config_callback` branch (Apply silently dropped values). Fixed
+   `/control/param_ranges` but the dashboard had no DOM input, no map entries,
+   and no `config_callback` branch (Apply silently dropped values). Fixed
    end-to-end: `heading_controller.py` L734 callback branch + `index.html`
    L853-857 DOM input + `app.js` 6 surfaces (`PARAM_TO_INPUT_IDS`,
    `controllerIdMap`, `fullParams`, `allConfigInputs`,
@@ -87,6 +87,18 @@ Python/YAML touched):
    `vfh_*`, etc.) confirmed intentional launch-only. Codified policy +
    8-surface promotion recipe in dashboard README's new "Tunable contract"
    subsection.
+5. **`cd8d890`** + **`f89a1bc`** — folder-framing READMEs for repo
+   visitors. `working_diary/` and `legacy/` previously had no `README.md`
+   so GitHub didn't auto-render framing on folder click. New
+   `working_diary/README.md` frames the chronological engineering log +
+   points at canonical docs (`README` / `USER_MANUAL` / `Board` / `wiki`);
+   new `legacy/README.md` flags frozen/deprecated state + points at the
+   existing `DEPRECATED.md` inventory. `wiki/` framing considered but
+   deferred: the wiki sync (`scripts/sync_wiki.sh` +
+   `.github/workflows/sync-wiki.yml`) strips only
+   `UPLOAD_INSTRUCTIONS.md`, so a `wiki/README.md` would publish to the
+   GitHub Wiki tab as a wrong-content page; cost-vs-benefit asymmetric
+   since `wiki/Home.md` already serves the Wiki tab as proper landing.
 
 Block A signal still pending at section close; PM gate at 13:00, ~15:00
 last-call if ambiguous.
