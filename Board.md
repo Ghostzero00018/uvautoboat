@@ -8,8 +8,8 @@
 |---|---|
 | **Project** | AutoBoat Navigation System |
 | **Repository** | [Ghostzero00018/uvautoboat](https://github.com/Ghostzero00018/uvautoboat) |
-| **Last Updated** | 06/05/2026 |
-| **Status** | 🟢 Simulation ready (A\* path planning + one-click launcher + wiki docs + dashboard config system + MP/QGC install). Real-hardware deployment prep ongoing — Pi 5 walked through 23/04/2026, bench delivery pending. |
+| **Last Updated** | 07/05/2026 |
+| **Status** | 🟢 Simulation ready (A\* path planning + one-click launcher + wiki docs + dashboard config system + MP/QGC install). First wet test completed 07/05/2026: boat survived float/manual-control bring-up, Herelink manual control works, and QGC/MP MAVLink arm/disarm works. Laptop-side Herelink video feed remains an open diagnostic; campus-vs-lake A/B retest queued because video reportedly worked at campus previously. |
 
 ---
 
@@ -137,7 +137,7 @@
 
 ## Phase 5: Real-Hardware Deployment 🔜
 
-**Status**: Planned | **Expected kickoff**: Week of 20/04/2026 | **Priority**: High
+**Status**: Bring-up started | **Expected kickoff**: Week of 20/04/2026 | **Priority**: High
 
 Supervisor walked through the real AutoBoat central control unit (CCU) in person on 23/04/2026 — boat frame, control unit enclosure, battery, and a Raspberry Pi 5 inside the enclosure as the companion computer. Hardware not yet delivered to the intern's bench, but the target platform is now physically verified rather than specified-on-paper.
 
@@ -179,7 +179,8 @@ The whole repo is expected to run on the Pi 5. Long-term (Phase 5.2+): dashboard
 | Build workspace on Pi 5 (native ARM64 build) | ⬜ |
 | Wire bridge node to real low-level protocol (only if supervisor confirms a separate low-level controller) | ⬜ |
 | Swap `/wamv/*` remaps to real driver topic names | ⬜ |
-| Connect MP / QGC to the autopilot (MAVLink default `14550/udp`, or serial if USB-tethered); verify telemetry + waypoint upload before attempting dashboard integration | ⬜ |
+| Connect MP / QGC to the autopilot (MAVLink default `14550/udp`, or serial if USB-tethered); verify telemetry + waypoint upload before attempting dashboard integration | 🟡 QGC/MP arm-disarm path confirmed 07/05/2026; waypoint upload + video still open |
+| Herelink laptop-side video A/B retest: repeat RTSP/VLC/QGC check at campus known-good site, then compare against lake result with same equipment/settings | ⬜ |
 | Bench test: dashboard → Pi 5 → (low-level if present) → thruster signal (dry bench, motors disconnected) | ⬜ |
 | Static analysis of thermals + current draw under full-stack load | ⬜ |
 
@@ -187,7 +188,7 @@ The whole repo is expected to run on the Pi 5. Long-term (Phase 5.2+): dashboard
 
 | Task | Status |
 |------|:------:|
-| Manual-joystick test (no autonomy) — verify thruster mapping + E-stop | ⬜ |
+| Manual-joystick test (no autonomy) — verify thruster mapping + E-stop | 🟡 Herelink manual control worked 07/05/2026; detailed thruster mapping + E-stop evidence still TBD |
 | Single-waypoint autonomous run in fenced test area | ⬜ |
 | Multi-waypoint mission with obstacle avoidance | ⬜ |
 | Long-duration robustness (15+ min) on-water | ⬜ |
@@ -297,8 +298,9 @@ The whole repo is expected to run on the Pi 5. Long-term (Phase 5.2+): dashboard
 | 04/05/2026 | Gazebo RTF throttle root cause + fix (Block D, deferred from 29/04): hardware drift catch first — `nvidia-smi` reports **RTX A3000 Laptop GPU** not A2000 (same Ampere driver line so hypothesis structure unchanged). Real cause was `prime-select on-demand` routing Gazebo to Mesa Intel UHD (TGL GT1) iGPU despite the discrete NVIDIA driver loading cleanly — `gpu_ray` LiDAR raycasting was iGPU-bound. Fix: `__NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia` env-prefix on `bash one_click_launch_all/launch_autoboat_complete.sh` (env vars propagate cleanly through `gnome-terminal --tab -- bash -i -c "..."` chain). A/B numbers: `/points` 2.48 → 6.8 Hz on the full launcher (2.7×; 8.95 Hz / 3.6× standalone), `/clock` 80.9 → 219.7 Hz, RTF **0.32 → 0.88** (2.7×). `nvidia-smi pmon` confirms `gz sim server` + `gz sim gui` + `rviz2` all on GPU 0. CPU governor `powersave` flagged as remaining ~10–15 % RTF gap (D3, needs sudo, deferred). `wiki/Common_Issues.md` "Gazebo Running Slow" section rewritten with diagnostic flow + measured table + Pi 5-unaffected caveat. Open question for the maintainer: bake env vars into the launcher (auto / `--use-nvidia` flag / leave manual) — flagged in diary, code change deferred | ✅ |
 | 05/05/2026 | Pre-field-test Block B sim verification (A=pending weather): warm `--use-nvidia` launch (44 s) → 5/5 nodes, 0 `BrokenPipeError`, 0 fresh `/var/crash/_opt_ros_jazzy*`. Mission cycle FINISHED 16/16 waypoints (100 %, 405 s sim @ RTF 0.88) via `autoboat_cli generate/confirm/start`. Rosbag dry-run: 14 topics requested, all subscribed at start; 79 080 messages / 21.5 MiB / 351.7 s; 12 non-empty (IMU ~89 Hz, thrusters ~21 Hz each, GPS ~18 Hz, mission_status 5 152, obstacle_info 4 320, current_target 3 391, anti-stuck 702, waypoints 3); `/planning/emergency_stop` 4 of 5 fan-published captured (recordability proven); `/health_check/*` advertised-only, 0 captured (scaffold L108 alternative criterion). `metadata.yaml` not flushed on backgrounded SIGINT — recovered via `ros2 bag reindex`. Pre / post health_check 49 / 46 PASS + 3 TUNED + 0 FAIL. B3 TBD list replaced with concrete fill-in form across 7 categories. B4 VRX §8.2 triggers re-checked: 0/4 still hold, HOLD stands. AM scope refinement recorded: even if A=GO, today's wet test is first-bring-up only (D1 + D2; D3-D5 + autonomy `/planning/emergency_stop` latching + full autonomy-stack network validation deferred — teleop stop/cutoff and a network smoke check stay mandatory) | ✅ |
 | 05/05/2026 | `--use-nvidia` discoverability follow-up landed (deferred from 04/05 Block D open question): 5 user-facing docs annotated for hybrid-graphics laptop users (Optimus / PRIME) — `README.md` Quick Start callout, `wiki/Quick_Start.md` parallel callout, `USER_MANUAL.md` flag example added to one-click-launch code block + combine line includes `--use-nvidia`, `web_dashboard/autoboat/README_autoboat_dashboard.md` callout, `wiki/Common_Issues.md` inline annotation in the rebuild-recipe at L396 forward-pointing to "Gazebo Running Slow". +83 / -11 across 5 files. Manual env-prefix fallback at `wiki/Common_Issues.md:594-595` left untouched by design (older-checkout / one-off `ros2 launch` equivalent). Pre-commit invisibility sweep clean | ✅ |
-| TBD | Real-hardware deployment (Pi 5 as confirmed target, visual-verified 23/04/2026; MAVLink autopilot as working hypothesis; low-level CCU architecture TBD) | 🔜 |
 | 06/05/2026 | VRX upstream fork landed: `Ghostzero00018/vrx` with LiDAR `publish_model_pose` bake-in (issue #876) committed to the fork's `jazzy` branch (commit `e384cd65`); `patch_vrx.sh` retained as idempotent no-op safety net for ≥2 release cycles. Reference-surface migration: 5 install/clone URLs swapped (`README.md:62`, `USER_MANUAL.md:357`, `wiki/Installation_Guide.md:51 + 55 + 94`) + 1 dual-link entry (`USER_MANUAL.md:346`) rewritten with both arrows; 9 attribution / canonical-project links to `osrf/vrx` preserved. Two remotes set up locally — `origin` = fork, `upstream` = `osrf/vrx`. Two-branch model on the fork: `jazzy` (upstream-tracking + bake-ins) and `autoboat/main` (workspace-consumed branch where future inside-VRX mods land — mesh adds/removes, sensor-config tweaks, etc.). Newcomer-onboarding polish (commit `427f4b4`): all 4 install clone snippets re-pinned to `git clone --branch autoboat/main ...` so doc-followed path lands on the right branch; GitHub default branch on the fork also flipped to `autoboat/main` so plain `git clone` lands there too. Scope-expansion override of `wiki/Roadmap.md` §8.5 "explicit not now" — at fork time, 0/4 §8.2 triggers had fired; original framework preserved as audit trail; new §8.6 Migration log + §8.7 Upstream sync workflow added | ✅ |
+| 07/05/2026 | First wet test completed at small artificial lake (D1/D2 scope only): boat survived in-water bring-up, Herelink manual control works, QGC and Mission Planner can arm/disarm over MAVLink. Laptop-side video feed remains unresolved; QGC log triage points away from VA-API/map-tile noise and toward Herelink RTSP/video-sharing, QGC video-source configuration, or location/link-condition differences. Professor notes video reportedly worked during the earlier campus-site stream test, so a controlled campus-vs-lake A/B retest is queued. Autonomy, ROS dashboard field link, remap-layer no-regression, and obstacle/lake-edge behaviour remain untested. Diagnostic recipe captured in [`wiki/Common_Issues.md`](wiki/Common_Issues.md#qgc--mission-planner-can-arm-via-herelink-but-video-is-missing) | 🟡 |
+| TBD | Real-hardware deployment (Pi 5 as confirmed target, visual-verified 23/04/2026; MAVLink autopilot as working hypothesis; low-level CCU architecture TBD) | 🔜 |
 | TBD | Coverage Planning | ⏸️ |
 
 ---

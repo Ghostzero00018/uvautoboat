@@ -49,7 +49,10 @@ The trigger for the day's branch. Check whichever channel the field-test confirm
 - **Not confirmed by ~13:00** → fallback queue, re-check at ~15:00.
 - **Cancelled outright** → fallback queue full afternoon, carry the field-test scaffold forward to whichever day it lands on.
 
-**Outcome.** Pending as of late morning — interrupt-safe AM work in progress (see "Side activity" section below). Final outcome (PM gate at 13:00, last-call ~15:00) to fill at Block F.
+**Outcome.** Field test confirmed and run in the afternoon. Branch: **A=GO,
+D1+D2 scope only**. Autonomy scenarios (D3-D5), full ROS 2 dashboard network
+validation, and onboard autonomy E-stop validation remain deferred; today's
+evidence is limited to float / manual-control bring-up plus GCS-link checks.
 
 ---
 
@@ -235,7 +238,10 @@ If the test is happening this afternoon, what gets carried to the lake. Concrete
 
 > **Skipped tomorrow** — D1+D2 hardware-only scope can't fire any §8.2 trigger (Trigger 3 = sim-side incompatibility surfaces during Phase 5+ HARDWARE integration; D1+D2 don't touch the sim). Plus weekly cadence is already covered by Wed 06/05 Block A.5 (0/4 fired). Next scheduled re-eval: Mon 11/05 AM.
 
-**Outcome.** Not run during the AM holding window; B3 remains conditional on Block A confirmation / final branch. B1, B2, B4 already marked skipped per the D1+D2-only scope refinement above.
+**Outcome.** B3 implicitly handled at bundling time — the boat departed with
+sufficient gear, and no missing-tool / missing-spare incident was flagged during
+C/D/E. Formal checklist fill-in skipped under field-test time pressure. B1, B2,
+B4 already marked skipped per the D1+D2-only scope refinement above.
 
 ---
 
@@ -256,7 +262,41 @@ Pass criteria: every step green, no surprise warnings in any node's terminal.
 
 If anything fails: capture the specific symptom + log + photo, abort the in-water portion, debrief at the workstation. A failed dry-land bring-up is **not** a failed day — it's the test surfacing exactly the kind of issue the field test exists to catch.
 
-**Outcome.** [To fill if applicable — pass / partial / abort, with specifics + GPS lock time + battery starting voltage.]
+**Outcome.** **PASS for first bring-up / PARTIAL for GCS video.** Boat survived
+the first wet test. Herelink manual control worked in the field, so the
+low-level operator-control path is usable enough for D1/D2 bring-up. QGC and
+Mission Planner could both reach the vehicle well enough to arm/disarm, which
+confirms MAVLink command/telemetry reachability over the Herelink link.
+
+Open issue: QGC / MP video feed did not display on the laptops even though the
+control link worked. This is now tracked as a **separate video-pipeline issue**,
+not a general network failure. Working hypothesis after log triage: Herelink is
+not re-streaming the camera externally, QGC is pointed at the wrong RTSP source,
+or the field-test location / link conditions changed the video path enough to
+break only the higher-bandwidth stream. MAVLink working does not prove the video
+path, because Herelink forwards MAVLink and video through different paths.
+
+Professor's added clue: the same video-stream test reportedly worked at the
+campus site during an earlier session. Treat this as a location/topology variable
+that needs an A/B repeat: same laptop(s), same Herelink unit, same QGC/MP
+settings, same connection mode, same RTSP URL attempt, first at campus and then
+at the lake if practical. Capture `ip route`, `arp -a`, VLC result, QGC video
+settings, and whether Herelink video sharing is enabled in both locations.
+
+Log triage from QGC:
+
+- `libva ... iHD_drv_video.so ... __vaDriverInit_1_0`: likely noise. Hardware
+  decode unavailable; software decode fallback should still allow video.
+- `QGeoTileRequestManager: Network Not Available`: likely noise. Offline map
+  tiles on the Herelink/local network; unrelated to video decode.
+- `PhotoVideoControl.qml ... 'cameras' of null`: symptom. QGC camera UI has no
+  stream object to bind to because no video pipeline is active.
+- Missing `qgc.videomanager.videoreceiver.gstreamer.*` lines despite video
+  debug enabled: important. QGC appears not to start a GStreamer pipeline.
+
+Follow-up diagnostic is captured in `wiki/Common_Issues.md`: find the Herelink
+IP used by the working MAVLink connection, test RTSP directly in VLC, then only
+configure QGC once the URL works outside QGC.
 
 ---
 
@@ -296,7 +336,19 @@ Drive a path that brings the boat close to the lake's edge or a known obstacle (
 - Person, animal, or floating object enters the test zone → E-stop, wait, resume.
 - Field network drops for > a few seconds without dashboard auto-recovery → E-stop, recover, then debug whether yesterday's reconnect fix actually held in field conditions.
 
-**Outcome.** [To fill per scenario — D1, D2 each with pass / partial / abort + observations + measurements vs sim expectations (GPS lock time, time-to-waypoint where applicable, thruster command vs realised motion, dashboard latency). D3-D5 deferred per scope refinement.]
+**Outcome.**
+
+- **D1 tethered float:** **PASS.** Boat remained recoverable and survived the
+  first in-water exposure. No autonomy stack claim made from this scenario.
+- **D2 manual control:** **PASS via Herelink manual control.** Manual control
+  worked well enough to validate the first operator-control wet test. QGC and MP
+  arm/disarm also worked, proving the MAVLink path from laptop to Herelink /
+  vehicle.
+- **Video feed during D2:** **FAIL / open diagnostic.** Laptop-side QGC / MP
+  did not show the video feed. This did not block manual Herelink control, but it
+  does block laptop-side situational awareness for later autonomy runs.
+- **D3-D5:** deferred by pre-test scope. No single-waypoint autonomy, untethered
+  mission, or obstacle / edge-handling claim is made from today's field test.
 
 ---
 
@@ -310,7 +362,13 @@ Immediately after the boat is out of the water and powered down, before anything
 4. **Surface impressions** — write down anything surprising while it's fresh: thruster noise, GPS lock time, dashboard latency over the field network, perception behaviour at the lake edge, anything that didn't match sim. Goes into "Known unknowns" below.
 5. **Hardware return state** — anything damaged / leaking / out-of-spec → flag for next-day inspection, don't rely on memory tomorrow.
 
-**Outcome.** [To fill — files captured (rosbag size + path; photo count), immediate observations, hardware state.]
+**Outcome.** Immediate observations captured in this diary. No autonomy rosbag
+was recorded today because the confirmed scope stayed at D1/D2 manual bring-up
+and did not exercise the autonomy stack.
+Hardware state at debrief: boat survived first wet test; manual control via
+Herelink works. Open debrief item is laptop-side video: collect VLC/QGC error
+output during the next diagnostic pass before changing multiple settings at
+once.
 
 ---
 
@@ -328,18 +386,21 @@ Same shape as Tue/Wed:
 
 If the field test happened, **also** write a short "first wet test" entry in the external Week 9 diary (`Research_intern_IMT_NE/working_diary/Week9_04_05-08_05.md`) — that's a higher-level milestone worth recording cross-document. Deferred to the next Windows-side session if the external diary is only accessible there.
 
-**Outcome.** [To fill at end of day.]
+**Outcome.** Diary, `Board.md`, and durable troubleshooting docs updated with
+the wet-test evidence and the Herelink/QGC video diagnostic path. Diff
+whitespace check (`git diff --check`) clean. No code change was needed for the
+field-test finding itself.
 
 ---
 
 ## Verification summary — 07/05 (check at end of day)
 
-- [ ] Block A: confirmation status determined; decision branch logged
-- [ ] Block B (D1+D2-narrowed scope): B3 deployment bundle populated; B1 / B2 / B4 skipped per scope refinement (autonomy stack + sim backend not on trial — see Block B intro for rationale)
-- [ ] Block C: hardware bring-up [pass / partial / abort + reason]
-- [ ] Block D: in-water scenarios D1 + D2 [per-scenario status]
-- [ ] Block E: data offloaded, observations captured
-- [ ] Block F: diary filled; pre-commit sweep clean; Board.md updated
+- [x] Block A: confirmation status determined; decision branch logged
+- [x] Block B (D1+D2-narrowed scope): B3 implicitly handled at bundling time; B1 / B2 / B4 skipped per scope refinement (autonomy stack + sim backend not on trial — see Block B intro for rationale)
+- [x] Block C: hardware bring-up pass for manual-control bring-up; partial due laptop-side video issue
+- [x] Block D: in-water D1 + D2 completed; D3-D5 deferred
+- [x] Block E: immediate observations captured; no autonomy rosbag recorded in this tracked note
+- [x] Block F: diary filled; `git diff --check` clean; Board.md updated
 - [ ] External Week 9 diary Thu "Outcome:" line *(deferred to next Windows session if field test ran)*
 
 ---
@@ -361,17 +422,27 @@ If the field test happened, **also** write a short "first wet test" entry in the
 
 Capture surprises with `file:line` / command + observation + follow-up. Pre-seeded with the categories most likely to surface; fill or delete as they resolve.
 
-- [Field-test confirmation timing — news source + time received + decision]
-- [Hardware quirks surfaced during Block C bring-up]
-- [GPS lock time + accuracy in this specific park (sim assumes instant lock + perfect coordinates)]
-- [Thruster behaviour vs sim expectations — overshoot, undershoot, asymmetry, dead-zone]
-- [IMU drift rate on a real water surface — sim has no surface noise]
-- [Dashboard latency over the field network — sim is localhost; field may be wireless / hotspot]
-- [Sensor topic name mismatches between sim and real (the deferred `remap.launch.yaml` no-regression check)]
-- [Battery drain per mission length — first real measurement]
-- [Whether the rosbridge reconnect resilience verified Mon 04/05 holds in field conditions (intermittent wifi, not just `pkill rosbridge_websocket`)]
-- [Perception behaviour at lake-edge transitions (water → bank) if LiDAR is on the boat]
-- [Whether Wed's CSP `'unsafe-inline'` removal holds under field-network conditions (if any CSSOM path triggers a violation only when WS connections take longer to establish)]
+- Field-test branch: A=GO, D1+D2 only. Autonomy stack was not exercised.
+- Hardware bring-up: boat survived first wet test; Herelink manual control works.
+- MAVLink reachability: QGC and Mission Planner can arm/disarm, so the laptop /
+  Herelink / vehicle command path is alive.
+- Video reachability: laptop-side QGC / MP video feed does not work yet. Treat
+  separately from MAVLink. Next diagnostic: direct RTSP test in VLC using the
+  Herelink IP, then QGC video-source configuration only after VLC works.
+- Location variable: professor notes the same video-stream test worked at the
+  campus site previously. Need controlled campus-vs-lake retest before declaring
+  the cause purely configuration-side.
+- GPS lock time + accuracy in this specific park: not recorded in this note.
+- Thruster behaviour vs sim expectations: manual control works; detailed
+  overshoot / dead-zone / asymmetry measurements still TBD.
+- IMU drift rate on real water surface: not measured; defer to D3+ or bench bag.
+- Dashboard latency over field network: not measured; Herelink/QGC/MP link
+  confirmed only at MAVLink command level.
+- Sensor topic name mismatches / `remap.launch.yaml` no-regression: not tested.
+- Battery drain per mission length: not recorded in this note.
+- Rosbridge reconnect resilience under field wifi: not tested.
+- Perception at lake edge: not tested; LiDAR/autonomy scenarios deferred.
+- Wed CSP field-network behaviour: not tested.
 
 ---
 
@@ -383,7 +454,11 @@ This is the active day per the Tue → Thu slip (see Tue diary Block A Outcome a
 
 ### Conditional on today's Block D outcome
 
-- **If field test runs cleanly today:** sim-to-real comparison Mon 11/05 — replay the rosbag through analysis tools, compare measured trajectories vs planner outputs, document any sim-to-real gaps in `wiki/`. Schedule a short report for the supervisor / teammate maintainer.
+- **If field test runs cleanly today:** sim-to-real comparison Mon 11/05 — replay the rosbag through analysis tools if one exists, compare measured trajectories vs planner outputs, document any sim-to-real gaps in `wiki/`. Schedule a short report for the supervisor / teammate maintainer. For today's D1/D2 run specifically, the first priority is the Herelink/QGC video diagnostic because later autonomy tests need laptop-side situational awareness.
+- **Herelink video A/B retest:** repeat the RTSP/VLC/QGC test at the campus site
+  where video previously worked, then repeat with the same settings at the lake
+  if possible. Keep equipment and connection mode fixed so the location/link
+  condition is the only intentional variable.
 - **If field test aborted partway today:** debrief the abort cause (hardware fix? code fix? environmental factor?), schedule the fix Mon 11/05, and re-attempt as soon as repaired and weather-permitting.
 - **If field test deferred again from today:** carry the scaffold forward to whichever day actually happens — same shape as the Tue → Thu slip (copy this file to a new dated file with placeholders re-blanked).
 

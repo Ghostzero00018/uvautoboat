@@ -327,6 +327,117 @@ sudo ufw allow 8080/tcp
 
 ---
 
+### QGC / Mission Planner Can Arm via Herelink, but Video Is Missing
+
+**Symptoms**:
+
+- Herelink controller shows manual control / onboard video.
+- QGroundControl and Mission Planner on a laptop can connect well enough to
+  arm/disarm the vehicle.
+- Laptop-side QGC / MP video panel stays blank.
+- QGC logs may show VA-API errors, offline map-tile errors, and
+  `PhotoVideoControl.qml` camera-binding errors, but no
+  `qgc.videomanager.videoreceiver.gstreamer.*` pipeline-construction lines.
+
+**Interpretation**: MAVLink and video are separate paths. Arm/disarm proving
+MAVLink reachability does **not** prove that Herelink is re-streaming camera
+video to the laptop. Treat this as a video forwarding / RTSP URL problem until
+direct stream tests prove otherwise. If the same Herelink video stream worked at
+another site before, preserve that as a location / link-condition variable and
+repeat a controlled campus-vs-field comparison before changing many settings.
+
+**Log triage**:
+
+| Log signal | Likely meaning |
+|:-----------|:---------------|
+| `libva error ... iHD_drv_video.so ... __vaDriverInit_1_0` | Usually noise. Intel hardware decode is unavailable; software decode fallback should still work. |
+| `QGeoTileRequestManager: Network Not Available` | Usually noise. Map tiles are offline on the local Herelink network; unrelated to camera video. |
+| `PhotoVideoControl.qml ... 'cameras' of null` | Symptom. QGC has no active video stream object to bind to. |
+| No `qgc.videomanager.videoreceiver.gstreamer.*` lines with video debug enabled | Important. QGC likely did not start a video pipeline at all. |
+
+**Diagnosis**:
+
+1. **Find the Herelink IP that the working control link uses.**
+
+   In QGC, check the Comm Link used for MAVLink and note the host address. From
+   a terminal, also capture the local routing state:
+
+   ```bash
+   ip route
+   arp -a
+   ```
+
+2. **Test the video stream outside QGC first.**
+
+   Prefer RTSP for Herelink video sharing. Common documented Herelink URLs are:
+
+   ```bash
+   vlc rtsp://192.168.42.129:8554/fpv_stream
+   vlc rtsp://<herelink-ip>:8554/fpv_stream
+   vlc rtsp://<herelink-ip>:8554/live
+   ```
+
+   If VLC is unavailable, install it on the laptop:
+
+   ```bash
+   sudo apt install vlc
+   ```
+
+3. **Branch on the VLC result.**
+
+   - If VLC shows video: QGC is misconfigured. Set
+     **Application Settings -> General -> Video -> Source** to
+     **RTSP Video Stream**, set the RTSP URL to the VLC-working URL, then
+     restart QGC.
+   - If VLC also fails: the stream is not being advertised to the laptop. On
+     the Herelink controller, open Herelink Settings / Solex / Herelink Hub
+     depending on firmware and enable **Video Sharing**, **RTSP Server**,
+     **Forward video to GCS**, or the closest equivalent wording. Keep at least
+     one GCS app running on the Herelink and make sure the correct HDMI/video
+     stream is selected, then repeat the VLC test.
+
+4. **If video worked at campus before, run a controlled A/B retest.**
+
+   Keep these fixed between locations:
+
+   - Same Herelink air/ground units and camera input.
+   - Same laptop, or test both laptops in the same order.
+   - Same connection mode: USB tethering, Herelink hotspot, Wi-Fi, or Ethernet.
+   - Same QGC/MP version and QGC video-source setting.
+   - Same RTSP URL attempts.
+
+   Capture this in both locations:
+
+   ```bash
+   ip route
+   arp -a
+   vlc rtsp://<herelink-ip>:8554/fpv_stream
+   ```
+
+   If campus works but the lake fails with identical settings, the issue is
+   likely link quality, RF environment, local network topology, or site-specific
+   interference / range rather than QGC's general configuration. If both fail,
+   focus on Herelink video-sharing state or the RTSP URL. If VLC works in both
+   but QGC fails in one, focus on QGC video-source settings and logs.
+
+**Known Herelink detail**:
+[CubePilot's Herelink video-sharing guide](https://docs.cubepilot.org/user-guides/herelink/herelink-user-guides/share-video-stream)
+documents RTSP stream sharing on port `8554`, including
+`rtsp://192.168.42.129:8554/fpv_stream` for USB tethering and
+`rtsp://<Herelink Wi-Fi IP>:8554/fpv_stream` for Wi-Fi / hotspot sharing.
+QGC's video source and URL/port fields are documented in
+[Application Settings -> General -> Video](https://docs.qgroundcontrol.com/master/en/qgc-user-guide/settings_view/general.html#video).
+
+**Do not chase first**:
+
+- VA-API / `libva` decode warnings, unless the stream works in VLC but QGC
+  decode still fails.
+- Offline map tiles, unless map background is the problem being debugged.
+- `PhotoVideoControl.qml` null-camera errors before proving an RTSP stream
+  exists.
+
+---
+
 ### Camera Stuck on "Connecting…" after Full Tab Close + Hard Refresh
 
 **Symptoms**: Camera panel shows black + `Connecting to …` even after closing the dashboard tab entirely and reopening; other panels (Gazebo, RViz, nav stack) work normally.
