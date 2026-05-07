@@ -71,7 +71,7 @@ Python/YAML touched):
 2. **`bab3778`** — Round 2 caught a published-but-unconsumed contract bug:
    `heading_controller.py` published `drift_compensation_gain` on
    `/control/param_ranges` but the dashboard had no DOM input + no map entries
-   + no `config_callback` branch (Apply silently dropped values). Fixed
+   - no `config_callback` branch (Apply silently dropped values). Fixed
    end-to-end: `heading_controller.py` L734 callback branch + `index.html`
    L853-857 DOM input + `app.js` 6 surfaces (`PARAM_TO_INPUT_IDS`,
    `controllerIdMap`, `fullParams`, `allConfigInputs`,
