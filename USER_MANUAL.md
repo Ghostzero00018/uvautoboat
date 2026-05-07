@@ -1735,7 +1735,7 @@ Open an issue on [GitHub](https://github.com/Ghostzero00018/uvautoboat/issues) w
 
 Project finished by IMT NORD EUROPE DNM DMI-2026
 
-Last updated at 30/04/2026
+Last updated at 06/05/2026
 
 ---
 

@@ -49,7 +49,7 @@ Resolved. The generic `addLog(message, type)` helper previously built its DOM vi
   - **Event logs, mission history, waypoint validation** — dynamic text is written with `.textContent`. **Safe.**
   - **Rosout terminal panel** — `addTerminalLine()` builds the row wrapper via `innerHTML` but writes the actual log message body via `.textContent`, so `<script>` in a ROS log message renders as text. **Safe.**
   - **World banner text** — properly escaped (`<` → `&lt;`).
-- **Defense-in-depth (05/05/2026):** the CSP wrapper added today (`web_dashboard/autoboat/serve_dashboard.py`) blocks any future renderer regression from executing scripts loaded from non-allowed origins, plus inline `eval` is excluded entirely. See [Content Security Policy](#content-security-policy) below.
+- **Defense-in-depth (05/05/2026):** the CSP wrapper (`web_dashboard/autoboat/serve_dashboard.py`) blocks any future renderer regression from executing scripts loaded from non-allowed origins, plus inline `eval` is excluded entirely. See [Content Security Policy](#content-security-policy) below.
 
 #### 3. Unencrypted WebSocket
 

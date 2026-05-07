@@ -61,9 +61,9 @@ Inventoried 30/04/2026 across `web_dashboard/autoboat/`; Path A landed 05/05/202
 
 | # | Source before Path A | Current source | Function | Severity without internet now |
 |:-:|:---------------------|:---------------|:---------|:------------------------------|
-| 1 | `cdn.jsdelivr.net/npm/roslib@1` (`index.html:18`) | `vendor/roslib/roslib.min.js` | rosbridge WebSocket JS client | **Resolved by Path A** — dashboard core connection no longer depends on internet |
+| 1 | `cdn.jsdelivr.net/npm/roslib@1` (`index.html:18` before Path A) | `vendor/roslib/roslib.min.js` | rosbridge WebSocket JS client | **Resolved by Path A** — dashboard core connection no longer depends on internet |
 | 2 | `unpkg.com/leaflet@1.9.4` JS + CSS (`index.html:21, 24` before Path A) | `vendor/leaflet/` | Map rendering library | **Resolved by Path A** — Leaflet loads locally; map overlays can render without internet |
-| 3 | `tile.openstreetmap.org` (`app.js:342`) | unchanged external tile server | Map background tiles | **Still open** — map area renders empty grey without internet; boat marker / waypoints / path overlay still draw on top, but with no geographical context |
+| 3 | `tile.openstreetmap.org` (`app.js:354`) | unchanged external tile server | Map background tiles | **Still open** — map area renders empty grey without internet; boat marker / waypoints / path overlay still draw on top, but with no geographical context |
 | 4 | Google Fonts — Roboto Condensed (`style_merged.css:4`) | `vendor/google-fonts/roboto-condensed.css` + local WOFF2 files | Typography | **Resolved by Path A** — fonts load locally |
 
 **Combined impact after Path A.** Without internet, dashboard core functionality (telemetry, mission control, health check) and the Leaflet map library still load. The remaining blocker is map background context: OSM tiles are still external, so IoT-local deployment needs Path B (offline tile server + pre-generated MBTiles for the test area) before the first field deployment on that network.
@@ -106,7 +106,7 @@ Pre-deployment workflow:
 3. Generate MBTiles via `tilemaker`.
 4. Copy MBTiles to the workstation.
 5. Run tile server (e.g., `martin tiles.mbtiles`).
-6. Update `app.js:342` `L.tileLayer(...)` URL to `http://localhost:<port>/tiles/{z}/{x}/{y}.png` (or make it a launch parameter).
+6. Update `app.js:354` `L.tileLayer(...)` URL to `http://localhost:<port>/tiles/{z}/{x}/{y}.png` (or make it a launch parameter).
 
 For Phase 5 deployment on the IoT network, this path is **mandatory** if the map panel must work.
 
@@ -506,7 +506,7 @@ Captured originally for traceability, not action: *re-open this section only whe
 
 - **Fork created:** `Ghostzero00018/vrx` (basename invariant — must stay `vrx` so `patch_vrx.sh:20` hardcoded local path `$WS_ROOT/src/vrx/` resolves correctly).
 - **Branch scope (initial):** jazzy-only at fork creation (other upstream branches accessible via the `upstream` remote if ever needed).
-- **Two-branch model adopted post-fork:** `jazzy` mirrors `osrf/vrx jazzy` plus upstream-bugfix bake-in commits (today: 1 — `e384cd65`); `autoboat/main` branches off `jazzy` and accumulates project-specific inside-VRX modifications — mesh adds/removes, sensor-config tweaks, hydrodynamics tuning, etc. (today: 0 commits beyond `jazzy`; created at the same HEAD as a clean starting point for the monthly-mod cadence). Workspace consumes `autoboat/main` (set via `git checkout autoboat/main` in `~/seal_ws/src/vrx/`). Rationale: separates "upstream-bugfix" history from "our project mods" history so sync conflicts can be resolved at the appropriate level.
+- **Two-branch model adopted post-fork:** `jazzy` mirrors `osrf/vrx jazzy` plus upstream-bugfix bake-in commits (at fork creation: 1 — `e384cd65`); `autoboat/main` branches off `jazzy` and accumulates project-specific inside-VRX modifications — mesh adds/removes, sensor-config tweaks, hydrodynamics tuning, etc. (at fork creation: 0 commits beyond `jazzy`; created at the same HEAD as a clean starting point for the monthly-mod cadence). Workspace consumes `autoboat/main` (set via `git checkout autoboat/main` in `~/seal_ws/src/vrx/`). Rationale: separates "upstream-bugfix" history from "our project mods" history so sync conflicts can be resolved at the appropriate level.
 - **Initial sync:** local `jazzy` started at upstream HEAD (commit `7609d1bd`, no divergence from `osrf/vrx`); `autoboat/main` created at the same point.
 - **Bake-in commit (`e384cd65`):** the LiDAR-at-origin workaround (single sed substitution `<publish_model_pose>false → true` in `vrx_urdf/wamv_gazebo/urdf/wamv_gazebo.urdf.xacro:94`) landed as a real commit on the fork's `jazzy` branch. `patch_vrx.sh` becomes idempotent no-op (the `grep -q '<publish_model_pose>true</publish_model_pose>'` short-circuit at line 27-29 triggers immediately).
 - **Patch script retention:** kept as no-op safety-net for ≥2 release cycles; remove only after a fork upstream-merge cycle confirms the bake-in survives without re-derivation.
