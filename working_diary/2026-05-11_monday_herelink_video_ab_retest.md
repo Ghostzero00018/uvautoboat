@@ -99,6 +99,46 @@ After a 3-day gap (Fri-Sun), catch up before starting field work:
 
 ---
 
+## Side activity — Pi 5 ↔ Linux workstation connectivity + ROS 2 topic capture (~30-45 min, AM, parallel-safe)
+
+Long-deferred **"Real no-regression test for `launch/remap.launch.yaml`"** finally gets a chance — first time the Pi 5 is available on the lab network for an actual ROS 2 graph cross-machine handshake. Runs parallel to the A/B retest flow because the Pi 5 lives at the workstation, not the field site; slot into the Block A re-orientation gap, the Block B pre-prep window, or any wait period during Block C/D field hops.
+
+**Pre-conditions:** Pi 5 powered on, on the same network as the Linux workstation, `ROS_DOMAIN_ID` matched both sides, both machines using the same `RMW_IMPLEMENTATION`.
+
+1. **Network reachability** — `ping <pi5-ip>` from workstation; SSH if access is set up; `echo $ROS_DOMAIN_ID` on each machine to confirm match (default 0; agree on a non-zero value if multiple teams share the network).
+2. **ROS 2 multi-machine discovery** — from workstation:
+
+   ```bash
+   ros2 daemon stop && ros2 daemon start   # clear stale discovery cache
+   ros2 node list                           # expect Pi 5 nodes to surface
+   ros2 topic list                          # expect Pi 5 topics to surface
+   ```
+
+   If neither shows up, debug in this order: `ROS_DOMAIN_ID` mismatch → `RMW_IMPLEMENTATION` mismatch (`echo $RMW_IMPLEMENTATION`) → DDS multicast / firewall on the lab network → IP routing.
+3. **Topic name ground-truth capture** — save the full Pi 5 topic list to `/tmp/pi5_topics_2026-05-11.txt`:
+
+   ```bash
+   ros2 topic list > /tmp/pi5_topics_2026-05-11.txt
+   wc -l /tmp/pi5_topics_2026-05-11.txt
+   ```
+
+   This is the first authoritative real-hardware ROS 2 topic snapshot — the ground truth `launch/remap.launch.yaml` was always supposed to bridge against.
+4. **Compare to sim** — launch the sim briefly in another terminal (`bash one_click_launch_all/launch_autoboat_complete.sh --use-nvidia`), capture sim topic list, diff against Pi 5's. Identify any names that don't match: `/wamv/sensors/gps/gps/fix` vs whatever the real boat publishes, etc.
+
+   ```bash
+   diff <(sort /tmp/pi5_topics_2026-05-11.txt) <(ros2 topic list | sort)
+   ```
+
+5. **Document findings** — append discovery gotchas to `wiki/Common_Issues.md` (e.g., `ROS_DOMAIN_ID` setup, DDS multicast on lab network, mDNS resolution); flag the topic-name mismatches as deferred items for a future focused `launch/remap.launch.yaml` patch session.
+
+**Hard rule:** do **NOT** modify `launch/remap.launch.yaml` today — capture findings only. The patch + no-regression test deserves its own focused session, not an inline change while doing field work.
+
+**Pass criteria:** Pi 5 nodes + topics visible from workstation, full topic list archived to `/tmp/pi5_topics_2026-05-11.txt`, name-mismatch diff captured.
+
+**Outcome.** [To fill — Pi 5 IP + connection mode, ROS_DOMAIN_ID + RMW_IMPLEMENTATION on each side, topic list line count, mismatches vs sim, doc updates landed in `wiki/Common_Issues.md`.]
+
+---
+
 ## Block B — Pre-A/B prep (~15-20 min, AM)
 
 Equipment + settings audit before walking out:
@@ -253,6 +293,7 @@ Same shape as Thu 07/05:
 ## Verification summary — 11/05 (check at end of day)
 
 - [ ] Block A: morning re-orientation done; A/B retest go/no-go decided
+- [ ] Side activity (Pi 5 connectivity): Pi 5 ↔ workstation ROS 2 graph handshake done; topic list archived; sim diff captured; `launch/remap.launch.yaml` patch deferred per the hard rule
 - [ ] Block B: equipment + settings audit complete
 - [ ] Block C: campus A test executed; outcome branch (A1/A2/A3/A4) recorded
 - [ ] Block D: B-site test executed (if Block C demanded it) OR explicitly
@@ -269,6 +310,7 @@ Same shape as Thu 07/05:
 | After | State | Rollover cost |
 |:------|:------|:--------------|
 | Block A | Re-orientation done; go/no-go decided | None — drives the rest of the day |
+| Side activity (Pi 5) | Pi 5 ↔ workstation ROS 2 graph verified; topic ground-truth captured | Low — interrupt-safe; partial completion (e.g., reachability OK but discovery fails) is informative on its own |
 | Block B | Pre-A/B prep done | Low — useful regardless of A/B outcome |
 | Block C | Campus baseline known | Medium — A/B retest stops here if Block C identifies the fix unambiguously (A2/A3) |
 | Block D | B-site test complete (if run) | Hard requirement under A1 — without B-site confirmation, the location-variable hypothesis can't close |
@@ -331,9 +373,7 @@ Today's outcome drives the rest of the week's plan. After 11/05:
 - Dashboard scaffold-without-write audit (29/04 architectural lesson).
 - C3 bench verification — passive wait for real-hardware double-reverse
   symptom.
-- Real no-regression test for `launch/remap.launch.yaml` — needs first
-  real-hardware bench (07/05 deployment may have exercised this; verify via
-  a follow-up if relevant).
+- ~~Real no-regression test for `launch/remap.launch.yaml` — needs first real-hardware bench~~ — **discovery phase covered today's Side activity (Pi 5 connectivity + topic capture); patch session for the actual `remap.launch.yaml` no-regression test remains deferred to a focused future window once mismatches are catalogued.**
 - Sim-to-real comparison — was conditional on a 07/05 rosbag; none recorded,
   so this is N/A until a future field test records autonomy bag data.
 - External Week 9 diary Thu 07/05 "Outcome:" line — bilingual EN + 中文,
