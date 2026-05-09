@@ -89,8 +89,16 @@ After a 3-day gap (Fri-Sun), catch up before starting field work:
 
 - `git log --oneline -5` + `git status` — confirm tree clean, branch synced.
 - Re-read 07/05 diary Block C/D/E outcomes + Block F next-steps list.
-- Check email / Slack for: supervisor / teammate replies, weather updates,
-  any field-test rescheduling, presentation reschedule.
+- Check weekend inputs if accessible (supervisor / teammate replies, weather
+  updates, field-test rescheduling, presentation reschedule). If email / Slack
+  are not reachable from this Agent context, ask the user to report any
+  weekend inputs verbally — do NOT silently mark this checked.
+- **VRX §8.2 weekly re-eval (~30 sec)** — per Wed 06/05 Block A.5 schedule,
+  today is the weekly cadence point. Verify 0/4 §8.2 triggers still hold
+  (patch count growth / custom mods / Phase 5+ sim-incompat / upstream major
+  release) per `wiki/Roadmap.md` §8.2. This is the §8.2-axis maintenance
+  check, separate from Wed 06/05's fork execution which was on the
+  onboarding-value axis.
 - Confirm Herelink hardware is available + charged + at the campus site OR
   portable.
 - Confirm A/B retest is still on; if not, branch into fallback queue.
@@ -270,8 +278,10 @@ Same shape as Thu 07/05:
 
 1. `git log --oneline -10` — sanity check today's commits.
 2. Pre-commit invisibility sweep — expect 0 matches.
-3. Add 11/05/2026 Board.md milestone row(s) for whatever lands; bump
-   header (L11) + trailer stamp to 11/05/2026 if anything substantive lands.
+3. Add 11/05/2026 Board.md milestone row(s) for whatever lands; bump the
+   header `**Last Updated**` row + the bottom `**Document Version** ... **Last Updated**`
+   trailer stamp to 11/05/2026 if anything substantive lands. **Use search
+   rather than relying on line numbers** — both rows drift as Board.md grows.
 4. Fill all `[To fill]` placeholders in this file.
 5. Update `wiki/Common_Issues.md` "QGC / Mission Planner Can Arm via Herelink,
    but Video Is Missing" entry — replace the speculative branch list with the
@@ -285,6 +295,17 @@ Same shape as Thu 07/05:
    - Fallback work landed:
      `docs(diary): log 11/05 fallback work; A/B retest deferred`
 7. Push.
+8. **Update Week 10 external diary Mon section Outcome bullet** — the
+   external Windows-side weekly diary (`Week10_11_05-15_05.md`, located in
+   the user's research-intern folder on the Windows laptop, **outside** the
+   uvautoboat repo and **not relative** to it) was scaffolded ahead of today's
+   resume. Fill the Mon `[fill]` placeholder with what actually landed
+   (A/B retest result, Pi 5 connectivity status, weekend inputs, VRX §8.2
+   re-eval result, fallback work if any). Bilingual EN + 中文 — the Outcome
+   bullet has both. **If the external path isn't reachable from this Linux
+   session, defer to the next Windows-side session** — the task does not
+   block the Mon main-repo wrap, but the external entry stays in "[fill]"
+   until done.
 
 **Outcome.** [To fill at end of day.]
 
@@ -373,7 +394,7 @@ Today's outcome drives the rest of the week's plan. After 11/05:
 - Dashboard scaffold-without-write audit (29/04 architectural lesson).
 - C3 bench verification — passive wait for real-hardware double-reverse
   symptom.
-- ~~Real no-regression test for `launch/remap.launch.yaml` — needs first real-hardware bench~~ — **discovery phase covered today's Side activity (Pi 5 connectivity + topic capture); patch session for the actual `remap.launch.yaml` no-regression test remains deferred to a focused future window once mismatches are catalogued.**
+- **Real no-regression test for `launch/remap.launch.yaml`** — discovery phase scheduled as today's Side activity (Pi 5 connectivity + topic ground-truth capture + sim diff). **Conditional update at end of day:** if the Side activity completes (Pi 5 nodes/topics visible from workstation + ground-truth archive landed + sim-vs-Pi5 diff captured), mark the discovery phase as covered and only the patch session itself remains deferred to a focused future window once mismatches are catalogued. If the Side activity is blocked or skipped, this item stays in its original "needs first real-hardware bench" state — re-evaluate at the next test window.
 - Sim-to-real comparison — was conditional on a 07/05 rosbag; none recorded,
   so this is N/A until a future field test records autonomy bag data.
 - External Week 9 diary Thu 07/05 "Outcome:" line — bilingual EN + 中文,
