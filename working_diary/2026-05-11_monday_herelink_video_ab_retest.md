@@ -454,10 +454,130 @@ remains the serious-MP fallback for the full feature surface.
 
 ---
 
+## Block H — Pi 5 Side activity executed (evening 11/05/2026, post-Block-G doc commit)
+
+The Block G commit captured the MP-Linux fix; Pi 5 Side activity was marked
+deferred there. Picked up the same evening after the IoT-link details
+landed.
+
+**Setup state — Pi 5 as found tonight**:
+
+- **Host**: `imtaqua-pi-01`, Ubuntu 24.04.4 LTS aarch64, kernel
+  `6.8.0-1052-raspi` (real Raspberry Pi build, not generic ARM).
+- **Network**: on `IoT IMT Nord Europe` at `10.120.2.50/23`. Workstation
+  joined the same `/23` and got `10.120.2.190` — direct L2 reachability,
+  no gateway hop (`ip route get 10.120.2.50` shows
+  `dev wlp147s0 src 10.120.2.190` with no `via`).
+- **SSH**: user `aqpi-01`, ED25519 key from workstation
+  (`~/.ssh/id_ed25519`) installed in Pi's `~/.ssh/authorized_keys` via
+  `ssh-copy-id`; password-less SSH verified
+  (`ssh aqpi-01@10.120.2.50 'hostname'` returns immediately).
+- **ROS 2**: Jazzy installed at `/opt/ros/jazzy/`, `ros2` CLI on PATH,
+  daemon initializes cleanly.
+- **Pi-side ROS env defaults** (all unset on the Pi shell tonight):
+  `ROS_DOMAIN_ID` unset (defaults to 0), `RMW_IMPLEMENTATION` unset →
+  ROS 2 default RMW on this install (expected Jazzy default Fast DDS
+  unless overridden — not verified by direct inspection tonight),
+  `ROS_LOCALHOST_ONLY` unset (defaults to 0). **Important**: Pi's default
+  `ROS_DOMAIN_ID=0` doesn't match the workstation's `56` — cross-machine
+  workflows must explicitly `export ROS_DOMAIN_ID=56` on the Pi until
+  persistence is added (e.g., `~/.bashrc` or a systemd environment file).
+- **Pi-side ROS runtime state (under `ROS_DOMAIN_ID=56`)**: no named
+  ROS 2 nodes were visible during tonight's test; only `/parameter_events`
+  and `/rosout` appeared (daemon defaults). Pi-side `ros2 node list` was
+  empty. Clean domain-56 baseline. **Domain-0 autostart state was not
+  checked tonight** — next Pi session can re-run the same node / topic
+  probe with `ROS_DOMAIN_ID=0` if needed (would catch any services that
+  autostarted under the Pi's default domain).
+
+**Verified end-to-end tonight**:
+
+1. **Network path**: workstation ↔ Pi 5 on `IoT IMT Nord Europe` /23,
+   ping 0% loss, RTT 8-10 ms steady (first-packet 159 ms blip from WiFi
+   association settling, acceptable for indoor IoT WiFi).
+2. **SSH**: password-auth first connect → host fingerprint accepted →
+   `ssh-copy-id` → password-less verified.
+3. **Pi 5 baseline**: hostname, kernel, arch, Ubuntu release, ROS 2 install
+   state, env defaults (under `ROS_DOMAIN_ID=56`).
+4. **Cross-machine ROS env alignment** under explicit `ROS_DOMAIN_ID=56` on
+   Pi: both sides report `ROS_DOMAIN_ID=56  RMW=default  LOCAL_ONLY=0`.
+5. **Pi-side topic baseline (domain 56)**: captured at
+   `/tmp/pi5_topics_2026-05-11.txt` (also pulled back to workstation via
+   `scp`) — 2 lines, daemon defaults only.
+
+**Not yet verified — deferred to next focused Pi 5 session**:
+
+- **DDS cross-machine discovery on the IoT WiFi**. Tonight's empty
+  workstation `ros2 node list` is **inconclusive**, not "blocked": no named
+  ROS 2 node was running on the Pi beyond the daemon, so there was nothing
+  for the workstation to discover even if DDS multicast works perfectly. To
+  distinguish "DDS works but nothing to discover" from "DDS multicast
+  blocked by IoT WiFi", the next test should run a long-running named
+  publisher on the Pi while a workstation subscriber checks visibility:
+
+  ```bash
+  # On Pi (long-running publisher, leave open in the SSH session):
+  ssh aqpi-01@10.120.2.50 'bash -lc "
+    export ROS_DOMAIN_ID=56
+    unset ROS_LOCALHOST_ONLY
+    source /opt/ros/jazzy/setup.bash
+    ros2 topic pub --rate 1 /pi5_dds_probe std_msgs/msg/String \"{data: pi5_probe}\"
+  "'
+
+  # On workstation (separate terminal, while still on IoT WiFi):
+  export ROS_DOMAIN_ID=56
+  unset ROS_LOCALHOST_ONLY
+  unset RMW_IMPLEMENTATION
+  source /opt/ros/jazzy/setup.bash
+  ros2 daemon stop && ros2 daemon start
+  ros2 topic list | grep pi5_dds_probe
+  ros2 topic echo /pi5_dds_probe std_msgs/msg/String --once
+  ```
+
+  - Topic appears + echo prints `data: pi5_probe` → DDS works cross-machine
+    on the IoT WiFi. Move on to Phase 5 driver bring-up.
+  - Topic doesn't appear despite SSH+ping still working → IoT WiFi
+    multicast / client-isolation is the strong suspect. Next step would be
+    a Fast-DDS Discovery Server (unicast-only) setup — separate focused
+    session, don't configure inline.
+
+- **`launch/remap.launch.yaml` topic-name diff vs sim**: still pending
+  real-hardware drivers running on the Pi. Tonight confirmed Pi 5 has no
+  named ROS 2 nodes visible under `ROS_DOMAIN_ID=56`; the topic-list diff
+  against sim is meaningless until Phase 5 driver bring-up lands. Stays in
+  the diary's deferred list under "needs first real-hardware bench with
+  drivers running".
+
+**Security note**: Initial password auth was used only to bootstrap
+`ssh-copy-id`; no credential is recorded in the repo. Key auth is now
+installed. Consider rotating the Pi account password later if required by
+project hygiene.
+
+**Doc updates landed (Block H commit)**:
+
+- This diary section.
+- Verification summary checkbox for Side activity flipped from `[ ]`
+  deferred → `[x]` partial.
+- `Board.md` 11/05 Timeline row addendum (short pointer to this Block H).
+
+**Next steps**:
+
+- **Next focused Pi 5 session**: run the DDS-probe recipe above —
+  dispositive answer on cross-machine multicast over IoT WiFi.
+- **After DDS test**: begin Phase 5 driver bring-up on the Pi (LiDAR, GPS,
+  IMU, MAVLink autopilot bridge via `mavros2`). Once real-hardware topics
+  publish, the `launch/remap.launch.yaml` no-regression diff against sim
+  becomes meaningful (the originally-deferred discovery-phase capture).
+- **Pi-side persistence**: consider adding `export ROS_DOMAIN_ID=56` to
+  Pi's `~/.bashrc` or a systemd environment file so future auto-launched
+  services pick it up without manual export. Defer until needed.
+
+---
+
 ## Verification summary — 11/05 (check at end of day)
 
 - [x] Block A: morning re-orientation done; A/B retest go/no-go decided (GO, campus-only; second-site/lake retest pre-decided as deferred)
-- [ ] Side activity (Pi 5 connectivity): **deferred** to next focused session — single-WiFi-adapter offline-switch workflow drafted but not executed; Pi 5 IP on `IoT IMT Nord Europe` + SSH user + ROS 2 install state with `ROS_DOMAIN_ID=56` match still TBD
+- [x] Side activity (Pi 5 connectivity, **partial**): **executed evening 11/05/2026** — SSH + ED25519 key + Pi 5 ROS 2 Jazzy install + cross-machine env alignment all verified on `IoT IMT Nord Europe` (`10.120.2.50`); under `ROS_DOMAIN_ID=56` no named Pi nodes visible, topic baseline = `/parameter_events` + `/rosout` only; cross-machine DDS discovery stays **inconclusive** pending a long-running publisher probe — recipe + analysis in Block H above
 - [x] Block B: equipment + settings handled implicitly at session start (no formal fill-in form under time pressure, consistent with Thu 07/05 Block B)
 - [x] Block C: campus A test executed; outcome = A1 with MP-Linux split out (Linux QGC + `ffplay` both work via QGC `Source = Herelink Hotspot` preset on `rtsp://192.168.43.1:8554/fpv_stream`; Linux MP fails on `libSkiaSharp DllNotFoundException`)
 - [x] Block D: second-site retest explicitly deferred to next field session — A/B comparison not yet complete without a second-site re-verification of the now-known-good QGC preset
