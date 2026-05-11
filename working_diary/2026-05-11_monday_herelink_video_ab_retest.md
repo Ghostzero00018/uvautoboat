@@ -506,6 +506,13 @@ landed.
   probe with `ROS_DOMAIN_ID=0` if needed (would catch any services that
   autostarted under the Pi's default domain).
 
+  **[Forward update — verified later 11/05/2026]**: Domain-0 autostart
+  probe run after the Block H commit; same result as domain 56 — empty
+  `ros2 node list`, topic list = `/parameter_events` + `/rosout` only.
+  The "Domain-0 not checked tonight" caveat is closed; Pi is fully bare
+  ROS 2 (daemon only) under both domains. DDS cross-machine discovery
+  remains inconclusive until the long-running publisher probe.
+
 **Verified end-to-end tonight**:
 
 1. **Network path**: workstation ↔ Pi 5 on `IoT IMT Nord Europe` /23,
