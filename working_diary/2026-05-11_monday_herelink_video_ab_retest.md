@@ -329,6 +329,131 @@ Same shape as Thu 07/05:
 
 ---
 
+## Block G — Post-commit MP-Linux SkiaSharp + libdl fix (host-local workaround, ~1.5 h after Block F commit)
+
+Returned to the MP-Linux degraded posture from Block C / E after the Block F
+commit landed. Question: is there a reversible host-local fix?
+
+**Investigation**:
+
+- Probed `~/MissionPlanner/` install: `libSkiaSharp.so` IS bundled at
+  `x64/libSkiaSharp.so` (10.1 MB, 11/09/2020, ELF x86_64, stripped). But
+  `ldd` revealed it's a **musl-libc** build: `libc.musl-x86_64.so.1 => not found`.
+  Mono can't load it on Ubuntu (glibc), regardless of search path.
+- Bundled `SkiaSharp.dll` managed-assembly version: **2.88.8.0** — that's
+  the ABI the .NET bytecode is bound against. Initially considered 2.80.x
+  based on `strings` output showing `libSkiaSharp.so.80.0.0` SONAME, but
+  the SONAME milestone identifier ≠ SkiaSharp managed-binding version. The
+  `.dll` assembly metadata is the authoritative source for the right NuGet
+  version to swap in.
+
+**Fix applied (host-local, reversible, no sudo)**:
+
+1. Downloaded `SkiaSharp.NativeAssets.Linux` **2.88.8** from NuGet
+   (`https://www.nuget.org/api/v2/package/SkiaSharp.NativeAssets.Linux/2.88.8`,
+   15.6 MB `.nupkg` → 9.24 MB extracted `.so`).
+2. Verified the extracted `runtimes/linux-x64/native/libSkiaSharp.so` is
+   ELF x86_64 glibc-linked (`ldd` shows `libc.so.6`, `libfontconfig.so.1`,
+   `libfreetype.so.6`, all on this workstation; no unmet deps).
+3. Idempotent backup of the broken bundle to
+   `~/MissionPlanner/x64/libSkiaSharp.so.musl.bak`, then installed the new
+   `.so` at both `~/MissionPlanner/x64/libSkiaSharp.so` and
+   `~/MissionPlanner/libSkiaSharp.so` (Mono's two search candidates).
+4. First MP launch attempt with just the SkiaSharp swap surfaced a **new**
+   error: `DllNotFoundException: libdl.so`. Ubuntu Noble doesn't ship the
+   unversioned `/lib/x86_64-linux-gnu/libdl.so` symlink in the default lib
+   path — only `libdl.so.2`. `libc6-dev` is already installed but only
+   provides `libdl.a` (static lib), not the runtime symlink.
+5. Created a local symlink: `ln -sf /lib/x86_64-linux-gnu/libdl.so.2 ~/MissionPlanner/libdl.so`
+   (host-local, no sudo, no system change).
+6. Second MP launch: clean — `libdl.so` error gone, SkiaSharp init
+   completed. MP progressed all the way through HUD render, map tile
+   downloading, airport DB load, plugin loading. **MP-Linux video panel
+   verified working; arm/disarm also verified working** at the campus
+   working room.
+
+**Shutdown behaviour verified clean**: MP responded to SIGTERM with a
+proper graceful shutdown (`MainV2_FormClosing → Saving config →
+MainV2_FormClosed → mainv2_Dispose`, plus `stop GStreamer` for the video
+pipeline). The `.tlog` at
+`~/.local/share/Mission Planner/logs/2026-05-11 14-56-05.tlog` (850 KB) is
+the first **post-fix** MP-Linux video + MAVLink validation sample on this
+workstation (older pre-fix logs already exist as the no-video baseline).
+Keep as a comparison baseline for any future MP-Linux session.
+
+**Out of scope (not chased)**: the 24/04/2026 GDAL/OGR/OSR
+`DllNotFoundException` errors still appear in MP's log (they're the next
+Mono native-lib gap), but they don't block the video panel — terrain /
+advanced geo-ref features remain degraded as documented 24/04, which
+doesn't matter for routine field-test telemetry use.
+
+**Notes on additional log entries (not regressions)**:
+
+- MP is configured to accept UDP GStreamer video endpoints on `5000` /
+  `5100` / `5600` (H.264) + `5601` (H.265) per AutoConnect config —
+  `udpsrc ! decodebin3 ! videoconvert ! appsink` pipelines. The exact
+  endpoint used by the successful stream was not packet-captured, so the
+  specific UDP port the Herelink forwarded over is an open detail.
+- `ERROR httpserver - Possible multiple instances of planner` — Step 4 MP
+  (PID 38177) competing with my back-to-back libdl-test launch for the
+  same internal http port. Self-induced concurrency from the diagnostic
+  session, not a real issue.
+- `AltitudeAngelWings.Plugin` failed to load — third-party Windows-deps
+  plugin, cosmetic.
+- `example23-switch.cs` plugin source had a Roslyn compile ambiguity
+  (`error CS0121: The call is ambiguous between the following methods or
+  properties: 'System.MemoryExtensions.AsSpan<T>(T[])' and
+  'System.MemoryExtensions.AsSpan<T>(T[])'`) — sample-plugin source
+  quirk, not a real plugin failure.
+- `System.Runtime.InteropServices.MarshalDirectiveException` at
+  `MissionPlanner.Utilities.NativeLibrary.dlerror()` — nonfatal
+  Mono/PInvoke native-loader diagnostic warning, separate from the
+  GDAL/OGR/OSR gap.
+
+**Process-matcher pitfall encountered + corrected**: initial `pgrep -x mono`
+checks returned empty during the smoke tests even while MP was alive
+(verified via `ps -o etime -p <pid>` showing the process had been alive
+~10 minutes when finally SIGTERMed), leading to a mis-report that MP had
+exited. Switching to
+`ps -eo pid,cmd | awk '/MissionPlanner\.exe/ && !/awk/'` reliably finds
+the `mono MissionPlanner.exe` process. The `pgrep -x` mismatch likely
+stems from a `comm` (15-char proc-name) vs. `cmdline` matching quirk on
+this Mono build — recording here so the next person doesn't repeat the
+misread.
+
+**Verification artifact**: Herelink controller's Radio Status panel photo
+at `~/Pictures/Camera/herelink_settings.png` captured during the test —
+Paired link, Controller signal strength M: -69 dBm / S: -73 dBm, Air Unit
+signal strength M: -74 dBm / S: -67 dBm, Uplink Rate 1395 kbps, Uplink
+bandwidth 16926 kbps, Fly Distance 0 m. Healthy-link baseline for the
+campus working-room setup; useful comparison baseline for the deferred
+lake retest.
+
+**Doc updates landed (Block G commit)**:
+
+- `wiki/Common_Issues.md` MP-Linux entry's speculative "If a fix is needed
+  later" section replaced with the working recipe + rollback +
+  verification log details + caveats.
+- `Board.md` status summary + Phase 5 Hardware-arrival row + Timeline row
+  11/05 amended to reflect the fix.
+
+**Caveats for future re-application**:
+
+- Host-local workaround — re-apply after any MP reinstall (the install
+  may overwrite `~/MissionPlanner/x64/libSkiaSharp.so`).
+- The `.musl.bak` is the rollback artifact; don't delete it.
+- Match SkiaSharp NuGet version to `SkiaSharp.dll`'s managed-assembly
+  version after any MP update.
+
+**Updated framing**: the original Block F outcome's framing ("MP-Linux is
+treated as arm/disarm-only — degraded video, same posture as the 24/04
+GDAL decision") is now superseded for video specifically — Linux MP is a
+viable video tool on this workstation. The 24/04 GDAL decision still
+holds for map terrain / advanced geo-ref features. MP-Windows (`.msi`)
+remains the serious-MP fallback for the full feature surface.
+
+---
+
 ## Verification summary — 11/05 (check at end of day)
 
 - [x] Block A: morning re-orientation done; A/B retest go/no-go decided (GO, campus-only; second-site/lake retest pre-decided as deferred)
@@ -338,6 +463,7 @@ Same shape as Thu 07/05:
 - [x] Block D: second-site retest explicitly deferred to next field session — A/B comparison not yet complete without a second-site re-verification of the now-known-good QGC preset
 - [x] Block E: A/B analysis complete; 07/05 root cause narrowed (QGC channel: "config / topology / site link condition" still open pending Block D; MP channel: likely the same MP-Linux runtime class); fix path documented (QGC = Linux video tool of record; MP-Linux = arm/disarm-only)
 - [x] Block F: diary filled; pre-commit sweep clean; `Board.md` updated; `wiki/Common_Issues.md` resolved-branch updated + new MP-Linux SkiaSharp entry appended
+- [x] Block G (post-commit addendum): MP-Linux SkiaSharp + libdl host-local fix landed; MP video panel + arm/disarm verified working; `wiki/Common_Issues.md` MP-Linux entry's "If a fix is needed later" section replaced with the working recipe + rollback + verification log details; `Board.md` status summary + Phase 5 row + Timeline row 11/05 amended
 
 ---
 

@@ -517,30 +517,114 @@ native dependencies. Same failure class as the 24/04/2026
 `GDAL / OGR / OSR` gap already documented for MP-under-Mono on this
 workstation.
 
-**Status (11/05/2026)**: not chased. MP-Linux is treated as arm/disarm-only;
-QGC on Linux handles video; Mission Planner on Windows (`.msi` install) is
-the serious-MP fallback if the full feature surface is needed. Same posture
-as the 24/04 GDAL decision.
+**Status (11/05/2026, updated)**:
 
-**If a fix is needed later**:
+- MP-Linux video panel + arm/disarm **verified working** on this workstation
+  after a host-local workaround (see "Fix applied" below).
+- The workaround is reversible and may need reapplication after any MP
+  reinstall/update.
+- GDAL/OGR/OSR `DllNotFoundException`, `setupapi.dll`
+  `DllNotFoundException`, `AltitudeAngelWings.Plugin` load failure, and
+  sample-plugin Roslyn compile issues remain — non-blocking for routine
+  telemetry/video.
+- Mission Planner on Windows (`.msi` install) remains the serious-MP
+  fallback for the full feature surface, especially GIS / terrain /
+  advanced geo-ref.
 
-1. Confirm the missing library — search narrow paths first before going
-   wide:
+**Fix applied (11/05/2026, host-local, reversible)**:
 
-   ```bash
-   find ~/MissionPlanner /usr/lib /usr/local/lib ~/.nuget -name 'libSkiaSharp*' -print 2>/dev/null | head -20
-   ldconfig -p | grep -i skiasharp
-   ```
+Root cause was double-layered:
 
-2. Inspect Mission Planner's install directory for a bundled SkiaSharp;
-   check whether one exists, and whether it matches the Mono / .NET
-   runtime / glibc ABI on this system.
-3. Ubuntu does not currently package `libskiasharp` in the main
-   repositories. Community fix paths include dropping a known-good
-   `libSkiaSharp.so` in MP's install directory or a system library path —
-   after verifying the binary source. Risk: similar Mono native-library
-   gaps may surface next (same diagnosis as the 24/04 GDAL decision);
-   chasing them individually has diminishing returns.
+1. The bundled `~/MissionPlanner/x64/libSkiaSharp.so` (dated 11/09/2020) is
+   a **musl-libc** build, not glibc. `ldd` shows
+   `libc.musl-x86_64.so.1 => not found` on Ubuntu (musl is for Alpine).
+2. After replacing it with a glibc build, MP P/Invokes `libdl.so`
+   (unversioned) and Ubuntu Noble doesn't ship that symlink in the default
+   lib path — only `libdl.so.2`. `libc6-dev` is installed but only provides
+   `libdl.a` (static), not the runtime symlink.
+
+Match the SkiaSharp NuGet **version** to MP's bundled `SkiaSharp.dll`
+managed-assembly version (read via .NET assembly inspection, or
+`strings ~/MissionPlanner/SkiaSharp.dll | grep -iE '2\.[0-9]+\.[0-9]+'`).
+On this workstation: 2.88.8.0. Using a mismatched version may move the
+failure from "DllNotFound" to "native library incompatible".
+
+Steps:
+
+```bash
+# 1. Fetch matching glibc SkiaSharp native asset
+mkdir -p /tmp/skiasharp-mp && cd /tmp/skiasharp-mp
+wget -O skia.nupkg https://www.nuget.org/api/v2/package/SkiaSharp.NativeAssets.Linux/2.88.8
+unzip -o skia.nupkg
+
+# 2. CRITICAL gate — verify glibc-clean (must show libc.so.6, no 'not found')
+ldd runtimes/linux-x64/native/libSkiaSharp.so
+
+# 3. Idempotent backup + install (.musl.bak is the rollback artifact)
+[ ! -f ~/MissionPlanner/x64/libSkiaSharp.so.musl.bak ] && \
+  cp ~/MissionPlanner/x64/libSkiaSharp.so ~/MissionPlanner/x64/libSkiaSharp.so.musl.bak
+cp runtimes/linux-x64/native/libSkiaSharp.so ~/MissionPlanner/x64/libSkiaSharp.so
+cp runtimes/linux-x64/native/libSkiaSharp.so ~/MissionPlanner/libSkiaSharp.so
+
+# 4. Local libdl.so shim (no sudo, no system change)
+ln -sf /lib/x86_64-linux-gnu/libdl.so.2 ~/MissionPlanner/libdl.so
+```
+
+Rollback (one block):
+
+```bash
+cp ~/MissionPlanner/x64/libSkiaSharp.so.musl.bak ~/MissionPlanner/x64/libSkiaSharp.so
+rm -f ~/MissionPlanner/libSkiaSharp.so ~/MissionPlanner/libdl.so
+```
+
+If the regular `NativeAssets.Linux` package has unmet deps on a different
+system, the `NoDependencies` variant statically links most native deps:
+
+```bash
+wget -O skia.nupkg https://www.nuget.org/api/v2/package/SkiaSharp.NativeAssets.Linux.NoDependencies/2.88.8
+```
+
+**Verification details from the test run log**
+(`/tmp/missionplanner_libdl_test.log`):
+
+- MP completed full startup post-fix: HUD render on OpenGL 4.6 Mesa Intel
+  UHD, FlightData view shown, Camera Control plugin loaded, 4855 airports
+  DB loaded, ~10 plugins compiled via Roslyn. MP is configured to accept
+  UDP GStreamer video endpoints on `5000` / `5100` / `5600` (H.264) +
+  `5601` (H.265) per AutoConnect (`udpsrc ! decodebin3 ! videoconvert !
+  appsink` pipelines); the exact endpoint used by the successful stream
+  was not packet-captured.
+- MAVLink session ran for the duration; `.tlog` captured at
+  `~/.local/share/Mission Planner/logs/2026-05-11 14-56-05.tlog` — first
+  **post-fix** MP-Linux video + MAVLink validation sample on this
+  workstation (older pre-fix logs already exist as the no-video baseline).
+- SIGTERM produced a clean shutdown sequence with full form disposal
+  (`MainV2_FormClosing → Saving config → MainV2_FormClosed →
+  mainv2_Dispose`) plus `stop GStreamer` — no crash signature.
+- Residual minor entries in the log, none of them regressions:
+  - `gdal_wrap` / `ogr_wrap` / `osr_wrap` `DllNotFoundException` — 24/04
+    known Mono native gap, not chased per scope.
+  - `setupapi.dll` `DllNotFoundException` — Windows-only system DLL,
+    expected on Linux.
+  - `AltitudeAngelWings.Plugin` failed to load — third-party Windows-deps
+    plugin.
+  - `example23-switch.cs` Roslyn compile ambiguity (`error CS0121: The
+    call is ambiguous between the following methods or properties:
+    'System.MemoryExtensions.AsSpan<T>(T[])' and
+    'System.MemoryExtensions.AsSpan<T>(T[])'`) — sample-plugin source
+    quirk, not a real plugin failure.
+  - One `httpserver` listener-binding error from a back-to-back MP launch
+    during the diagnostic session — self-induced concurrency, not a real
+    issue.
+  - `System.Runtime.InteropServices.MarshalDirectiveException` at
+    `MissionPlanner.Utilities.NativeLibrary.dlerror()` — nonfatal
+    Mono/PInvoke native-loader diagnostic warning, separate from the
+    GDAL/OGR/OSR gap.
+
+**Caveats**: host-local workaround — may be overwritten by future MP
+updates; re-apply after MP reinstall. Verified end-to-end on this
+workstation: MP video panel + arm/disarm both working over the Herelink
+hotspot `IMT-Aquatic-drone` (gateway `192.168.43.1`).
 
 **Cross-references**: see "QGC / Mission Planner Can Arm via Herelink, but
 Video Is Missing" above for the Herelink-side diagnostic recipe — that
