@@ -145,6 +145,14 @@ Long-deferred **"Real no-regression test for `launch/remap.launch.yaml`"** final
 
 **Outcome.** **Deferred** — Pi 5 is reachable only on the `IoT IMT Nord Europe` private workstation↔Pi link (note: this is **not** the institutional IoT-only network described in `wiki/Roadmap.md` §1.3 — same SSID name, different network meaning in user's setup; the §1.3 description should be re-checked next session). The workstation has one WiFi adapter (`wlp147s0`), so reaching the Pi 5 requires a temporary switch off `IMT Nord Europe 5G` campus WiFi (no internet during the offline window, no remote-tooling reach). Single-adapter offline-switch workflow drafted (`nmcli connection up "IoT IMT Nord Europe"` → `ssh <user>@<pi5-ip>` → `ros2 node list` + `ros2 topic list > /tmp/pi5_topics_2026-05-11.txt` + sim diff → `nmcli connection up "IMT Nord Europe 5G"`), but not executed today — Block C consumed the campus-room window first, and the discovery-phase capture needs prerequisites still TBD (Pi 5 IP on the IoT link, SSH user, ROS 2 Jazzy install state with `ROS_DOMAIN_ID=56` matching this workstation, same `RMW_IMPLEMENTATION` on both sides). `launch/remap.launch.yaml` no-regression test stays in its original "needs first real-hardware bench" state — re-evaluate at the next focused Pi 5 session.
 
+**[Forward update — see Block H below]**: Block H executed this Side activity
+evening 11/05/2026 with the IoT-link details that the user supplied later
+in the day. The "**Deferred** / not executed today" framing above reflects
+the Block-F-time state only; Pi 5 IP (`10.120.2.50`), SSH user (`aqpi-01`),
+and ROS 2 Jazzy install state are now all known per Block H. DDS
+cross-machine discovery and the topic-name diff vs sim remain inconclusive
+pending real-hardware Pi-side driver nodes — refined prereqs in Block H.
+
 ---
 
 ## Block B — Pre-A/B prep (~15-20 min, AM)
@@ -326,6 +334,14 @@ Same shape as Thu 07/05:
    until done.
 
 **Outcome.** `wiki/Common_Issues.md` + `Board.md` + this diary all updated. Pre-commit invisibility sweep clean. Single-line conventional commit message: `docs: log 11/05 Herelink video A/B campus pass + MP-Linux skia gap` (66 chars). External Week 10 diary Mon-section update deferred to next Windows-side session per scaffold's hard rule. Pi 5 Side activity carry-forward note added to the deferred list — the `launch/remap.launch.yaml` no-regression discovery phase stays in its original state pending a focused next session with Pi 5 IP / SSH user / ROS 2 install state clarified.
+
+**[Forward update — see Block H below]**: Block H executed the Pi 5 Side
+activity evening 11/05/2026; the Pi 5 IP / SSH user / ROS 2 install-state
+prerequisites this Block F outcome cited as missing are now all known. The
+`launch/remap.launch.yaml` no-regression item remains deferred but its
+prereqs have shifted from "all TBD" to "Pi-side ROS 2 driver nodes need
+to be running" — Pi currently has the daemon only, no auto-launched
+services.
 
 ---
 
@@ -560,6 +576,25 @@ project hygiene.
   deferred → `[x]` partial.
 - `Board.md` 11/05 Timeline row addendum (short pointer to this Block H).
 
+**Updated framing**: this Block H supersedes two earlier point-in-time
+outcomes within the same diary day:
+
+- The **Side activity Outcome** (above the Block B header), which was
+  filled in at Block F time as "**Deferred** ... not executed today" — Block
+  H executed the activity; the Pi 5 IP / SSH user / ROS 2 install-state
+  prerequisites that outcome cited as missing are now all known.
+- The **Block F Outcome**'s carry-forward note that said the
+  `launch/remap.launch.yaml` no-regression discovery phase stays "pending a
+  focused next session with Pi 5 IP / SSH user / ROS 2 install state
+  clarified" — those prereqs are now resolved; the item remains deferred
+  with refined prereqs (Pi-side driver nodes need to be running before the
+  topic-name diff against sim becomes meaningful).
+
+The historical outcome text in both places is preserved as the chronological
+record of the Block-F-time state — readers should rely on this Block H for
+the current state. Forward-update pointers have been added inline at both
+spots.
+
 **Next steps**:
 
 - **Next focused Pi 5 session**: run the DDS-probe recipe above —
@@ -581,7 +616,7 @@ project hygiene.
 - [x] Block B: equipment + settings handled implicitly at session start (no formal fill-in form under time pressure, consistent with Thu 07/05 Block B)
 - [x] Block C: campus A test executed; outcome = A1 with MP-Linux split out (Linux QGC + `ffplay` both work via QGC `Source = Herelink Hotspot` preset on `rtsp://192.168.43.1:8554/fpv_stream`; Linux MP fails on `libSkiaSharp DllNotFoundException`)
 - [x] Block D: second-site retest explicitly deferred to next field session — A/B comparison not yet complete without a second-site re-verification of the now-known-good QGC preset
-- [x] Block E: A/B analysis complete; 07/05 root cause narrowed (QGC channel: "config / topology / site link condition" still open pending Block D; MP channel: likely the same MP-Linux runtime class); fix path documented (QGC = Linux video tool of record; MP-Linux = arm/disarm-only)
+- [x] Block E: A/B analysis complete; 07/05 root cause narrowed (QGC channel: "config / topology / site link condition" still open pending Block D; MP channel: likely the same MP-Linux runtime class); fix path documented (QGC = Linux video tool of record). **Superseded by Block G for MP-Linux specifically**: the "MP-Linux = arm/disarm-only" framing held only until the host-local SkiaSharp 2.88.8 + `libdl.so` symlink fix landed evening 11/05 — MP-Linux video panel + arm/disarm now both work. GDAL/OGR/OSR Mono gaps still apply for terrain / advanced geo-ref
 - [x] Block F: diary filled; pre-commit sweep clean; `Board.md` updated; `wiki/Common_Issues.md` resolved-branch updated + new MP-Linux SkiaSharp entry appended
 - [x] Block G (post-commit addendum): MP-Linux SkiaSharp + libdl host-local fix landed; MP video panel + arm/disarm verified working; `wiki/Common_Issues.md` MP-Linux entry's "If a fix is needed later" section replaced with the working recipe + rollback + verification log details; `Board.md` status summary + Phase 5 row + Timeline row 11/05 amended
 
@@ -592,7 +627,7 @@ project hygiene.
 | After | State | Rollover cost |
 |:------|:------|:--------------|
 | Block A | Re-orientation done; go/no-go decided | None — drives the rest of the day |
-| Side activity (Pi 5) | Pi 5 ↔ workstation ROS 2 graph verified; topic ground-truth captured | Low — interrupt-safe; partial completion (e.g., reachability OK but discovery fails) is informative on its own |
+| Side activity (Pi 5) | **Partial 11/05/2026** — SSH + ED25519 key + Pi 5 ROS 2 Jazzy install verified; cross-machine DDS graph discovery still inconclusive and real-hardware topic ground-truth pending until Pi-side driver nodes run (see Block H) | Low — interrupt-safe; partial completion (e.g., reachability OK but discovery fails) is informative on its own |
 | Block B | Pre-A/B prep done | Low — useful regardless of A/B outcome |
 | Block C | Campus baseline known | Medium — A/B retest stops here if Block C identifies the fix unambiguously (A2/A3) |
 | Block D | B-site test complete (if run) | Hard requirement under A1 — without B-site confirmation, the location-variable hypothesis can't close |
@@ -656,6 +691,8 @@ Today's outcome drives the rest of the week's plan. After 11/05:
 - C3 bench verification — passive wait for real-hardware double-reverse
   symptom.
 - **Real no-regression test for `launch/remap.launch.yaml`** — discovery phase scheduled as today's Side activity (Pi 5 connectivity + topic ground-truth capture + sim diff). **Conditional update at end of day:** if the Side activity completes (Pi 5 nodes/topics visible from workstation + ground-truth archive landed + sim-vs-Pi5 diff captured), mark the discovery phase as covered and only the patch session itself remains deferred to a focused future window once mismatches are catalogued. If the Side activity is blocked or skipped, this item stays in its original "needs first real-hardware bench" state — re-evaluate at the next test window.
+
+  **[End-of-day update — Block H, evening 11/05/2026]**: Side activity executed **partially**. SSH + ED25519 key + Pi 5 ROS 2 Jazzy install all verified; cross-machine env alignment works under explicit `ROS_DOMAIN_ID=56` on Pi. Pi-side topic baseline is daemon defaults only (`/parameter_events` + `/rosout`) — no real-hardware drivers running yet, so the sim-vs-Pi5 topic-name diff isn't meaningful tonight. This item stays deferred with **refined prereqs**: needs Phase 5 driver bring-up on Pi (LiDAR, GPS, IMU, MAVLink autopilot bridge via `mavros2`) before topic-name diff against sim becomes meaningful. DDS cross-machine discovery is also still inconclusive — long-running-publisher recipe in Block H to run deterministically next time.
 - Sim-to-real comparison — was conditional on a 07/05 rosbag; none recorded,
   so this is N/A until a future field test records autonomy bag data.
 - External Week 9 diary Thu 07/05 "Outcome:" line — bilingual EN + 中文,
