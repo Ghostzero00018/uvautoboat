@@ -601,25 +601,172 @@ wget -O skia.nupkg https://www.nuget.org/api/v2/package/SkiaSharp.NativeAssets.L
 - SIGTERM produced a clean shutdown sequence with full form disposal
   (`MainV2_FormClosing → Saving config → MainV2_FormClosed →
   mainv2_Dispose`) plus `stop GStreamer` — no crash signature.
-- Residual minor entries in the log, none of them regressions:
-  - `gdal_wrap` / `ogr_wrap` / `osr_wrap` `DllNotFoundException` — 24/04
-    known Mono native gap, not chased per scope.
-  - `setupapi.dll` `DllNotFoundException` — Windows-only system DLL,
-    expected on Linux.
-  - `AltitudeAngelWings.Plugin` failed to load — third-party Windows-deps
-    plugin.
-  - `example23-switch.cs` Roslyn compile ambiguity (`error CS0121: The
-    call is ambiguous between the following methods or properties:
-    'System.MemoryExtensions.AsSpan<T>(T[])' and
-    'System.MemoryExtensions.AsSpan<T>(T[])'`) — sample-plugin source
-    quirk, not a real plugin failure.
-  - One `httpserver` listener-binding error from a back-to-back MP launch
-    during the diagnostic session — self-induced concurrency, not a real
-    issue.
-  - `System.Runtime.InteropServices.MarshalDirectiveException` at
-    `MissionPlanner.Utilities.NativeLibrary.dlerror()` — nonfatal
-    Mono/PInvoke native-loader diagnostic warning, separate from the
-    GDAL/OGR/OSR gap.
+- Residual minor log entries (not regressions) appear alongside the
+  successful startup — six in total. See "Residual minor issues — detailed
+  reference" section below for what each is, why it appears, impact, and
+  fix path (if any).
+
+**Residual minor issues — detailed reference**:
+
+These six log entries appear during normal MP-Linux startup on this
+workstation. None of them are regressions caused by the SkiaSharp/libdl
+fix; all are pre-existing characteristics of the MP-under-Mono environment.
+Listed in rough order from "fixable if you really want to" → "won't fix".
+
+**1. GDAL / OGR / OSR `DllNotFoundException`** — functional gap (terrain +
+advanced geo-ref degraded).
+
+- *What it is*: GDAL (Geospatial Data Abstraction Library) is the
+  underlying C library MP uses for terrain background rendering,
+  geo-referenced map data display, and coordinate-system transformations.
+  The Mono/.NET bindings are SWIG-generated wrappers: `gdal_wrap` (raster
+  data + core), `ogr_wrap` (vector data — shapefiles, GeoJSON), and
+  `osr_wrap` (spatial reference systems / coordinate transformations).
+- *Why it fails on this Mono-on-Linux setup*: Same root-cause class as the
+  SkiaSharp issue from earlier in this entry. The bundled native binaries
+  (`gdal_wrap.so` etc.) are platform-mismatched — most likely musl-libc
+  builds (would show `libc.musl-x86_64.so.1 => not found` under `ldd`) or
+  otherwise ABI-incompatible. The underlying GDAL C library also pulls in a
+  large dependency surface (PROJ for projection math, GEOS for geometry
+  operations, libsqlite3 for tile databases, libcurl for HTTP map-tile
+  fetching) — each must be present at compatible versions.
+- *Impact*: MP-Linux can't render terrain background imagery or perform
+  advanced geo-ref operations. Basic flight planning, mission upload, and
+  parameter editing all work without GDAL. Video panel + telemetry display
+  (the routine field-test path) are unaffected.
+- *Fix path (if MP-Linux GIS becomes a real requirement)*: Same musl→glibc
+  native-binding swap pattern as the SkiaSharp recipe above, with these
+  additional considerations:
+
+  1. Source the glibc binaries from NuGet's `GDAL.Native` package, OR from
+     system apt install: `sudo apt install libgdal-dev libproj-dev libgeos-dev`.
+  2. The SWIG-generated wrappers (`gdal_wrap`, `ogr_wrap`, `osr_wrap`) must
+     match each other AND match the underlying GDAL major version. Mixing
+     GDAL 3.x wrappers with a GDAL 4.x runtime (or vice versa) will move
+     you from `DllNotFoundException` to ABI breakage at the first SWIG
+     call.
+  3. Verify dependency closure with `ldd` on every replacement `.so`;
+     confirm PROJ/GEOS/sqlite3/curl all resolve and no `=> not found`
+     lines remain.
+
+  **Recommendation**: defer unless MP-Linux GIS/terrain becomes a real
+  requirement. MP-Windows (`.msi`) handles GIS demos cleanly via the
+  Windows-native GDAL bundle.
+
+**2. `AltitudeAngelWings.Plugin` load failure** — cosmetic (third-party
+plugin, irrelevant for boat ops).
+
+- *What it is*: A third-party plugin
+  (`~/MissionPlanner/plugins/AltitudeAngelWings.Plugin.dll`) that
+  integrates with the AltitudeAngel UTM (Unmanned Traffic Management)
+  service — airspace awareness, NOTAMs, drone-restriction zone overlays.
+  Designed for aerial drone operators.
+- *Why it fails on this Mono-on-Linux setup*: The plugin DLL was compiled
+  against Windows .NET Framework specifics that Mono on Linux doesn't
+  fully implement — likely missing Win32-only API calls or .NET Framework
+  HTTP/auth stack components Mono lacks.
+- *Impact*: Cosmetic-only. The plugin is irrelevant for boat operations
+  (UTM/airspace has no waterway analogue). No MP functionality affected.
+- *Fix path (cosmetic, optional)*: Rename the plugin file so MP doesn't
+  attempt to load it on next launch:
+
+  ```bash
+  mv ~/MissionPlanner/plugins/AltitudeAngelWings.Plugin.dll \
+     ~/MissionPlanner/plugins/AltitudeAngelWings.Plugin.dll.disabled
+  ```
+
+  Reversible — rename back to `.dll` to re-enable. Purely a log-noise
+  reduction; no functional gain. Vendor-install hygiene, not a project
+  change.
+
+**3. `example23-switch.cs` Roslyn `CS0121` ambiguity** — cosmetic (sample
+plugin source quirk).
+
+- *What it is*: A sample plugin source file
+  (`~/MissionPlanner/plugins/example23-switch.cs`) demonstrating how to
+  add a custom switch/button to MP's UI. MP compiles plugin sources at
+  startup via Roslyn (the .NET compiler-as-service); this one fails to
+  compile.
+- *Why it fails*: Roslyn error `CS0121: The call is ambiguous between the
+  following methods or properties: 'System.MemoryExtensions.AsSpan<T>(T[])'
+  and 'System.MemoryExtensions.AsSpan<T>(T[])'`. The same extension-method
+  signature is defined in two different assemblies that both end up in
+  MP's compile context (likely `System.Memory` and a runtime-bundled
+  equivalent on Mono). Roslyn can't disambiguate.
+- *Impact*: Cosmetic-only — sample plugin, not used by anything. Other
+  example plugins (example2, example5, example6, example7, etc.) compile
+  cleanly.
+- *Fix path (cosmetic, optional)*: Rename the source file so the plugin
+  loader skips it:
+
+  ```bash
+  mv ~/MissionPlanner/plugins/example23-switch.cs \
+     ~/MissionPlanner/plugins/example23-switch.cs.disabled
+  ```
+
+  Reversible. A source-level fix would qualify the `AsSpan` call (e.g.,
+  `new Span<T>(array)` instead of `array.AsSpan()`), but that requires
+  editing the sample source.
+
+**4. `setupapi.dll` `DllNotFoundException`** — won't fix (Windows-only
+system DLL).
+
+- *What it is*: `setupapi.dll` is a Windows-only system DLL
+  (`C:\Windows\System32\setupapi.dll`) used for hardware enumeration via
+  the Microsoft Setup API — Plug-and-Play device detection, driver
+  installation queries. MP's plugin loader probes for it during
+  platform-detection logic.
+- *Why it fails on Linux*: No Linux equivalent exists — `setupapi.dll` is
+  part of the Windows OS, not a portable library. Linux uses
+  `udev`/`sysfs` for device enumeration, at a different abstraction layer.
+- *Impact*: The error fires once at startup, gets caught by MP, then MP
+  continues normally. No functional impact.
+- *Fix path*: **Won't fix.** No Linux substitute. An upstream MP source
+  change could skip `setupapi`-dependent code paths gracefully on
+  non-Windows platforms (suppressing the log line), but the error is
+  purely log noise.
+
+**5. `httpserver` listener-binding "Possible multiple instances of
+planner?"** — won't happen in normal usage.
+
+- *What it is*: MP runs an internal HTTP server for motion-JPEG / KML /
+  network helper endpoints and external scripting access. This error fires
+  if a second MP instance tries to bind the same listener.
+- *Why it appeared in the diagnostic log*: During the SkiaSharp fix
+  verification, two MP processes briefly ran concurrently (Step 4's launch
+  + the libdl-test relaunch overlapped). They contended for the same
+  port — self-induced concurrency artifact of the diagnostic session.
+- *Impact*: Doesn't reproduce in single-instance usage; MP normally runs
+  one instance at a time.
+- *Fix path*: **Won't fix** — not a real bug. Don't run two MP instances
+  simultaneously during diagnostics; close the old MP process before
+  relaunching.
+
+**6. `MarshalDirectiveException` at
+`MissionPlanner.Utilities.NativeLibrary.dlerror()`** — won't fix locally
+(upstream Mono compatibility issue).
+
+- *What it is*: A nonfatal diagnostic warning from MP's native-library
+  loader. MP's `Utilities.NativeLibrary` class has a `[DllImport]`
+  declaration for `dlerror()` — the libc function that retrieves the last
+  dynamic-library load error message. The C# signature uses `StringBuilder`
+  as the return-value marshalling type.
+- *Why it fails on Mono*: Mono on Linux supports input `StringBuilder`
+  parameters for P/Invoke but does not implement `StringBuilder`
+  *return-value* marshalling. Exact error text: `Return marshalling of
+  stringbuilders is not implemented`. Calling the stub throws this
+  exception unconditionally on Mono.
+- *Impact*: MP's native loader still works via other paths (direct
+  `dlopen`/`dlsym`). What's lost is the human-readable error message that
+  `dlerror()` would return when other native libs fail to load — making
+  MP's diagnostic logging less informative for native-lib issues. The
+  exception itself is caught and logged; no further impact.
+- *Fix path*: **Won't fix locally** — requires modifying MP's C# source
+  (rewrite the `dlerror()` P/Invoke stub to return `IntPtr` and convert
+  manually with `Marshal.PtrToStringAnsi`), then recompile MP. An upstream
+  pull request to the ArduPilot/MissionPlanner repository would be the
+  right venue if anyone wants this fixed for the broader Mono-on-Linux
+  community.
 
 **Caveats**: host-local workaround — may be overwritten by future MP
 updates; re-apply after MP reinstall. Verified end-to-end on this
