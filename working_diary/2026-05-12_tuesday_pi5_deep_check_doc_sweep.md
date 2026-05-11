@@ -44,9 +44,9 @@ subscribes, to resolve the multicast question dispositively.
   three Asks to teammate maintainer (Phase A parameter subset, CA placement,
   validation methodology); second-site (lake) Herelink video A/B retest.
 
-**Carry-over from Mon Block F Step 8:** external Week 10 diary Mon Outcome
-fill — check status, fill if still placeholder. Tue Outcome fill remains a
-Block F / evening Windows-side task.
+**Mon evening Windows-side update:** external Week 10 diary Mon Outcome was
+filled bilingual + with a comprehensive commit summary. Tue Outcome fill
+remains a Block F / evening Windows-side task.
 
 **Why this matters:**
 
@@ -601,9 +601,9 @@ Same shape as Mon 11/05's Block F:
    - Mixed outcomes:
      `docs(diary): 12/05 Pi 5 deep check + doc sweep findings`
 6. Push.
-7. **Update Week 10 external diary Mon/Tue Outcome bullets** — Mon Outcome
-   is carry-over from Mon Block F Step 8 if still placeholder; Tue Outcome
-   is today's fill. External Windows-side weekly diary; deferred to next
+7. **Update Week 10 external diary Tue Outcome bullet** — Mon Outcome was
+   filled during the Mon evening Windows-side update; Tue Outcome is
+   today's fill. External Windows-side weekly diary; deferred to next
    Windows-side session if not Linux-reachable.
 
 **Outcome.** [To fill at end of day.]
