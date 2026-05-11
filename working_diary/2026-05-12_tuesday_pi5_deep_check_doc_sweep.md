@@ -526,7 +526,7 @@ standard audit pattern.
 
 ### E.3 — `wiki/Roadmap.md`
 
-- ~~§1.1 / §1.3 IoT IMT Nord Europe mentions — Mon Side activity Outcome flagged these for re-check on suspicion of SSID-name-vs-network-meaning mismatch.~~ **RESOLVED Tue AM per user clarification:** the SSID `IoT IMT Nord Europe` IS the same network §1.3 describes (workstation↔Pi link uses the same `IoT IMT Nord Europe` SSID as the institutional IoT WiFi referenced by §1.3); §1.3's local-only / no-internet analysis applies directly. **No Roadmap wording change needed for this concern.** Still verify §1.1 / §1.3 are otherwise current (no other stale-claim drift since 30/04).
+- ~~§1.1 / §1.3 IoT IMT Nord Europe mentions — Mon Side activity Outcome flagged these for re-check on suspicion of SSID-name-vs-network-meaning mismatch.~~ **RESOLVED Mon evening per user clarification:** the SSID `IoT IMT Nord Europe` IS the same network §1.3 describes (workstation↔Pi link uses the same `IoT IMT Nord Europe` SSID as the institutional IoT WiFi referenced by §1.3); §1.3's local-only / no-internet analysis applies directly. **No Roadmap wording change needed for this concern.** Still verify §1.1 / §1.3 are otherwise current (no other stale-claim drift since 30/04).
 - §3 Phase 5 status table (line ~182) — should have today's MP-Linux fix
   note from 11/05.
 - §9 Revision log — should it have a new entry for the 11/05 MP-Linux fix + Pi 5 verified-bare state? Decide.
