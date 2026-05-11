@@ -53,7 +53,7 @@ Active blocks:
    Herelink video-sharing settings to toggle if needed.
 3. **Block C — Campus A test** (~30-60 min, AM-mid PM): full diagnostic chain
    at the reported-good campus site (`ip route` + `arp -a` +
-   `vlc rtsp://...` + QGC video source config). Capture outputs.
+   `ffplay rtsp://...` + QGC video source config). Capture outputs.
 4. **Block D — Second-site B test** (conditional, ~30-60 min, PM): only if
    Block C result demands the comparison AND a second site is reachable
    today. Same diagnostic chain with the same equipment + settings, single
@@ -103,7 +103,7 @@ After a 3-day gap (Fri-Sun), catch up before starting field work:
   portable.
 - Confirm A/B retest is still on; if not, branch into fallback queue.
 
-**Outcome.** [To fill — git state, weekend inputs, A/B retest go/no-go.]
+**Outcome.** Repo state clean and ff-up-to-date on both `uvautoboat` (tip `602831d`, scaffold + guardrails chain landed 11/05/2026) and `vrx` `autoboat/main` (tip `e384cd65`, fork bake-in unchanged since 06/05). 07/05 outcomes re-read (Thu wet test D1/D2 PASS via Herelink manual + QGC/MP MAVLink arm-disarm; laptop-side video FAIL = today's lead diagnostic). **Weekend inputs:** none — no supervisor presentation reschedule yet, no teammate replies on the three Asks (Phase A parameter subset / CA placement / validation methodology). **Herelink hardware:** ready, charged, at the campus working room. **A/B retest go/no-go:** GO, campus-only (second-site/lake retest pre-decided as deferred). **VRX §8.2 weekly cadence (Mon AM):** 0/4 triggers fired, HOLD stands — T1 patch count = 1 bake-in on `autoboat/main` (≪3 threshold), T2 custom mods = 0, T3 N/A pre-Phase-5-sim-coupling, T4 latest upstream tag = `v3.1.2` (vs `v3.1.0` at fork) which is a semver patch bump and doesn't fire the "major release" condition. `git log autoboat/main..upstream/main` empty.
 
 ---
 
@@ -143,7 +143,7 @@ Long-deferred **"Real no-regression test for `launch/remap.launch.yaml`"** final
 
 **Pass criteria:** Pi 5 nodes + topics visible from workstation, full topic list archived to `/tmp/pi5_topics_2026-05-11.txt`, name-mismatch diff captured.
 
-**Outcome.** [To fill — Pi 5 IP + connection mode, ROS_DOMAIN_ID + RMW_IMPLEMENTATION on each side, topic list line count, mismatches vs sim, doc updates landed in `wiki/Common_Issues.md`.]
+**Outcome.** **Deferred** — Pi 5 is reachable only on the `IoT IMT Nord Europe` private workstation↔Pi link (note: this is **not** the institutional IoT-only network described in `wiki/Roadmap.md` §1.3 — same SSID name, different network meaning in user's setup; the §1.3 description should be re-checked next session). The workstation has one WiFi adapter (`wlp147s0`), so reaching the Pi 5 requires a temporary switch off `IMT Nord Europe 5G` campus WiFi (no internet during the offline window, no remote-tooling reach). Single-adapter offline-switch workflow drafted (`nmcli connection up "IoT IMT Nord Europe"` → `ssh <user>@<pi5-ip>` → `ros2 node list` + `ros2 topic list > /tmp/pi5_topics_2026-05-11.txt` + sim diff → `nmcli connection up "IMT Nord Europe 5G"`), but not executed today — Block C consumed the campus-room window first, and the discovery-phase capture needs prerequisites still TBD (Pi 5 IP on the IoT link, SSH user, ROS 2 Jazzy install state with `ROS_DOMAIN_ID=56` matching this workstation, same `RMW_IMPLEMENTATION` on both sides). `launch/remap.launch.yaml` no-regression test stays in its original "needs first real-hardware bench" state — re-evaluate at the next focused Pi 5 session.
 
 ---
 
@@ -152,8 +152,8 @@ Long-deferred **"Real no-regression test for `launch/remap.launch.yaml`"** final
 Equipment + settings audit before walking out:
 
 - Herelink Air Unit on the boat (or accessible) + Herelink GCS unit charged.
-- Linux laptop with QGC + MP installed; VLC installed
-  (`sudo apt install vlc` if not).
+- Linux laptop with QGC + MP installed; `ffplay` installed
+  (`sudo apt install ffmpeg` if not).
 - Laptop charged; Ethernet/USB cable for Herelink connection (same mode as
   07/05 if known).
 - `wiki/Common_Issues.md` "QGC / Mission Planner Can Arm via Herelink, but
@@ -167,7 +167,7 @@ Equipment + settings audit before walking out:
 Pass criteria: equipment present + URLs ready + setting starting state
 recorded.
 
-**Outcome.** [To fill — equipment state, settings starting state, blockers.]
+**Outcome.** Equipment + settings handled implicitly at session start in the intern working room: Herelink Air Unit + Ground Controller powered up, camera feed visible on the controller's own screen, `IMT-Aquatic-drone` hotspot saved profile already on the laptop (verified via `nmcli connection show`), QGC + Mission Planner installed (per 24/04/2026 install row in `Board.md`), no extra equipment moves needed because the working room is the test location and the laptop ↔ Herelink path was already proven 07/05/2026. No formal fill-in form completed under time pressure (consistent with Thu 07/05 Block B outcome).
 
 ---
 
@@ -186,32 +186,46 @@ professor's clue):
    arp -a
    ```
 
-4. Test RTSP directly in VLC (URLs per CubePilot doc — `wiki/Common_Issues.md`
-   has the canonical attempts):
+4. Test RTSP directly with `ffplay` (URLs per CubePilot doc —
+   `wiki/Common_Issues.md` has the canonical attempts):
 
    ```bash
-   vlc rtsp://<herelink-ip>:8554/fpv_stream
-   # OR if the doc points elsewhere:
-   vlc rtsp://<herelink-ip>:8554/live
+   ffplay rtsp://<herelink-ip>:8554/fpv_stream
+   # If the default UDP transport hangs in a restrictive network:
+   ffplay -rtsp_transport tcp rtsp://<herelink-ip>:8554/fpv_stream
    ```
 
-5. Capture VLC output (success or specific error).
-6. If VLC works → configure QGC: Application Settings → General → Video →
-   Source = "RTSP Video Stream", URL = the working VLC URL. Restart QGC. Test.
-7. If VLC fails → check Herelink controller's video-sharing setting in the
-   Herelink configuration app; enable if disabled; retest VLC.
+5. Capture `ffplay` output (success or specific error).
+6. If `ffplay` works → configure QGC: Application Settings → General → Video
+   → Source = "Herelink Hotspot" for the built-in preset, or "RTSP Video
+   Stream" + URL if testing a manual stream source. Restart QGC if needed.
+7. If `ffplay` fails → check Herelink controller's video-sharing setting in
+   the Herelink configuration app; enable if disabled; retest `ffplay`.
 
 **Pass criteria** (campus branch outcomes):
 
 | Branch | What happened | Implication |
 |:------:|:--------------|:------------|
-| A1 | VLC + QGC both show video | Campus baseline good; isolates lake failure as a location/link-condition issue → Block D needed for confirmation |
-| A2 | VLC works, QGC fails | QGC config issue; document the QGC-side fix |
-| A3 | VLC fails, Herelink setting toggle fixes it | Herelink-side default-off issue; document the toggle as the fix that should also resolve the lake case |
-| A4 | VLC fails, toggle doesn't help | Deeper issue (firmware, codec, network); escalate before more field tests |
+| A1 | `ffplay` + QGC both show video | Campus baseline good; isolates lake failure as a location/link-condition issue → Block D needed for confirmation |
+| A2 | `ffplay` works, QGC fails | QGC config issue; document the QGC-side fix |
+| A3 | `ffplay` fails, Herelink setting toggle fixes it | Herelink-side default-off issue; document the toggle as the fix that should also resolve the lake case |
+| A4 | `ffplay` fails, toggle doesn't help | Deeper issue (firmware, codec, network); escalate before more field tests |
 
-**Outcome.** [To fill — branch (A1/A2/A3/A4), VLC output, Herelink settings
-checked, QGC config used, time taken.]
+**Outcome.** **A1 with MP-Linux split out as a separate runtime issue** (the original A1-A4 table assumed uniform GCS behaviour; today's evidence shows QGC and MP can fail independently, and MP's failure is GCS-runtime-side rather than Herelink-side):
+
+- **Herelink controller QGC + MP**: both connecting + video both fine (baseline confirms Herelink itself is fine).
+- **Linux QGC**: connection + video both fine. Config snapshot: `Application Settings → General → Video → Source = Herelink Hotspot` (built-in QGC preset; no manual URL field involved); all other Video panel settings at QGC defaults (Aspect Ratio `1.777777` = 16:9, Low Latency Mode OFF, Default decode priority, mp4 record format). `.ini` snapshot: `[Video] videoSource=Herelink Hotspot`, `recordingFormat=2`. Screenshot archived at `~/Pictures/Screenshots/qgc_video_settings_2026-05-11_campus.png`. Full config-dir backup at `~/qgc_config_2026-05-11_campus.bak/`.
+- **Linux Mission Planner**: connection fine; video panel pops `Send Error` dialog with stack trace `System.TypeInitializationException: The type initializer for 'SkiaSharp.SKObject' threw an exception. ---> System.DllNotFoundException: Unable to load library 'libSkiaSharp'`. GCS-runtime-side, not a Herelink / RTSP / video config issue. Same failure class as the 24/04/2026 `GDAL / OGR / OSR` gap. Split out as a separate `wiki/Common_Issues.md` entry "Mission Planner on Linux: libSkiaSharp DllNotFoundException". Error screenshot archived at `~/Pictures/Screenshots/missionplanner_error_message_video_stream.png`.
+- **Independent RTSP verification via `ffplay`** (tool-independent baseline for the underlying stream behind QGC's preset; QGC's "Herelink Hotspot" preset is **consistent with** this verified endpoint — stronger claims like "talking to the exact same server" would need QGC log / packet capture):
+  - Workstation IP `192.168.43.160/24` on hotspot; Herelink IP = `192.168.43.1` (gateway, MAC `c0:f5:35:41:5e:4c`); ping 0% loss, RTT ~3-7 ms (one outlier 42 ms in the first round, likely DHCP-warm-up).
+  - `ffplay rtsp://192.168.43.1:8554/fpv_stream` ✓ — LIVE555 Streaming Media v2018.02.28 server, H.264 High @ 1920×1080 30 fps, yuv420p progressive. RTP/AVP profile 96, control track `track1`.
+  - `ffplay -rtsp_transport tcp rtsp://192.168.43.1:8554/fpv_stream` ✓ — same stream over TCP-interleaved transport.
+  - `ffplay rtsp://192.168.43.1:8554/live` ✗ — `method DESCRIBE failed: 404 Stream Not Found` (alternate path doesn't exist on this firmware).
+  - `ffplay -rtsp_transport tcp rtsp://192.168.43.1:8554/live` ✗ — same 404.
+  - Verbose-log capture at `/tmp/ffplay_rtsp_2026-05-11.log` (decoded video frames + SDP archived).
+- **Side-finding: Ubuntu Noble apt VLC is not a viable generic RTSP tool on this workstation.** Initial attempts `vlc rtsp://192.168.43.1:8554/fpv_stream` and `.../live` both failed with `satip stream error: Failed to play RTSP session` and `access_realrtsp stream warning: only real/helix rtsp servers supported for now`. Build config near the top of the verbose VLC log contains `'--enable-realrtsp' '--disable-live555'` — Ubuntu's apt VLC package on this workstation lacks the standard `live555` RTSP access module that mainline VLC uses for IP-camera RTSP. `ffmpeg`/`ffplay`, snap-VLC, or flatpak-VLC are working alternatives. `wiki/Common_Issues.md` Diagnosis step 2 updated to reflect this workstation/build-specific caveat (not a categorical statement about VLC).
+
+Herelink video-sharing settings: not toggled today (didn't need to — QGC already working out of the box on the preset). Time on-station: roughly 1.5 hours including the install rounds (`vlc` then `ffmpeg`) and the second offline-window cycle to swap in `ffplay`.
 
 ---
 
@@ -230,11 +244,10 @@ weather, link-quality indicators).
 | Branch | What happened | Implication |
 |:------:|:--------------|:------------|
 | D1 | B-site video also works | Not a location issue; the campus fix solves the original 07/05 problem; document |
-| D2 | B-site video fails identically (in VLC) | Location-side issue; deeper investigation needed (RF, range, link saturation) |
-| D3 | B-site VLC works but QGC fails | QGC config drift between sessions; document |
+| D2 | B-site video fails identically in `ffplay` | Location-side issue; deeper investigation needed (RF, range, link saturation) |
+| D3 | B-site `ffplay` works but QGC fails | QGC config drift between sessions; document |
 
-**Outcome.** [To fill if Block D ran — branch (D1/D2/D3), B-site
-observations, comparison vs campus.]
+**Outcome.** **Second-site retest deferred.** Strictly speaking, the A/B comparison is not complete until a second site (e.g. the small artificial lake from 07/05, or any other location with different RF / link conditions) re-verifies the now-known-good QGC `Herelink Hotspot` preset under identical equipment + settings + connection mode. Today's campus result reduces the open hypothesis space for 07/05's QGC failure (the cause class is "QGC video Source setting / network topology / site link condition", not "Herelink-side default-off video sharing") but does NOT close it. Block D rolls into the next field session.
 
 If Block C identifies the fix unambiguously (A2 or A3 with a reproducible
 toggle), Block D may be deferred to a future combined autonomy test.
@@ -252,7 +265,7 @@ Compare Block C and D outputs side by side:
 | Connection mode (USB / Ethernet / hotspot) | | | |
 | Herelink video-sharing setting | | | |
 | RTSP URL attempted | | | |
-| VLC result | | | |
+| RTSP tool result (`ffplay`) | | | |
 | QGC video source setting | | | |
 | QGC result | | | |
 
@@ -268,7 +281,12 @@ Categorize the cause:
 - **Mixed / inconclusive** → escalate to supervisor / teammate maintainer;
   document open question; possibly add to Phase 5 risks in `Board.md`.
 
-**Outcome.** [To fill — root cause category, fix path, doc updates needed.]
+**Outcome.** **07/05 lake video failure narrowed, not closed:**
+
+- **QGC channel**: open cause class is still "QGC video Source setting / network topology / site link condition" — pending the deferred second-site retest in Block D. Today's campus result shows QGC + Herelink can deliver video on Linux when the `Source = Herelink Hotspot` preset is selected, which materially shrinks the hypothesis space but doesn't isolate the 07/05-specific variable.
+- **MP channel**: likely the same MP-Linux runtime class surfacing then (`libSkiaSharp` native library load failure), not a Herelink-side issue at all. The 07/05 MP error screen was not captured at the time, so this remains a probable rather than confirmed mapping.
+
+**Fix path**: laptop-side situational awareness for autonomy field tests should rely on **Linux QGC with `Source = Herelink Hotspot`** preset (known-good baseline, config dir backed up at `~/qgc_config_2026-05-11_campus.bak/`, screenshot at `~/Pictures/Screenshots/qgc_video_settings_2026-05-11_campus.png`). **Mission Planner on Linux** is treated as arm/disarm-only — degraded video, same posture as the 24/04 GDAL decision; MP-Windows (`.msi`) is the serious-MP fallback. **Doc updates landed**: new `wiki/Common_Issues.md` entry "Mission Planner on Linux: libSkiaSharp DllNotFoundException" + edits to the existing "Video Missing" entry (11/05 verification paragraph, `ffplay` swap-in for the apt-VLC-broken case in Diagnosis step 2-4, "Do not chase first" wording, new Diagnosis step 5 on preserving QGC config + capturing the underlying URL during the offline window). `Board.md` Phase 5 Hardware-arrival row for the video A/B retest flipped ⬜ → 🟡 with today's campus partial-pass note; new Timeline row for 11/05; header `Last Updated` + status summary + footer `Document Version` (9.9 → 9.10) + footer `Last Updated` all bumped to 11/05/2026.
 
 ---
 
@@ -307,22 +325,19 @@ Same shape as Thu 07/05:
    block the Mon main-repo wrap, but the external entry stays in "[fill]"
    until done.
 
-**Outcome.** [To fill at end of day.]
+**Outcome.** `wiki/Common_Issues.md` + `Board.md` + this diary all updated. Pre-commit invisibility sweep clean. Single-line conventional commit message: `docs: log 11/05 Herelink video A/B campus pass + MP-Linux skia gap` (66 chars). External Week 10 diary Mon-section update deferred to next Windows-side session per scaffold's hard rule. Pi 5 Side activity carry-forward note added to the deferred list — the `launch/remap.launch.yaml` no-regression discovery phase stays in its original state pending a focused next session with Pi 5 IP / SSH user / ROS 2 install state clarified.
 
 ---
 
 ## Verification summary — 11/05 (check at end of day)
 
-- [ ] Block A: morning re-orientation done; A/B retest go/no-go decided
-- [ ] Side activity (Pi 5 connectivity): Pi 5 ↔ workstation ROS 2 graph handshake done; topic list archived; sim diff captured; `launch/remap.launch.yaml` patch deferred per the hard rule
-- [ ] Block B: equipment + settings audit complete
-- [ ] Block C: campus A test executed; outcome branch (A1/A2/A3/A4) recorded
-- [ ] Block D: B-site test executed (if Block C demanded it) OR explicitly
-      skipped with reason
-- [ ] Block E: A/B analysis complete; root cause categorized; fix path
-      documented
-- [ ] Block F: diary filled; pre-commit sweep clean; `Board.md` updated;
-      `wiki/Common_Issues.md` resolved-branch updated
+- [x] Block A: morning re-orientation done; A/B retest go/no-go decided (GO, campus-only; second-site/lake retest pre-decided as deferred)
+- [ ] Side activity (Pi 5 connectivity): **deferred** to next focused session — single-WiFi-adapter offline-switch workflow drafted but not executed; Pi 5 IP on `IoT IMT Nord Europe` + SSH user + ROS 2 install state with `ROS_DOMAIN_ID=56` match still TBD
+- [x] Block B: equipment + settings handled implicitly at session start (no formal fill-in form under time pressure, consistent with Thu 07/05 Block B)
+- [x] Block C: campus A test executed; outcome = A1 with MP-Linux split out (Linux QGC + `ffplay` both work via QGC `Source = Herelink Hotspot` preset on `rtsp://192.168.43.1:8554/fpv_stream`; Linux MP fails on `libSkiaSharp DllNotFoundException`)
+- [x] Block D: second-site retest explicitly deferred to next field session — A/B comparison not yet complete without a second-site re-verification of the now-known-good QGC preset
+- [x] Block E: A/B analysis complete; 07/05 root cause narrowed (QGC channel: "config / topology / site link condition" still open pending Block D; MP channel: likely the same MP-Linux runtime class); fix path documented (QGC = Linux video tool of record; MP-Linux = arm/disarm-only)
+- [x] Block F: diary filled; pre-commit sweep clean; `Board.md` updated; `wiki/Common_Issues.md` resolved-branch updated + new MP-Linux SkiaSharp entry appended
 
 ---
 

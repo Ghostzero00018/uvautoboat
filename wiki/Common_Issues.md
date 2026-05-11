@@ -346,6 +346,25 @@ direct stream tests prove otherwise. If the same Herelink video stream worked at
 another site before, preserve that as a location / link-condition variable and
 repeat a controlled campus-vs-field comparison before changing many settings.
 
+**Campus working-room verification (11/05/2026)**: Linux QGC video is working
+on the Herelink hotspot link (SSID `IMT-Aquatic-drone`, hotspot gateway
+`192.168.43.1`) from the intern's working room. **QGC config is a single
+non-default knob**: `Application Settings → General → Video → Source` =
+**`Herelink Hotspot`** (a built-in named preset; no manual URL field
+involved). Other Video panel settings (Aspect Ratio `1.777777` = 16:9, Low
+Latency Mode OFF, Default decode priority, mp4 record format) are at QGC
+defaults. The underlying RTSP stream behind that preset was verified
+independently with `ffplay rtsp://192.168.43.1:8554/fpv_stream` — LIVE555
+server, H.264 High @ 1920×1080 30 fps; both UDP-default and TCP-interleaved
+transports work. QGC's "Herelink Hotspot" preset is consistent with this
+independently verified Herelink RTSP endpoint. The alternate path `/live`
+does **not** exist on this firmware (`404 Stream Not Found`). The 07/05 lake
+video failure for QGC remains untested under the now-known-good preset —
+open cause class is still "QGC video Source setting / network topology /
+site link condition". Linux Mission Planner on the same link fails with a
+separate runtime issue (see "Mission Planner on Linux: libSkiaSharp
+DllNotFoundException" below).
+
 **Log triage**:
 
 | Log signal | Likely meaning |
@@ -367,34 +386,44 @@ repeat a controlled campus-vs-field comparison before changing many settings.
    arp -a
    ```
 
-2. **Test the video stream outside QGC first.**
-
-   Prefer RTSP for Herelink video sharing. Common documented Herelink URLs are:
-
-   ```bash
-   vlc rtsp://192.168.42.129:8554/fpv_stream
-   vlc rtsp://<herelink-ip>:8554/fpv_stream
-   vlc rtsp://<herelink-ip>:8554/live
-   ```
-
-   If VLC is unavailable, install it on the laptop:
+2. **Test the video stream outside QGC first.** Use `ffplay` (from
+   `ffmpeg`) — it has independent RTSP support and works on standard
+   IP-camera streams:
 
    ```bash
-   sudo apt install vlc
+   sudo apt install ffmpeg
+   ffplay rtsp://<herelink-ip>:8554/fpv_stream
+   # If the default UDP transport hangs in a restrictive network, force TCP:
+   ffplay -rtsp_transport tcp rtsp://<herelink-ip>:8554/fpv_stream
    ```
 
-3. **Branch on the VLC result.**
+   CubePilot's USB-tether default is `rtsp://192.168.42.129:8554/fpv_stream`;
+   in Wi-Fi / hotspot mode (verified 11/05/2026), the Herelink IP is the
+   default gateway after joining its hotspot (e.g. `192.168.43.1` on
+   `IMT-Aquatic-drone`).
 
-   - If VLC shows video: QGC is misconfigured. Set
-     **Application Settings -> General -> Video -> Source** to
-     **RTSP Video Stream**, set the RTSP URL to the VLC-working URL, then
-     restart QGC.
-   - If VLC also fails: the stream is not being advertised to the laptop. On
-     the Herelink controller, open Herelink Settings / Solex / Herelink Hub
-     depending on firmware and enable **Video Sharing**, **RTSP Server**,
-     **Forward video to GCS**, or the closest equivalent wording. Keep at least
-     one GCS app running on the Herelink and make sure the correct HDMI/video
-     stream is selected, then repeat the VLC test.
+   **Caveat on `vlc`**: Ubuntu Noble's apt-installed VLC on this workstation
+   lacks the Live555 RTSP access module (the package is built with
+   `--disable-live555`) and fails on this Herelink stream with
+   `satip stream error: Failed to play RTSP session`. Snap-installed VLC
+   (`sudo snap install vlc`) or Flatpak (`flatpak install flathub
+   org.videolan.VLC`) ship with Live555 enabled if you specifically want
+   VLC; otherwise `ffplay` is the simplest tool-independent RTSP test.
+
+3. **Branch on the generic-tool result.**
+
+   - If `ffplay` shows video: the Herelink RTSP stream is reachable; QGC's
+     side is the variable. Open Linux QGC →
+     **Application Settings → General → Video** → set Source to **Herelink
+     Hotspot** (the built-in preset QGC ships for CubePilot Herelink
+     hotspot mode, verified-good 11/05/2026); restart QGC if needed.
+   - If `ffplay` also fails: the stream is not being advertised to the
+     laptop. On the Herelink controller, open Herelink Settings / Solex /
+     Herelink Hub depending on firmware and enable **Video Sharing**,
+     **RTSP Server**, **Forward video to GCS**, or the closest equivalent
+     wording. Keep at least one GCS app running on the Herelink and make
+     sure the correct HDMI/video stream is selected, then repeat the
+     `ffplay` test.
 
 4. **If video worked at campus before, run a controlled A/B retest.**
 
@@ -411,14 +440,33 @@ repeat a controlled campus-vs-field comparison before changing many settings.
    ```bash
    ip route
    arp -a
-   vlc rtsp://<herelink-ip>:8554/fpv_stream
+   ffplay rtsp://<herelink-ip>:8554/fpv_stream
    ```
 
    If campus works but the lake fails with identical settings, the issue is
    likely link quality, RF environment, local network topology, or site-specific
    interference / range rather than QGC's general configuration. If both fail,
-   focus on Herelink video-sharing state or the RTSP URL. If VLC works in both
-   but QGC fails in one, focus on QGC video-source settings and logs.
+   focus on Herelink video-sharing state or the RTSP URL. If `ffplay` works in
+   both but QGC fails in one, focus on QGC video-source settings and logs.
+
+5. **When QGC video works, preserve the known-good config and capture the
+   underlying URL** — both have to happen while still on the Herelink
+   hotspot, because once the laptop switches to any other network the link
+   to the camera / control box is gone (single-WiFi-adapter constraint):
+
+   - Note the QGC video Source dropdown value (e.g. `Herelink Hotspot`).
+     QGC stores it as `[Video] videoSource=...` in
+     `~/.config/QGroundControl/QGroundControl.ini`.
+   - Back up the config directory:
+
+     ```bash
+     cp -r ~/.config/QGroundControl/ ~/qgc_config_<YYYY-MM-DD>_<site>.bak/
+     ```
+
+   - Confirm the underlying RTSP URL independently with `ffplay` (recipe in
+     step 2) — that's the value to record for tool-independent setup and for
+     use in any non-QGC client (Linux MP, browser MJPEG wrappers, ROS 2
+     bridges, etc.).
 
 **Known Herelink detail**:
 [CubePilot's Herelink video-sharing guide](https://docs.cubepilot.org/user-guides/herelink/herelink-user-guides/share-video-stream)
@@ -430,11 +478,74 @@ QGC's video source and URL/port fields are documented in
 
 **Do not chase first**:
 
-- VA-API / `libva` decode warnings, unless the stream works in VLC but QGC
-  decode still fails.
+- VA-API / `libva` decode warnings, unless the stream works in `ffplay` but
+  QGC decode still fails.
 - Offline map tiles, unless map background is the problem being debugged.
 - `PhotoVideoControl.qml` null-camera errors before proving an RTSP stream
   exists.
+
+---
+
+### Mission Planner on Linux: libSkiaSharp DllNotFoundException
+
+**Symptoms**:
+
+- Mission Planner running under Mono on Linux connects fine via MAVLink
+  (arm/disarm works) but pops a `Send Error` dialog with a stack trace
+  ending in:
+
+  ```text
+  System.TypeInitializationException: The type initializer for 'SkiaSharp.SKObject' threw an exception.
+  ---> System.DllNotFoundException: Unable to load library 'libSkiaSharp'.
+      at SkiaSharp.SkiaApi.GetSymbol[T] (...)
+      at SkiaSharp.SKObject..cctor ()
+  ```
+
+- Has been observed around the time video panel UI is exercised, but the
+  stack trace alone only proves SkiaSharp's native init failed; the
+  specific caller path isn't pinned by the trace.
+- Linux QGC running on the same laptop against the same Herelink link
+  displays the video stream when its video Source is set to "Herelink
+  Hotspot" — the failure is GCS-runtime-side, not a Herelink / RTSP / video
+  config issue.
+
+**Interpretation**: SkiaSharp is a cross-platform 2D graphics library that
+Mission Planner uses for several panel rendering paths. The native shared
+library `libSkiaSharp.so` is not loadable in this Mono environment —
+typically missing, ABI-incompatible with Mono, or unable to resolve its own
+native dependencies. Same failure class as the 24/04/2026
+`GDAL / OGR / OSR` gap already documented for MP-under-Mono on this
+workstation.
+
+**Status (11/05/2026)**: not chased. MP-Linux is treated as arm/disarm-only;
+QGC on Linux handles video; Mission Planner on Windows (`.msi` install) is
+the serious-MP fallback if the full feature surface is needed. Same posture
+as the 24/04 GDAL decision.
+
+**If a fix is needed later**:
+
+1. Confirm the missing library — search narrow paths first before going
+   wide:
+
+   ```bash
+   find ~/MissionPlanner /usr/lib /usr/local/lib ~/.nuget -name 'libSkiaSharp*' -print 2>/dev/null | head -20
+   ldconfig -p | grep -i skiasharp
+   ```
+
+2. Inspect Mission Planner's install directory for a bundled SkiaSharp;
+   check whether one exists, and whether it matches the Mono / .NET
+   runtime / glibc ABI on this system.
+3. Ubuntu does not currently package `libskiasharp` in the main
+   repositories. Community fix paths include dropping a known-good
+   `libSkiaSharp.so` in MP's install directory or a system library path —
+   after verifying the binary source. Risk: similar Mono native-library
+   gaps may surface next (same diagnosis as the 24/04 GDAL decision);
+   chasing them individually has diminishing returns.
+
+**Cross-references**: see "QGC / Mission Planner Can Arm via Herelink, but
+Video Is Missing" above for the Herelink-side diagnostic recipe — that
+diagnostic does **not** apply to this failure mode (this is
+GCS-runtime-side, not link-side).
 
 ---
 
