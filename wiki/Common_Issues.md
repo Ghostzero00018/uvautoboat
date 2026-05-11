@@ -734,7 +734,7 @@ planner?"** — won't happen in normal usage.
   if a second MP instance tries to bind the same listener.
 - *Why it appeared in the diagnostic log*: During the SkiaSharp fix
   verification, two MP processes briefly ran concurrently (Step 4's launch
-  + the libdl-test relaunch overlapped). They contended for the same
+  - the libdl-test relaunch overlapped). They contended for the same
   port — self-induced concurrency artifact of the diagnostic session.
 - *Impact*: Doesn't reproduce in single-instance usage; MP normally runs
   one instance at a time.
