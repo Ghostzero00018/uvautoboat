@@ -216,7 +216,7 @@ cloud, IMU pose, MAVLink telemetry, etc.).
 
 Three candidate paths, ordered from cheapest → fallback:
 
-**Path A — Workstation-side `rviz2` subscribing to Pi topics**
+#### Path A — Workstation-side `rviz2` subscribing to Pi topics
 
 Requires B.1 to have succeeded (DDS works cross-machine). Cheapest, no
 extra installs.
@@ -236,7 +236,7 @@ For a richer test, use any real Pi-side driver topic if one exists later
 `PointCloud2` publisher during this block; the point of Path A is to prove
 the visualization path, not to build test publishers.
 
-**Path B — Pi-side `rviz2` via X-forwarding**
+#### Path B — Pi-side `rviz2` via X-forwarding
 
 Works regardless of DDS multicast (uses SSH transport for the GUI). Slower
 3D rendering over WiFi.
@@ -258,7 +258,7 @@ verifying "the path works", probably not usable for real-time point-cloud
 debugging. The latency reading itself is a useful data point for Phase 5
 planning.
 
-**Path C — Foxglove Studio via foxglove_bridge**
+#### Path C — Foxglove Studio via foxglove_bridge
 
 Newest viewer; uses WebSocket transport (bypasses DDS entirely). Requires
 internet to load the Foxglove web app — so workstation needs to be on the
@@ -469,8 +469,7 @@ let user pick fix-now vs defer per the standard audit pattern.
   highest-priority Roadmap stale-claim candidate.
 - §3 Phase 5 status table (line ~182) — should have today's MP-Linux fix
   note from 11/05.
-- §9 Revision log — should it have a new entry for the 11/05 MP-Linux fix
-  + Pi 5 verified-bare state? Decide.
+- §9 Revision log — should it have a new entry for the 11/05 MP-Linux fix + Pi 5 verified-bare state? Decide.
 
 ### E.4 — `wiki/Common_Issues.md`
 
