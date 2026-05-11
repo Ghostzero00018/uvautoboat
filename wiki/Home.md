@@ -39,6 +39,7 @@ Welcome to the **AutoBoat Wiki**! This documentation provides comprehensive guid
 ### 🔌 Hardware Bring-up
 
 - **[Pi 5 Bring-up Smoke Test](Pi5_Bringup_Smoke_Test)** — manual procedure to verify Pi 5 ↔ flight-controller serial link via MAVProxy + a `pymavlink` script, before `mavros2` enters the picture. Smoke test only — production telemetry path is `mavros2`, see [Roadmap §1.1](Roadmap#11-scope-clarifications-locked-30042026).
+- **[MP + QGC Update Procedures](MP_QGC_Update_Procedures)** — host-local update workflow for Mission Planner (under Mono on Linux) and QGroundControl (AppImage). Includes how to check for newer builds + the SkiaSharp / libdl fix re-apply step after MP updates.
 
 ### 🐛 Troubleshooting & Security
 

@@ -769,7 +769,9 @@ planner?"** — won't happen in normal usage.
   community.
 
 **Caveats**: host-local workaround — may be overwritten by future MP
-updates; re-apply after MP reinstall. Verified end-to-end on this
+updates; re-apply after MP reinstall (see
+[MP_QGC_Update_Procedures](MP_QGC_Update_Procedures) for the full update
+workflow including the re-apply step). Verified end-to-end on this
 workstation: MP video panel + arm/disarm both working over the Herelink
 hotspot `IMT-Aquatic-drone` (gateway `192.168.43.1`).
 

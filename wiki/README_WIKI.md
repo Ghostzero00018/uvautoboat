@@ -20,6 +20,7 @@ The following pages are published to the wiki by `scripts/sync_wiki.sh`:
 | **SASS.md** | Simple Anti-Stuck recovery system (active) |
 | **3D_LIDAR_Processing.md** | LiDAR Perception system explained (VFH + threshold rationale) |
 | **Pi5_Bringup_Smoke_Test.md** | Manual procedure to verify Pi 5 ↔ flight-controller serial link via MAVProxy + a `pymavlink` script, before `mavros2` enters the picture |
+| **MP_QGC_Update_Procedures.md** | Host-local update workflow for Mission Planner (under Mono on Linux) + QGroundControl (AppImage), including the SkiaSharp/libdl fix re-apply step after MP updates |
 | **Common_Issues.md** | Troubleshooting guide |
 | **Dashboard_Security.md** | Security assessment, vulnerabilities, and mitigation recommendations |
 | **Node_Naming_Refactor_Plan.md** | Completed rename of OKO / SPUTNIK / BURAN → functional names (16/04/2026) |
