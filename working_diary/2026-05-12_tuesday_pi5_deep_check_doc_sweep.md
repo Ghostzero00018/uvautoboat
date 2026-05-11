@@ -37,12 +37,16 @@ subscribes, to resolve the multicast question dispositively.
 
 - **Mon 11/05** — Herelink video A/B campus close + MP-Linux SkiaSharp/libdl
   fix + Pi 5 SSH/ROS 2 install verified + audit cleanup. 6 commits.
-- **Tue 12/05 (today)** — Pi 5 deep check (DDS probe + GUI viz trial); MP
-  GDAL/OGR/OSR fix attempt (conditional); optional QGC update; doc
-  stale-claim sweep.
+- **Tue 12/05 (today)** — Pi 5 deep check (DDS probe + system-desktop GUI
+  access PRIMARY; ROS 2 data viz SECONDARY); MP GDAL/OGR/OSR fix attempt
+  (conditional); optional QGC update; doc stale-claim sweep.
 - **Pending all week** — formal joint supervisor presentation reschedule;
   three Asks to teammate maintainer (Phase A parameter subset, CA placement,
   validation methodology); second-site (lake) Herelink video A/B retest.
+
+**Carry-over from Mon Block F Step 8:** external Week 10 diary Mon Outcome
+fill — check status, fill if still placeholder. Tue Outcome fill remains a
+Block F / evening Windows-side task.
 
 **Why this matters:**
 
@@ -53,10 +57,12 @@ Fast-DDS Discovery Server (unicast) configuration, which is more work but
 unblocks Phase 5 regardless. Yesterday's Block H left this open as the
 single biggest Pi-side unknown.
 
-The Pi 5 GUI visualization trial is exploratory but timely — figuring out
-the visualization path (workstation `rviz2` subscribing to Pi topics,
-Pi-side `rviz2` over X-forwarding, or Foxglove Studio in a browser) directly
-informs how Phase 5 driver testing + debugging will work day-to-day.
+The Pi 5 GUI trial is exploratory but timely. The **PRIMARY** question is
+whether the Pi's system desktop / OS GUI can be operated remotely (VNC,
+xrdp, or SSH-X for individual apps), because that is the operator's-eye
+view of the Pi as a workstation. ROS 2 data visualization (`rviz2` /
+Foxglove over Paths A/B/C) is **SECONDARY** and follows only after at least
+one system-desktop path is attempted or skipped by the pre-req check.
 
 MP GDAL/OGR/OSR and QGC update are scope-discipline catch-ups documented
 yesterday as deferred. Today's check is whether either is worth chasing
@@ -75,15 +81,22 @@ Active blocks:
 2. **Block B — Pi 5 deep check** (~45-60 min, single offline window on `IoT
    IMT Nord Europe`): two parts sharing one network switch:
    - **B.1** DDS cross-machine probe (long-running publisher).
-   - **B.2** GUI visualization trial (3 candidate paths).
+   - **B.2** system-desktop GUI access trial (**PRIMARY**: VNC / xrdp /
+     SSH-X; rPi Connect skipped today), then ROS 2 data visualization
+     (**SECONDARY**: Paths A/B/C) only after PRIMARY is attempted or skipped.
 3. **Block C — MP-Linux GDAL/OGR/OSR fix attempt** (~45-90 min, mid-PM,
    conditional): musl→glibc swap pattern from yesterday's SkiaSharp fix.
 4. **Block D — QGC stable AppImage update** (~10 min, optional): check
    upstream cadence; update only if newer + wanted.
 5. **Block E — Doc stale-claim sweep** (~30-45 min): forward-audit
-   `Board.md`, `README.md`, `wiki/Roadmap.md`, `wiki/Common_Issues.md`.
+   `Board.md`, `README.md`, `wiki/Roadmap.md`, `wiki/Common_Issues.md`,
+   `wiki/MP_QGC_Update_Procedures.md`, plus README / wiki stamp sweep.
 6. **Block F — Day wrap** (~30 min, evening): diary outcomes, Board.md
    update, commit + push.
+
+**Hard boundary:** Pi 5 remains **bare ROS 2** today unless Block B proves
+otherwise; no autonomy-stack or real driver-service expectations from the
+Pi side yet.
 
 **Fallback if Pi 5 hardware isn't reachable** (e.g., Pi powered off, IoT
 network down, hotspot connectivity broken):
@@ -116,6 +129,9 @@ After Mon's heavy 6-commit session, catch up before starting today's blocks:
 
   ```bash
   cd ~/seal_ws/src/vrx
+  git status --short
+  git pull --ff-only
+  git branch --show-current                                  # expect autoboat/main
   git log autoboat/main --not upstream/main --oneline | wc -l   # expect 1 (the existing bake-in)
   git tag --sort=-creatordate -l 'v*' | head -3                  # expect v3.1.2 still at top
   ```
@@ -200,21 +216,60 @@ ros2 topic info /pi5_dds_probe --verbose
 
 | Result | Reading | Next move |
 |---|---|---|
-| Workstation lists `/pi5_dds_probe` + `echo --once` prints `data: pi5_probe` | DDS cross-machine **works** on IoT WiFi. | Proceed to B.2 with Path A (workstation-side `rviz2`) as the default. Phase 5 driver bring-up planning can assume standard ROS 2 graph discovery. |
-| Workstation `ros2 topic list` doesn't include `/pi5_dds_probe` | DDS multicast / client-isolation **blocked** by IoT WiFi (probable). | Skip B.2 Path A; try B.2 Path B (X-forwarding) or Path C (Foxglove). Document as "Fast-DDS Discovery Server needed for Phase 5"; defer that setup to a focused future session. |
+| Workstation lists `/pi5_dds_probe` + `echo --once` prints `data: pi5_probe` | DDS cross-machine **works** on IoT WiFi. | B.2 PRIMARY system-desktop test runs first regardless; SECONDARY ROS 2 viz can default to Path A (workstation-side `rviz2`) once PRIMARY is attempted. Phase 5 driver bring-up planning can assume standard ROS 2 graph discovery. |
+| Workstation `ros2 topic list` doesn't include `/pi5_dds_probe` | DDS multicast / client-isolation **blocked** by IoT WiFi (probable). | B.2 PRIMARY system-desktop is unaffected (VNC / xrdp / SSH-X don't need DDS). If SECONDARY ROS 2 viz is pursued, skip Path A and try Path B (X-forwarding) or Path C (Foxglove). Document as "Fast-DDS Discovery Server needed for Phase 5"; defer that setup to a focused future session. |
 | Workstation lists the topic but `echo --once` hangs / no data | Discovery works but RTP transport blocked. Uncommon. | Investigate firewall / port-block on IoT WiFi; possibly TCP-only DDS workaround. |
 | Different error class | Record exact symptom. | Stop, report back. |
 
 **Stop the Pi-side publisher** (Terminal A): `Ctrl-C` in the SSH session, or
 close Terminal A entirely. Don't leave it running indefinitely.
 
-### B.2 — GUI visualization trial (exploratory)
+### B.2 — System-desktop GUI + ROS 2 data viz trial (exploratory)
 
-**Goal:** find at least one viable path for visualizing Pi 5 ROS 2 data, so
-Phase 5 driver bring-up can be debugged with a real rendered view (point
-cloud, IMU pose, MAVLink telemetry, etc.).
+**Updated goal (Mon 11/05 evening clarification):** today's **PRIMARY** GUI test is visualizing **the Pi 5's system desktop / OS GUI** — the operator's-eye view of the Pi as a workstation (file manager, terminal windows, system settings, network manager, etc.). This is **distinct** from Pi 5 ROS 2 data visualization (`rviz2` / Foxglove subscribing to Pi topics — covered by the existing **Paths A/B/C below as SECONDARY**).
 
-Three candidate paths, ordered from cheapest → fallback:
+| Goal | Tools | What it shows |
+|---|---|---|
+| **PRIMARY** — Pi 5 system desktop | VNC / SSH-X for individual GUI apps / xrdp (rPi Connect skipped today) | What you'd see if a monitor were plugged into the Pi |
+| **SECONDARY** — Pi 5 ROS 2 data (Paths A/B/C below) | `rviz2` (workstation or Pi-side) / Foxglove Studio | Topic data (point clouds, IMU pose, etc.) rendered as visualizations |
+
+**Order of operations:** start with PRIMARY system-desktop access; only after at least one PRIMARY path is attempted (or skipped per the pre-req check below), proceed to SECONDARY Paths A/B/C.
+
+**Pre-req check (Pi-side desktop / remote-access tooling state):**
+
+```bash
+ssh aqpi-01@10.120.2.50 \
+  'ls /usr/share/xsessions/ 2>/dev/null; echo "---"; \
+   dpkg -l 2>/dev/null | grep -E "vnc|xrdp|gnome-session|xfce4-session|lxde-core|ubuntu-desktop|raspberrypi-ui-mods" | head -20; \
+   echo "---"; \
+   systemctl status display-manager 2>/dev/null | head -5'
+```
+
+Branches:
+
+- **Pi has DE + VNC or xrdp already installed** → use the installed one directly; jump to the matching PRIMARY path.
+- **Pi has DE, no remote-access server** → install VNC: `sudo apt install -y tigervnc-standalone-server tigervnc-common && vncserver :1 -geometry 1280x800 -depth 24` on Pi, then `sudo apt install -y tigervnc-viewer && vncviewer 10.120.2.50:5901` on workstation. (xrdp alt: `sudo apt install -y xrdp && sudo systemctl enable --now xrdp` on Pi, then Remmina-RDP from workstation.)
+- **Pi has no DE at all** → installing a minimal desktop is ~30-60 min AND **needs internet** (apt over IoT-only WiFi blocked). **Decision point:** if internet-capable network is reachable, install; otherwise **defer PRIMARY today and run only SECONDARY** (Paths A/B/C below) — surface the choice to user before committing time.
+
+**Lightweight PRIMARY alternative (no Pi-side install required):**
+
+```bash
+# Workstation, on IoT WiFi — forwards any single GUI app over SSH
+ssh -X aqpi-01@10.120.2.50
+xeyes                                  # X-forwarding sanity check
+nm-connection-editor                   # network manager (if installed on Pi)
+gnome-control-center 2>/dev/null       # system settings (if Gnome installed)
+```
+
+`ssh -X` only forwards individual GUI apps, not a full desktop — useful if VNC/xrdp setup blocks today but you still need to run one Pi-side tool. If `xeyes` fails, debug `xauth` / `DISPLAY` before pursuing further.
+
+**rPi Connect:** Raspberry Pi's official browser-based remote access; requires Pi to authenticate with `raspberrypi.com` — likely **blocked by IoT-local WiFi** (per `wiki/Roadmap.md` §1.3). **Skip today**; document any one-shot attempt result and defer to an internet-capable session.
+
+**PRIMARY pass criteria:** at least one path delivers a usable view — either full Pi desktop on workstation (VNC / xrdp), or at minimum a single Pi-side GUI app rendered via SSH-X. Latency tolerable for system-admin tasks (clicking through menus, running config tools).
+
+---
+
+Three SECONDARY candidate paths (ROS 2 data viz, ordered from cheapest → fallback). Pursue only **after** at least one PRIMARY path has been attempted, or if pre-req check shows no Pi desktop and PRIMARY is skipped:
 
 #### Path A — Workstation-side `rviz2` subscribing to Pi topics
 
@@ -427,9 +482,11 @@ skip with reason), if updated: new build date + smoke-test outcome.]
 ## Block E — Doc stale-claim sweep (~30-45 min, late PM)
 
 Forward-audit on `Board.md`, `README.md`, `wiki/Roadmap.md`,
-`wiki/Common_Issues.md` for stale claims, broken cross-refs, outdated
-framings. **Inspect-only by default** — flag file:line + claim + correction;
-let user pick fix-now vs defer per the standard audit pattern.
+`wiki/Common_Issues.md`, `wiki/MP_QGC_Update_Procedures.md`, and the README
+/ wiki stamp files below for stale claims, broken cross-refs, outdated
+framings, and stale `Last Updated` stamps. **Inspect-only by default** —
+flag file:line + claim + correction; let user pick fix-now vs defer per the
+standard audit pattern.
 
 **Focus areas (in priority order):**
 
@@ -488,11 +545,27 @@ let user pick fix-now vs defer per the standard audit pattern.
   since it's <24h old, but verify the "Current install state" table
   matches today's reality (especially if Block D updates QGC).
 
+### E.6 — README / wiki stamp sweep
+
+- `wiki/Home.md` — current stamp `30/04/2026`; likely stale after the
+  06/05 Roadmap §8 rewrite, 07/05 folder-framing READMEs, and new Sun-Mon
+  files.
+- `wiki/README_WIKI.md` — current stamp `03/05/2026`; likely stale after
+  `wiki/VRX_Fork_Migration.md` landed on 06/05 and later wiki edits.
+- `working_diary/README.md` — current stamp `07/05/2026`; stale after the
+  `2026-05-11_*.md` and `2026-05-12_*.md` diary files were added.
+- `USER_MANUAL.md` — current stamp `06/05/2026`; review whether any
+  substantive post-06/05 edits require a bump or whether the stamp is still
+  defensible.
+- `web_dashboard/autoboat/README_autoboat_dashboard.md` — current stamp
+  `07/05/2026`; quick confirm only, since the 07/05 tunable-contract update
+  may already be the latest substantive edit.
+
 **Approach:**
 
 ```bash
 # Risky-term grep per file
-for f in Board.md README.md wiki/Roadmap.md wiki/Common_Issues.md wiki/MP_QGC_Update_Procedures.md; do
+for f in Board.md README.md USER_MANUAL.md wiki/Roadmap.md wiki/Common_Issues.md wiki/MP_QGC_Update_Procedures.md wiki/Home.md wiki/README_WIKI.md working_diary/README.md web_dashboard/autoboat/README_autoboat_dashboard.md; do
   echo "=== $f ==="
   grep -nIE 'fail|degrad|unresolved|open|TBD|deferred|pending|broken|missing|todo' "$f" | head -10
 done
@@ -525,9 +598,10 @@ Same shape as Mon 11/05's Block F:
    - Mixed outcomes:
      `docs(diary): 12/05 Pi 5 deep check + doc sweep findings`
 6. Push.
-7. **Update Week 10 external diary Tue section Outcome bullet** — external
-   Windows-side weekly diary; deferred to next Windows-side session if not
-   Linux-reachable.
+7. **Update Week 10 external diary Mon/Tue Outcome bullets** — Mon Outcome
+   is carry-over from Mon Block F Step 8 if still placeholder; Tue Outcome
+   is today's fill. External Windows-side weekly diary; deferred to next
+   Windows-side session if not Linux-reachable.
 
 **Outcome.** [To fill at end of day.]
 
@@ -563,7 +637,8 @@ Same shape as Mon 11/05's Block F:
 
 - DDS multicast / client-isolation behaviour of the `IoT IMT Nord Europe`
   WiFi (Block B.1 answers this dispositively).
-- Working GUI viz path for Pi 5 ROS 2 data + observed latency (Block B.2).
+- Working Pi 5 system-desktop remote-access path + observed latency
+  (Block B.2 PRIMARY); ROS 2 data viz path only if SECONDARY is reached.
 - Whether MP-Linux GDAL fix is tractable on this Ubuntu Noble install
   (Block C — only if attempted).
 - Current QGC stable AppImage cadence (Block D, casually observable).
