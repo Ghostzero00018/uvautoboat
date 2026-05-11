@@ -120,6 +120,15 @@ After Mon's heavy 6-commit session, catch up before starting today's blocks:
   block — the Pi 5 baseline (`imtaqua-pi-01`, Ubuntu 24.04.4 aarch64, ROS 2
   Jazzy at `/opt/ros/jazzy/`, bare daemon under both `ROS_DOMAIN_ID=0` and
   `=56`) is the critical context for today's Block B.
+- **Forward-update on Mon Side activity Outcome §1.3 caveat (L146):** Mon
+  claimed `IoT IMT Nord Europe` was "different network meaning in user's
+  setup" from `wiki/Roadmap.md` §1.3 and queued §1.3 wording for re-check —
+  that was a misreading. Per user clarification: the SSID `IoT IMT Nord
+  Europe` **is the same network** §1.3 describes; §1.3's local-only / no-
+  internet analysis applies directly to the workstation↔Pi link. No §1.3
+  wording change needed. Block E.3 below has been updated to reflect this
+  resolution. Mon diary left as-is per append-only convention; this bullet
+  is the forward-update pointer.
 - Check overnight inputs (supervisor / teammate replies, weather,
   presentation reschedule). If email / Slack aren't reachable from this
   Agent context, ask the user.
@@ -517,13 +526,7 @@ standard audit pattern.
 
 ### E.3 — `wiki/Roadmap.md`
 
-- §1.1 IoT IMT Nord Europe mentions — verify the description still aligns
-  with what the user actually has (Block H clarified IoT IMT Nord Europe
-  is the workstation↔Pi private link, not necessarily the "institutional
-  IoT-only network with no internet" §1.3 describes). The Mon 11/05
-  Side activity Outcome flagged this for re-check.
-- §1.3 IoT network description — same caveat as above; this is the
-  highest-priority Roadmap stale-claim candidate.
+- ~~§1.1 / §1.3 IoT IMT Nord Europe mentions — Mon Side activity Outcome flagged these for re-check on suspicion of SSID-name-vs-network-meaning mismatch.~~ **RESOLVED Tue AM per user clarification:** the SSID `IoT IMT Nord Europe` IS the same network §1.3 describes (workstation↔Pi link uses the same `IoT IMT Nord Europe` SSID as the institutional IoT WiFi referenced by §1.3); §1.3's local-only / no-internet analysis applies directly. **No Roadmap wording change needed for this concern.** Still verify §1.1 / §1.3 are otherwise current (no other stale-claim drift since 30/04).
 - §3 Phase 5 status table (line ~182) — should have today's MP-Linux fix
   note from 11/05.
 - §9 Revision log — should it have a new entry for the 11/05 MP-Linux fix + Pi 5 verified-bare state? Decide.
