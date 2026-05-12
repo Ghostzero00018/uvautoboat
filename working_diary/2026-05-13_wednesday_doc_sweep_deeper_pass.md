@@ -97,14 +97,27 @@ Active blocks:
    list-driven, conditional on Block B's findings): for each
    needs-real-test item, run the smallest test that resolves it.
    Workstation-side preferred; Pi-side only when the question is
-   Pi-specific.
+   Pi-specific. **Two time-permitting Pi-side candidates added
+   Tue-evening prep:** C.6 — Pi 5 internet pre-flight + HDMI/USB
+   direct-attach (Branch A TTY-only if no internet; Branch B install
+   minimal DE if internet route verifies, per user authorisation that
+   explicitly overrides the bare-ROS-2 boundary below); C.7 — camera-ON
+   ROS 2 graph experiment via QGC-triggers-camera on Herelink Hotspot,
+   then Pi-local-console capture while QGC attached (leveraging C.6's
+   HDMI/USB-keyboard attachment), then IoT/DDS cross-check after
+   workstation network switch; feeds B.4 forward-update scan.
 4. **Block D — Day wrap** (~30 min, evening): commit + push.
 
 **Hard boundary.** Stay within docs + audit + real-test pass. No new
 features, no refactors, no Phase 5 driver bring-up code work today —
 those are separate scoped sessions. **No Python / YAML edits today
 without explicit user permission**, even if Block B.3 surfaces docstring
-drift; flag and defer.
+drift; flag and defer. **Pi 5 stays bare ROS 2** for the autonomy /
+driver stack — *explicit user-authorised exception*: C.6 Branch B
+(minimal-DE install) is in scope today **if and only if** the C.6
+pre-flight verifies Pi has internet access. DE install changes Pi from
+bare/headless to graphical-login; no autonomy / driver / MAVLink-bridge
+software is added in the same session even under Branch B.
 
 **Fallback if Pi-side test becomes needed but Pi unreachable**: skip
 Pi-specific real tests; document as "audit-only verdict, Pi-side real
@@ -331,8 +344,10 @@ For each "needs-real-test" item from Block B, run the smallest test that
 resolves it. Order by cost: workstation-side first (no offline-window),
 Pi-side only when the question is Pi-specific.
 
-If Block B's needs-real-test list is empty, Block C is a no-op — skip
-straight to Block D.
+**Block C sub-blocks split into two classes (gating is different):**
+
+- **C.1–C.5: B-derived escalations** — gated by Block B producing needs-real-test items. If Block B's needs-real-test list is empty, C.1–C.5 are a no-op.
+- **C.6 / C.7: Tue-evening added time-permitting Pi-side candidates** — NOT gated by Block B findings. They run iff (a) time remains after B + C.1–C.5, (b) each sub-block's own pre-condition holds (C.6: hardware brought + Pi reachable; C.7: control box powered up + QGC works). Do NOT skip C.6 / C.7 just because Block B was clean.
 
 **Pre-staged recipes for common need-real-test classes:**
 
@@ -449,6 +464,197 @@ recollection or by deferring.
 **Outcome.** [To fill — list of escalations attempted, results, any
 verdicts flipped from "needs-real-test" to "stale" / "accurate" /
 "borderline", any escalations explicitly deferred.]
+
+---
+
+### C.6 — Pi 5 internet verify + HDMI / USB direct-attach (time-permitting)
+
+User physically brought a Pi-specific HDMI cable (micro-HDMI side) + USB
+mouse Tue evening for Wed; supervisor mentioned Pi 5 *may* have internet
+(state unverified until on-site). Goal: turn Pi from "remote SSH only"
+into a fully operable workstation (graphical desktop + mouse + display)
+**if** internet route exists today. User has explicitly authorised the
+DE-install boundary override (per Hard boundary clause above).
+
+**Pre-flight: verify Pi 5 internet state (cheap, ~2 min — runs regardless of branch):**
+
+```bash
+ssh aqpi-01@10.120.2.50 '
+  echo "== default route =="
+  ip route get 8.8.8.8 2>&1 | head -3
+  echo "== outbound TCP+TLS sanity =="
+  curl -sI --max-time 5 https://archive.ubuntu.com 2>&1 | head -3
+  echo "== DNS resolvers =="
+  cat /etc/resolv.conf | head -5
+  echo "== network interfaces =="
+  nmcli device status 2>/dev/null || ip -br addr
+'
+```
+
+**Branch decision based on pre-flight:**
+
+| Pi internet state | Branch | What to do today |
+|---|---|---|
+| No internet (any route) | **A: TTY-only sanity** | HDMI + USB keyboard validation only; mouse plugged in for `lsusb` detection but cursor not expected (TTY mode, no `gpm`). Pi stays bare. |
+| Internet works (IoT-with-internet / separate WiFi / Ethernet / etc.) | **B: install minimal DE** | Per user authorisation; proceed to Branch B steps. |
+
+**Branch A — TTY direct-attach sanity (~10 min):**
+
+1. Connect Pi-specific HDMI cable to display (Pi 5 uses micro-HDMI).
+2. Plug USB keyboard + USB mouse into Pi 5 USB-A ports.
+3. Expected: HDMI shows kernel boot tail + TTY `login:` prompt; USB keyboard works for login + shell; USB mouse cursor **not** present (TTY mode, expected).
+4. SSH-side checks in parallel: `lsusb` to confirm USB devices detected by kernel; `cat /proc/bus/input/devices | grep -A 4 -i mouse` to confirm input subsystem sees the mouse.
+5. Outcome: TTY physical-console path validated as fallback for SSH-broken / networking-broken Phase 5 scenarios. No state change.
+
+**Branch B — minimal DE install (~20-40 min including reboot):**
+
+1. Pre-flight already confirmed internet (`curl` got `200`-ish from `archive.ubuntu.com`).
+
+2. **Pre-install sanity (~1 min — abort condition gate):**
+
+   ```bash
+   ssh aqpi-01@10.120.2.50 '
+     echo "== disk free (/ should have ≥ 2 GB headroom for DE install) =="
+     df -h /
+     echo "== memory baseline (compare against post-install) =="
+     free -h
+     echo "== current systemd default target =="
+     systemctl get-default
+     echo "== apt lock state (should be empty / no PID holding the lock) =="
+     sudo lsof /var/lib/dpkg/lock-frontend 2>&1 | head -3
+     echo "== apt sources sanity =="
+     ls -la /etc/apt/sources.list.d/ 2>&1 | head -10
+   '
+   ```
+
+   **Abort condition (any one trips → fall back to Branch A, record blocker in Outcome):**
+
+   - `df -h /` shows < 2 GB free
+   - `apt` lock held by another process
+   - apt sources empty / sources list directory missing
+   - `systemctl get-default` returns something unexpected (not `multi-user.target` or `graphical.target`)
+
+3. Update apt index: `sudo apt update`.
+4. Install lightweight DE — **LXQt-via-Lubuntu preferred for Pi 5 resource budget**:
+
+   ```bash
+   sudo apt install --no-install-recommends lubuntu-desktop
+   ```
+
+   Alternative if `lubuntu-desktop` is unavailable:
+
+   ```bash
+   sudo apt install --no-install-recommends lxqt-core lxqt-session sddm
+   ```
+
+5. Set default boot target to graphical: `sudo systemctl set-default graphical.target`.
+6. Reboot Pi: `sudo systemctl reboot`. Workstation SSH session ends; wait ~30 s.
+7. Connect HDMI to display; expected: graphical login screen (SDDM if LXQt direct, LightDM if Lubuntu route).
+8. Login with `aqpi-01` user via the HDMI + USB keyboard / mouse; verify desktop renders, mouse cursor responsive.
+9. Quick smoke: launch terminal app from DE → `source /opt/ros/jazzy/setup.bash` → `ros2 daemon status` → confirm ROS 2 graph still functional with DE running.
+10. SSH back from workstation: verify SSH session works alongside local graphical session (no conflict). Capture `free -h` / `df -h /` / `uptime` to baseline resource footprint with DE installed.
+
+**Branch B boundary clarification:**
+
+- DE install is the **only** scope-boundary override authorised today; no autonomy stack / driver service / MAVLink-bridge install in the same session.
+- **Rollback precision (DO NOT trust a template purge command):** the actual package set installed depends on which install path took (Lubuntu vs LXQt-core direct), display-manager resolution (sddm / lightdm / etc.), and Recommends pulled by `apt`. **Capture immediately after step 4 the exact `apt install` stdout** (and/or `apt list --installed | grep -E '<keywords>' | sort` filtered post-install) — derive the rollback purge command from THAT, not from this scaffold's template. Record the captured install set + the derived purge command in Outcome so future rollback uses real data.
+- If post-install resource budget looks tight (free memory < 1 GB at idle, or CPU steal noticeable), note as "Phase 5 risk: DE retention may need re-evaluation before LiDAR / GPS / IMU drivers load" — Phase 5 bring-up may demand purging DE again.
+
+**Outcome.** [To fill — Pi internet state verified (route + DNS + outbound TLS + interface list); pre-install sanity passed (or which check tripped → which branch fallen back to); branch taken (A or B); if B: DE flavour installed + display manager actually pulled + exact apt-installed package list captured (for rollback derivation) + reboot OK + graphical login + mouse + keyboard sanity + resource footprint (free / df / uptime); if A: TTY path validated + USB detection captured.]
+
+---
+
+### C.7 — Camera-ON ROS 2 graph experiment (time-permitting)
+
+Tue B.1 captured the Pi-side topic list with the **camera OFF** (control box not fully booted; topics = `/parameter_events` + `/rosout` daemon defaults + `/pi5_dds_probe` test publisher only). Wed runs the **experiment**: with the control-box camera ON (QGC-triggered via Herelink Hotspot — note the user's setup has camera hardwired to Pi 5, so QGC trigger *may* route through Pi as a ROS publisher node, but this is not yet proven), does the Pi's ROS 2 graph show camera-related topics?
+
+**Two equally valid outcomes** — the experiment is informative either way:
+
+- **(i) Pi ROS graph gains camera topics** → the QGC trigger path goes through a Pi-side ROS node; sim `/wamv/sensors/cameras/*` vs real-hardware naming is exposed; direct input to Block B.4 forward-update scan.
+- **(ii) Pi ROS graph unchanged** (still `/parameter_events` + `/rosout` only) **despite QGC video working** → the Herelink video pipeline is **decoupled** from the Pi ROS graph (the verified RTSP route `192.168.43.1:8554/fpv_stream` is workstation-direct-from-Herelink, not via a Pi ROS publisher). This is itself a valuable architectural finding for Phase 5: any future autonomy-stack consumption of camera frames will need a dedicated Pi-side ROS bridge — it's NOT implicit from "Herelink video works".
+
+**Do not treat outcome (ii) as a failure.** Both are valid evidence.
+
+**Pre-req:**
+
+- Control box fully powered up (Pi 5 + autopilot + camera + Herelink).
+- QGC (or MP) installed on workstation; Mon 11/05 `Source = Herelink Hotspot` preset preserved.
+- Pi 5 reachable via SSH on `IoT IMT Nord Europe` (Tue B.1 verified workflow).
+- Single-WiFi-adapter workstation constraint: Herelink Hotspot network (for QGC) and IoT IMT Nord Europe (for ROS 2 topic discovery + Pi SSH on `10.120.2.50`) are different networks — switching required between steps 4 and 8.
+
+**Steps:**
+
+1. Power on control box; wait for Herelink + Pi 5 + autopilot up.
+2. Workstation: switch to Herelink Hotspot WiFi (`nmcli connection up "<herelink-ssid>"`).
+3. Launch QGC; verify it connects (MAVLink heartbeat visible).
+4. Trigger camera ON via QGC video panel (`Source = Herelink Hotspot` preset from Mon 11/05). Verify video stream renders in QGC.
+5. **Critical insurance step — while QGC still connected, use Pi 5 local console** (C.6 already attached HDMI + USB keyboard to Pi). Log in directly on Pi's TTY (Branch A) or DE terminal (Branch B), then on Pi run:
+
+   ```bash
+   source /opt/ros/jazzy/setup.bash
+   ros2 daemon stop && ros2 daemon start
+   ros2 topic list > /tmp/pi5_topics_camera_on_qgc_attached.txt   # file lives on Pi
+   wc -l /tmp/pi5_topics_camera_on_qgc_attached.txt
+   ```
+
+   This captures camera-ON state via Pi local console — no workstation-network-switch coordination needed, no dependency on Pi being reachable from the Herelink network. **The file path `/tmp/pi5_topics_camera_on_qgc_attached.txt` is on the Pi**, not the workstation; later steps need to know this for diff.
+
+6. **(Optional bonus) SSH-snapshot from Herelink network** — cheap check: from the Herelink-connected workstation, `ping -c 2 10.120.2.50`. If reachable (unlikely — Pi at `10.120.2.50` is on IoT network, different L3 from Herelink Hotspot `192.168.43.x`; only works if Pi 5 has a second active interface on Herelink), additionally run a workstation-side SSH snapshot:
+
+   ```bash
+   ssh aqpi-01@10.120.2.50 '
+     source /opt/ros/jazzy/setup.bash
+     ros2 topic list
+   ' > /tmp/pi5_topics_via_herelink_ssh.txt   # file lives on workstation
+   ```
+
+   If `ping` fails (expected path), skip this step silently. Step 5's Pi-local capture is the authoritative data either way; this step is just bonus cross-validation when network topology happens to allow it.
+7. Stop QGC (optional — may leave open).
+8. Workstation: switch to IoT IMT Nord Europe (`nmcli connection up "IoT IMT Nord Europe"`).
+9. SSH to Pi 5 from IoT-side; re-run topic list capture (file lives on **workstation**):
+
+   ```bash
+   ssh aqpi-01@10.120.2.50 '
+     source /opt/ros/jazzy/setup.bash
+     ros2 topic list
+   ' > /tmp/pi5_topics_camera_on_iot_ssh.txt   # file lives on workstation
+   ```
+
+   **This tests: did camera state persist across QGC disconnect + workstation network switch?** Compare against Step 5's Pi-local snapshot to detect any disappearance.
+
+10. Workstation cross-machine view via DDS (Tue B.1 verified path) — file also lives on **workstation**:
+
+    ```bash
+    export ROS_DOMAIN_ID=56
+    export ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET
+    unset RMW_IMPLEMENTATION
+    ros2 daemon stop && ros2 daemon start
+    timeout 20 ros2 topic list > /tmp/pi5_topics_camera_on_workstation_dds.txt   # file lives on workstation
+    wc -l /tmp/pi5_topics_camera_on_workstation_dds.txt
+    ```
+
+11. Diff vs Tue B.1 snapshot. Tue's Pi-side bare = `/parameter_events`, `/rosout`, `/pi5_dds_probe` only. Wed-new (camera ON) = the delta. Camera topic naming pattern is the data; common candidates: `/camera/image_raw`, `/camera/compressed`, `/camera_info`, `/<namespace>/camera/...`, vendor-specific like `/herelink/...` or `/usb_cam/...`, or autopilot-bridged names via `mavros2`.
+12. Note any sim `/wamv/sensors/cameras/*` inheritance vs real-hardware naming. This feeds Block B.4 directly — if `/wamv/sensors/cameras/*` shows up on Pi, sim-name reuse is happening; if a completely different naming is in play, B.4's forward-update scan has a concrete real-name-vs-sim-name diff to flag in non-diary docs.
+
+**Step-by-step fallback rules (Pi-local console is Step 5's primary; the Herelink-side bonus is Step 6 only):**
+
+- **Step 6 ping fails** (Pi unreachable from Herelink network — expected on standard IoT-vs-Herelink topology): silently skip Step 6 only. Step 5's Pi-local console capture still happened, so the QGC-attached snapshot is preserved. No data gap.
+- **Step 5 Pi-local console unusable** (e.g., HDMI not detected, USB keyboard not responding, Pi DE/TTY login broken): this is the only path that loses the QGC-attached snapshot. Fall back to "power on → trigger via QGC (step 4) → switch to IoT (step 8) → SSH+capture from IoT side (step 9-10)" and note in Outcome: "QGC-attached snapshot not captured due to Pi-local console failure; reported topic set may reflect either persistent camera state or already-stopped camera state; state persistence cannot be detected from this run alone".
+- **Both Step 5 AND Step 6 unavailable + only Step 9/10 work**: same as above — degraded run, document limitation.
+
+**Two gotchas to predict:**
+
+- (a) Camera-ON state may not persist after QGC disconnect — MAVLink camera commands are typically stateful but if the Pi-side camera node is QGC-session-triggered (per-connection video pipeline), it might shut down on QGC close. **The Step 5 (Pi-local console while QGC attached) vs Step 9 (workstation SSH after QGC disconnect + network switch) comparison detects this directly**; Step 6 is just bonus cross-validation if Pi happens to be reachable on Herelink network, not the persistence detector.
+- (b) Topic naming may not match sim `/wamv/sensors/cameras/*` at all — real hardware may use vendor-specific names or autopilot-bridged names. This is expected; the point of C.7 is to find out.
+
+**Outcome.** [To fill — note file location explicitly per snapshot:
+
+- Step 5 Pi-local console capture: `/tmp/pi5_topics_camera_on_qgc_attached.txt` **on Pi**
+- Step 6 (if reachable) workstation SSH-via-Herelink capture: `/tmp/pi5_topics_via_herelink_ssh.txt` **on workstation** — or "step 6 skipped, Pi unreachable from Herelink network as expected"
+- Step 9 workstation SSH-via-IoT capture: `/tmp/pi5_topics_camera_on_iot_ssh.txt` **on workstation**
+- Step 10 workstation cross-machine DDS view: `/tmp/pi5_topics_camera_on_workstation_dds.txt` **on workstation**
+
+Plus: delta vs Tue B.1 baseline; outcome class — **(i) topics surfaced** (with naming pattern + sim-vs-real diff for B.4) **/ (ii) Pi ROS graph unchanged despite QGC video working** (Herelink/Pi-ROS decoupled — architectural finding for Phase 5) **/ (iii) QGC video also fails** (different, unrelated issue); state-persistence verdict (Step 5 vs Step 9 same/different).]
 
 ---
 
