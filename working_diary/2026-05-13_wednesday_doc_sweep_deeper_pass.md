@@ -59,11 +59,15 @@ or Block C's GDAL PE-DLL reclassification.
   3 commits (`ee35633`, `d3449bd`, `77462f7`).
 - **Wed 13/05 (today)** — deeper doc sweep with audit-real-test escalation.
   Continuation of Tue Block E, expanded scope.
-- **Pending all week** — formal joint supervisor presentation reschedule;
-  three Asks to teammate maintainer (Phase A parameter subset, CA
-  placement, validation methodology); second-site (lake) Herelink video
-  A/B retest; Phase 5 driver bring-up planning (newly unblocked post Tue
-  B.1 WORKS).
+- **Thu 14/05 + Fri 15/05** — Thu 14/05 is a public holiday in France
+  (Ascension Day); Fri 15/05 is a site bridge day off ("pont"). **No
+  on-site work either day.** Anything left unfinished after Wed rolls to
+  Mon 18/05 or later.
+- **Pending (carrying past Wed; rolls to Mon 18/05+ given Thu/Fri
+  off-site)** — formal joint supervisor presentation reschedule; three
+  Asks to teammate maintainer (Phase A parameter subset, CA placement,
+  validation methodology); second-site (lake) Herelink video A/B retest;
+  Phase 5 driver bring-up planning (newly unblocked post Tue B.1 WORKS).
 
 **Why this matters.** Doc accuracy is the cheapest lever against future
 debugging cost. Tue's E pass surfaced 2 real stale claims in `Board.md`
@@ -492,7 +496,7 @@ Same shape as Tue Block F:
 | After | State | Rollover cost |
 |:------|:------|:--------------|
 | Block A | Re-orientation done | None |
-| Block B | Findings list collected and classified | **Medium** — drives Block C scope; could rollover to Thu if list is large |
+| Block B | Findings list collected and classified | **Medium** — drives Block C scope; could rollover to Mon 18/05 if list is large |
 | Block C | Escalations run; verdicts finalised | Low — each escalation independent |
 | Block D | Day closed | Standard |
 
@@ -517,23 +521,25 @@ Same shape as Tue Block F:
 
 ---
 
-## Next steps — Wed 13/05 → end of week
+## Next steps — Wed 13/05 → Mon 18/05+
 
 ### Active branch: today's broader doc sweep + audit-real-test escalation
 
-Today's outcomes drive Thu / Fri:
+**Thu 14/05 is a public holiday in France (Ascension Day); Fri 15/05 is a
+site bridge day off ("pont"). No on-site work either day.** Wed's outcomes
+drive the **Mon 18/05 + Tue 19/05** plan, not Thu/Fri:
 
 - **If Wed sweep is clean** (no stale claims, no escalations needed):
-  Thursday can pivot to active work — Phase 5 driver bring-up planning,
+  Mon 18/05 can pivot to active work — Phase 5 driver bring-up planning,
   or one of the deferred items below.
-- **If Wed finds substantial stale claims**: Thursday becomes
-  continuation / fix-application day, Friday left for active work.
+- **If Wed finds substantial stale claims**: Mon 18/05 becomes
+  continuation / fix-application day, Tue 19/05 left for active work.
 - **If Wed escalations surface unexpected runtime issues** (e.g., a
   docstring claim disproved by `ros2 node info`, a stale param-sync
   invariant broken): each becomes a scoped follow-up session, not folded
   into Wed's wrap.
 
-### Pending all week (carried from Mon 11/05 + Tue 12/05)
+### Pending (carrying past Wed; rolls to Mon 18/05+ given Thu/Fri off-site)
 
 - Formal joint supervisor presentation reschedule — still pending IMT
   Mines Alès availability + power restoration.
@@ -545,10 +551,10 @@ Today's outcomes drive Thu / Fri:
 - **Phase 5 driver bring-up planning** — newly unblocked post Tue B.1
   WORKS. First focused session can plan: LiDAR / GPS / IMU driver
   candidates, `mavros2` install path, autostart strategy on Pi, topic-name
-  scheme aligned with `launch/remap.launch.yaml`. Slot into Thu / Fri if
-  Wed's sweep is clean.
+  scheme aligned with `launch/remap.launch.yaml`. Slot into Mon 18/05+
+  if Wed's sweep is clean.
 
-### This week's possible time-permitting tasks (deferred-for-week per user direction; pick up only if any Wed / Thu / Fri block runs short)
+### Possible time-permitting tasks (pick up only if Wed runs short; otherwise rolls to Mon 18/05+)
 
 - **P1 pier/bank stuck investigation** — diagnostic plan in
   `working_diary/2026-04-24_pier_bank_stuck_and_rate_probe.md` Block A.
