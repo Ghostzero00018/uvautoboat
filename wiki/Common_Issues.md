@@ -622,36 +622,52 @@ advanced geo-ref degraded).
   The Mono/.NET bindings are SWIG-generated wrappers: `gdal_wrap` (raster
   data + core), `ogr_wrap` (vector data — shapefiles, GeoJSON), and
   `osr_wrap` (spatial reference systems / coordinate transformations).
-- *Why it fails on this Mono-on-Linux setup*: Same root-cause class as the
-  SkiaSharp issue from earlier in this entry. The bundled native binaries
-  (`gdal_wrap.so` etc.) are platform-mismatched — most likely musl-libc
-  builds (would show `libc.musl-x86_64.so.1 => not found` under `ldd`) or
-  otherwise ABI-incompatible. The underlying GDAL C library also pulls in a
-  large dependency surface (PROJ for projection math, GEOS for geometry
-  operations, libsqlite3 for tile databases, libcurl for HTTP map-tile
-  fetching) — each must be present at compatible versions.
+- *Why it fails on this Mono-on-Linux setup* (diagnosed 12/05/2026 —
+  supersedes the earlier musl-libc speculation): the bundled native
+  wrappers at `~/MissionPlanner/gdal/x86/{gdal,ogr,osr}_wrap.dll` and
+  `~/MissionPlanner/gdal/x64/{gdal,ogr,osr}_wrap.dll` are **Windows PE
+  DLLs** (PE32 Intel 80386 for x86, PE32+ x86-64 for x64), not Linux `.so`
+  files. No Linux `gdal_wrap.so` / `ogr_wrap.so` / `osr_wrap.so` exists
+  anywhere in the MP install (`find ~/MissionPlanner -name '*gdal*.so' -o
+  -name '*ogr*.so' -o -name '*osr*.so'` returns nothing). Mono on Linux
+  loads the managed assemblies (`gdal_csharp.dll`, `ogr_csharp.dll`,
+  `osr_csharp.dll` — confirmed Mono/.NET assemblies via `file` +
+  `monodis --assembly`, versions `1.0.6881.30515` / `1.0.6881.30514` /
+  `1.0.6881.30514` — SWIG-generated build numbers, not GDAL release
+  versions) but cannot resolve their `[DllImport("gdal_wrap")]` P/Invoke
+  calls to the Windows PE natives. **This is NOT the same root-cause class
+  as the SkiaSharp musl→glibc swap above** — SkiaSharp's bundled
+  `libSkiaSharp.so` was already a Linux ELF `.so` (just built against
+  musl-libc, so a glibc replacement worked); the GDAL bundle has no Linux
+  `.so` component at all. The earlier framing of "platform-mismatched
+  musl-libc" was a 24/04 → 11/05 speculative diagnosis that 12/05's
+  local-recon inspection disproved.
 - *Impact*: MP-Linux can't render terrain background imagery or perform
   advanced geo-ref operations. Basic flight planning, mission upload, and
   parameter editing all work without GDAL. Video panel + telemetry display
   (the routine field-test path) are unaffected.
-- *Fix path (if MP-Linux GIS becomes a real requirement)*: Same musl→glibc
-  native-binding swap pattern as the SkiaSharp recipe above, with these
-  additional considerations:
+- *Fix path (if MP-Linux GIS becomes a real requirement)*: NOT a
+  SkiaSharp-style musl→glibc swap. The actual options are all substantially
+  heavier than a host-local NuGet binary replacement:
 
-  1. Source the glibc binaries from NuGet's `GDAL.Native` package, OR from
-     system apt install: `sudo apt install libgdal-dev libproj-dev libgeos-dev`.
-  2. The SWIG-generated wrappers (`gdal_wrap`, `ogr_wrap`, `osr_wrap`) must
-     match each other AND match the underlying GDAL major version. Mixing
-     GDAL 3.x wrappers with a GDAL 4.x runtime (or vice versa) will move
-     you from `DllNotFoundException` to ABI breakage at the first SWIG
-     call.
-  3. Verify dependency closure with `ldd` on every replacement `.so`;
-     confirm PROJ/GEOS/sqlite3/curl all resolve and no `=> not found`
-     lines remain.
+  1. **Build matching SWIG-wrapped Linux `.so`s from GDAL source** against
+     MP's interface files (which expose specific SWIG-generated function
+     symbols matching `gdal_csharp.dll`'s P/Invoke names). Day(s) of work;
+     must keep the managed-assembly's `1.0.6881.X` SWIG ABI compatible.
+  2. **Mono `.dll.config` DllMap** redirecting `[DllImport("gdal_wrap")]`
+     to system `libgdal.so` (`sudo apt install libgdal-dev libproj-dev
+     libgeos-dev`). Likely fails — the system `libgdal` doesn't expose the
+     SWIG-wrapped entry-point names MP's managed assembly P/Invokes; only
+     the SWIG wrapper provides those.
+  3. **Wine for the GDAL parts** — heavy dependency, fragile Mono ↔ Wine
+     native-interop boundary.
+  4. **Accept the gap** — MP-Windows (`.msi`) bundles the matching
+     Windows-native GDAL chain and handles GIS demos cleanly; the 24/04
+     status-quo decision still holds.
 
   **Recommendation**: defer unless MP-Linux GIS/terrain becomes a real
-  requirement. MP-Windows (`.msi`) handles GIS demos cleanly via the
-  Windows-native GDAL bundle.
+  requirement. Path 4 (accept the gap, use MP-Windows for GIS demos)
+  remains the operational stance.
 
 **2. `AltitudeAngelWings.Plugin` load failure** — cosmetic (third-party
 plugin, irrelevant for boat ops).

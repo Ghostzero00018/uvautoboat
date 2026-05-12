@@ -141,15 +141,14 @@ After Mon's heavy 6-commit session, catch up before starting today's blocks:
   git status --short
   git pull --ff-only
   git branch --show-current                                  # expect autoboat/main
-  git log autoboat/main --not upstream/main --oneline | wc -l   # expect 1 (the existing bake-in)
+  git log autoboat/main --not upstream/jazzy --oneline | wc -l   # expect 1 (the existing bake-in)
   git tag --sort=-creatordate -l 'v*' | head -3                  # expect v3.1.2 still at top
   ```
 
 - Confirm Pi 5 is reachable (powered on, on IoT network) before committing
   to Block B; otherwise jump to fallback path.
 
-**Outcome.** [To fill — git state, overnight inputs, Pi 5 reachability,
-decision branch.]
+**Outcome.** Workstation git clean (no untracked / modified files outside today's incremental edits); main repo synced with `origin/main`. VRX §8.2 weekly state-check OK: `~/seal_ws/src/vrx/` on `autoboat/main`, `git pull --ff-only` clean, `autoboat/main --not jazzy --oneline | wc -l` = 0 (no project-specific mods yet beyond `jazzy`, matches §8.6 at-fork-creation state), `jazzy --not upstream/jazzy --oneline | wc -l` = 1 (bake-in `e384cd65` — LiDAR `publish_model_pose` fix, matches §8.6), `git tag --sort=-creatordate -l 'v*' | head -3` = `v3.1.2 / v3.1.0 / v3.0.4`, `origin/HEAD → autoboat/main`. **Scaffold typo found + inline-corrected during execution**: the recipe in this block (Block A bullet 5) originally wrote `git log autoboat/main --not upstream/main --oneline | wc -l   # expect 1` — the reference branch needs to be `upstream/jazzy` (or just `jazzy`), since the bake-in lives on `jazzy` not on upstream's `main`. Against `upstream/main` the count came back 31 (covers the `jazzy ↔ main` divergence on top of the bake-in). The recipe line was inline-corrected to `--not upstream/jazzy` so future re-runs of the scaffold give the expected 1. Overnight inputs: none (no supervisor / teammate replies, no weather / scheduling change). Pi 5 reachability: confirmed available by user before committing to Block B. §1.3 caveat pre-resolved in scaffold Block A bullet 3 (forward-update note from Mon evening); no further action needed. **Decision branch**: proceeded with Block B as planned (Pi reachable, VRX state-check clean, no overnight surprises).
 
 ---
 
@@ -365,8 +364,34 @@ nmcli connection up "IMT Nord Europe 5G"
 ip -br addr show wlp147s0       # confirm 10.1.X.X back
 ```
 
-**Outcome.** [To fill — B.1 dispositive result + B.2 working path
-(A / B / C / none) + latency observations + any surprises.]
+**Outcome.**
+
+**B.1 — DDS cross-machine probe: WORKS branch (dispositive).** Switch to `IoT IMT Nord Europe` clean: workstation got `10.120.2.190/23`, /23 direct L2 with Pi `10.120.2.50` (no gateway hop per `ip route get`). Ping 3/3, 0% loss, RTT 200 ms first packet (WiFi association settling, expected per Mon Block H baseline) → 11.8 ms → 7.89 ms. SSH `BatchMode=yes` → `imtaqua-pi-01`. Pi-side `ros2 topic pub --rate 1 /pi5_dds_probe std_msgs/msg/String "{data: pi5_probe}"` ran 162 messages clean before Ctrl-C. Workstation-side env post-restart-daemon: `ROS_DOMAIN_ID=56  RMW=default  LOCAL_ONLY=0  DISCOVERY_RANGE=SUBNET`. **Three env-hardening adds over scaffold at execution time** (per mid-session review): `export ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET` on both sides (modern Jazzy replacement for the older `ROS_LOCALHOST_ONLY`, explicit > implicit), symmetric `unset RMW_IMPLEMENTATION` on the Pi-side SSH block (so both ends are symmetrically forced to ROS 2 default RMW — Fast DDS on Jazzy), and `timeout 20 ros2 topic echo --once` (a bounded fail-fast on the echo step so a transport-blocked branch wouldn't hang). `ros2 topic list` showed `/pi5_dds_probe` alongside the daemon defaults `/parameter_events` + `/rosout`. `timeout 20 ros2 topic echo /pi5_dds_probe std_msgs/msg/String --once` returned `data: pi5_probe` effectively instantly (well inside the 20 s budget). `ros2 topic info /pi5_dds_probe --verbose` reported `Publisher count: 1`, QoS `RELIABLE / VOLATILE / AUTOMATIC`. Cosmetic-only readings: `Subscription count: 0` is expected (the `echo --once` subscriber had already exited by the time `topic info` queried); `Node name: _ros2cli_1285` is the Pi-side `ros2 topic pub` CLI's auto-generated node (PID on Pi). Switch back to 5G clean: `10.1.163.158/16` restored on `wlp147s0`. **Implication: DDS multicast NOT blocked, client-isolation NOT in effect on `IoT IMT Nord Europe`; standard ROS 2 graph discovery works cross-machine on this WiFi.** Phase 5 driver bring-up on Pi can therefore assume standard graph discovery; **Fast-DDS Discovery Server (unicast) configuration NOT required**. Mon Block H's single biggest open Pi-side question is now closed.
+
+**B.2 — PRIMARY skipped per pre-req; SECONDARY deferred on purpose (not "attempted + failed").** SSH-probe of Pi's desktop / remote-access state ran in a single short offline-window cycle. Findings (each is a discrete line of evidence; together they cleanly classify the Pi as a bare/headless ROS 2 Ubuntu host):
+
+- `/etc/os-release` → `Ubuntu 24.04.4 LTS (Noble Numbat)` confirms Mon Block H baseline (Pi unchanged).
+- `loginctl list-sessions` → 1 session only (`SESSION 9 UID 1000 USER aqpi-01 SEAT - TTY - STATE active IDLE no`); that's the SSH session itself — seat `-` means no graphical seat, no DE running for any user.
+- `/usr/share/xsessions/` empty (`(none)`).
+- `dpkg -l` grep on `vnc|xrdp|gnome-session|xfce4-session|lxde-core|ubuntu-desktop|raspberrypi-ui-mods|tigervnc|x11-apps|wayvnc` matched zero packages.
+- No display-manager installed (`systemctl status display-manager` empty).
+- Remote-access service units: `systemctl is-active xrdp` and `systemctl is-active vncserver` both returned `inactive`; `systemctl list-units --type=service --all` matched no `xrdp|vnc|tigervnc|wayvnc` units.
+- No listener on `:3389` (RDP) or `:59NN` (VNC) per `ss -tlnp`.
+- X-forward prereqs: `xauth: ok`, but **no X client** — none of `xeyes`, `xclock`, `xterm`, `gnome-control-center`, `nm-connection-editor` are installed on Pi.
+
+**PRIMARY full-desktop path** (VNC / xrdp / SSH-X for individual apps): **not actionable today**. Pi has no DE, no remote-access stack, no X clients to forward over SSH-X. Installing any of these needs internet, and `IoT IMT Nord Europe` (the only network on which Pi is workstation-reachable) is local-only / no-internet per Roadmap §1.3. Workarounds (temporary network change, workstation-bridged tether) would each be substantial detours outside today's hard boundary ("Pi 5 remains bare ROS 2 today").
+
+**SECONDARY paths** (ROS 2 data visualisation — Path A workstation-side `rviz2` on Pi topics; Path B Pi-side `rviz2` via X-forwarding; Path C Foxglove via `foxglove_bridge`): none deliver value today.
+
+- Path A requires a Pi-side topic worth rendering; the only Pi-side topic available is `std_msgs/String` `/pi5_dds_probe`, which `rviz2` has no display for. Per scaffold L298 ("do not invent a dummy `PointCloud2` publisher"), running a minimal Path A on the String topic would only duplicate B.1's discovery + transport evidence — no incremental signal.
+- Path B requires `rviz2` installed on Pi (absent — Pi is bare ROS 2 Jazzy daemon, no `ros-jazzy-desktop`) and a DE to host the forwarded window (absent per PRIMARY pre-req).
+- Path C requires `ros-jazzy-foxglove-bridge` on Pi (absent) and Foxglove Studio desktop on workstation (absent). Single-WiFi-adapter constraint on workstation also limits the workstation↔Pi-on-IoT ↔ Foxglove-web routing.
+
+**SECONDARY deferred until Pi publishes renderable driver topics** — concretely `sensor_msgs/NavSatFix` (GPS fix), `sensor_msgs/Imu` (IMU), `sensor_msgs/LaserScan`, `sensor_msgs/PointCloud2` (LiDAR / depth), `nav_msgs/Odometry`, TF (`tf2_msgs/TFMessage`), or marker topics (`visualization_msgs/Marker` / `MarkerArray`) — which become available with Phase 5 driver bring-up (LiDAR / GPS / IMU drivers + `mavros2` for the MAVLink autopilot bridge). At that point Path A is the cheapest viable test (uses today's verified DDS path; no extra installs on Pi).
+
+**Latency observations.** Ping RTT 7.89-11.8 ms after the 200 ms first-packet WiFi association settling. `ros2 topic echo --once` returned data instantly (well under 1 s after env setup + 3 s discovery sleep + daemon restart — bounded by the 20 s timeout but didn't approach it). No measurable end-to-end DDS latency concerns at 1 Hz publish rate.
+
+**Surprises.** None for B.1 (Mon Block H's recipe ran cleanly with the env-hardening tweaks). For B.2, the only mild surprise was the strict bare/headless state — `xauth` is installed but no X clients are, confirming Pi was provisioned as a service host (ROS 2 only), not a workstation. Block C surfaced an unrelated diagnosis surprise; see Block C Outcome.
 
 ---
 
@@ -450,8 +475,26 @@ workstation-side; no Pi or offline window needed.
 | Cascading new deps surface | Deeper dep hell. Rollback; document as "tried, defer indefinitely". |
 | Skipped per pre-flight | OK — recipe stays in Common_Issues for future attempt. |
 
-**Outcome.** [To fill if Block C ran — branch, errors observed, rollback
-status, fix landed or skipped, any docs updated.]
+**Outcome.** Block C ran to the diagnosis stage only — no NuGet swap applied, no system change, no rollback needed.
+
+**Recipe-mismatch finding (supersedes the scaffold's musl→glibc plan).** Local recon: `find ~/MissionPlanner -name 'gdal_wrap*' -o -name 'ogr_wrap*' -o -name 'osr_wrap*'` returned **6 files, all `.dll`** (3 in `gdal/x86/`, 3 in `gdal/x64/`). The follow-up `find ~/MissionPlanner -name '*gdal*.so' -o -name '*ogr*.so' -o -name '*osr*.so'` returned **nothing** — there are no Linux `.so` GDAL/OGR/OSR wrapper files anywhere in the MP install. `file` confirmed binary classes: x86 wraps are `PE32 executable (DLL) (GUI) Intel 80386, for MS Windows, 4 sections`; x64 wraps are `PE32+ executable (DLL) (GUI) x86-64, for MS Windows, 5 sections`. Managed assemblies (`file` + `monodis --assembly`): `gdal_csharp.dll` v `1.0.6881.30515`, `ogr_csharp.dll` v `1.0.6881.30514`, `osr_csharp.dll` v `1.0.6881.30514` — SWIG-generated build numbers, not GDAL release versions.
+
+**Why the scaffold's recipe doesn't apply.** The SkiaSharp fix was a musl-libc → glibc swap because the bundled `libSkiaSharp.so` was already a Linux ELF `.so` (just compiled against musl). The GDAL bundle has **no Linux `.so` component** — the entire native wrapper layer is Windows PE binaries. Mono on Linux cannot resolve `[DllImport("gdal_wrap")]` P/Invoke calls to a Windows PE; the runtime `DllNotFoundException` is the expected behaviour of a Windows-only native bundle on Linux, **not** a musl-libc issue. Lands in the scaffold's pass-criteria table at two rows simultaneously — "Different ABI error class" + "Cascading new deps surface" — but the underlying class is recipe-level mismatch rather than dep-chain breakage.
+
+**Errors observed.** None in this session — Block C halted at the local-recon stage with no swap attempted, so no MP launch errors / `ldd` failures / cascading deps surfaced. The MP-Linux runtime still throws the documented `DllNotFoundException` on GDAL/OGR/OSR loading (per Mon Block G + 24/04 background), unchanged.
+
+**Real fix paths** (all substantially heavier than today's window allowed; surfaced for record):
+
+- **A**: Build matching SWIG-wrapped Linux `gdal_wrap.so` (+ ogr_wrap.so + osr_wrap.so) from GDAL source against MP's exact SWIG interface files. Must keep the `1.0.6881.X` managed-assembly SWIG ABI compatible. Day(s) of work.
+- **B**: Mono `.dll.config` DllMap redirecting `[DllImport("gdal_wrap")]` to system `libgdal.so` (`sudo apt install libgdal-dev libproj-dev libgeos-dev`). Likely fails — system `libgdal` doesn't expose the SWIG-wrapped entry-point names MP's managed assembly P/Invokes; only the SWIG wrapper provides those.
+- **C**: Wine for the GDAL parts. Heavy dependency, fragile Mono ↔ Wine native-interop boundary.
+- **D**: Accept the gap. MP-Windows (`.msi`) bundles the matching Windows-native GDAL chain. 24/04 status-quo retained.
+
+**Rollback status**: nothing changed (no swap applied, no `.musl.bak` written, no system package installed). No rollback needed.
+
+**Docs updated today**: `wiki/Common_Issues.md` MP-Linux Residual section item 1 (GDAL/OGR/OSR `DllNotFoundException`) rewritten inline with the actual PE-DLL diagnosis — replaces the speculative SkiaSharp-pattern musl/glibc framing that the 11/05 Block G doc landing inherited under the assumption GDAL was the same fix class as SkiaSharp. The earlier framing is preserved-by-supersession (the new section's "diagnosed 12/05/2026 — supersedes the earlier musl-libc speculation" preamble) so future readers see the evolution.
+
+**Outcome class**: TRIED, recipe-mismatch documented, deferred indefinitely (or to a focused future session if MP-Linux GIS becomes a real requirement). MP-Windows `.msi` remains the GIS feature-surface fallback per 24/04 decision — unchanged.
 
 ---
 
@@ -483,8 +526,24 @@ exists and the video panel still renders (would need an offline-window
 switch to actually test against the Herelink — defer that to the next
 field-touching session, not today).
 
-**Outcome.** [To fill — upstream Last-Modified result, decision (update or
-skip with reason), if updated: new build date + smoke-test outcome.]
+**Outcome.** SKIP update — local appears current.
+
+**Local state.** `~/Applications/QGroundControl.AppImage` mtime `2025-10-09 01:42:56 +0200` (= `2025-10-08 23:42:56Z`), size `180,816,376 B` (~172 MiB), `~/.local/bin/qgc` symlink intact (→ `~/Applications/QGroundControl.AppImage`).
+
+**Upstream side** via WebFetch on `https://api.github.com/repos/mavlink/qgroundcontrol/releases/latest`: latest tag **v5.0.8**, name `"QGroundControl v5.0.8 - Stable"`, `created_at 2025-10-08T23:19:52Z`, `published_at 2025-10-09T00:20:14Z`, `prerelease: false`, `draft: false`. Cross-checked release page (`https://github.com/mavlink/qgroundcontrol/releases/latest`) and QGC stable install docs (`https://docs.qgroundcontrol.com/Stable_V5.0/en/qgc-user-guide/getting_started/download_and_install.html`) — v5.0.8 is the current Stable.
+
+**CloudFront `Last-Modified` header NOT confirmed** (`https://d176tv9ibo4jno.cloudfront.net/latest/QGroundControl-x86_64.AppImage`): Bash `curl` to that host was denied by permissions twice this session. The belt-and-braces upstream-artifact-mtime verify can be run from a user-side terminal:
+
+```bash
+curl -sI 'https://d176tv9ibo4jno.cloudfront.net/latest/QGroundControl-x86_64.AppImage' | grep -iE '^(last-modified|content-length|etag)'
+stat -c 'mtime: %y  size: %s' ~/Applications/QGroundControl.AppImage
+```
+
+CloudFront Last-Modified should match the local mtime to the second if the local copy is v5.0.8 (we expect it to).
+
+**Phrasing precision** (per user direction — avoid overstating the evidence): GitHub latest stable is v5.0.8 and the local AppImage timestamp strongly matches that release (local mtime `2025-10-08 23:42:56Z` falls inside the 23-minute create→publish window `2025-10-08 23:19:52Z → 2025-10-09 00:20:14Z`, consistent with downloading the artifact from CloudFront with `Last-Modified` copied to the local file before the GitHub release was finalised). CloudFront `Last-Modified` itself was not confirmed, but there is no evidence of a newer stable artifact upstream — operational call SKIP is sound on the GitHub-side evidence without overstating CloudFront-side.
+
+**Decision**: SKIP. No update workflow run; the existing `2025-10-09` AppImage retained. Smoke test not applicable (no swap).
 
 ---
 
@@ -576,8 +635,31 @@ done
 
 Then read each hit in context. Cross-check against today's known state.
 
-**Outcome.** [To fill — list of findings per file (stale / accurate /
-borderline), user-picked fix list, anything landed inline.]
+**Outcome.** Inspect-only sweep across the 10 target files; fixes split between "landed inline during Block E" and "completed during Block F".
+
+**Inline fixes today (5 line-changes across 4 files + 1 section rewrite):**
+
+- `wiki/Home.md:71` — `**Last Updated**: 30/04/2026` → `12/05/2026` (E.6 stamp bump; multiple substantive wiki edits since 30/04: 06/05 Roadmap §8 rewrite, 06/05 VRX_Fork_Migration page, 07/05 folder-framing READMEs, 11/05 MP_QGC_Update_Procedures page, 12/05 Roadmap §8.8 propeller-placement tracker).
+- `wiki/README_WIKI.md:144` — `**Last Updated**: 03/05/2026` → `12/05/2026` (E.6 stamp bump; `wiki/VRX_Fork_Migration.md` landed 06/05, `wiki/MP_QGC_Update_Procedures.md` landed 11/05, `wiki/Roadmap.md` §8.8 landed 12/05).
+- `working_diary/README.md:48` — `The diary spans ~5 weeks of internship work as of 07/05/2026.` → `~6 weeks of internship work as of 12/05/2026.` (kept the prose self-consistent with the stamp; diary starts `2026-04-03`, 27 entries to date, 39-day span ≈ 5.57 weeks → rounded to ~6).
+- `working_diary/README.md:54` — `Last updated: 07/05/2026` → `12/05/2026`.
+- `wiki/Common_Issues.md` MP-Linux Residual section item 1 (GDAL/OGR/OSR — see Block C Outcome) — speculative musl-libc + `gdal_wrap.so` framing replaced with the actual Windows PE-DLL diagnosis from today's local recon. The 11/05 Block G's MP-Linux entry rewrite inherited the SkiaSharp framing under the assumption GDAL was the same fix class; today's Block C local recon disproved that.
+
+**Confirmed current — NOT bumped:**
+
+- `USER_MANUAL.md:1738` — stamp `06/05/2026` matches the last substantive edit (`b8936a0 2026-05-06 docs(manual): annotate patch_vrx.sh tree entry as post-fork safety-net`). Post-06/05 commits (`fcede5a 2026-05-07 docs: escape A\* algorithm references for MD037 consistency`, `b90a132 2026-05-07 docs: refresh stale Last-Updated stamps + audit-pass drifts`) are MD-cosmetic / stamp-meta only and don't merit a content-stamp bump.
+- `web_dashboard/autoboat/README_autoboat_dashboard.md:276` — stamp `07/05/2026` matches `68017dc 2026-05-07 docs(dashboard): codify PARAM_RANGES tunable contract` (the last substantive edit, as the scaffold E.6 expected).
+- `wiki/Common_Issues.md:362-364` ("the 07/05 lake video failure for QGC remains untested under the now-known-good preset — open cause class is still 'QGC video Source setting / network topology / site link condition'") — phrasing is precise about the lake-side state, distinct from Mon's campus-side closure; no change needed.
+
+**Block F follow-through landed (Board.md substantive fixes + Roadmap §3/§9 + stamp/version bumps):**
+
+- `Board.md` Phase 5 prep "Install MP+QGC" row updated with the 11/05 SkiaSharp/libdl fix and the 12/05 GDAL PE-DLL diagnosis.
+- `Board.md` Phase 5 prep "Connect MP/QGC to autopilot" row rewritten so video is no longer listed as fully open: campus-side FPV video is verified; waypoint upload remains open.
+- `Board.md` gained a 12/05/2026 Timeline row covering Roadmap §8.8, B.1 DDS **WORKS**, B.2 PRIMARY skipped + SECONDARY deferred, Block C GDAL PE-DLL diagnosis, Block D QGC stable skip, and E.6 stamp sweep.
+- `Board.md` header/footer bumped to `12/05/2026` and `Document Version: 9.11`.
+- `wiki/Roadmap.md` §3 Phase 5 status table gained a "Pi 5 ↔ workstation DDS cross-machine discovery" row for at-a-glance visibility.
+- `wiki/Roadmap.md` §3 MP/QGC row now records the 12/05 GDAL/OGR/OSR PE-DLL diagnosis.
+- `wiki/Roadmap.md` §9 revision log gained 12/05 entries for the DDS verification and the GDAL/OGR/OSR diagnosis.
 
 ---
 
@@ -592,7 +674,7 @@ Same shape as Mon 11/05's Block F:
    Updated**` trailer stamp to 12/05/2026 if anything substantive lands.
    **Use search rather than relying on line numbers** — both rows drift as
    Board.md grows.
-4. Fill all `[To fill]` placeholders in this file.
+4. Fill all outcome placeholders in this file.
 5. Working diary commit; subject template depends on dominant outcome:
    - DDS works + viz path identified:
      `docs: 12/05 Pi 5 DDS cross-machine verified + viz path X`
@@ -606,19 +688,35 @@ Same shape as Mon 11/05's Block F:
    today's fill. External Windows-side weekly diary; deferred to next
    Windows-side session if not Linux-reachable.
 
-**Outcome.** [To fill at end of day.]
+**Outcome.** Block F closed the day in the main repo.
+
+`git log --oneline -10` sanity showed today's stack on `main` ending at `d3449bd docs(roadmap): soften propeller thrust-line wording`, with the earlier 12/05 scaffold commits and Roadmap §8.8 commit directly below it. The working tree before Block F held only today's doc edits.
+
+Pre-commit checks:
+
+- `git diff --check` — clean.
+- Invisibility sweep across the touched Markdown files — clean (0 matches for NBSP / zero-width / BOM characters).
+
+Durable references updated:
+
+- `Board.md`: `Last Updated` → `12/05/2026`, `Document Version` → `9.11`, MP/QGC rows refreshed, and a 12/05 Timeline row added.
+- `wiki/Roadmap.md`: §3 status table updated for DDS cross-machine discovery and MP GDAL PE-DLL diagnosis; §9 revision log gained matching 12/05 entries.
+- `wiki/Common_Issues.md`: MP-Linux Residual item 1 rewritten with the GDAL/OGR/OSR PE-DLL diagnosis.
+- E.6 stamp files updated: `wiki/Home.md`, `wiki/README_WIKI.md`, `working_diary/README.md`.
+
+This commit is the working diary / doc-sweep wrap for Tuesday 12/05. External Week 10 Tue Outcome remains Windows-side and deferred to the next Windows session.
 
 ---
 
 ## Verification summary — 12/05 (check at end of day)
 
-- [ ] Block A: morning re-orientation done; Pi 5 reachability confirmed; VRX §8.2 state-check OK
-- [ ] Block B.1: DDS cross-machine probe executed; result categorized (works / blocked / partial / error)
-- [ ] Block B.2: GUI viz trial — at least one path identified as working (or all three explicitly attempted + failed)
-- [ ] Block C: MP-Linux GDAL/OGR/OSR fix attempted (or explicitly skipped with reason)
-- [ ] Block D: QGC stable AppImage version check done; updated or explicitly skipped
-- [ ] Block E: doc stale-claim sweep complete across all 4-5 target files; findings list captured
-- [ ] Block F: diary filled; pre-commit sweep clean; `Board.md` updated if substantive; commit landed; push done
+- [x] Block A: morning re-orientation done; Pi 5 reachability confirmed (user-confirmed); VRX §8.2 state-check OK (`autoboat/main`; 1 bake-in `e384cd65` on `jazzy`; 0 project-mods on `autoboat/main`; tags `v3.1.2` top). Scaffold L145 query had a typo (`--not upstream/main` returned 31 vs intended 1) — inline-corrected to `--not upstream/jazzy` during Block A execution
+- [x] Block B.1: DDS cross-machine probe executed; **WORKS** branch — discovery (multicast) + transport both functional on `IoT IMT Nord Europe`. Env hardening at execution time: `ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET` on both sides + symmetric `unset RMW_IMPLEMENTATION` on Pi side + bounded `timeout 20` on `echo --once`. Phase 5 driver bring-up can assume standard ROS 2 graph discovery; Fast-DDS Discovery Server unicast NOT required
+- [x] Block B.2: PRIMARY skipped per pre-req — Pi is bare/headless ROS 2 Ubuntu (no DE, no remote-access stack, no X clients beyond `xauth`, IoT-only WiFi blocks the install path); SECONDARY deferred until Pi publishes renderable driver topics (`sensor_msgs/NavSatFix`, `sensor_msgs/Imu`, `LaserScan`, `PointCloud2`, `Odometry`, TF, markers) — minimal Path A on `std_msgs/String` would only duplicate B.1's evidence per scaffold L298
+- [x] Block C: attempted (local recon only, no swap applied, no rollback needed); recipe-mismatch — bundled native GDAL/OGR/OSR wraps are Windows PE DLLs (PE32 / PE32+) not Linux `.so`, so musl→glibc swap doesn't apply; `wiki/Common_Issues.md` MP-Linux Residual section item 1 rewritten inline with the actual PE-DLL diagnosis
+- [x] Block D: QGC stable AppImage version check done via GitHub Releases (v5.0.8 Stable `published_at 2025-10-09T00:20:14Z`); local mtime `2025-10-09 01:42:56 +0200` strongly matches that release window; SKIP update — local appears current (CloudFront `Last-Modified` not confirmed; no evidence of newer stable artifact)
+- [x] Block E: doc stale-claim sweep complete across 10 target files; E.6 stamp bumps landed in `wiki/Home.md` + `wiki/README_WIKI.md` + `working_diary/README.md`; `wiki/Common_Issues.md` GDAL section rewritten inline (Block C diagnosis); Board/Roadmap follow-through landed in Block F
+- [x] Block F: diary filled; pre-commit sweep clean; `Board.md` + `wiki/Roadmap.md` updated; commit + push handled by this wrap
 
 ---
 
