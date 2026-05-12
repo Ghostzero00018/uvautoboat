@@ -8,7 +8,7 @@ Day after Tue 12/05 — yesterday's stack on `main` ended with:
   wrap landing Board.md L171 + L182 fixes, Board.md Tue 12/05 Timeline row,
   `Last Updated` 11/05 → 12/05, `Document Version` 9.10 → 9.11, Roadmap §3
   GDAL update + new DDS row, Roadmap §9 two 12/05 entries (DDS verification
-  + GDAL PE-DLL diagnosis), Common_Issues MP-Linux Residual item 1 rewrite,
+  - GDAL PE-DLL diagnosis), Common_Issues MP-Linux Residual item 1 rewrite,
   E.6 stamp bumps (`wiki/Home.md`, `wiki/README_WIKI.md`,
   `working_diary/README.md`), and the filled Block A-F outcomes in the
   12/05 diary itself.
@@ -252,6 +252,7 @@ done
 ```
 
 Diff each pair. Flag drift class:
+
 - Docstring claims a sub/pub/param that the code no longer has → stale.
 - Code has a sub/pub/param that the docstring doesn't list → undocumented.
 - Names match → accurate.
