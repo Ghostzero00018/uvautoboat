@@ -554,7 +554,7 @@ Re-derive the bake-in commit if upstream changes the relevant section of `wamv_g
 
 1. **Mesh fidelity.** Modify the WAM-V `urdf` / mesh on `autoboat/main` so the rendered boat in VRX matches the real platform (propeller assemblies above the hull rather than below). Cosmetic in isolation, but useful for digital-twin visualisation and operator intuition during sim runs.
 2. **Physics characteristics.** Moving the thrust application point from "below waterline" to "above waterline" changes more than rendering:
-   - **Thrust line of action** shifts above the hull's centre of mass; differential thrust steering may couple more strongly into pitch / roll (lever-arm change).
+   - **Thrust line of action** shifts relative to the hull / waterline and measured centre of mass; differential thrust steering may couple differently into pitch / roll (lever-arm change).
    - **Underwater drag** from the propeller / shaft disappears in the real platform but remains in the unmodified VRX model.
    - **Buoyancy distribution** is unaffected by propeller placement alone, but any associated hull / superstructure changes (e.g., a different above-deck assembly carrying the air-propellers) would also shift centre of mass / centre of buoyancy.
    - **Propulsion efficiency curve** — air propellers produce far less thrust per unit power at low speed than water propellers; the existing `0–800` VRX thrust scale (already flagged in §7 Phase 5 Q4 for real-Newton / PWM mapping) would need a different calibration target.
