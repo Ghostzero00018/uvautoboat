@@ -946,8 +946,10 @@ Same shape as Tue Block F:
 8. **Update Week 10 external diary Wed Outcome bullet** — Windows-side
    weekly diary; deferred to next Windows-side session if Linux-only today.
 
-**Outcome.** Day wrapped in **three commits** due to the two-phase doc-update
-shape user requested plus the early audit-fix commit:
+**Outcome.** Day landed in **four commits** total — three at the wrap point
+(two-phase doc-update shape user requested plus the early audit-fix commit)
+plus a post-wrap audit addendum committed afterward when the full terminal
+paste surfaced additional doc hygiene findings:
 
 1. `b535d6d docs: refresh DDS verification + perception v2.1 + patch_vrx wording`
    — Block B early-application (9 files / 44+/14-) covering 7 stale
@@ -984,6 +986,13 @@ shape user requested plus the early audit-fix commit:
    ROS bridge validated, camera consumer exclusivity); `wiki/Pi5_Bringup_Smoke_Test.md`
    - `wiki/Roadmap.md` §1.1 "headless" claims revised from conditional to
    permanent per supervisor directive.
+4. `336b006 docs: post-wrap audit — IoT managed-egress + RealSense tooling`
+   — post-wrap log-audit polish from the full terminal paste: `wiki/Roadmap.md`
+   §1.3 absolute "IoT has no internet" softened to managed/partial egress
+   framing per C.6 pre-flight evidence; `rviz` workstation tooling note
+   (`rviz2` is the Jazzy command, `ros2 run rviz2 rviz2` works); SSH
+   disconnect lines categorised as operational power / network interruptions
+   rather than separate ROS graph evidence.
 
 **Pre-commit verification (this wrap commit, run before commit message):**
 `git diff --check` clean; invisibility sweep clean on all 4 modified files;
@@ -992,10 +1001,11 @@ Placeholder residue at wrap time was limited to scaffold instruction text and
 the outcome block while it was being filled. Working tree was clean after the
 wrap commit landed.
 
-**Final HEAD after wrap commit + push:** `43c6bd6` on `main`, matching
-`origin/main` at the post-wrap audit point. The post-wrap log-audit patch
-above was applied afterward to correct the remaining doc hygiene issues
-surfaced by the full terminal paste.
+**HEAD after the three-commit wrap + push:** `43c6bd6` on `main`. The
+post-wrap log-audit patch (item 4 above) was then committed separately as
+`336b006`, correcting the remaining doc hygiene issues surfaced by the
+full terminal paste. **Final day-end state on `origin/main`:** HEAD
+`336b006`, 4 commits for 13/05.
 
 **Carry-forwards to Mon 18/05+** (none reshape today; all are existing items):
 
