@@ -1,3 +1,31 @@
+"""
+Health Check Service - on-demand wrapper around `health_check_autoboat.sh`.
+
+Module: Health Check Service
+Role:   Exposes `/health_check/run` (`std_srvs/Trigger`) that runs the
+        `one_click_launch_all/health_check_autoboat.sh` script and streams
+        its output line-by-line on `/health_check/line`, with a final
+        `/health_check/status` summary message.
+
+Part of the modular AutoBoat architecture.
+
+Topics:
+    Publishes:
+        /health_check/line (String) - script output, one line per message,
+          ANSI escapes stripped, depth=100
+        /health_check/status (String) - final status summary
+          (ok / error / running)
+
+    Services:
+        /health_check/run (std_srvs/Trigger) - run the script; only one
+          invocation at a time (returns busy if already running)
+
+Concurrency: a single background thread runs the script; the service call
+returns immediately. Subscribers can connect to `/health_check/line` before
+or after the service call — late joiners miss lines emitted before they
+subscribed.
+"""
+
 import os
 from pathlib import Path
 import re

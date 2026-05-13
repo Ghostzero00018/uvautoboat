@@ -1,7 +1,9 @@
 #!/bin/bash
-# Patches upstream VRX in-tree to work around issue #876
-# (LiDAR renders at world origin because publish_model_pose=false disables
-# the pose-to-TF bridge). Idempotent: safe to re-run on every launch.
+# Safety-net for VRX issue #876 (LiDAR-at-origin: publish_model_pose=false
+# disables the pose-to-TF bridge). Already fixed in Ghostzero00018/vrx
+# autoboat/main since 06/05/2026; this script detects fix-in-place and
+# exits no-op. Retained against inadvertent revert. Idempotent: safe on
+# every launch.
 
 set -e
 

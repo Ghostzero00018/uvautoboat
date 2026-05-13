@@ -461,7 +461,7 @@ class HeadingController(Node):
             self.get_logger().warn(f"Invalid target message: {e}")
 
     def obstacle_callback(self, msg):
-        """Receive obstacle information from perception (v2.0 compatible)."""
+        """Receive obstacle information from perception (v2.1 compatible)."""
         try:
             data = json.loads(msg.data)
             self.obstacle_detected = data.get('obstacle_detected', False)
@@ -1109,7 +1109,7 @@ class HeadingController(Node):
         self.send_thrust(0.0, 0.0)
 
     def publish_status(self, mode):
-        """Publish controller status with perception v2.0 enhanced info."""
+        """Publish controller status with perception v2.1 enhanced info."""
         def _safe(v, decimals=3):
             # Replace inf/NaN with None so JSON serialization succeeds.
             # min_obstacle_distance is inf-init at boot until perception fires.

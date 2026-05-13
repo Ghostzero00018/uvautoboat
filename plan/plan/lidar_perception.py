@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-LiDAR Perception - 3D LiDAR Point Cloud Processing (Enhanced v2.0).
+LiDAR Perception - 3D LiDAR Point Cloud Processing (Enhanced v2.1).
 
 Module: LiDAR Perception
 Role:   Processes 3D LiDAR point clouds and publishes obstacle information.
@@ -15,7 +15,7 @@ Features:
 - Height-based filtering to reject sky/water reflections
 - Hysteresis to prevent oscillation at detection boundary
 
-Enhanced Features (v2.0):
+Enhanced Features (v2.1):
 - Temporal filtering (multi-scan history for noise rejection)
 - Distance-weighted urgency scoring
 - Obstacle clustering (gap detection)

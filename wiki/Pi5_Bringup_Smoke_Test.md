@@ -136,7 +136,7 @@ Run these in sequence; do **not** skip steps. Each one verifies a layer before t
 1. SSH + UART/dialout setup → `mavproxy.py --master=/dev/serial0 --baudrate=115200`. Confirm "Heartbeat" line appears.
 2. Stop MAVProxy. Run `stream_data.py` directly (with the rate-request fix from §6) and confirm IMU messages arrive at the requested rate.
 3. Re-launch MAVProxy with `--out=udp:127.0.0.1:14550`. Modify `stream_data.py` to read from `udpin:127.0.0.1:14550`. Confirm parallel access works.
-4. **Then** install `mavros2` on the Pi 5; verify `ros2 topic list` shows `/mavros/*` topics; confirm the Linux workstation sees them over DDS (basic `talker` / `listener` round-trip first to verify multicast on the IoT WiFi — see [Roadmap §1.1](Roadmap#11-scope-clarifications-locked-30042026)).
+4. **Then** install `mavros2` on the Pi 5; verify `ros2 topic list` shows `/mavros/*` topics; confirm the Linux workstation sees them over DDS (basic `talker` / `listener` round-trip first to verify multicast on the IoT WiFi — verified WORKS on `IoT IMT Nord Europe` 12/05/2026, re-run on any future network; see [Roadmap §1.1](Roadmap#11-scope-clarifications-locked-30042026)).
 5. **Only then** start wiring into the simulator. `launch/remap.launch.yaml` is the home for sim-vs-real swap-in routing — see [Roadmap §3](Roadmap#3-phase-5--real-hardware-deployment).
 
 Steps 1–3 prove the physical link; step 4 proves the ROS bridge; step 5 is integration. Skipping ahead means debugging multiple layers at once when something breaks.
@@ -297,7 +297,7 @@ finally:
 
 ## 8. Cross-references
 
-- [Roadmap §1.1](Roadmap#11-scope-clarifications-locked-30042026) — production architecture (`mavros2` as the canonical MAVLink ↔ ROS bridge; MAVProxy as a router not a bridge; DDS multicast verification on the IoT WiFi).
+- [Roadmap §1.1](Roadmap#11-scope-clarifications-locked-30042026) — production architecture (`mavros2` as the canonical MAVLink ↔ ROS bridge; MAVProxy as a router not a bridge; DDS multicast verification on the IoT WiFi — verified WORKS on `IoT IMT Nord Europe` 12/05/2026).
 - [Roadmap §3 — Phase 5](Roadmap#3-phase-5--real-hardware-deployment) — full Phase 5 hardware-deployment summary, including `launch/remap.launch.yaml` for sim-vs-real swap-in routing.
 - ArduPilot MAVProxy: <https://ardupilot.org/mavproxy/index.html>
 - pymavlink (Python): <https://mavlink.io/en/mavgen_python/>

@@ -1,4 +1,4 @@
-# 3D LIDAR Processing (LiDAR Perception v2.0)
+# 3D LIDAR Processing (LiDAR Perception v2.1)
 
 Deep dive into the **Perception** system — 3D LIDAR point cloud processing for obstacle detection.
 
@@ -30,7 +30,7 @@ The **LiDAR Perception** node is the perception subsystem that processes 3D LIDA
 
 ## Processing Pipeline
 
-The Perception node v2.0 uses an 8-step processing pipeline:
+The Perception node v2.1 uses an 8-step processing pipeline:
 
 ```text
 ┌─────────────────────────────────────────────────────────┐

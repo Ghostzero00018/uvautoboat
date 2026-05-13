@@ -80,7 +80,7 @@ The **Modular (Perception–Planner–Controller)** three-node pipeline is the a
 
 ### 1. Perception
 
-- **3D LIDAR Processing** (LiDAR Perception v2.0)
+- **3D LIDAR Processing** (LiDAR Perception v2.1)
 - Real-time point cloud filtering
 - Sector-based obstacle detection
 - Temporal filtering for reliability
