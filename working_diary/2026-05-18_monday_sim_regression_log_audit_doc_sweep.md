@@ -63,7 +63,7 @@ camera-consumer sharing) wait until after the presentation.
 Active blocks:
 
 1. **Block A — Morning re-orientation** (~10 min, opening): verify
-   `336b006` HEAD on disk + remote sync; re-anchor on Wed 13/05's
+   `15c62ac` HEAD on disk + remote sync; re-anchor on Wed 13/05's
    Pi-stays-headless directive + brownout root-cause + C.7 RealSense
    bridge validation; VRX §8.2 cadence check (DUE today); break inputs.
 2. **Block B — Sim stack regression under default `ROS_DOMAIN_ID`**
@@ -108,7 +108,7 @@ whole day on it — presentation prep is the higher-priority output.
 
 After Thu/Fri off-site break:
 
-- `git log --oneline -10` + `git status` — verify `336b006` HEAD on disk
+- `git log --oneline -10` + `git status` — verify `15c62ac` HEAD on disk
   - branch synced with `origin/main`.
 - Re-read Wed 13/05 diary Block C.6 (brownout root-cause + Pi
   session-hardening config edits + Branch B permanently shelved per
@@ -383,7 +383,7 @@ Same shape as Wed 13/05 Block D:
 
 ## Verification summary — 18/05 (check at end of day)
 
-- [ ] Block A: re-orientation done; `336b006` HEAD confirmed; VRX §8.2
+- [ ] Block A: re-orientation done; `15c62ac` HEAD confirmed; VRX §8.2
   cadence check run (HOLD or trigger noted); break inputs noted;
   Pi-side test decision recorded
 - [ ] Block B: sim stack regression test run; pass-criteria verdict
