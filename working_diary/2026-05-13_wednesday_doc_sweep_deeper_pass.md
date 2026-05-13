@@ -147,8 +147,18 @@ After Tue's 3-commit close, catch up before starting today's blocks:
   reachability question until Block B's findings list surfaces a
   Pi-specific item.
 
-**Outcome.** [To fill — git state, overnight inputs, decision on whether
-Pi-side tests are likely today.]
+**Outcome.** Both repos clean and synced at session start: main HEAD `3486461`,
+Gist HEAD `a632ad2`, both pulled with `Already up-to-date.`. Tue 12/05 Block B
+(DDS WORKS), Block C (GDAL PE-DLL), and Block E (doc sweep + 5 inline fixes +
+Block F propagation) re-read to anchor today's broader scope. **Overnight
+inputs:** nothing new from supervisor or teammate maintainer; weather
+indoors-only so not a blocker; **formal joint supervisor presentation is now
+scheduled Wed 20/05/2026 10h-12h** — supersedes the 30/04 "pending IMT Mines
+Alès availability + power restoration" hedge. **Pi-side test decision:**
+initially deferred per scaffold (Block B was fully workstation-side); Pi-side
+tests became likely once C.6 + C.7 + a user-authorised mid-day C.8 RealVNC
+install thread came into scope, all going live on `IoT IMT Nord Europe`. VRX
+§8.2 weekly cadence not due (next Mon 18/05).
 
 ---
 
@@ -332,9 +342,36 @@ git grep -nIE 'legacy/' -- '*.md' '*.py' '*.yaml' \
 Inadvertent references should be rare; the legacy boundary has been stable
 since the original cleanup.
 
-**Outcome.** [To fill — findings list per sub-block (B.1 / B.2 / B.3 /
-B.4 / B.5), classified stale / accurate / borderline / needs-real-test;
-fix-now vs queue-for-later decisions surfaced.]
+**Outcome.** 24 files swept across the 5 sub-blocks plus repo-wide grep for the
+B.4 propagation scan. **B.1**: 12 wiki files; 10 clean, 2 stale forward-update
+opportunities — `wiki/Pi5_Bringup_Smoke_Test.md` L139 + L300 (DDS multicast
+verification phrasing now superseded by Tue B.1 WORKS). **B.2**: 5 shell + SDF +
+xacro files; 4 clean (3 intentional `osrf/vrx` attribution links per Roadmap
+§8.6, 1 operational `stale` lifecycle wording), 1 stale forward-update —
+`one_click_launch_all/patch_vrx.sh` L2-4 (self-description still said "Patches
+upstream VRX" despite the 06/05 fork migration). **B.3**: 7 ROS 2 node Python
+files plus launch YAMLs plus 2 `package.xml`; clean docstring↔code
+sub/pub/service counts on all 7 nodes; 0 launch-YAML TODO/FIXME; 4 stale
+`perception v2.0` references in docstrings (2 in `lidar_perception.py` module
+docstring, 2 in `heading_controller.py` method docstrings) plus 1 borderline
+missing module docstring on `plan/plan/health_check_service.py`. All 5
+node-name keys match Python `Node('...')` per §5 pitfall. **B.4**: Tue-outcome
+propagation grep across non-diary tracked surface — 15 hits, 14
+accurate/historical, 1 new stale — `wiki/Roadmap.md` §1.1 L28 (same DDS
+multicast verification phrasing as B.1, parallel finding). Two conditional
+findings (`Pi5_Bringup_Smoke_Test.md` L34 + `Roadmap.md` L23 "headless" claims)
+remain ACCURATE today since Branch B DE install is deferred to Mon 18/05+.
+**B.5**: `legacy/` boundary clean — 1 append-only commit (`f89a1bc` 07/05 added
+`legacy/README.md`, allowed under §1.3); 18 `legacy/` references in tracked
+non-legacy non-diary files all intentional documentation pointers. **Fix
+decisions:** all 7 stale forward-update findings plus the 1 borderline
+(docstring add) applied early in-session under user authorisation — plus 4
+additional user-visible v2.0 → v2.1 sites surfaced during pre-edit verification
+(Option B) across `wiki/3D_LIDAR_Processing.md` L1 + L33, `wiki/System_Overview.md`
+L83, `web_dashboard/autoboat/index.html` L103. Single commit `b535d6d` `docs:
+refresh DDS verification + perception v2.1 + patch_vrx wording` — 9 files /
+44+/14-. **Needs-real-test escalations: 0** — clean audit-only pass; C.1-C.5
+no-op per scaffold gating.
 
 ---
 
@@ -461,9 +498,15 @@ Pi-specific question accumulated in Block B's needs-real-test list.
 Don't open the window for a question that could be answered by user
 recollection or by deferring.
 
-**Outcome.** [To fill — list of escalations attempted, results, any
-verdicts flipped from "needs-real-test" to "stale" / "accurate" /
-"borderline", any escalations explicitly deferred.]
+**Outcome.** **C.1-C.5: no-op** — Block B's needs-real-test list was empty, so
+no B-derived escalations triggered (per scaffold gating). The C.1-C.5
+pre-staged recipes remain in the scaffold for future audits that surface
+needs-real-test items. **C.6, C.7, and a user-authorised C.8 RealVNC install
+thread** ran as time-permitting blocks gated by their own pre-conditions, not
+Block B's null list — see individual block outcomes below. C.8 was a Wed-only
+scope expansion authorised mid-day for parallel workstation-side work; its
+Pi-side audit was folded into C.6's SSH pre-flight session to avoid a second
+offline-window switch.
 
 ---
 
@@ -560,7 +603,42 @@ ssh aqpi-01@10.120.2.50 '
 - **Rollback precision (DO NOT trust a template purge command):** the actual package set installed depends on which install path took (Lubuntu vs LXQt-core direct), display-manager resolution (sddm / lightdm / etc.), and Recommends pulled by `apt`. **Capture immediately after step 4 the exact `apt install` stdout** (and/or `apt list --installed | grep -E '<keywords>' | sort` filtered post-install) — derive the rollback purge command from THAT, not from this scaffold's template. Record the captured install set + the derived purge command in Outcome so future rollback uses real data.
 - If post-install resource budget looks tight (free memory < 1 GB at idle, or CPU steal noticeable), note as "Phase 5 risk: DE retention may need re-evaluation before LiDAR / GPS / IMU drivers load" — Phase 5 bring-up may demand purging DE again.
 
-**Outcome.** [To fill — Pi internet state verified (route + DNS + outbound TLS + interface list); pre-install sanity passed (or which check tripped → which branch fallen back to); branch taken (A or B); if B: DE flavour installed + display manager actually pulled + exact apt-installed package list captured (for rollback derivation) + reboot OK + graphical login + mouse + keyboard sanity + resource footprint (free / df / uptime); if A: TTY path validated + USB detection captured.]
+**Outcome.** **Pre-flight pass — Branch B-conditional decision.** Workstation
+reached `IoT IMT Nord Europe` cleanly via `nmcli connection up "IoT IMT Nord
+Europe"` from `IMT Nord Europe 5G`. An earlier session-mid WiFi hard-block on
+`wlp147s0` (`phy0 Hard blocked: yes` + Dell-firmware `dell-wifi Soft blocked:
+yes` per `rfkill list` diagnostic) was recovered by the user off-line before
+the pre-flight pipeline started, so the recovery itself isn't in this
+session's transcript — the recovery pipeline (Fn+WiFi key for hard block,
+`sudo rfkill unblock wifi` + `nmcli radio wifi on` for soft block) is drafted
+in the v5-final pipeline Steps 0+1 as a pitfall worth recording for future
+on-site sessions where WiFi state can't be assumed-on. Pi 5 SSH
+pre-flight via the v5-final layered-IPv4 probe pipeline: default route
+`1.1.1.1 via 10.120.2.1 dev wlan0` from `10.120.2.50` ✓; outbound ICMP
+**blocked** (`ping -c 1 -W 3 1.1.1.1` → 0/1 received) — common on managed IoT
+networks, irrelevant to apt; IPv4 DNS via `getent ahostsv4
+archive.ubuntu.com` resolves to Cloudflare CDN `104.20.28.246` ✓; L7 HTTP
+egress `curl -4 -sI http://archive.ubuntu.com/ubuntu/` returns `HTTP/1.1 200
+OK` ✓; `resolv.conf` shows systemd-resolved stub; `wlan0` up at
+`10.120.2.50/23`. ICMP-fails-only pattern with DNS + HTTP working = apt egress
+healthy = Branch B DE install technically possible. **Folded-in C.8 Pi VNC
+audit:** zero VNC server packages installed (`dpkg -l` matched nothing), zero
+VNC systemd units, zero VNC binaries on PATH — confirms Ubuntu Server (24.04.4
+aarch64) doesn't bundle RealVNC like Raspberry Pi OS does. **Branch action
+this session: Branch A physical-attach pending** — planned: micro-HDMI to
+**HDMI1** (HDMI0 is occupied in this control box by another cable; HDMI1 used
+instead) + USB keyboard → Pi TTY1 login on monitor; SSH-side cross-check
+probes (`lsusb`, `/proc/bus/input/devices`, `who`, TTY1 process tree) and
+local TTY-side probes (`hostname`, `whoami`, `ip -br addr`, `systemctl
+get-default`, `lsusb`, `/proc/bus/input/devices` keyboard/mouse handler grep)
+to be captured at Block D wrap. Clean SSH shutdown (`ssh -t aqpi-01@10.120.2.50
+'sudo poweroff'`) used instead of in-box USB-C-power handling — Pi 5 in soft-off
+remains standby-rail-alive (RTC + power button live), short-press of the Pi 5
+power button used to boot back up; long-press intentionally avoided (Pi 5
+long-press is a hard power-off, not clean shutdown). **Branch B DE
+install deferred to Mon 18/05+** as a state-changing operation worth a focused
+session rather than a Wed wrap rush; pre-flight evidence (apt egress works)
+carries forward for that future session.
 
 ---
 
@@ -647,14 +725,39 @@ Tue B.1 captured the Pi-side topic list with the **camera OFF** (control box not
 - (a) Camera-ON state may not persist after QGC disconnect — MAVLink camera commands are typically stateful but if the Pi-side camera node is QGC-session-triggered (per-connection video pipeline), it might shut down on QGC close. **The Step 5 (Pi-local console while QGC attached) vs Step 9 (workstation SSH after QGC disconnect + network switch) comparison detects this directly**; Step 6 is just bonus cross-validation if Pi happens to be reachable on Herelink network, not the persistence detector.
 - (b) Topic naming may not match sim `/wamv/sensors/cameras/*` at all — real hardware may use vendor-specific names or autopilot-bridged names. This is expected; the point of C.7 is to find out.
 
-**Outcome.** [To fill — note file location explicitly per snapshot:
-
-- Step 5 Pi-local console capture: `/tmp/pi5_topics_camera_on_qgc_attached.txt` **on Pi**
-- Step 6 (if reachable) workstation SSH-via-Herelink capture: `/tmp/pi5_topics_via_herelink_ssh.txt` **on workstation** — or "step 6 skipped, Pi unreachable from Herelink network as expected"
-- Step 9 workstation SSH-via-IoT capture: `/tmp/pi5_topics_camera_on_iot_ssh.txt` **on workstation**
-- Step 10 workstation cross-machine DDS view: `/tmp/pi5_topics_camera_on_workstation_dds.txt` **on workstation**
-
-Plus: delta vs Tue B.1 baseline; outcome class — **(i) topics surfaced** (with naming pattern + sim-vs-real diff for B.4) **/ (ii) Pi ROS graph unchanged despite QGC video working** (Herelink/Pi-ROS decoupled — architectural finding for Phase 5) **/ (iii) QGC video also fails** (different, unrelated issue); state-persistence verdict (Step 5 vs Step 9 same/different).]
+**Outcome.** **Outcome (ii) confirmed — Herelink video pipeline decoupled
+from the Pi 5 ROS 2 graph.** Capture topology differed from scaffold: instead
+of QGC on workstation switching to Herelink Hotspot, QGC was running on the
+**Herelink console itself** (the hand-controller tablet) with active video
+render on SSID `IMT-Aquatic-drone`; control box camera ON via the Herelink RF
+link. Workstation stayed on `IoT IMT Nord Europe` (no Herelink-network switch
+needed since QGC wasn't on workstation). Dual-domain sweep run on the Pi via
+SSH (`ROS_DOMAIN_ID=0` AND `=56`) with env hygiene exactly matching Tue B.1's
+verified-working setup (`ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET`, `unset
+ROS_LOCALHOST_ONLY`, `unset RMW_IMPLEMENTATION`, daemon stop/start between
+domains, env-state echo before each topic-list query to defend against silent
+env-drop). **Both domains, both runs: identical result — exactly 2 topics, 0
+nodes.** Topic set is `/parameter_events [rcl_interfaces/msg/ParameterEvent]`
+and `/rosout [rcl_interfaces/msg/Log]` only (standard daemon-bookkeeping).
+Captured twice for reproducibility — identical. No `/wamv/sensors/cameras/*`,
+no `/camera/*`, no `/herelink/*`, no `/mavros/camera/*`, nothing camera-related.
+**Architectural read.** The camera-on-control-box → Herelink air unit →
+Herelink ground unit (console) → QGC video panel path is fully decoupled from
+any Pi-side ROS 2 publisher. The Mon 11/05 verified RTSP route
+`rtsp://192.168.43.1:8554/fpv_stream` works because QGC consumes RTSP directly
+on the Herelink Hotspot network (`IMT-Aquatic-drone`), never touching the Pi.
+**Phase 5 implication for autonomy stack:** future camera consumption (CA model
+input, vision-based obstacle detection, sim/real comparison) needs a
+**dedicated Pi-side ROS bridge** consuming Herelink's RTSP and republishing to
+a ROS topic (`gscam` / `usb_cam` / custom `rtsp→ROS` bridge) — **not implicit
+from "Herelink video works"**. Sim `/wamv/sensors/cameras/*` has no
+real-hardware counterpart in the current state. **File-location caveat.** The
+per-domain Pi-side capture files
+`/tmp/pi5_topics_camera_on_domain{0,56}_<timestamp>.txt` have malformed
+filenames from a line-wrap inside `$(date +\n%H%M%S)` in the pasted recipe
+(visible `bash: line 25: fg: no job control` warning) — `tee`'s stdout path
+captured the data correctly into the SSH session log, which is authoritative
+here; no rerun needed.
 
 ---
 
