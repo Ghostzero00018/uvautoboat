@@ -624,21 +624,67 @@ OK` ✓; `resolv.conf` shows systemd-resolved stub; `wlan0` up at
 healthy = Branch B DE install technically possible. **Folded-in C.8 Pi VNC
 audit:** zero VNC server packages installed (`dpkg -l` matched nothing), zero
 VNC systemd units, zero VNC binaries on PATH — confirms Ubuntu Server (24.04.4
-aarch64) doesn't bundle RealVNC like Raspberry Pi OS does. **Branch action
-this session: Branch A physical-attach pending** — planned: micro-HDMI to
-**HDMI1** (HDMI0 is occupied in this control box by another cable; HDMI1 used
-instead) + USB keyboard → Pi TTY1 login on monitor; SSH-side cross-check
-probes (`lsusb`, `/proc/bus/input/devices`, `who`, TTY1 process tree) and
-local TTY-side probes (`hostname`, `whoami`, `ip -br addr`, `systemctl
-get-default`, `lsusb`, `/proc/bus/input/devices` keyboard/mouse handler grep)
-to be captured at Block D wrap. Clean SSH shutdown (`ssh -t aqpi-01@10.120.2.50
-'sudo poweroff'`) used instead of in-box USB-C-power handling — Pi 5 in soft-off
-remains standby-rail-alive (RTC + power button live), short-press of the Pi 5
-power button used to boot back up; long-press intentionally avoided (Pi 5
-long-press is a hard power-off, not clean shutdown). **Branch B DE
-install deferred to Mon 18/05+** as a state-changing operation worth a focused
-session rather than a Wed wrap rush; pre-flight evidence (apt egress works)
-carries forward for that future session.
+aarch64) doesn't bundle RealVNC like Raspberry Pi OS does. **Branch action this session — Branch A succeeded.** Per the box-aware v5
+pipeline: SSH `sudo poweroff` → ping-loss + activity-LED settle → cut whole
+control-box power → physically attach **micro-HDMI to HDMI1** (HDMI0 is
+occupied) + USB keyboard inside de-energised box → re-power whole control box
+→ Pi auto-boots with the rest of the system → monitor shows TTY1 boot tail
+followed by `imtaqua-pi-01 login:` prompt → USB keyboard input works for
+login → shell access at TTY1 confirmed. The "primitive UI/UX" observed is the
+expected text-mode console for a headless Ubuntu Server install — no GUI
+desktop, no mouse cursor, just kernel framebuffer + getty + login + bash.
+Physical-console fallback path validated for SSH-broken / networking-broken
+Phase 5 scenarios. No Pi state change from Branch A itself.
+
+**Branch B DE install permanently shelved per professor's directive.** Mid-day
+clarification: Pi 5 stays **Ubuntu Server headless permanently** — no GUI /
+desktop layer will be added in any future session either. This supersedes the
+earlier "deferred to Mon 18/05+" framing. The earlier user-authorised Branch B
+scope override is therefore moot and removed from the active plan. C.6's only
+remaining purpose was Branch A physical-fallback validation, which succeeded
+above.
+
+**Late-day addendum — Pi 5 session-hardening config edits (state-changing,
+intentional, distinct from any DE install).** Three Pi-side config tweaks
+applied to address recurring "Pi 5 went to sleep" symptoms during longer
+testing sessions:
+
+1. `/boot/firmware/config.txt` += `dtparam=power_ctrl_button=off` — disables
+   the Pi 5 hardware power button as a shutdown trigger; protects against
+   accidental presses inside the cramped control box (the button is small
+   and easy to bump while routing cables).
+2. `/etc/systemd/logind.conf` `HandlePowerKey=ignore` — logind no longer
+   treats a power-button event as a poweroff trigger; redundant with #1 at
+   the firmware layer but defends against any software-side handler path.
+3. `/etc/systemd/logind.conf` `IdleAction=ignore` + `IdleActionSec=3000mins`
+   — logind no longer takes any action (poweroff, suspend, etc.) on
+   prolonged user inactivity. The 3000-minute window is essentially "never
+   within a normal session."
+
+These are session-hardening edits — **not** scope-creep into Branch B's DE
+install territory. They preserve the headless-Ubuntu-Server state while
+removing software triggers that could halt the Pi unexpectedly.
+
+**Late-day addendum — brownout root-cause for prior "sleep" symptoms.** Working
+theory now well-supported: previously the Pi 5 was powered via 5V on the GPIO
+pin (pin 2/4) shared off the main 14.8V LiPo battery rail (10000mAh, 30C ≈
+148Wh) with the rest of the control box (autopilot, Herelink, RealSense
+camera). 5V-pin power bypasses the Pi 5 USB-C PD negotiation, so the Pi has
+no way to advertise its true current need; under RealSense streaming load +
+co-loads from other peripherals, the 5V rail sags below the Pi 5 PMIC's
+under-voltage trip threshold (~4.63 V), triggering an emergency PMIC shutdown
+(LED solid red — looks like "sleep" but is actually a halted SoC). The ~3-4 s
+rviz2 streaming window before "sleep" matches the typical RealSense
+startup-spike duration. **Temporary fix (verified):** Pi 5 now powered via
+its own USB-C charger from a separate supply, decoupled from the main 14.8V
+battery rail; other box components stay on the main battery. With the
+separate supply, Pi 5 does not enter the brownout-shutdown state during long
+rviz2 + camera streaming sessions. This is **operational, not architectural**
+— the permanent Phase 5 fix needs hardware-side work: regulated ≥5A 5V
+supply dedicated to Pi 5, thick-short GPIO leads (or proper USB-C input),
+bulk capacitance near the Pi 5 power input, possibly a powered USB hub
+between Pi and RealSense to fully decouple the RealSense's current spikes.
+Flagged for Phase 5 hardware-design pass.
 
 ---
 
@@ -759,6 +805,96 @@ filenames from a line-wrap inside `$(date +\n%H%M%S)` in the pasted recipe
 captured the data correctly into the SSH session log, which is authoritative
 here; no rerun needed.
 
+**Late-day addendum — outcome (i) ALSO confirmed under different conditions
+(later in the session, after the QGC-only sweep).** The dual-domain sweep
+above tested with QGC providing video via the Herelink RF link and **no
+explicit camera node running on the Pi**. Later, a different test path was
+explored: with `ROS_DOMAIN_ID=56` UNSET in the workstation `~/.bashrc` (so
+default domain 0 applies) and `ros2 run realsense2_camera realsense2_camera_node`
+manually started on the Pi via SSH (after `source /opt/ros/jazzy/setup.bash`),
+workstation `ros2 topic list` enumerates the **full RealSense camera topic
+surface**:
+
+```text
+/camera/camera/accel/imu_info
+/camera/camera/accel/metadata
+/camera/camera/accel/sample
+/camera/camera/color/camera_info
+/camera/camera/color/image_raw
+/camera/camera/color/metadata
+/camera/camera/depth/camera_info
+/camera/camera/depth/image_rect_raw
+/camera/camera/depth/metadata
+/camera/camera/extrinsics/depth_to_{accel,color,depth,gyro,infra1,infra2}
+/camera/camera/gyro/imu_info
+/camera/camera/gyro/metadata
+/camera/camera/gyro/sample
+/camera/camera/infra1/camera_info
+/camera/camera/infra1/image_rect_raw
+/camera/camera/infra1/metadata
+/camera/camera/infra2/camera_info
+/camera/camera/infra2/image_rect_raw
+/camera/camera/infra2/metadata
+/parameter_events
+/rosout
+/tf_static
+```
+
+This validates **outcome (i) under "explicit Pi-side ROS camera bridge"
+conditions** alongside the earlier **outcome (ii) under "no Pi-side ROS
+camera bridge"** conditions. The two outcomes are not contradictory — they
+correspond to two distinct architectural states:
+
+- **State A (no Pi-side ROS publisher):** Herelink video pipeline runs in
+  parallel to the Pi ROS graph; camera frames reach QGC via the Herelink
+  RTSP path; nothing camera-related appears on Pi ROS. Outcome (ii) applies.
+- **State B (explicit `realsense2_camera_node` running):** Pi ROS graph
+  enumerates the full RealSense topic surface (color + depth + IR1+2 +
+  accel + gyro + extrinsics + `tf_static`); workstation discovers all
+  topics cross-machine via DDS (here `ROS_DOMAIN_ID=0` default; works
+  because Pi's default is also 0). Outcome (i) applies. **This is the
+  architectural path for Phase 5 autonomy-stack camera consumption** — the
+  "dedicated Pi-side ROS bridge" predicted earlier is now directly
+  validated, and `realsense2_camera_node` IS that bridge.
+
+**Device + driver context.** RealSense identifies as Intel RealSense D435I
+(serial `213622070342`, FW v5.14.0, Product ID `0x0B3A`) on USB 2.1 port
+`2-1` (the `[WARN] Device ... connected using a 2.1 port. Reduced
+performance is expected.` librealsense informational message is not an
+error). Default streaming profiles negotiated by `realsense2_camera_node`
+v4.57.7 / librealsense v2.57.7: depth Z16 640×480 @ 15 fps, color RGB8
+640×480 @ 15 fps, IR1+IR2 Y8 640×480 @ 15 fps, accel MOTION_XYZ32F @
+100 Hz, gyro MOTION_XYZ32F @ 200 Hz.
+
+**Sub-finding — camera consumer exclusivity (Phase 5 architectural
+constraint).** With `realsense2_camera_node` running on Pi and workstation
+rviz2 actively rendering camera images, the Herelink console's video
+stream is **lost**. When rviz2 stops (or the camera node is killed),
+Herelink video returns. The two consumers cannot operate simultaneously.
+Root cause is most likely v4l2 device exclusivity: `realsense2_camera_node`
+opens `/dev/video0` with `VIDIOC_S_FMT` for exclusive format-setting (the
+default librealsense behaviour), and the Pi-side **`v4l2loopback` fork
+mechanism** (responsible for duplicating the RealSense USB stream for
+multiple downstream consumers including Herelink's video pipeline) can't
+replicate the format-locked stream. Matches the `xioctl(VIDIOC_S_FMT)
+failed, errno=16 Last Error: Device or resource busy` errors observed in
+the camera-node bring-up log during repeated `ros2 run` attempts (the
+camera node saw its own previous instance still holding the device — race
+condition that auto-recovered after the "Checking new devices..."
+detect-disconnect-redetect cycle). **Phase 5 implication:** autonomy-stack
+camera consumption (via `realsense2_camera_node` → ROS topics) and
+Herelink operator video (via the existing RTSP path) are **mutually
+exclusive consumers under the current Pi v4l2loopback setup** unless a
+different sharing mechanism is engineered (e.g., a single canonical
+camera node that republishes to RTP for Herelink, or a multi-mux camera
+fork daemon at the v4l2 layer).
+
+**RealVNC scope decision (final this session).** Workstation Viewer
+install (`realvnc-vnc-viewer 7.15.1.18`) retained — no harm. Pi-side VNC
+server install **parked indefinitely** per the professor's
+Pi-stays-headless directive: with no GUI/desktop on Pi, there is nothing
+for a VNC server to expose. C.8 thread closed.
+
 ---
 
 ## Block D — Day wrap (~30 min, evening)
@@ -783,7 +919,77 @@ Same shape as Tue Block F:
 8. **Update Week 10 external diary Wed Outcome bullet** — Windows-side
    weekly diary; deferred to next Windows-side session if Linux-only today.
 
-**Outcome.** [To fill at end of day.]
+**Outcome.** Day wrapped in **two commits** due to the two-phase doc-update
+shape user requested (pre-test capture, then late-day-findings capture):
+
+1. `b535d6d docs: refresh DDS verification + perception v2.1 + patch_vrx wording`
+   — Block B early-application (9 files / 44+/14-) covering 7 stale
+   forward-update findings + 1 borderline (docstring add) + 4 Option B
+   user-visible v2.0 → v2.1 sites. Landed mid-session under user
+   authorisation before the C.6/C.7 physical work.
+2. `4a0b277 docs(diary): capture 13/05 Pi preflight + Herelink ROS findings`
+   — Pre-Branch-A doc capture (6 files / 118+/23-) covering Block A overnight
+   inputs (presentation date Wed 20/05 10h-12h), Block B audit findings list,
+   Block C no-op note, Block C.6 pre-flight Branch B-conditional outcome,
+   Block C.7 outcome (ii) Herelink/Pi-ROS decoupling, C.8 RealVNC scope
+   expansion, Board.md 13/05 Timeline row, Roadmap.md §9 2 new entries,
+   3 stamp bumps (`wiki/Home.md`, `wiki/README_WIKI.md`,
+   `working_diary/README.md`). Pushed.
+3. **This wrap commit** — late-day findings (4 files / ~158+/18-): Branch A
+   physical-attach validated (HDMI1 + USB keyboard → Pi TTY1 login confirmed,
+   no Pi state change); **Branch B DE install permanently shelved per
+   professor's directive** (Pi 5 stays Ubuntu Server headless permanently —
+   supersedes the "deferred to Mon 18/05+" framing); 3 Pi-side
+   session-hardening config edits applied (`dtparam=power_ctrl_button=off` in
+   `/boot/firmware/config.txt`, `HandlePowerKey=ignore` +
+   `IdleAction=ignore` + `IdleActionSec=3000mins` in
+   `/etc/systemd/logind.conf`); brownout root-cause for prior Pi 5 "sleep"
+   symptoms identified (5V GPIO rail sag under RealSense load → PMIC
+   under-voltage shutdown ~4.63 V) and temporary fix via separate USB-C
+   charger; **C.7 outcome (i) ALSO confirmed under different conditions**
+   (`ROS_DOMAIN_ID=0` default + explicit `realsense2_camera_node` running on
+   Pi → workstation `ros2 topic list` enumerates full RealSense topic
+   surface, validating the predicted dedicated Pi-side ROS bridge);
+   camera-consumer-exclusivity Phase 5 constraint identified (rviz2/ROS
+   bridge and Herelink RTSP can't stream simultaneously, likely v4l2
+   device-exclusivity breaking the existing `v4l2loopback` fork);
+   Roadmap §3 status table gains 3 new rows (Pi 5 power budget, RealSense →
+   ROS bridge validated, camera consumer exclusivity); `wiki/Pi5_Bringup_Smoke_Test.md`
+   + `wiki/Roadmap.md` §1.1 "headless" claims revised from conditional to
+   permanent per supervisor directive.
+
+**Pre-commit verification (this wrap commit, run before commit message):**
+`git diff --check` clean; invisibility sweep clean on all 4 modified files;
+syntax sanity not applicable (no shell/Python edits in this wrap commit);
+[To fill] residue at L911 = scaffold instruction text + L922 = this outcome
+itself (about to be filled). Working tree will be clean after the wrap
+commit lands.
+
+**Final HEAD after wrap commit + push:** to be confirmed in the post-commit
+sweep; current pre-wrap HEAD = `4a0b277` matching `origin/main`.
+
+**Carry-forwards to Mon 18/05+** (none reshape today; all are existing items):
+
+- Phase 5 hardware power-design pass (Roadmap §3 new row): regulated ≥5A
+  dedicated 5V supply for Pi 5, bulk capacitance near Pi power input, thick
+  short GPIO leads or proper USB-C input, possibly powered USB hub between
+  Pi and RealSense. Temporary USB-C-charger fix is operational, not
+  architectural.
+- Phase 5 camera-consumer sharing mechanism design (Roadmap §3 new row):
+  single canonical camera node + RTP republish for Herelink, or multi-mux
+  camera-fork daemon at the v4l2 layer — to allow autonomy stack and
+  Herelink operator video to consume RealSense simultaneously.
+- VRX §8.2 weekly cadence — next check Mon 18/05.
+- Three Asks to teammate maintainer (Phase A parameter subset, CA placement,
+  validation methodology) — still pending.
+- Second-site (lake) Herelink video A/B retest — deferred to next field
+  session.
+- External Week 10 diary Wed Outcome bullet — Windows-side, deferred to
+  next Windows session.
+
+**Thu 14/05 + Fri 15/05** — no on-site work (Ascension Day + pont). Wed
+20/05 10h-12h presentation is the next hard deadline; Mon 18/05 + Tue
+19/05 are the prep window.
 
 ---
 
