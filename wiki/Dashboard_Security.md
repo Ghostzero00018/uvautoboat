@@ -98,7 +98,7 @@ rosbridge allows any connected client to publish to `/wamv/thrusters/left/thrust
 
 **Resolved.** This was first mitigated with SRI on 17/04/2026, then superseded by Path A vendoring on 05/05/2026: `roslib.min.js`, Leaflet JS/CSS/images, and Google Fonts now self-load from `web_dashboard/autoboat/vendor/`. Same-origin loads no longer need CDN SRI, and the CDN-compromise vector is gone.
 
-**Adjacent risk now in scope:** tile-server availability. On a network without internet (e.g., the IoT IMT Nord Europe institutional WiFi used for Phase 5 hardware bring-up), dashboard libraries load locally but OpenStreetMap tiles remain unreachable. Path B in [Roadmap §1.3](Roadmap#13-iot-imt-nord-europe--local-only-network-constraint-analysed-30042026) tracks the offline tile server + pre-generated MBTiles mitigation.
+**Adjacent risk now in scope:** tile-server availability. On a restricted or intermittently offline network (including the IoT IMT Nord Europe institutional WiFi used for Phase 5 hardware bring-up), dashboard libraries load locally but OpenStreetMap tile availability is not guaranteed. The 13/05 Pi-side pre-flight proved apt HTTP egress can work on that SSID, but that does not make external map tiles a safe deployment dependency. Path B in [Roadmap §1.3](Roadmap#13-iot-imt-nord-europe--local-only-network-constraint-analysed-30042026) tracks the offline tile server + pre-generated MBTiles mitigation.
 
 #### 9. GPS coordinates exposed to OpenStreetMap
 

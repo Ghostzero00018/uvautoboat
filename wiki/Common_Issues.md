@@ -286,10 +286,10 @@ ros2 launch rosbridge_server rosbridge_websocket_launch.xml delay_between_messag
 | `Failed to load resource: leaflet.js` | Vendored Leaflet asset missing or path wrong — check `web_dashboard/autoboat/vendor/leaflet/leaflet.js` |
 | `WebSocket connection to 'ws://localhost:9090' failed` | rosbridge not running or port blocked |
 
-> **Offline status:** `roslib.js`, Leaflet, and dashboard fonts are vendored under
-> `web_dashboard/autoboat/vendor/` as of 05/05/2026, so internet access is no
-> longer required for those libraries. OpenStreetMap tiles still require internet
-> until [Roadmap §1.3](Roadmap#13-iot-imt-nord-europe--local-only-network-constraint-analysed-30042026)
+> **Offline / restricted-egress status:** `roslib.js`, Leaflet, and dashboard fonts
+> are vendored under `web_dashboard/autoboat/vendor/` as of 05/05/2026, so internet
+> access is no longer required for those libraries. OpenStreetMap tiles still
+> depend on external tile egress until [Roadmap §1.3](Roadmap#13-iot-imt-nord-europe--local-only-network-constraint-analysed-30042026)
 > Path B (offline tile server) lands.
 
 **6. Firewall blocking?**

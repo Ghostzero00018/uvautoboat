@@ -1409,10 +1409,11 @@ ss -tuln | grep 8002
 | `WebSocket connection to 'ws://localhost:9090' failed` | rosbridge not running or port blocked |
 | `ReferenceError: ROSLIB is not defined` | Vendored roslib failed to load — check the local `vendor/roslib/` file and browser console |
 
-> **Offline status:** `roslib.js`, Leaflet, and dashboard fonts are vendored under
-> `web_dashboard/autoboat/vendor/` as of 05/05/2026, so internet access is no
-> longer required for the dashboard libraries. OpenStreetMap tiles still require
-> internet until Roadmap §1.3 Path B (offline tile server) lands.
+> **Offline / restricted-egress status:** `roslib.js`, Leaflet, and dashboard fonts
+> are vendored under `web_dashboard/autoboat/vendor/` as of 05/05/2026, so internet
+> access is no longer required for the dashboard libraries. OpenStreetMap tiles
+> still depend on external tile egress until Roadmap §1.3 Path B (offline tile
+> server) lands.
 
 ### Step 6 — Check firewall (if all above pass but still disconnected)
 

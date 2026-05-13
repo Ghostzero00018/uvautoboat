@@ -360,7 +360,9 @@ propagation grep across non-diary tracked surface — 15 hits, 14
 accurate/historical, 1 new stale — `wiki/Roadmap.md` §1.1 L28 (same DDS
 multicast verification phrasing as B.1, parallel finding). Two conditional
 findings (`Pi5_Bringup_Smoke_Test.md` L34 + `Roadmap.md` L23 "headless" claims)
-remain ACCURATE today since Branch B DE install is deferred to Mon 18/05+.
+were ACCURATE at Block B audit time; late-day C.6 then superseded the
+conditional framing entirely when the professor directed that the Pi 5 stay
+Ubuntu Server headless permanently.
 **B.5**: `legacy/` boundary clean — 1 append-only commit (`f89a1bc` 07/05 added
 `legacy/README.md`, allowed under §1.3); 18 `legacy/` references in tracked
 non-legacy non-diary files all intentional documentation pointers. **Fix
@@ -616,12 +618,15 @@ on-site sessions where WiFi state can't be assumed-on. Pi 5 SSH
 pre-flight via the v5-final layered-IPv4 probe pipeline: default route
 `1.1.1.1 via 10.120.2.1 dev wlan0` from `10.120.2.50` ✓; outbound ICMP
 **blocked** (`ping -c 1 -W 3 1.1.1.1` → 0/1 received) — common on managed IoT
-networks, irrelevant to apt; IPv4 DNS via `getent ahostsv4
+networks, irrelevant to apt but important evidence that "internet works" is
+partial/managed rather than open; IPv4 DNS via `getent ahostsv4
 archive.ubuntu.com` resolves to Cloudflare CDN `104.20.28.246` ✓; L7 HTTP
 egress `curl -4 -sI http://archive.ubuntu.com/ubuntu/` returns `HTTP/1.1 200
 OK` ✓; `resolv.conf` shows systemd-resolved stub; `wlan0` up at
 `10.120.2.50/23`. ICMP-fails-only pattern with DNS + HTTP working = apt egress
-healthy = Branch B DE install technically possible. **Folded-in C.8 Pi VNC
+healthy = Branch B DE install technically possible, but not proof that
+workstation-side internet or OpenStreetMap tile egress can be assumed on the
+IoT SSID. **Folded-in C.8 Pi VNC
 audit:** zero VNC server packages installed (`dpkg -l` matched nothing), zero
 VNC systemd units, zero VNC binaries on PATH — confirms Ubuntu Server (24.04.4
 aarch64) doesn't bundle RealVNC like Raspberry Pi OS does. **Branch action this session — Branch A succeeded.** Per the box-aware v5
@@ -878,10 +883,12 @@ mechanism** (responsible for duplicating the RealSense USB stream for
 multiple downstream consumers including Herelink's video pipeline) can't
 replicate the format-locked stream. Matches the `xioctl(VIDIOC_S_FMT)
 failed, errno=16 Last Error: Device or resource busy` errors observed in
-the camera-node bring-up log during repeated `ros2 run` attempts (the
-camera node saw its own previous instance still holding the device — race
-condition that auto-recovered after the "Checking new devices..."
-detect-disconnect-redetect cycle). **Phase 5 implication:** autonomy-stack
+the camera-node bring-up log during repeated `ros2 run` attempts. The full
+terminal paste shows this failure can happen even after a reboot, so do **not**
+attribute it narrowly to the camera node's own previous instance; treat it as
+a transient V4L2 / UVC / competing-consumer format-negotiation failure
+consistent with the broader device-exclusivity finding. The node auto-recovered
+after the "Checking new devices..." detect-disconnect-redetect cycle. **Phase 5 implication:** autonomy-stack
 camera consumption (via `realsense2_camera_node` → ROS topics) and
 Herelink operator video (via the existing RTSP path) are **mutually
 exclusive consumers under the current Pi v4l2loopback setup** unless a
@@ -894,6 +901,26 @@ install (`realvnc-vnc-viewer 7.15.1.18`) retained — no harm. Pi-side VNC
 server install **parked indefinitely** per the professor's
 Pi-stays-headless directive: with no GUI/desktop on Pi, there is nothing
 for a VNC server to expose. C.8 thread closed.
+
+**Post-wrap log-audit addendum (from the full terminal paste).**
+
+- **Roadmap §1.3 correction needed and now applied:** the C.6 pre-flight
+  disproves the absolute "IoT IMT Nord Europe has no internet" wording for
+  the Pi-side path. Correct framing is managed / partial egress: Pi-side DNS
+  - HTTP to `archive.ubuntu.com` worked on 13/05, public ICMP was blocked,
+  workstation-side internet while on the IoT SSID was not proven, and OSM tile
+  availability still must not be a deployment dependency.
+- **Workstation visualization tooling:** `rviz` is not the Jazzy command/package
+  on this workstation (`apt install rviz` fails); `ros2 run rviz2 rviz2` and
+  `rviz2` both launch. `rqt` warns / traces on RealSense custom message types
+  because local `realsense2_camera_msgs` interfaces are missing; that is a
+  workstation introspection-package gap, not a DDS or Pi camera-publisher
+  failure. Standard image topics remain usable in `rviz2`.
+- **SSH instability lines:** `client_loop: send disconnect: Broken pipe`,
+  `Connection timed out`, and `No route to host` appear around deliberate
+  Pi shutdown / whole-box power cycles and brownout-era camera tests. Treat
+  those as operational power/network interruptions, not separate ROS graph
+  evidence.
 
 ---
 
@@ -908,7 +935,7 @@ Same shape as Tue Block F:
    bump header `Last Updated` + footer `Document Version` (9.11 → 9.12) if
    any tracked content updated. **Use search rather than line numbers**
    (both rows drift as Board.md grows).
-5. Fill all `[To fill]` placeholders in this file.
+5. Fill all placeholders in this file.
 6. Working diary commit; subject template depends on dominant outcome:
    - Clean sweep, no stale claims: `docs(diary): wrap 13/05 broader doc sweep — no stale claims`
    - Stale claims found + fixed inline: `docs(diary): wrap 13/05 doc sweep + N inline fixes`
@@ -919,8 +946,8 @@ Same shape as Tue Block F:
 8. **Update Week 10 external diary Wed Outcome bullet** — Windows-side
    weekly diary; deferred to next Windows-side session if Linux-only today.
 
-**Outcome.** Day wrapped in **two commits** due to the two-phase doc-update
-shape user requested (pre-test capture, then late-day-findings capture):
+**Outcome.** Day wrapped in **three commits** due to the two-phase doc-update
+shape user requested plus the early audit-fix commit:
 
 1. `b535d6d docs: refresh DDS verification + perception v2.1 + patch_vrx wording`
    — Block B early-application (9 files / 44+/14-) covering 7 stale
@@ -955,18 +982,20 @@ shape user requested (pre-test capture, then late-day-findings capture):
    device-exclusivity breaking the existing `v4l2loopback` fork);
    Roadmap §3 status table gains 3 new rows (Pi 5 power budget, RealSense →
    ROS bridge validated, camera consumer exclusivity); `wiki/Pi5_Bringup_Smoke_Test.md`
-   + `wiki/Roadmap.md` §1.1 "headless" claims revised from conditional to
+   - `wiki/Roadmap.md` §1.1 "headless" claims revised from conditional to
    permanent per supervisor directive.
 
 **Pre-commit verification (this wrap commit, run before commit message):**
 `git diff --check` clean; invisibility sweep clean on all 4 modified files;
 syntax sanity not applicable (no shell/Python edits in this wrap commit);
-[To fill] residue at L911 = scaffold instruction text + L922 = this outcome
-itself (about to be filled). Working tree will be clean after the wrap
-commit lands.
+Placeholder residue at wrap time was limited to scaffold instruction text and
+the outcome block while it was being filled. Working tree was clean after the
+wrap commit landed.
 
-**Final HEAD after wrap commit + push:** to be confirmed in the post-commit
-sweep; current pre-wrap HEAD = `4a0b277` matching `origin/main`.
+**Final HEAD after wrap commit + push:** `43c6bd6` on `main`, matching
+`origin/main` at the post-wrap audit point. The post-wrap log-audit patch
+above was applied afterward to correct the remaining doc hygiene issues
+surfaced by the full terminal paste.
 
 **Carry-forwards to Mon 18/05+** (none reshape today; all are existing items):
 
@@ -995,14 +1024,14 @@ sweep; current pre-wrap HEAD = `4a0b277` matching `origin/main`.
 
 ## Verification summary — 13/05 (check at end of day)
 
-- [ ] Block A: morning re-orientation done; Tue's `77462f7` / `d3449bd` / `ee35633` confirmed at / under HEAD; overnight inputs noted; Pi-side test decision recorded
-- [ ] Block B.1: 12 wiki files swept; findings classified (stale / accurate / borderline / needs-real-test); `wiki/Pi5_Bringup_Smoke_Test.md` L139 + L300 forward-update decision surfaced
-- [ ] Block B.2: shell + SDF + xacro comments swept; findings classified
-- [ ] Block B.3: 7 ROS 2 node docstrings + launch YAMLs + package.xml swept (inspect-only — no Python / YAML edits today without explicit permission); findings classified
-- [ ] Block B.4: Tue-outcome forward-update scan done (DDS WORKS / Pi bare-headless / GDAL PE-DLL propagation across non-diary docs)
-- [ ] Block B.5: `legacy/` boundary check clean (no inadvertent references; no recent edits inside `legacy/`)
-- [ ] Block C: audit-real-test escalations completed (or explicitly recorded "none needed" if Block B's needs-real-test list was empty)
-- [ ] Block D: diary filled; pre-commit sweep clean; `Board.md` updated if substantive; commit + push handled
+- [x] Block A: morning re-orientation done; Tue's `77462f7` / `d3449bd` / `ee35633` confirmed at / under HEAD; overnight inputs noted; Pi-side test decision recorded
+- [x] Block B.1: 12 wiki files swept; findings classified (stale / accurate / borderline / needs-real-test); `wiki/Pi5_Bringup_Smoke_Test.md` L139 + L300 forward-update decision surfaced
+- [x] Block B.2: shell + SDF + xacro comments swept; findings classified
+- [x] Block B.3: 7 ROS 2 node docstrings + launch YAMLs + package.xml swept (inspect-only — no Python / YAML edits today without explicit permission); findings classified
+- [x] Block B.4: Tue-outcome forward-update scan done (DDS WORKS / Pi bare-headless / GDAL PE-DLL propagation across non-diary docs)
+- [x] Block B.5: `legacy/` boundary check clean (no inadvertent references; no recent edits inside `legacy/`)
+- [x] Block C: audit-real-test escalations completed (or explicitly recorded "none needed" if Block B's needs-real-test list was empty)
+- [x] Block D: diary filled; pre-commit sweep clean; `Board.md` updated if substantive; commit + push handled
 
 ---
 
@@ -1056,8 +1085,8 @@ drive the **Mon 18/05 + Tue 19/05** plan, not Thu/Fri:
 
 ### Pending (carrying past Wed; rolls to Mon 18/05+ given Thu/Fri off-site)
 
-- Formal joint supervisor presentation reschedule — still pending IMT
-  Mines Alès availability + power restoration.
+- Formal joint supervisor presentation — now scheduled Wed 20/05/2026
+  10h-12h; Mon 18/05 + Tue 19/05 are the prep window.
 - Three Asks to teammate maintainer (Phase A parameter subset; CA
   placement; validation methodology).
 - Second-site (lake) Herelink video A/B retest — deferred from Mon 11/05
