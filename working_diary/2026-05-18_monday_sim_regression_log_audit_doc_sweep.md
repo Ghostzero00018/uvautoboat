@@ -543,23 +543,40 @@ Same shape as Wed 13/05 Block D:
    external diary skeleton. Windows-side; defer to next Windows session
    if Linux-only today.
 
-**Outcome.** [To fill at end of day.]
+**Outcome — day closed clean; 3 commits + Board.md row + PPT-prep on
+deck for Tue 19/05.** `Board.md` Timeline gains an 18/05/2026 row
+capturing the three Block-level outcomes (sim regression PASS + 13/05 log
+audit clean + broader sweep clean) plus the inline fixes that landed
+during the day; `Board.md` header `Last Updated` bumped 13/05/2026 →
+18/05/2026, footer `Document Version` bumped 9.12 → 9.13. All 5
+Verification-summary checkboxes ticked. **Total commits today: 3** —
+`de6e0af docs: 18/05 Block A-C fills + Roadmap RealSense port note`,
+`c9cec9c docs: 18/05 Block D outcome + scaffold node fix + Roadmap §9`,
+plus this Block E wrap commit. Pre-commit invisibility sweep clean across
+all three rounds. `git diff --check` clean (no whitespace / conflict
+markers). **Tue 19/05 is full PPT-prep day** — the "sim stack clean"
+branch from the Next Steps conditional matrix applies; concrete 10-slide
+outline now appended to the Active branch subsection below for tomorrow's
+starting point. Wed 20/05/2026 10h-12h presentation slot stays immutable.
+**Pi-side test decision held end-to-end**: Block C audit was log + doc
+cross-reference only; no Pi SSH session today. No external Week 11 diary
+scaffolded today (Linux-only session; defer to next Windows session).
 
 ---
 
 ## Verification summary — 18/05 (check at end of day)
 
-- [ ] Block A: re-orientation done; HEAD confirmed (`a8d27f3` or one tail-end doc-fix commit above); VRX §8.2
+- [x] Block A: re-orientation done; HEAD confirmed (`a8d27f3` or one tail-end doc-fix commit above); VRX §8.2
   cadence check run (HOLD or trigger noted); break inputs noted;
   Pi-side test decision recorded
-- [ ] Block B: sim stack regression test run; pass-criteria verdict
+- [x] Block B: sim stack regression test run; pass-criteria verdict
   recorded; any regression debugged or filed as Tue 19/05 follow-up
-- [ ] Block C: 13/05 log audit complete; findings classified (stale /
+- [x] Block C: 13/05 log audit complete; findings classified (stale /
   accurate / borderline / new-experiment-idea); inline fixes applied;
   experiment backlog queued for post-presentation
-- [ ] Block D: stale-doc sweep across the 8 target files; fixes applied
+- [x] Block D: stale-doc sweep across the 8 target files; fixes applied
   vs queued; stamp bumps landed if substantive
-- [ ] Block E: diary filled; pre-commit sweep clean; Board.md updated
+- [x] Block E: diary filled; pre-commit sweep clean; Board.md updated
   if substantive; commit + push handled; Tue 19/05 PPT priorities
   sketched
 
@@ -608,6 +625,62 @@ Today's outcomes drive Tue 19/05's PPT-prep block:
   decide on a case-by-case basis whether to fold into the presentation
   deck (only if directly relevant to the supervisor-facing scope) or
   queue for post-presentation Thu 21/05+.
+
+**Conditional resolution (EOD 18/05).** Sim stack clean — Block B PASS, no
+regressions. Block C audit confirmed 13/05 diary holds (17 accurate / 0
+contradicted / 1 borderline inline-fixed). No architecturally-new findings
+that would force a deck rewrite. Tue 19/05 is therefore **full PPT prep
+day** — slides, rehearsal, last-minute fact-check sweep against the current
+`origin/main` state.
+
+**Concrete 10-slide outline — starting point for Tue 19/05:**
+
+1. **Title + agenda** (~5 min)
+2. **Project status snapshot** — Phase 1 done / Phase 2 done / Phase 4 90 % /
+   Phase 5 starting / Phase 3 paused; `Board.md` 90 % progress badge
+3. **Phase 5 architecture** — Pi 5 as companion computer (23/04/2026
+   visual-verified inside CCU); MAVLink autopilot as working hypothesis
+   (specific chip / firmware still open, see `Board.md` Risk #3)
+4. **First wet test 07/05/2026 outcomes** — Herelink manual control + QGC/MP
+   arm-disarm both work; autonomy untested; video resolved 11/05 campus side
+   under known-good `Source = Herelink Hotspot` preset (post-SkiaSharp /
+   libdl host-local fix for MP-Linux)
+5. **Network architecture findings** — DDS WORKS on `IoT IMT Nord Europe`
+   12/05/2026 (standard ROS 2 graph discovery, no Discovery Server needed);
+   Herelink / Pi-ROS decoupling (13/05 C.7 — RTSP path is workstation-direct
+   from Herelink, not via a Pi ROS publisher); three deployment networks by
+   exact SSID (`IMT Nord Europe 5G` / `IoT IMT Nord Europe` /
+   `IMT-Aquatic-drone`)
+6. **Pi 5 bring-up findings** — Pi stays Ubuntu Server headless permanently
+   (13/05 supervisor directive); brownout root-cause (5V GPIO sag below
+   ~4.63 V PMIC under-voltage trip under RealSense streaming load — was
+   misread as "sleep"); session-hardening edits (`/boot/firmware/config.txt`
+   - `/etc/systemd/logind.conf`); RealSense → ROS bridge State B validated
+   via `realsense2_camera_node` on Pi
+7. **Camera-consumer-exclusivity constraint** — `realsense2_camera_node` on
+   Pi + workstation rviz2 streaming → Herelink console video lost; likely
+   `v4l2loopback` fork can't share format-locked stream; Phase 5
+   sharing-mechanism design space (single canonical camera node + RTP
+   republish for Herelink, or multi-mux camera-fork daemon at v4l2 layer)
+8. **VRX upstream fork + sim infrastructure stability** — `e384cd65`
+   `publish_model_pose` bake-in on `Ghostzero00018/vrx autoboat/main`
+   (06/05); §8.2 weekly cadence still HOLD (18/05 check, 0/4 triggers
+   fired); today's regression PASS demonstrates the modular sim stack runs
+   cleanly under default `ROS_DOMAIN_ID` post-13/05 bashrc unset
+9. **Obj 1 / Obj 2 / Obj 3 scope refinements** (post-30/04 on-site scoping
+   meeting) — Obj 1 = telemetry only (water-sensor data is Obj 2); CA
+   placement most likely Linux-side; Obj 3 "regional datasets" portion
+   removed (insufficient accessible regional historical data); validation
+   refined to same-day cross-validation; ML scope refined to
+   residual-based + time-series + physics-informed (stretch); "ML trained
+   on CA outputs" framing rejected
+10. **Open questions for supervisors + next steps** — Phase 5 driver
+    bring-up planning starts Thu 21/05+ (newly unblocked by 12/05 DDS PASS
+    - 13/05 RealSense bridge State B); **Three Asks to teammate maintainer
+    still pending** (Phase A parameter subset / CA placement confirmation /
+    validation methodology); Phase 5 hardware-design pass (regulated ≥5A 5V
+    supply, bulk capacitance, possibly powered USB hub); second-site
+    Herelink video A/B retest deferred to next field session
 
 ### Pending (carries past Mon; mostly post-presentation)
 
