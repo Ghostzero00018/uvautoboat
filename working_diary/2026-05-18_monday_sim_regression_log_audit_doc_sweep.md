@@ -142,8 +142,7 @@ A expected-HEAD wording`, one tail-end doc-fix commit above the scaffold's
 working tree clean. Re-anchored on Wed 13/05 C.6 (Pi 5 brownout root-cause —
 GPIO-pin 5V sag below ~4.63 V PMIC under-voltage trip under RealSense
 streaming load; session-hardening edits applied to `/boot/firmware/config.txt`
-
-- `/etc/systemd/logind.conf`; Branch B DE-install **permanently shelved per
+and `/etc/systemd/logind.conf`; Branch B DE-install **permanently shelved per
 professor's directive** — Pi 5 stays Ubuntu Server headless permanently) and
 C.7 (RealSense bridge State B validated: `realsense2_camera_node` on Pi under
 default `ROS_DOMAIN_ID=0` enumerates full topic surface to workstation
@@ -263,8 +262,8 @@ ros2 daemon stop
 dependency in the sim stack.** Pre-check: `~/.bashrc:123` shows
 `#export ROS_DOMAIN_ID=56` (commented out, confirms Wed 13/05 unset);
 active session domain default (0). Repo-wide
-`git grep -nIE 'ROS_DOMAIN_ID'` returned 16 hits but **zero in runtime
-paths** — all narrative/documentation (commented setup examples in
+`git grep -nIE 'ROS_DOMAIN_ID'` surfaced **zero hits in runtime
+paths** — all hits were narrative/documentation (commented setup examples in
 `README.md` L81, `USER_MANUAL.md` L401 + diagnostic prose, `wiki/Installation_Guide.md`
 L131; troubleshooting docs in `wiki/Common_Issues.md` L260/263/1255 +
 `web_dashboard/autoboat/README_autoboat_dashboard.md` L236/237; narrative in
@@ -654,8 +653,8 @@ day** — slides, rehearsal, last-minute fact-check sweep against the current
 6. **Pi 5 bring-up findings** — Pi stays Ubuntu Server headless permanently
    (13/05 supervisor directive); brownout root-cause (5V GPIO sag below
    ~4.63 V PMIC under-voltage trip under RealSense streaming load — was
-   misread as "sleep"); session-hardening edits (`/boot/firmware/config.txt`
-   - `/etc/systemd/logind.conf`); RealSense → ROS bridge State B validated
+   misread as "sleep"); session-hardening edits to `/boot/firmware/config.txt`
+   and `/etc/systemd/logind.conf`; RealSense → ROS bridge State B validated
    via `realsense2_camera_node` on Pi
 7. **Camera-consumer-exclusivity constraint** — `realsense2_camera_node` on
    Pi + workstation rviz2 streaming → Herelink console video lost; likely
