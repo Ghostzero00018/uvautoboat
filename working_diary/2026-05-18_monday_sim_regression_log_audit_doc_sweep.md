@@ -136,8 +136,32 @@ After Thu/Fri off-site break:
 - Pi 5 reachability check — defer unless Block C surfaces a Pi-specific
   question. Block B is fully workstation-side.
 
-**Outcome.** [To fill — git state, VRX cadence verdict, break inputs,
-Pi-side test decision.]
+**Outcome.** Git state clean: HEAD = `1b03702 docs(diary): soften 18/05 Block
+A expected-HEAD wording`, one tail-end doc-fix commit above the scaffold's
+`a8d27f3` soft anchor; `main` in sync with `origin/main` (0/0 ahead-behind);
+working tree clean. Re-anchored on Wed 13/05 C.6 (Pi 5 brownout root-cause —
+GPIO-pin 5V sag below ~4.63 V PMIC under-voltage trip under RealSense
+streaming load; session-hardening edits applied to `/boot/firmware/config.txt`
+
+- `/etc/systemd/logind.conf`; Branch B DE-install **permanently shelved per
+professor's directive** — Pi 5 stays Ubuntu Server headless permanently) and
+C.7 (RealSense bridge State B validated: `realsense2_camera_node` on Pi under
+default `ROS_DOMAIN_ID=0` enumerates full topic surface to workstation
+cross-machine via DDS; camera-consumer-exclusivity finding — `v4l2loopback`
+fork can't share format-locked stream, so autonomy-stack camera and Herelink
+operator video are mutually exclusive consumers under current Pi v4l2 setup).
+**VRX §8.2 weekly cadence (DUE today) — HOLD stands.** `~/seal_ws/src/vrx`
+clean tree, on `autoboat/main`, `git pull --ff-only` already up-to-date;
+`git log autoboat/main --not upstream/jazzy --oneline` returns exactly 1 commit
+(`e384cd65 fix: enable publish_model_pose for LiDAR TF bridge (issue #876)`);
+top tag still `v3.1.2`. All 4 triggers (patch count >3, custom mods upstream
+wouldn't accept, Phase 5+ sim-side coupling, upstream major release) at 0/4 —
+HOLD continues; next cadence check Mon 25/05. **Break inputs:** Wed 20/05/2026
+10h-12h formal joint supervisor presentation confirmed unchanged; no other
+supervisor / teammate replies, no presentation-scope changes, no machine-state
+changes over Thu 14/05 + Fri 15/05 off-site break. **Pi-side test decision:**
+Block B is fully workstation-side per scaffold; Pi reachability check deferred
+unless Block C surfaces a Pi-specific question.
 
 ---
 
@@ -232,10 +256,60 @@ sleep 5
 ros2 daemon stop
 ```
 
-**Outcome.** [To fill — bashrc grep result, repo-side `ROS_DOMAIN_ID`
-grep result, launcher result (5/5 nodes? launch time? BrokenPipeError
-count? new crashes?), dashboard panel state, health check count, short
-mission result. Regression-found-or-not verdict + root cause if regressed.]
+**Outcome — Regression test PASS on the core question: no hardcoded-domain
+dependency in the sim stack.** Pre-check: `~/.bashrc:123` shows
+`#export ROS_DOMAIN_ID=56` (commented out, confirms Wed 13/05 unset);
+active session domain default (0). Repo-wide
+`git grep -nIE 'ROS_DOMAIN_ID'` returned 16 hits but **zero in runtime
+paths** — all narrative/documentation (commented setup examples in
+`README.md` L81, `USER_MANUAL.md` L401 + diagnostic prose, `wiki/Installation_Guide.md`
+L131; troubleshooting docs in `wiki/Common_Issues.md` L260/263/1255 +
+`web_dashboard/autoboat/README_autoboat_dashboard.md` L236/237; narrative in
+`wiki/Dashboard_Security.md` L272 + `wiki/Roadmap.md` L28/190/587/590/591;
+historical Timeline rows in `Board.md` L303/305). No launcher / launch YAML
+/ dashboard JS / Python node / health-check shell hit. **Launcher run
+(`--use-nvidia`)**: 55 s cold-boot (within 43-52 s baseline variance for
+first-boot-after-break-of-week); all 6 stages green per launcher footer —
+Gazebo (PID 32707), ROS Bridge (33160), Navigation Stack (33245), Web Video
+Server (33455), RViz (33537), Web Dashboard (33629); `patch_vrx.sh`
+idempotent no-op (`OK: publish_model_pose already true`) — fork bake-in
+`e384cd65` in effect. **Runtime graph snapshot**: `ros2 node list` returned
+18 nodes total, including all 4 modular user-AutoBoat nodes under their
+post-16/04 `_node` suffix (`/lidar_perception_node`, `/waypoint_planner_node`,
+`/heading_controller_node`, `/waypoint_visualizer_node`) plus
+`/health_check_service` as the 5th long-running user node; full WAM-V
+boat-side bridge (`/wamv/frame_publisher`, `/wamv/optical_frame_publisher` ×3,
+`/wamv/robot_state_publisher`, `/wamv/ros_gz_bridge`), `/ros_gz_bridge`,
+`/rosapi`, `/rosbridge_websocket`, `/rviz2`, `/web_video_server`, anonymous
+TF listener. **0 `BrokenPipeError`** in `/tmp/autoboat_launcher_probe.log`
+
+- 29/04 `62636e9` SIGPIPE capture-then-grep refactor holds across the
+weekend + Thu/Fri break. **No today-dated `_opt_ros_jazzy*.crash` files** in
+`/var/crash/` — only pre-existing 13/05 `_opt_ros_jazzy_bin_rqt.1002.crash`
+(from C.7 RealSense introspection) untouched. Dashboard browser tab: user
+visual-confirmed no issues during the launch window. **Scaffold-vs-reality
+node-name finding worth flagging for Block C audit.** Scaffold's pass
+criteria listed 5 expected nodes including `/AutoBoat`. Live IDLE graph
+shows `/health_check_service` as the 5th long-running node, no `/AutoBoat`
+present. Per `Board.md`, the integrated `/AutoBoat` monolith was deprecated
+and moved to `legacy/` (`Note: The integrated AutoBoat monolith has been
+deprecated and moved to legacy/.`); the modular IDLE-state 5th node is
+`/health_check_service`. `/AutoBoat` may have been the 16/04 rename target
+for the now-deprecated Vostok1 monolith, in which case scaffold's pass
+criteria copied a stale assumption — to confirm against the 13/05 terminal
+log + a fresh grep in Block C. Not a regression in any case. **Items
+captured by snapshot before launcher Ctrl+C; not captured live (launcher
+already down):** health check 49-PASS service call, short
+`autoboat_cli generate/confirm/start` mission cycle, full dashboard panel
+populate-with-live-data verification. Sufficient evidence already: the
+regression question (does any piece of the sim stack hardcode-depend on
+domain 56?) is unambiguously answered NO — pre-check grep + launch + 18-node
+graph all align. Re-running for the trailing checks would cost ~30-40 min
+and dilute Block C / Block D / PPT-prep headroom; deferred. Block B
+PASS-with-trailing-items-acknowledged. **Pi-side test decision held:**
+Block C may still need Pi-specific data depending on what the 13/05 log
+audit surfaces, but Block B itself stayed fully workstation-side per
+scaffold's hard boundary.
 
 ---
 
@@ -299,9 +373,69 @@ re-do — the goal is doc-quality polish + experiment-idea harvest, not
 new real-world testing today. Wed 20/05 presentation is the actual
 output.
 
-**Outcome.** [To fill — log path used, findings count by class, inline
-fixes applied (file:line list), experiment ideas queued (with rough
-priority), any items deferred to post-presentation.]
+**Outcome — 13/05 diary's C.6 / C.7 write-up holds up cleanly against the
+log; 1 borderline + 3 new-data-points + 1 scaffold-bug carry-forward.** Log
+path: `/home/ghostzero/Desktop/13_05_2026_test_logs.txt` (1336 lines, 82 KB,
+~40 k tokens — read in 3 chunks). **Findings counts: 17 accurate / 0
+contradicted / 1 borderline / 3 new-experiment-data-points / 1 scaffold-bug
+carry-forward to Block D.** **Accurate (sampled — 17 cleanly supported
+claims):** workstation `IMT Nord Europe 5G → IoT IMT Nord Europe` hop (log
+L6-7), Pi default route `1.1.1.1 via 10.120.2.1 dev wlan0` (L35-37), ICMP
+blocked 0/1 (L38-40), DNS `archive.ubuntu.com → 104.20.28.246` (L42-44), HTTP
+egress `200 OK Date: Wed, 13 May 2026 12:06:34 GMT` (L46-48), Pi VNC audit
+zero pre-install (L60-67), C.7 dual-domain sweep `/parameter_events +
+/rosout` only on both domains across 4 separate runs (L132-413; diary's "twice"
+under-counts the actual reproducibility), `bash: line 25: fg: no job
+control` (L139 etc.), RealSense `xioctl(VIDIOC_S_FMT) errno=16` recurring
+across 5+ invocations including post-reboot (L525, L652, L742, L1016, L1254
+— validates diary's "do not attribute narrowly to the camera node's own
+previous instance"), auto-recovery cycle to `RealSense Node Is Up!` (L540-577
+etc.), SSH instability `Broken pipe / Connection timed out / No route to
+host` around brownout (L466, L592-593, L1068-1078, L1163-1166), `apt install
+rviz` not found (L919-924, L925-929 — two attempts), `ros2 run rviz2 rviz2`
+and bare `rviz2` both launch (L930-942), `rqt` `realsense2_camera_msgs`
+`ModuleNotFoundError` trace (L845-915), RealSense streaming profiles depth
+Z16 / color RGB8 / IR Y8 all 640×480 @ 15 fps + accel 100 Hz + gyro 200 Hz
+(L521-575), D435I serial / FW / Product ID / USB 2.1 protocol identity
+(L498-502, L514-515), full workstation cross-machine topic surface (L809-836,
+list ordering exact match). **Borderline (1, inline-fixed in
+`wiki/Roadmap.md` §3 L190).** RealSense USB hub port enumeration varied
+across sessions: `2-1` dominant (16:25 / 17:33 / 17:40 / 17:41 runs), `1-1`
+observed once (17:14 pre-reboot run at L1233-1235 with
+`usb1/1-1/1-1:1.0/video4linux/video0` + `Device with port number 1-1 was
+found`). Likely a physical re-plug between sessions or USB bus
+re-enumeration after the 16:48 brownout / shutdown cycle. Roadmap §3 row
+amended with single parenthetical noting both ports observed. 13/05
+`working_diary` entry left untouched per the append-only frozen-history rule;
+`Board.md` L305 doesn't make a port-number claim (only the USB-2.1 protocol
+generation, which is unambiguous), so no Board edit needed. **New
+experiment-data-points (3, all queued post-presentation, low priority).** (1)
+Pi 5 thermals during RealSense streaming: 43.3 → 46.2 → 51.8 → 57.2 → 59.0
+→ 61.1 → 63.4 °C across the session (Ubuntu MOTD on every SSH reconnect:
+L476, L603, L967, L1088, L1175, L1207, L1316). 63 °C peak is well within Pi
+5's safe range (~85 °C throttle). Positive evidence for Phase 5 hardware-design
+pass's "Static analysis of thermals + current draw under full-stack load"
+prep task. (2) 49 apt updates pending on Pi 5 (37 security) surfaced on
+every SSH MOTD — Phase 5 driver bring-up decision branch: apply updates
+before driver work (risk: kernel updates may reset device-tree overlays /
+cause boot regressions) or defer. Queue for Thu 21/05+ driver bring-up
+planning session. (3) RealSense first-invocation xioctl-error-then-auto-recover
+is the **steady-state pattern**, not a transient failure (5/5 invocations show
+it across reboots, sessions, and USB ports). Worth a one-paragraph operator-facing
+note in `wiki/Common_Issues.md` or `wiki/Pi5_Bringup_Smoke_Test.md` so future
+bring-up operators don't panic when the first `ros2 run realsense2_camera`
+shows red text then succeeds in ~2 s. Queue post-presentation. **Scaffold-bug
+carry-forward to Block D (1).** Today's diary scaffold Block B L200-201
+listed 5 expected nodes including `/AutoBoat`. Per `Board.md` L32, the
+integrated `/AutoBoat` monolith has been deprecated and moved to `legacy/`;
+the modular system's 5 long-running IDLE nodes are the 4 `_node`-suffixed
+ones (`lidar_perception`, `waypoint_planner`, `heading_controller`,
+`waypoint_visualizer`) plus `health_check_service`. Live Block B graph
+confirmed this — `/AutoBoat` never appeared. Scaffold author copied stale
+expectation. Inline-fix the scaffold prose in Block D's broader sweep.
+**Pi-side test decision held**: Block C didn't surface a Pi-specific question
+needing a live Pi probe; audit was log + doc cross-reference only. No Pi
+SSH session today.
 
 ---
 
