@@ -219,9 +219,12 @@ echo "=== topic count ==="; wc -l /tmp/mon_topic_list.txt
 
 Pass criteria (matches 04/05 + 05/05 + 30/04 cold-boot baselines):
 
-- 5 expected named nodes up — `/lidar_perception`, `/waypoint_planner`,
-  `/heading_controller`, `/AutoBoat`, `/waypoint_visualizer`
-  (post-16/04 refactor names).
+- 5 expected long-running nodes up under the modular system —
+  `/lidar_perception_node`, `/waypoint_planner_node`,
+  `/heading_controller_node`, `/waypoint_visualizer_node`,
+  `/health_check_service` (the integrated `/AutoBoat` monolith was
+  deprecated and moved to `legacy/`; `autoboat_cli` only spawns its own
+  node when CLI commands run).
 - 0 `BrokenPipeError` in `/tmp/autoboat_launcher_probe.log` — 29/04
   `62636e9` SIGPIPE capture-then-grep refactor should hold.
 - No new today-dated `/var/crash/_opt_ros_jazzy*.crash` files.
@@ -476,8 +479,36 @@ Then read each hit in context. Cross-check against today's known state
 (Block B regression verdict + Block C audit findings + Wed 13/05 final
 state on `origin/main`).
 
-**Outcome.** [To fill — files swept, findings classified, fixes
-applied vs queued, stamp bumps landed.]
+**Outcome — broader sweep clean; 2 carry-forward fixes from Block C
+landed.** Risky-term grep across the 8 target files (`README.md` /
+`USER_MANUAL.md` / `Board.md` / `wiki/Home.md` / `wiki/README_WIKI.md` /
+`wiki/Roadmap.md` / `working_diary/README.md` /
+`web_dashboard/autoboat/README_autoboat_dashboard.md`) returned **0 stale
+claims** — all ~43 hits across the 8 files were legitimate (license badges,
+instructional prose like "Then open ...", troubleshooting tables for vendored
+assets / build failures / WebSocket / GPS, accurate Phase 5 status rows,
+Roadmap meta-description "open questions", `working_diary/README.md`
+append-only convention). No inline fixes needed from the broader sweep.
+**2 carry-forward fixes from Block C applied.** (1) Scaffold-bug at today's
+diary Block B pass-criteria list (was around L222-224) — the original prose
+listed 5 expected nodes including `/AutoBoat` (the 16/04 rename target for
+the deprecated Vostok1 monolith, which `Board.md` L32 records as moved to
+`legacy/`). The live Block B `ros2 node list` snapshot showed
+`/health_check_service` instead. Replaced with the correct 5 `_node`-suffixed
+modular nodes (`/lidar_perception_node`, `/waypoint_planner_node`,
+`/heading_controller_node`, `/waypoint_visualizer_node`) plus
+`/health_check_service`, with a clarifying note that `autoboat_cli` only
+spawns its own node when CLI commands run. (2) `wiki/Roadmap.md` §9 revision
+log gains an 18/05/2026 entry capturing the §3 RealSense USB port-enumeration
+parenthetical landed earlier today in commit `de6e0af`. Single-line entry
+matching §9 convention; provides change provenance for future readers.
+**No stamp bumps in Block D.** `wiki/Home.md`, `wiki/README_WIKI.md`,
+`working_diary/README.md` were untouched today and stay at 13/05/2026.
+`Board.md` Last-Updated also stays at 13/05/2026; any 18/05 Board.md
+Timeline-row addition is a Block E decision per scaffold ("if substantive").
+**Block D scope cap respected** — inspect-only by default for everything
+outside the Block C carry-forwards. PPT-prep headroom preserved for
+Tue 19/05.
 
 ---
 
