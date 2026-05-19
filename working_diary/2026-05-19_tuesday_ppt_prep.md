@@ -417,7 +417,28 @@ Same shape as Mon 18/05 Block E:
    - Mode of presenting: laptop screen / projector / video call?
      (Affects whether secondary devices need to be set up.)
 
-**Outcome.** [To fill at end of day.]
+**Outcome.** Day closed clean. Wrap commit
+`faa9ba1 docs(diary): wrap 19/05 PPT polish + rehearsal under 20min`
+landed and pushed; `main` in sync with `origin/main` (identical SHA,
+0/0 ahead-behind). **Single wrap commit today** — mirrors the
+polish-not-drafting day shape; no Roadmap / Board.md inline edits
+needed (Mon 18/05's 3-commit pattern doesn't apply since today's
+substantive output is the deck itself, which lives outside the repo).
+`git log --oneline -10` sanity check passed; `git diff --check` clean
+pre-wrap; **§1.6 pre-commit invisibility sweep returned 0 matches**
+across all 10 tracked file extensions before the wrap. **No
+`Board.md` Timeline row added for 19/05** — Tue was execution-only
+(Windows-side deck polish + rehearsal); zero non-diary repo edits
+means no `Last Updated` / `Document Version` bump warranted. All
+Block A-D `[To fill]` placeholders resolved in the wrap commit; this
+Block E placeholder closed in a small follow-up commit since the
+polish-day shape compressed the usual wrap-commit-fills-Block-E
+pattern (vs Mon 18/05 where Block E was filled inside `9452a37`
+itself). **Wed 20/05 morning checklist** stays in scaffold body
+(laptop charge / Windows env + `.pptx` accessible / live-talk
+backup — slides-only PDF alongside `.pptx`, optional notes-pages PDF
+for print handout / room + mode confirmed before 10h / any last
+fact-check item from the polish).
 
 ---
 
@@ -432,7 +453,7 @@ Same shape as Mon 18/05 Block E:
   passed; rough timing estimate captured
 - [x] Block D: speaker notes added (or partial count noted); rehearsal
   timing under 20 min total; trims applied if needed
-- [ ] Block E: diary filled; pre-commit sweep clean; commit + push
+- [x] Block E: diary filled; pre-commit sweep clean; commit + push
   handled; Wed morning checklist captured
 
 ---
