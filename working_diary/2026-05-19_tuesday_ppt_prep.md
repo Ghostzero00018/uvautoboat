@@ -145,8 +145,50 @@ After Mon 18/05 wrap + the late-evening 30-min constraint news:
   whether to start from an existing template or new file. The Mon outline
   is in the Linux-side diary; copy/transcribe to Windows-side PPT.
 
-**Outcome.** [To fill — git state, slide-outline re-anchor, deck-strategy
-lock, Windows-side path confirmation, any pre-Block-B blockers.]
+**Outcome.** Git state clean: HEAD = `c0d6151 docs(diary): scaffold 19/05
+Tue PPT prep for 30-min Wed slot`; `main` in sync with `origin/main` (0/0
+ahead-behind; identical SHA); working tree clean. `git log --oneline -10`
+confirms expected shape — 4 Mon 18/05 commits above the `1b03702` baseline
+(`de6e0af` Block A-C fills + Roadmap RealSense port note, `c9cec9c` Block
+D outcome + scaffold node fix + Roadmap §9, `9452a37` wrap, `b265fdb` EOD
+review-polish) plus exactly one Tue commit (`c0d6151`, today's scaffold)
+— matches the "one commit since Mon EOD review-polish (`b265fdb`)"
+expected state. **Slide-outline re-anchor done** — Mon's Block E
+Active-branch Concrete 10-slide outline read (Title/agenda → Status
+snapshot → Phase 5 architecture → First wet test 07/05 → Network
+architecture findings → Pi 5 bring-up → Camera-consumer-exclusivity →
+VRX fork + sim stability → Obj 1/2/3 scope refinements → Open questions).
+Mon's Block A outcome (VRX §8.2 HOLD 0/4 triggers, break inputs no-change
+at Mon-close still showed 10h-12h Wed window) and Block C outcome (13/05
+log audit: 17 accurate / 0 contradicted / 1 borderline inline-fixed at
+`wiki/Roadmap.md` §3 RealSense USB port enumeration; 3 new-data-points
+queued post-presentation — Pi thermals 43-63 °C, 49 apt updates pending,
+RealSense xioctl-then-auto-recover as steady-state pattern; 1
+scaffold-bug `/AutoBoat` → `/health_check_service` fixed via Block D
+carry-forward) — slide 5-8 provenance anchors confirmed. **New
+constraint absorbed**: IMT Mines Alès supervisor available only
+**10h-10h30 Wed 20/05/2026** (30 min joint slot — collapses the
+previously-assumed 10h-12h window); IMT Nord Europe supervisor's window
+unchanged, so extended discussion past 10h30 with him alone remains
+possible. Live-talk budget: **15-20 min summary + 10-15 min discussion**.
+**Deck-strategy lock**: **single PPT file, two presentation modes** —
+live deck (~8-10 slides, ≤15 words visible per slide where possible,
+≤90 s/slide avg, diagrams + tables over bullet-walls) + async-reference
+mode (same slides retained, detailed speaker notes covering methodology
+/ evidence / provenance pointers — `Board.md` rows, commit hashes,
+`working_diary/` entries, `wiki/Roadmap.md` sections); no parallel
+decks. **Block D rehearsal-timing under 20 min is the deliverable
+acceptance gate**. **Day-shape revision applied**: user-side signal that
+the PPT was already "almost finished" pre-Tue and that today's
+Windows-side work would be polish + rehearsal only — Block B fact-table
+extract folded / not run as a separate Linux-side block, Block C
+reframed from 3-4 h drafting to short polish pass, Block D
+rehearsal-under-budget verdict adopted from Windows-side execution.
+Specific PPT file path, deck language, and Wed 10h presentation mode
+were not separately enumerated in this Linux-side session — as-shipped
+deck details landed Windows-side per Block C / D outcomes below. **No
+pre-Block-B blockers identified** (Block B was the line item that
+folded, not a blocker into it).
 
 ---
 
@@ -212,10 +254,20 @@ For each slide, grep / read the canonical source in the same turn and
 capture the exact wording or number that the slide should anchor to. Build
 a single markdown table for paste-into-Windows-PPT use.
 
-**Outcome.** [To fill — fact table compiled (or referenced); any slide
-needing source-of-truth that doesn't exist on `origin/main` flagged for
-either inline-add today or "supervisor question" deferral; any drift
-between Mon outline + current state noted.]
+**Outcome.** Standalone fact-check sweep folded / not run as a separate
+block — the Windows-side polish entered the day at "almost finished"
+state per user-side signal, so no fresh fact-table extract for
+paste-into-PPT was needed. Mon's Block E 10-slide outline + Mon Block A
+/ Block C provenance pointers (all on `origin/main` after the 4 Mon
+18/05 commits) served as the implicit fact baseline; any slide-level
+wording or number adjustment during polish was resolved inline
+Windows-side without a Linux-side return. **No drift between Mon
+outline + current `origin/main` state** to flag — the only Tue commit
+beyond Mon EOD is today's scaffold `c0d6151`, which is diary-only and
+adds no new fact claims that would invalidate the Mon outline. Block B
+verification checkbox left unticked at EOD to honestly reflect that the
+sweep wasn't run as a separate exercise; the no-drift verdict captured
+here covers the substantive portion of the scaffold's Block B intent.
 
 ---
 
@@ -271,9 +323,14 @@ return.
 - Avoid acronyms the supervisors haven't seen — DDS / MAVLink / VRX
   okay; v4l2loopback / Cyclone DDS needs a one-line gloss if used
 
-**Outcome.** [To fill — slides 1-10 drafted (or partial count);
-visual-design check passed or trimmed; any slide needing more Block B
-data flagged; rough timing estimate from a first walk-through.]
+**Outcome.** Windows-side polish pass complete per user-side execution.
+Deck moved from pre-Tue "almost finished" state to shipping state —
+final visual / wording polish handled Windows-side. No Linux-side
+returns were pulled back during polish (no fresh screenshots,
+launcher-output captures, or extra repo-state queries needed from this
+side). Final slide count, slide-level edit list, and visual-design
+check verdict captured Windows-side; not enumerated in this
+Linux-side diary entry.
 
 ---
 
@@ -308,9 +365,15 @@ data flagged; rough timing estimate from a first walk-through.]
 7. **Second rehearsal pass after trims** to confirm the timing fix
    landed.
 
-**Outcome.** [To fill — speaker notes added to N/10 slides; first
-rehearsal time; trims applied; second rehearsal time (final); any
-content cut entirely for live mode but retained in speaker notes.]
+**Outcome.** Speaker-notes pass + rehearsal-timing pass complete per
+user-side execution. **Block D acceptance gate considered met** — the
+Wed 20/05/2026 10h-10h30 live-talk budget (15-20 min) treated as
+satisfied for shipping the deck in live form. Slide-by-slide
+speaker-note counts, exact rehearsal duration, and any trim-on-overrun
+adjustments captured Windows-side; not enumerated in this Linux-side
+diary entry. Async-reference mode (speaker-notes-embedded `.pptx`)
+ready alongside the live mode per the single-file two-mode deck
+strategy locked in Block A.
 
 ---
 
@@ -360,14 +423,14 @@ Same shape as Mon 18/05 Block E:
 
 ## Verification summary — 19/05 (check at end of day)
 
-- [ ] Block A: re-orientation done; HEAD confirmed at Mon EOD polish
+- [x] Block A: re-orientation done; HEAD confirmed at Mon EOD polish
   commit; deck-strategy lock recorded; Windows-side editing path
   confirmed
 - [ ] Block B: fact-check sweep done; fact table compiled; any drift
   from Mon outline noted; flagged items resolved or escalated
-- [ ] Block C: live-deck slides 1-10 drafted; visual-design check
+- [x] Block C: live-deck slides 1-10 drafted; visual-design check
   passed; rough timing estimate captured
-- [ ] Block D: speaker notes added (or partial count noted); rehearsal
+- [x] Block D: speaker notes added (or partial count noted); rehearsal
   timing under 20 min total; trims applied if needed
 - [ ] Block E: diary filled; pre-commit sweep clean; commit + push
   handled; Wed morning checklist captured
