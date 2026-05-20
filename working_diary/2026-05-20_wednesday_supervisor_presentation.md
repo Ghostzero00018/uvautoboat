@@ -241,11 +241,46 @@ unless screen-share allows discreet typing):
   which stay pending.
 - New scope signals or supervisor-flagged questions.
 
-**Outcome.** [To fill — talk timing (overall + any slide that overran);
-per-slide supervisor reaction summary; Three Asks status (N resolved /
-N pending); Phase 5 timeline supervisor reaction; any scope signals or
-doc-correction queue items; Mines Alès supervisor satisfied / partial /
-needs-follow-up verdict.]
+**Outcome.** Joint slot completed within the 10h-10h30 Mines Alès cap.
+**Talk timing, per-slide supervisor reactions, slide-claim pushback,
+Mines Alès supervisor satisfaction verdict, and Block C continuation
+status: not captured (compressed slot).**
+
+**Three Asks status — 2 of 3 resolved:**
+
+1. **Phase A parameter subset — resolved as scope clarification.**
+   Physical sensor interface is not part of this internship's work
+   scope (owned by another team member); the parameter-subset Three
+   Ask therefore belongs to the Phase A owner.
+2. **CA placement — resolved (Linux confirmed, mild hedge).**
+   "Probably placed on Linux machine"; consistent with project
+   topology (Pi 5 headless, Linux workstation hosts CA compute).
+3. **Validation methodology — pending external confirmation only.**
+   Same-day R₁/R₂ one-outing split remains the documented principal
+   approach (locked 30/04/2026 per `wiki/Roadmap.md` §6 Phase E);
+   day-gap return remains bounded to slow-changing parameters. Not
+   addressed today; carry forward to teammate maintainer reply or
+   the 03/06/2026 meeting.
+
+**Phase 5 next-step direction.** Implement the Pi 5 MAVLink ingestion
+path so the Pi 5 receives autopilot / boat telemetry and exposes it as
+ROS 2 topics. `mavros2` / MAVROS remains the direct ROS bridge route;
+MAVProxy is acceptable for heartbeat verification, routing, or fanout,
+but not as the ROS bridge unless paired with a custom/pymavlink
+publisher (`wiki/Roadmap.md` §1.1 + `Board.md` 30/04 row preserve this
+distinction). Supervisor left the exact route open; end state is Pi 5
+telemetry → ROS 2 topics.
+
+**Action items from supervisor:**
+
+- Mines Alès prof to send paper list on **digital twin** (deliverable
+  from supervisor; review on arrival; likely informs Obj 3 ML
+  methodology).
+- **Next supervisor meeting: 03/06/2026 10h-12h** (2-hour morning
+  window, not 30-min cap shape).
+
+**Scope signals.** Digital-twin direction surfaced via the paper-list
+deliverable. Obj 3 ML implication TBD pending paper review.
 
 ---
 
@@ -283,9 +318,11 @@ open per Tue scaffold context.
 - Any architecture-level commitments (e.g., "let's go with Option B for
   camera sharing") — these inform Roadmap §3 updates in Block D.
 
-**Outcome.** [To fill — Block C ran (or N/A if no extension); topics
-covered; decisions reached per topic; Thu+ action items with owner /
-target; any architecture-level commitments to capture in Roadmap.md.]
+**Outcome.** No separate Block C extension notes were captured. Treat
+Block C as **N/A for action-item extraction today**: the recorded
+supervisor outcome is the compressed 10h-10h30 joint slot captured in
+Block B. No additional IMT Nord Europe-only decisions are available to
+land from this block.
 
 ---
 
@@ -332,10 +369,47 @@ updates; bigger rewrites are Thu+ scope. The acceptance criterion for
 Block D is *action items extracted + minimal doc updates landed*, not
 *full Roadmap refactor*.
 
-**Outcome.** [To fill — action-item list summary (N items: Thu+ /
-defer / done-in-Block-D-itself); Board.md Timeline row added (or why
-not); Roadmap.md edits landed (or queued); deck-claim correction queue
-items resolved or queued; Thu 21/05+ scope decision recorded.]
+**Outcome.** Action items extracted (D1-D5): **D1** implement Pi 5
+MAVLink ingestion path → ROS 2 topics (Thu 21/05+ kickoff, paper plan
+only first; hardware-design pass prereq); **D2** hardware-design pass
+per existing `wiki/Roadmap.md` §3 row 189 (Thu 21/05+); **D3** review
+supervisor's digital-twin paper list when received (async on prof
+delivery; likely informs Obj 3 ML methodology); **D4** carry forward
+validation methodology Three Ask (teammate maintainer primary →
+03/06/2026 supervisor meeting fallback); **D5** prepare for 03/06/2026
+10h-12h supervisor meeting (~14 days out; bring Phase 5 bring-up
+progress + validation methodology resolution path + paper review if
+received).
+
+**Doc updates landed:**
+
+- `Board.md` — 20/05/2026 Timeline row added (joint slot outcome:
+  Three Asks status, Phase 5 direction confirm, action items); header
+  `Last Updated` 18/05 → 20/05; footer `Document Version` 9.13 → 9.14;
+  Board.md 385 → 386 lines.
+- `wiki/Roadmap.md` §3 Summary "Low-level CCU" bullet gains a 20/05
+  reinforcement sentence (Pi 5 MAVLink ingestion direction reinforced;
+  `mavros2` / MAVROS as direct MAVLink-to-ROS bridge route; MAVProxy
+  stays routing / fanout tooling, only entering the ROS ingestion path
+  if paired with a custom / `pymavlink` ROS publisher).
+- `wiki/Roadmap.md` §9 — 20/05/2026 revision-log entry added (Three
+  Asks status update + Phase 5 direction reinforcement + paper-list
+  deliverable + 03/06 cadence pin); Roadmap.md 593 → 594 lines.
+
+**No deck-claim correction queue items** — no slide-claim pushback was
+captured during Block B (compressed slot).
+
+**Thu 21/05+ scope decision recorded**: Phase 5 driver bring-up
+planning skeleton (paper plan only — driver candidates, `mavros2`
+install path, autostart strategy on Pi, topic-name scheme aligned with
+`launch/remap.launch.yaml`; no Pi work today); hardware-design pass
+layout sketch as prereq for first bench session.
+
+**Deferred:** `wiki/Roadmap.md` §1.2 Open questions Three Ask wording
+revisions — queued for a focused Thu+ targeted §1.2 pass per the
+Block D "don't expand into rewrite half the Roadmap" scope cap.
+Pre-commit invisibility sweep returned 0 matches across 10 tracked
+file extensions post Block D edits.
 
 ---
 
@@ -380,8 +454,18 @@ Same shape as Tue 19/05 Block E + Mon 18/05 Block E:
    Tue didn't get to it, Wed evening might. Defer to next Windows
    session if Linux-only today.
 
-**Outcome.** [To fill at end of day — diary closed; Board.md row
-landed; Wed commits summary; Thu 21/05 startup hint queued.]
+**Outcome.** Diary closed; all blocks A-E filled pre-commit (Tue
+19/05 lesson honoured — Block E placeholder not left for follow-up
+this time). Block D doc edits land in the same wrap commit;
+three-file diff: `Board.md` 385→386 lines (+Timeline row + header /
+footer bump), `wiki/Roadmap.md` 593→594 lines (+§3 reinforcement +
+§9 entry), `working_diary/2026-05-20` end-of-day fills. §1.6
+pre-commit invisibility sweep clean (0 matches across 10 tracked
+file extensions). Wrap commit subject:
+`docs(diary): wrap 20/05 supervisor presentation + debrief`.
+**Thu 21/05 startup queued** in Active branch below: Phase 5 driver
+bring-up planning skeleton, paper-only, starting with
+hardware-design prerequisite + MAVLink ingestion route.
 
 ---
 
@@ -389,15 +473,16 @@ landed; Wed commits summary; Thu 21/05 startup hint queued.]
 
 - [x] Block A: pre-presentation final check done; no 9h-9h45 blockers;
   go / no-go signal recorded
-- [ ] Block B: joint slot completed within the 30-min Mines Alès cap;
-  per-slide supervisor reactions captured; Three Asks status known;
-  scope signals noted
-- [ ] Block C: extended IMT Nord Europe discussion either completed
+- [x] Block B: joint slot completed within the 30-min Mines Alès cap;
+  Three Asks status and Phase 5 next-step direction captured; detailed
+  timing / per-slide reactions / slide-claim pushback / satisfaction
+  verdict not captured due to compressed slot
+- [x] Block C: extended IMT Nord Europe discussion either completed
   with topic coverage notes, or marked N/A (no extension)
-- [ ] Block D: action items extracted; Board.md / Roadmap.md edits
+- [x] Block D: action items extracted; Board.md / Roadmap.md edits
   applied if scoped; deck-claim correction queue resolved or queued;
   Thu+ scope decision recorded
-- [ ] Block E: diary filled (including Block E itself before commit);
+- [x] Block E: diary filled (including Block E itself before commit);
   pre-commit sweep clean; commit + push handled; Thu 21/05 startup
   hint queued
 
@@ -436,6 +521,20 @@ landed; Wed commits summary; Thu 21/05 startup hint queued.]
 ## Next steps — Wed 20/05 → Thu 21/05+
 
 ### Active branch: Wed 20/05 supervisor talk + post-talk debrief → Thu+ scope
+
+**Confirmed path** (Thu+ scope locked at EOD 20/05/2026): **Phase 5
+driver bring-up planning skeleton, paper-only, starting with
+hardware-design prerequisite + MAVLink ingestion route.** Today's
+outcomes landed in the **Phase 5 unblock signals** branch below
+(talk delivered + Three Asks 2/3 resolved + Phase 5 MAVLink ingestion
+direction confirmed); scope-shifting and follow-up branches **not
+triggered**. Thu 21/05 paper plan items: hardware-design pass layout
+sketch (per existing `wiki/Roadmap.md` §3 row 189 — regulated ≥5A 5V
+supply, bulk capacitance, USB hub for RealSense); MAVLink ingestion
+route detail (`mavros2` install path, autostart strategy on Pi,
+topic-name scheme aligned with `launch/remap.launch.yaml`). **No Pi
+work today or Thu — paper only.** Next supervisor meeting cadence:
+**03/06/2026 10h-12h** (2-hour morning window, ~14 days out).
 
 Today's outcomes drive Thu+ scope:
 
