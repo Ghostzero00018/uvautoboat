@@ -147,25 +147,25 @@ that can be done EOD-Tue should already be done; Block A confirms.
 
 **Pre-flight checklist:**
 
-- [ ] Laptop charged ≥80 % or charger physically in bag
-- [ ] Windows session can reach the `.pptx` file path
-- [ ] `.pptx` opens cleanly in PowerPoint — both live mode (presentation
+- [x] Laptop charged ≥80 % or charger physically in bag
+- [x] Windows session can reach the `.pptx` file path
+- [x] `.pptx` opens cleanly in PowerPoint — both live mode (presentation
       view) and reference mode (speaker notes panel visible)
-- [ ] Slides-only PDF export ready alongside `.pptx` (font-rendering
+- [x] Slides-only PDF export ready alongside `.pptx` (font-rendering
       insurance; created at EOD Tue if Tue's Block E checklist ran)
-- [ ] Optional notes-pages PDF export — only if a print handout is
+- [x] Optional notes-pages PDF export — only if a print handout is
       wanted for the supervisors
-- [ ] Room / location confirmed for the 10h slot (in-person vs remote)
-- [ ] Presentation mode confirmed: in-person with projector (HDMI /
+- [x] Room / location confirmed for the 10h slot (in-person vs remote)
+- [x] Presentation mode confirmed: in-person with projector (HDMI /
       DisplayPort cable; adapter for USB-C if needed), hybrid (one
       supervisor on video call — laptop screen-share capable +
       microphone tested), or full remote (video-call link shared +
       screen-share setup tested)
-- [ ] Any last fact-check item from Tue's pre-deck-shipping notes that
+- [x] Any last fact-check item from Tue's pre-deck-shipping notes that
       needed a Linux-side `git log` / `git grep` cross-check — done now,
       not 5 min before 10h
-- [ ] Phone / laptop notifications muted for the 10h-10h30 window
-- [ ] Pen + paper or note-taking app open for capturing supervisor
+- [x] Phone / laptop notifications muted for the 10h-10h30 window
+- [x] Pen + paper or note-taking app open for capturing supervisor
       reactions during Block B
 
 **Git state confirm** (Linux laptop, quick check before AM if convenient):
@@ -181,9 +181,22 @@ Expect HEAD = `3cd8861 docs: 19/05 Block E outcome + close verification`,
 `main` in sync with `origin/main`, working tree clean. Any drift = flag
 and decide whether to address (likely defer past 10h30).
 
-**Outcome.** [To fill — pre-flight check verdict (all green / blockers
-flagged); any 9h-9h45 surprises and how they were handled; final go /
-no-go signal for the 10h slot.]
+**Outcome.** Pre-flight check verdict: **all green, both sides**.
+**Linux side** (assistant-confirmed): `git fetch --prune` clean; HEAD
+= `adc3970 docs(diary): scaffold 20/05 Wed supervisor talk + debrief`
+matches expected; `main` in sync with `origin/main` (0/0 ahead-behind,
+identical SHA `adc3970b99e10eaaf7a047d619fb3ce496487126`); working
+tree clean. Three commits since Tue scaffold `c0d6151` (`faa9ba1` Tue
+wrap + `3cd8861` Tue Block E close + `adc3970` Wed scaffold) —
+matches expected post-Tue state. **Windows side** (user-confirmed
+9h-9h45ish): all seven checklist groupings green — laptop charge,
+`.pptx` opens cleanly in both live and speaker-notes mode, slides-only
+PDF backup present alongside `.pptx`, optional notes-pages PDF handled
+as needed, room + presentation mode confirmed, notifications muted for
+the 10h-10h30 window, note-taking app / pen + paper open for Block B
+reaction capture. **No 9h-9h45 blockers surfaced**, so no time-boxed
+fix or fallback-to-slides-only-PDF path was triggered. **Go signal
+recorded for the 10h slot.**
 
 ---
 
@@ -374,7 +387,7 @@ landed; Wed commits summary; Thu 21/05 startup hint queued.]
 
 ## Verification summary — 20/05 (check at end of day)
 
-- [ ] Block A: pre-presentation final check done; no 9h-9h45 blockers;
+- [x] Block A: pre-presentation final check done; no 9h-9h45 blockers;
   go / no-go signal recorded
 - [ ] Block B: joint slot completed within the 30-min Mines Alès cap;
   per-slide supervisor reactions captured; Three Asks status known;
