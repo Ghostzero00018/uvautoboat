@@ -11,8 +11,10 @@ Complete guide to installing AutoBoat and its dependencies.
 | OS | Ubuntu 24.04 LTS | Ubuntu 24.04 LTS |
 | RAM | 8 GB | 16 GB |
 | Storage | 40 GB | 60 GB |
-| Python | 3.10+ | 3.10+ |
+| Python | 3.12 | 3.12 |
 | GPU | Integrated | Dedicated (for Gazebo) |
+
+> **Python note:** Ubuntu 24.04 ships Python 3.12. The project source packages declare `python_requires='>=3.10'`, but the documented Jazzy platform path uses Python 3.12.
 
 ---
 
@@ -180,7 +182,7 @@ You should see `plan` and `control` packages listed.
 ### Test Launch VRX
 
 ```bash
-ros2 launch vrx_gz competition.launch.py world:=sydney_regatta
+ros2 launch vrx_gz competition.launch.py world:=sydney_regatta_DEFAULT
 ```
 
 You should see the Gazebo simulator open with the Sydney Regatta world and WAM-V boat.

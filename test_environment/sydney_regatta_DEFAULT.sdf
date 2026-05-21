@@ -19,7 +19,7 @@
        for various testing scenarios (e.g., adding obstacles, buoys, docks)
   
   Usage:
-    ros2 launch vrx_gz competition.launch.py world:=sydney_regatta
+    ros2 launch vrx_gz competition.launch.py world:=sydney_regatta_DEFAULT
     
   Important Notes:
     - Do NOT modify this file directly. Keep it as the pure reference version.

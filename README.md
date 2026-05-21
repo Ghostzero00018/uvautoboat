@@ -49,7 +49,7 @@ GPS/IMU ──> Planner ──> waypoints/targets ──> Controller ──> thr
 | Ubuntu | 24.04 LTS |
 | ROS 2 | Jazzy |
 | Gazebo | Harmonic |
-| Python | 3.10+ |
+| Python | 3.12 |
 
 ---
 

@@ -16,11 +16,13 @@ The following pages are published to the wiki by `scripts/sync_wiki.sh`:
 | **System_Overview.md** | Architecture and design philosophy |
 | **Glossary.md** | Plain-language definitions of every technical term |
 | **Design_Rationale.md** | Why each architecture / algorithm / parameter choice was made |
+| **Digital_Twin_Architecture.md** | Standards positioning (ISO/IEC 30141:2024 + ISO 23247:2021) for the project's digital-twin framing; layer mapping for the aquatic-monitoring adaptation |
 | **Roadmap.md** | Internship objectives, scope clarifications, Phase 5 prep, research extensions, open questions, sim-infrastructure VRX-fork scheme |
 | **SASS.md** | Simple Anti-Stuck recovery system (active) |
 | **3D_LIDAR_Processing.md** | LiDAR Perception system explained (VFH + threshold rationale) |
 | **Pi5_Bringup_Smoke_Test.md** | Manual procedure to verify Pi 5 ↔ flight-controller serial link via MAVProxy + a `pymavlink` script, before `mavros2` enters the picture |
 | **MP_QGC_Update_Procedures.md** | Host-local update workflow for Mission Planner (under Mono on Linux) + QGroundControl (AppImage), including the SkiaSharp/libdl fix re-apply step after MP updates |
+| **VRX_Fork_Migration.md** | Repoint guide for teammates with a pre-06/05/2026 VRX checkout from `osrf/vrx` to the fork `Ghostzero00018/vrx` branch `autoboat/main` |
 | **Common_Issues.md** | Troubleshooting guide |
 | **Dashboard_Security.md** | Security assessment, vulnerabilities, and mitigation recommendations |
 | **Node_Naming_Refactor_Plan.md** | Completed rename of OKO / SPUTNIK / BURAN → functional names (16/04/2026) |
@@ -141,5 +143,5 @@ When contributing to the wiki:
 
 ---
 
-**Last Updated**: 13/05/2026
+**Last Updated**: 21/05/2026
 **Maintained By**: AutoBoat Development Team

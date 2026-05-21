@@ -97,7 +97,7 @@ ros2 param set /heading_controller_node kd 150.0
 **Alternative**: Teleport boat away from dock
 
 ```bash
-gz service -s /world/sydney_regatta/set_pose \
+gz service -s /world/sydney_regatta_DEFAULT/set_pose \
   --reqtype gz.msgs.Pose --reptype gz.msgs.Boolean --timeout 1000 \
   --req 'name: "wamv", position: {x: 10, y: 10, z: 0.5}'
 ```
