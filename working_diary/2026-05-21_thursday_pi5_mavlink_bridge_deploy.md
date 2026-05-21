@@ -308,6 +308,100 @@ Wrap commit subject (candidate, user picks final):
 - `docs(diary): wrap 21/05 Pi unavail + Phase 5 paper + posture reversal` (69 chars)
 - `docs: 21/05 Pi unavail → Phase 5 paper + headless directive reversed` (68 chars)
 
+## Afternoon prep — Fast Block A pre-flight checklist (pending Pi return)
+
+Prep drafted 21/05 mid-day: when the prof returns the Pi this late afternoon, run this checklist in order before deciding on Block B install. Built from §D.1 pre-conditions + the OS / setup-state uncertainty introduced by the re-flash. Each step gates the next — stop at the first hard failure and capture evidence.
+
+If the Pi doesn't return today, Fri 22/05 startup picks this checklist up unchanged.
+
+### Step 1 — Identify the OS / image the prof flashed
+
+```bash
+cat /etc/os-release          # NAME, VERSION_ID, ID — first source of truth
+lsb_release -a 2>/dev/null   # cross-check
+dpkg --print-architecture    # expect arm64
+uname -a                     # kernel + arch
+```
+
+Branch table:
+
+| `/etc/os-release` says | Image | Decision impact |
+|:-----------------------|:------|:----------------|
+| `ID=ubuntu`, `VERSION_ID=24.04`, no `ubuntu-desktop`/`gnome-session` pkg | Ubuntu Server 24.04 (likely + a lightweight DE if prof installed one) | Tier 1 Jazzy → Route 1 viable |
+| `ID=ubuntu`, `VERSION_ID=24.04`, `ubuntu-desktop` / `gnome-session` present | Ubuntu Desktop 24.04 | Tier 1 Jazzy → Route 1 viable; D2 hardware-design pass becomes more load-relevant |
+| `ID=debian`, `VERSION_CODENAME=bookworm` (or `/etc/rpi-issue` present) | RPi OS Bookworm | **Not officially supported for Jazzy** → force Route 2 source build, or evaluate snap install |
+| Anything else | Unknown | Stop — capture image-ID evidence, escalate to prof |
+
+### Step 2 — Baseline access + Pi-side state
+
+From workstation (Pi IP was `10.120.2.50` pre-reflash on `IoT IMT Nord Europe`; may have changed):
+
+```bash
+# Try the old IP first
+ssh <user>@10.120.2.50
+# If unreachable, scan the subnet
+nmap -sn 10.120.2.0/23 | grep -B1 -i 'raspberry\|pi'
+```
+
+On the Pi once SSH works:
+
+```bash
+hostname                                                          # imtaqua-pi-01 if prof preserved
+whoami; id
+groups | grep -o dialout                                          # empty = need usermod -a -G dialout
+ls -l /dev/serial/by-id/ /dev/ttyUSB* /dev/ttyACM* 2>/dev/null    # autopilot device nodes
+# UART enable check (Ubuntu on Pi uses /boot/firmware/config.txt, not /boot/config.txt)
+ls /boot/firmware/config.txt 2>/dev/null && \
+  grep -E 'enable_uart|dtparam' /boot/firmware/config.txt
+# ROS 2 presence
+ls /opt/ros/ 2>/dev/null
+which ros2 2>/dev/null
+source /opt/ros/jazzy/setup.bash 2>/dev/null && ros2 doctor 2>&1 | tail -10
+```
+
+Capture in the addendum:
+
+- SSH reachable yes / no — record IP + auth method (key vs password).
+- Hostname / user / dialout / UART state.
+- ROS 2 Jazzy install present yes / no (and if no, is the apt path available for a fresh install?).
+- Autopilot device node visible yes / no — drives Route 1 endpoint string (`serial:///dev/ttyXXX:115200` vs `udp://:14550@`).
+
+### Step 3 — Route 1 viability gate
+
+If Step 1 = Ubuntu Noble **and** Step 2 confirms ROS 2 Jazzy (or fresh-install path open):
+
+```bash
+# Live confirmation that packages.ros.org is reachable from the Pi
+# (13/05 only proved archive.ubuntu.com; ROS apt index needs its own check)
+curl -4 -sI https://packages.ros.org/ros2/ubuntu/dists/noble/Release | head -5
+# Alternatively, sudo apt update exit code as the proxy
+sudo apt update 2>&1 | tail -10
+# Package availability
+apt-cache policy ros-jazzy-mavros
+apt-cache show ros-jazzy-mavros 2>/dev/null | head -20
+sudo apt install --dry-run ros-jazzy-mavros 2>&1 | tail -20
+```
+
+Capture: candidate version, dep chain shape, dry-run "N MB will be installed" line.
+
+### Step 4 — Route decision + go / no-go for Block B
+
+| Pre-flight outcome | Route | Next action |
+|:-------------------|:------|:------------|
+| Ubuntu Noble + ROS apt reachable + `ros-jazzy-mavros` candidate visible | **Route 1** | Block B install per §D.1 — `sudo apt install ros-jazzy-mavros ros-jazzy-mavros-extras ros-jazzy-mavros-msgs` |
+| Ubuntu Noble but ROS apt unreachable / package missing | **Route 2** planning | Source build prep notes only today; defer install to Friday |
+| RPi OS Bookworm | **Route 2** | Source build on Bookworm; no apt path |
+| No stable SSH / no device node / image unknown | **Stop** | Evidence capture only; afternoon-addendum closes with "blocked, escalate to prof" |
+
+### Capture format for the addendum
+
+When this runs, paste the actual command outputs (terse — first 5-10 lines each) into a new subsection under this Block, headed `### Live pre-flight outcome (HH:MM)`. Then either:
+
+- Promote to a follow-on `### Block B — Install attempt` subsection if Route 1 green, or
+- Close at evidence-capture per Step 4's table.
+
+Wrap-commit subject for the addendum (per 21/05 mid-day plan): `docs(diary): add 21/05 Pi return pre-flight addendum`.
+
 ## Three Asks status carry-forward
 
 - Phase A scope: cleared 20/05/2026 — not the internship's work.
