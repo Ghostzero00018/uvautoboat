@@ -6,6 +6,7 @@ High-level architecture and design philosophy of the AutoBoat autonomous navigat
 >
 > - For **term definitions** (USV, VRX, VFH, Kalman filter, ENU, etc.), see **[Glossary](Glossary)**.
 > - For **why these choices were made** (trade-offs, parameter rationale, algorithm justifications), see **[Design_Rationale](Design_Rationale)**.
+> - For **standards-positioning context** (ISO/IEC 30141:2024 IoT reference architecture + ISO 23247:2021 manufacturing DT specialization, and how this project adapts the layered pattern for environmental monitoring), see **[Digital_Twin_Architecture](Digital_Twin_Architecture)**.
 
 ---
 

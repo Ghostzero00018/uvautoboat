@@ -24,6 +24,7 @@ Welcome to the **AutoBoat Wiki**! This documentation provides comprehensive guid
 - **[Design Rationale](Design_Rationale)** — Why these architecture, algorithm, and parameter choices were made
 - **[Glossary](Glossary)** — Plain-language definitions of every technical term
 - **[Node Naming Refactor Plan](Node_Naming_Refactor_Plan)** — Completed rename: OKO/SPUTNIK/BURAN → functional names (lidar_perception, waypoint_planner, heading_controller)
+- **[Digital Twin Architecture](Digital_Twin_Architecture)** — Standards positioning (ISO/IEC 30141:2024 + ISO 23247:2021); how this project's layered structure relates to the IoT reference architecture and the manufacturing DT specialization, with an aquatic environmental adaptation of the same layered pattern
 
 ### 🗺️ Roadmap
 
@@ -68,7 +69,7 @@ See [Board.md](https://github.com/Ghostzero00018/uvautoboat/blob/main/Board.md) 
 **Institution**: [IMT Nord Europe](https://imt-nord-europe.fr/) — Industry 4.0 Students & Faculty
 **License**: Apache 2.0
 
-**Last Updated**: 13/05/2026
+**Last Updated**: 21/05/2026
 
 ---
 
