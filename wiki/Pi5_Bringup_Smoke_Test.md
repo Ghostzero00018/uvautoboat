@@ -31,7 +31,7 @@ MAVProxy does **not** translate MAVLink to ROS. Once the smoke test passes, swap
 
 ## 2. Prerequisites
 
-- Pi 5 running **Ubuntu 24.04 LTS server** (headless — permanently per supervisor directive 13/05/2026; no GUI / desktop layer planned in any future session), connected to the *IoT IMT Nord Europe* network
+- Pi 5 running ROS 2 Jazzy on an aarch64 Linux distribution — Ubuntu 24.04 LTS (Server / Desktop) is officially supported; RPi OS Bookworm is not officially supported and would force source-build. Connected to the *IoT IMT Nord Europe* network. (Note: the 13/05/2026 "Ubuntu Server headless permanently" supervisor directive was reversed 21/05/2026 — prof re-flashing the Pi with a full-DE image; see [Roadmap §1.1](Roadmap#11-scope-clarifications-locked-30042026).)
 - Flight controller wired to Pi 5 GPIO UART (TX → RX, RX → TX, GND; do not feed FC power from Pi unless your wiring guide explicitly says so)
 - SSH reachable from the workstation
 - User in the `dialout` group: `sudo usermod -a -G dialout $USER` then **log out and back in** for it to take effect (group membership refreshes only on new sessions)
