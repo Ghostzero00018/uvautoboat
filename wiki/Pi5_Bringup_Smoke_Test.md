@@ -32,8 +32,9 @@ MAVProxy does **not** translate MAVLink to ROS. Once the smoke test passes, swap
 ## 2. Prerequisites
 
 - Pi 5 running ROS 2 Jazzy on an aarch64 Linux distribution — Ubuntu 24.04 LTS (Server / Desktop) is officially supported; RPi OS Bookworm is not officially supported and would force source-build. Connected to the *IoT IMT Nord Europe* network. (Note: the 13/05/2026 "Ubuntu Server headless permanently" supervisor directive was reversed 21/05/2026 — prof re-flashing the Pi with a full-DE image; see [Roadmap §1.1](Roadmap#11-scope-clarifications-locked-30042026).)
+- System clock synchronized before apt / HTTPS work: `sudo timedatectl set-ntp true`, then confirm `System clock synchronized: yes` via `timedatectl status`. The 22/05/2026 reflash came back ~24 h behind reality with RTC at epoch; severe clock skew can break TLS, apt Release-file validation, and outbound HTTPS.
 - Flight controller wired to Pi 5 GPIO UART (TX → RX, RX → TX, GND; do not feed FC power from Pi unless your wiring guide explicitly says so)
-- SSH reachable from the workstation
+- SSH server installed and reachable from the workstation. Ubuntu Desktop 24.04 may not include `openssh-server` by default; if the workstation sees `Connection refused`, install it on the Pi with `sudo apt install openssh-server` before enabling `ssh.service`.
 - User in the `dialout` group: `sudo usermod -a -G dialout $USER` then **log out and back in** for it to take effect (group membership refreshes only on new sessions)
 - UART enabled on the Pi 5:
   - `sudo raspi-config` → Interface Options → Serial Port → "Login shell over serial: NO" + "Serial port hardware: YES"
@@ -49,8 +50,11 @@ MAVProxy does **not** translate MAVLink to ROS. Once the smoke test passes, swap
 On the Pi:
 
 ```bash
+sudo apt install openssh-server
 sudo systemctl enable --now ssh
 ```
+
+If `openssh-server` is already installed, apt reports no changes; the command is idempotent. Missing server symptom from the workstation: `Connection refused`.
 
 From the workstation:
 
