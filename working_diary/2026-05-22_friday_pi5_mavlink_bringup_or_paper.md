@@ -141,3 +141,50 @@ Verification: Remmina connected from the workstation and showed the Pi 5 desktop
 - GNOME Remote Desktop has two distinct modes: Desktop Sharing mirrors the current desktop session; Remote Login creates an independent session. They are not additive for the HUD mirror goal.
 - Save a Remmina profile so future workstation → Pi sessions are one-click.
 - Rotate the GNOME Remote Desktop generated password if it is ever exposed; document only that GNOME-generated credentials exist, not their literal value.
+
+## Post-wrap addendum — MAVROS launch surface vs real autopilot link
+
+After the RDP setup, a quick MAVROS launch check was run from the Pi to inspect the low-level-controller / autopilot topic surface:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+ros2 launch mavros px4.launch fcu_url:=serial:///dev/ttyACM0:115200
+```
+
+MAVROS launched and exposed the expected plugin node / topic surface (`/mavros/mavros_node`, `/mavros/mavros_router`, many plugin nodes, and `/mavros/*` topics such as `/mavros/state`, `/mavros/imu/data`, `/mavros/global_position/global`, `/mavros/battery`, `/mavros/rc/in`). The active parameters confirmed the launch profile and URL:
+
+```bash
+ros2 param get /mavros/mavros_node fcu_url
+# serial:///dev/ttyACM0:115200
+ros2 param get /mavros/mavros_router fcu_urls
+# ['serial:///dev/ttyACM0:115200']
+```
+
+However, this is only the MAVROS plugin interface surface, not proof of a live MAVLink heartbeat. The decisive state check returned:
+
+```yaml
+/mavros/state:
+  connected: false
+  armed: false
+  guided: false
+  manual_input: false
+  mode: ''
+  system_status: 0
+```
+
+Device inspection showed why: the expected autopilot serial endpoints were absent.
+
+```bash
+ls -l /dev/ttyACM* /dev/ttyUSB* /dev/serial/by-id/* 2>/dev/null
+# no output
+ls -l /dev/serial* /dev/ttyAMA* /dev/ttyS* 2>/dev/null
+# /dev/ttyAMA10 only
+lsusb
+# keyboard + mouse + Intel RealSense D435i only; no CubePilot / Pixhawk / USB-UART device
+sudo dmesg -T | tail -80 | grep -Ei 'usb|tty|acm|cp210|ch34|ftdi|serial'
+# RealSense + internal serial / Bluetooth only; no new autopilot USB serial interface
+```
+
+Conclusion: MAVROS install and launch are good, but the autopilot / low-level controller is not visible to the Pi over USB or a known UART endpoint yet. `/mavros/*` topics appearing means MAVROS plugins are loaded; it does **not** mean the autopilot is connected. The pass condition remains `/mavros/state connected: true`, followed by actual messages on topics such as `/mavros/imu/data`, `/mavros/global_position/raw/fix`, `/mavros/battery`, and `/mavros/rc/in`.
+
+Physical observation: one Pi 5 HDMI port is cabled toward CubePilot-related hardware, but HDMI is video output and cannot carry MAVLink serial telemetry into MAVROS. A real MAVROS link still needs one of: CubePilot USB data cable to Pi (`/dev/ttyACM*` or `/dev/ttyUSB*`), CubePilot TELEM UART to Pi GPIO UART / USB-UART, or a configured UDP MAVLink endpoint. Next test when hardware access allows: plug a data-capable autopilot USB / TELEM link into the Pi, re-run `lsusb` + `/dev/ttyACM*` / `/dev/ttyUSB*` / `/dev/serial/by-id/*`, then relaunch MAVROS against the real device path and confirm `/mavros/state connected: true`.

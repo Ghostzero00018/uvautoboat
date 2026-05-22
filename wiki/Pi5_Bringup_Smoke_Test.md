@@ -108,6 +108,7 @@ If no heartbeat appears:
 - TX/RX swapped — uncommon but possible if the wiring diagram was ambiguous.
 - UART not enabled — re-check the prerequisites in §2.
 - User not in `dialout` group — `groups` to verify; logout/login if missing.
+- No serial endpoint visible on the Pi — confirm the flight controller appears as `/dev/ttyACM*`, `/dev/ttyUSB*`, `/dev/serial/by-id/*`, or a known GPIO UART before debugging MAVProxy / MAVROS parameters.
 
 ### 3.4 Stream IMU data via the smoke-test script
 
@@ -118,6 +119,53 @@ The `stream_data.py` script (see §5 below) opens its own MAVLink connection to 
 ```bash
 python3 stream_data.py
 ```
+
+### 3.5 MAVROS quick check after install
+
+Once `ros-jazzy-mavros` is installed, a quick read-only MAVROS launch can inspect whether the autopilot is actually connected:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+
+# First identify the real link. Prefer /dev/serial/by-id if present.
+lsusb
+ls -l /dev/serial/by-id/* /dev/ttyACM* /dev/ttyUSB* /dev/serial0 2>/dev/null
+sudo dmesg -T | tail -80 | grep -Ei 'usb|tty|acm|cp210|ch34|ftdi|serial'
+
+# Example only: replace the URL with the actual device path found above.
+ros2 launch mavros px4.launch fcu_url:=serial:///dev/ttyACM0:115200
+```
+
+In another terminal:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+ros2 topic echo --once /mavros/state
+```
+
+The pass condition is:
+
+```yaml
+connected: true
+```
+
+Important interpretation rule: `/mavros/*` topics can appear even when no autopilot is connected. MAVROS advertises its plugin interface surface as soon as the node starts. A live low-level-controller link is proven only when `/mavros/state` reports `connected: true` and telemetry topics such as `/mavros/imu/data`, `/mavros/global_position/raw/fix`, `/mavros/battery`, or `/mavros/rc/in` actually publish messages.
+
+If `/mavros/state` reports `connected: false`, check the physical endpoint first:
+
+```bash
+lsusb
+ls -l /dev/ttyACM* /dev/ttyUSB* /dev/serial/by-id/* 2>/dev/null
+sudo dmesg -T | tail -80 | grep -Ei 'usb|tty|acm|cp210|ch34|ftdi|serial'
+```
+
+Expected USB cases:
+
+- CubePilot / Pixhawk CDC ACM: `/dev/ttyACM0` or `/dev/serial/by-id/...`
+- USB-UART adapter (FTDI / CP210x / CH340): `/dev/ttyUSB0` or `/dev/serial/by-id/...`
+- GPIO UART: a known Pi UART device such as `/dev/serial0` if exposed and wired to the flight controller TELEM port
+
+HDMI is not a MAVLink telemetry path. A cable connected to a Pi HDMI port can mirror video / desktop output to external hardware, but it will never create `/dev/ttyACM*`, `/dev/ttyUSB*`, or `/dev/serial/by-id/*` for MAVROS.
 
 To run MAVProxy and the smoke-test script in parallel, route through UDP — this is exactly MAVProxy's "router" role:
 
