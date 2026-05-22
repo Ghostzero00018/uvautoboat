@@ -96,3 +96,48 @@ Doc-edit decision: defer. Today's outcome validates Route 1 install end-to-end o
 - Either path: Pi 5 install side is fully green and ready (`mavros` 2.14.0 + GeographicLib defaults + `dialout` active + `openssh-server` up); Block C is a single-shot test when conditions allow.
 - D2 hardware-design pass revisit scheduled week's end — under full-DE image D2 is more load-relevant than under the prior headless-Server posture (RealSense + GUI + workstation viewers all share the Pi 5 power rail).
 - VRX §8.2 weekly cadence next check **Tue 26/05/2026** (Monday intentionally skipped; no action Fri).
+
+## Post-wrap addendum — GNOME Remote Desktop / RDP setup (after `534f9f4`)
+
+After wrap commit `534f9f4 docs(diary): wrap 22/05 MAVROS apt install + datasets on Pi 5` landed, set up workstation → Pi 5 desktop remote-control to simplify future interaction with the full-DE Pi image. This was a live-branch convenience addendum, not part of the original scaffold.
+
+### Path choice — GNOME Remote Desktop over RDP, not VNC
+
+The first in-session idea was `wayvnc` on the Pi, but that depends on the Wayland compositor family. The Pi diagnostic returned:
+
+```bash
+echo "$XDG_SESSION_TYPE $XDG_CURRENT_DESKTOP $DESKTOP_SESSION"
+# wayland ubuntu:GNOME ubuntu
+```
+
+That confirms Ubuntu Desktop 24.04 GNOME on Mutter, not a wlroots compositor. `wayvnc` is therefore the wrong default here: it fits wlroots compositors such as `sway`, `labwc`, `river`, `hyprland`, and `niri`, but not GNOME / Mutter. Path corrected to the Ubuntu-native GNOME Remote Desktop route over RDP, which is Wayland-native through PipeWire screen capture. RealVNC Server remains a fallback only if the Pi session is switched to "Ubuntu on Xorg"; RealVNC Linux service-mode capture is not the right fit for GNOME Wayland.
+
+### Pi-side setup
+
+Settings → System → Remote Desktop on the Pi:
+
+- **Desktop Sharing:** ON — mirrors the existing logged-in Pi desktop session, matching the "see and control the same physical monitor / HUD" goal.
+- **Remote Control:** ON — required for mouse / keyboard input; without it the session is view-only.
+- **Remote Login:** OFF — this creates a separate GNOME session and would defeat the physical-monitor mirror goal.
+- **Port:** 3389.
+- **Hostname:** `imtaquadrone-desktop`.
+- **Login details:** use the GNOME Remote Desktop credentials displayed in the Settings pane. Do not record the generated password in the repo; if exposed, rotate it from the Settings pane before relying on it long-term.
+
+### Workstation-side setup and verification
+
+```bash
+sudo apt install remmina remmina-plugin-rdp
+```
+
+Both packages were already present at `1.4.35+dfsg-0ubuntu5.2` on the Ubuntu Noble workstation; no upgrade was needed. GTK warnings on Remmina launch (`gtk_menu_attach_to_widget` / `gtk_menu_detach`) were cosmetic Remmina + GTK noise, not functional failures.
+
+Connection profile: Remmina → RDP → server `10.120.2.162:3389` → username as shown in the Pi GNOME Remote Desktop pane → GNOME-generated password from that pane → Save and Connect. First connection may show a self-signed TLS certificate prompt; accept / trust the fingerprint for this Pi.
+
+Verification: Remmina connected from the workstation and showed the Pi 5 desktop mirroring the physical monitor; mouse / keyboard input forwarded correctly. Closing Remmina drops the remote view because the RDP client owns the TCP session; minimizing keeps it connected. The Pi-side desktop session persists either way, so disconnecting Remmina does not log out the Pi user or stop Pi-side processes.
+
+### Lessons and follow-ups
+
+- Compositor compatibility is load-bearing for desktop-access advice. Check `echo "$XDG_SESSION_TYPE $XDG_CURRENT_DESKTOP"` before recommending a VNC server on Wayland.
+- GNOME Remote Desktop has two distinct modes: Desktop Sharing mirrors the current desktop session; Remote Login creates an independent session. They are not additive for the HUD mirror goal.
+- Save a Remmina profile so future workstation → Pi sessions are one-click.
+- Rotate the GNOME Remote Desktop generated password if it is ever exposed; document only that GNOME-generated credentials exist, not their literal value.
