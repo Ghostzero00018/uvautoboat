@@ -23,9 +23,9 @@ Final commitment is a Block A decision based on actual endpoint availability whe
 
 ## Block A — Pre-flight + endpoint audit (≈ 15 min; ≈ 5 min if no change)
 
-- [ ] **Step 1** — Reach Pi via SSH or RDP. Confirm clock + ROS env: `timedatectl status` synchronized, `source /opt/ros/jazzy/setup.bash`, `echo $ROS_DISTRO` is `jazzy` or `which ros2` points to `/opt/ros/jazzy/bin/ros2`.
-- [ ] **Step 2** — Confirm no stale MAVROS process: `pgrep -af 'mavros|ros2 launch mavros'` should return empty.
-- [ ] **Step 3** — Expanded endpoint audit (established gate from 26/05):
+- [x] **Step 1** — Reach Pi via SSH or RDP. Confirm clock + ROS env: `timedatectl status` synchronized, `source /opt/ros/jazzy/setup.bash`, `echo $ROS_DISTRO` is `jazzy` or `which ros2` points to `/opt/ros/jazzy/bin/ros2`.
+- [x] **Step 2** — Confirm no stale MAVROS process: `pgrep -af 'mavros|ros2 launch mavros'` should return empty.
+- [x] **Step 3** — Expanded endpoint audit (established gate from 26/05):
 
   ```bash
   lsusb && lsusb -t
@@ -38,11 +38,57 @@ Final commitment is a Block A decision based on actual endpoint availability whe
   A usable MAVLink endpoint is one of: `/dev/serial/by-id/...`, `/dev/ttyACM*`, `/dev/ttyUSB*`, a TELEM-wired UART node, or a confirmed UDP listener. `/dev/ttyAMA10` alone is not sufficient without wiring confirmation.
 
 - [ ] **Step 4** — Firmware / launch-profile decision (only if endpoint found): identify PX4 / ArduPilot / generic from autopilot label, supervisor confirmation, or `mavproxy.py` heartbeat dump if installed.
-- [ ] **Step 5** — Decision: live Block B+C if endpoint confirmed; paper pivot (slab 3) if still absent.
+- [x] **Step 5** — Decision: live Block B+C if endpoint confirmed; paper pivot (slab 3) if still absent.
 
 Paper branch (no endpoint): record outcome; proceed to slab 3. Capture the choice rationale in Block A Outcome.
 
-**Outcome:** [To fill — live (endpoint path, firmware/profile, go/no-go for Block B+C) OR paper (slab 3 selected).]
+**Outcome:** Paper branch selected from Remmina-side evidence on 27/05/2026. Pi host was reachable as `imtaquadrone-desktop`; `timedatectl` showed synchronized clock / active NTP at 11:00 CEST; ROS env was valid with `ROS_DISTRO=jazzy` and `ros2` at `/opt/ros/jazzy/bin/ros2`; `pgrep -af 'mavros|ros2 launch mavros'` returned empty. Expanded endpoint audit still found no usable MAVLink endpoint: USB tree showed only root hubs, keyboard, Intel RealSense D435i (`8086:0b3a`), and Logitech mouse; serial sweep found only `/dev/ttyAMA10` and no `/dev/serial/by-id/*`, `/dev/serial/by-path/*`, `/dev/ttyACM*`, or `/dev/ttyUSB*`; `dmesg` showed RealSense / WiFi / Bluetooth-related lines only; `ss -ulnp` showed no listener on `14550`, `14551`, `14540`, or `5760`. `/dev/ttyAMA10` remains insufficient without TELEM wiring confirmation. Do not launch MAVROS for heartbeat until a real serial / UART / UDP endpoint is visible.
+
+Additional Pi sensor-side check before Block B: current ROS graph initially showed only `/parameter_events` and `/rosout`, plus `/parasit_marvin`; `ros2 node info /parasit_marvin`, `ros2 param list`, and `ps -ef` identified it as the `ros2cli` daemon rather than a sensor, MAVROS, PX4, ArduPilot, or CubePilot data source. Installed packages included `mavros`, `mavros_extras`, `mavros_msgs`, `realsense2_camera`, `realsense2_camera_msgs`, and `realsense2_description`.
+
+RealSense D435i color/depth path was then verified separately. `ros2 launch realsense2_camera rs_launch.py` started RealSense ROS v4.57.7 / LibRealSense v2.57.7, detected D435i serial `213622070342`, USB type `3.2`, firmware `5.14.0`, and reported `RealSense Node Is Up!`. Published topics included color and depth camera info, raw color image, rectified depth image, metadata, and depth-to-color extrinsics. Evidence samples showed color camera info at `1280x720`, depth camera info at `848x480`, color image rate around 15-18 Hz, and depth image rate around 26-27 Hz. The missing `.realsense-config.json` message only loaded defaults.
+
+RealSense D435i motion/IMU path was split by load. With color/depth still enabled plus `enable_gyro:=true enable_accel:=true unite_imu_method:=2`, the node opened accel at 100 FPS and gyro at 200 FPS, but then reported `HID set_power 1 failed` and `Motion Module failure`; a Pi 5 low-voltage warning appeared during the same test. An IMU-only relaunch with color/depth disabled then succeeded: `/camera/camera/accel/sample`, `/camera/camera/gyro/sample`, and `/camera/camera/imu` appeared, and `ros2 topic echo --once /camera/camera/imu` returned angular velocity plus linear acceleration. Treat color/depth as working, IMU-only as working, and combined color/depth/IMU as still power / USB-stability-sensitive. This does not change the MAVLink decision above.
+
+### Raw Evidence Highlights
+
+- Pi baseline:
+  - Host: `imtaquadrone-desktop`.
+  - Clock: `Wed 2026-05-27 11:00:05 CEST`, `System clock synchronized: yes`, `NTP service: active`.
+  - ROS: `ROS_DISTRO=jazzy`, `which ros2` -> `/opt/ros/jazzy/bin/ros2`.
+  - Stale MAVROS check: `pgrep -af 'mavros|ros2 launch mavros'` returned empty.
+- Endpoint audit:
+  - `lsusb` devices: Linux root hubs, `1c4f:0027 SiGma Micro USB Keyboard`, `8086:0b3a Intel Corp. Intel(R) RealSense(TM) Depth Camera 435i`, `046d:c08b Logitech, Inc. G502 SE HERO Gaming Mouse`.
+  - `lsusb -t`: RealSense on USB 3 bus `3-1` at `5000M`; keyboard and mouse only on HID paths.
+  - Serial nodes: only `crw-rw---- 1 root dialout 204, 74 ... /dev/ttyAMA10`; no `/dev/serial/by-id/*`, `/dev/serial/by-path/*`, `/dev/ttyACM*`, `/dev/ttyUSB*`, `/dev/serial0`, or `/dev/serial1`.
+  - `/dev` serial-name grep: `ttyAMA10` only.
+  - `dmesg` filter: `serial0-0` regulator note, RealSense UVC detection, `uvcvideo`, `brcmfmac`, and Bluetooth RFCOMM TTY initialisation only; no CubePilot / Pixhawk / PX4 / ArduPilot / MAVLink / CDC ACM line.
+  - UDP listener check: no `14550`, `14551`, `14540`, or `5760` listener.
+- ROS graph / package check:
+  - Before launching camera: `ros2 node list` showed `/parasit_marvin`; `ros2 topic list -t` showed only `/parameter_events` and `/rosout`.
+  - `/parasit_marvin` details: no data subscribers, only `/parameter_events` publisher, standard parameter service servers, parameters `start_type_description_service` and `use_sim_time`.
+  - Owning process: `/usr/bin/python3 -c from ros2cli.daemon.daemonize import main; main() --name ros2-daemon --ros-domain-id 0 --rmw-implementation rmw_fastrtps_cpp`.
+  - Relevant installed packages: `mavros`, `mavros_extras`, `mavros_msgs`, `realsense2_camera`, `realsense2_camera_msgs`, `realsense2_description`.
+  - Relevant executables: `mavros_node`, `mav`, `install_geographiclib_datasets.sh`, and `realsense2_camera_node`.
+- RealSense color/depth:
+  - Launch command: `ros2 launch realsense2_camera rs_launch.py`.
+  - Driver stack: RealSense ROS v4.57.7, LibRealSense v2.57.7.
+  - Device: Intel RealSense D435I, serial `213622070342`, physical port ending in `usb3/3-1/3-1:1.0/video4linux/video0`, USB type `3.2`, firmware `5.14.0`, product ID `0x0B3A`.
+  - Default profiles: depth `848x480x30`, color `1280x720x30`, gyro default `200`, accel default `100`.
+  - Key success line: `RealSense Node Is Up!`.
+  - Topic check: `/camera/camera/color/camera_info`, `/camera/camera/color/image_raw`, `/camera/camera/color/metadata`, `/camera/camera/depth/camera_info`, `/camera/camera/depth/image_rect_raw`, `/camera/camera/depth/metadata`, `/camera/camera/extrinsics/depth_to_color`.
+  - Sample camera-info frames: `camera_color_optical_frame` at `1280x720`; `camera_depth_optical_frame` at `848x480`.
+  - Rate samples: color image approximately `15-18 Hz`; depth image approximately `26-27 Hz`.
+- RealSense motion / IMU:
+  - Combined launch command: `ros2 launch realsense2_camera rs_launch.py enable_gyro:=true enable_accel:=true unite_imu_method:=2`.
+  - Combined run opened accel `MOTION_XYZ32F` at 100 FPS and gyro `MOTION_XYZ32F` at 200 FPS, then reported `HID set_power 1 failed` and `Motion Module failure`.
+  - Pi UI also showed a low-voltage warning during the combined color/depth/IMU attempt.
+  - Combined-run shutdown after `Ctrl+C` was clean; node stopped depth, RGB, and motion modules before exit.
+  - Power/throttle probes after the warning were inconclusive without privilege: `vcgencmd get_throttled` found `/usr/bin/vcgencmd` but failed with `Can't open device file: /dev/vcio`; unprivileged `dmesg -T ...` failed with `read kernel buffer failed: Operation not permitted`.
+  - IMU-only launch command: `ros2 launch realsense2_camera rs_launch.py enable_color:=false enable_depth:=false enable_gyro:=true enable_accel:=true unite_imu_method:=2`.
+  - IMU-only run detected the same D435I serial `213622070342`, USB type `3.2`, firmware `5.14.0`, opened accel at 100 FPS and gyro at 200 FPS, and reported `RealSense Node Is Up!` without the earlier motion-module failure in the provided log.
+  - IMU-only topics: `/camera/camera/accel/imu_info`, `/camera/camera/accel/metadata`, `/camera/camera/accel/sample`, `/camera/camera/gyro/imu_info`, `/camera/camera/gyro/metadata`, `/camera/camera/gyro/sample`, `/camera/camera/imu`, plus depth-to-accel / depth-to-gyro extrinsics.
+  - `/camera/camera/imu` sample: `frame_id: camera_imu_optical_frame`, angular velocity around `(-0.0052, 0.0052, 0.0017)`, linear acceleration around `(0.255, -9.826, -0.186)`, and covariance values present.
 
 ## Block B — Heartbeat smoke-test (live, ≈ 30-45 min) OR Slab 3 paper (≈ 60-90 min)
 

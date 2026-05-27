@@ -129,8 +129,11 @@ source /opt/ros/jazzy/setup.bash
 
 # First identify the real link. Prefer /dev/serial/by-id if present.
 lsusb
-ls -l /dev/serial/by-id/* /dev/ttyACM* /dev/ttyUSB* /dev/serial0 2>/dev/null
-sudo dmesg -T | tail -80 | grep -Ei 'usb|tty|acm|cp210|ch34|ftdi|serial'
+lsusb -t
+ls -l /dev/serial/by-id/* /dev/serial/by-path/* /dev/ttyACM* /dev/ttyUSB* /dev/ttyAMA* /dev/ttyS* /dev/serial0 /dev/serial1 2>/dev/null
+ls /dev/ | grep -E 'serial|ttyAMA|ttyS' || true
+sudo dmesg -T | tail -80 | grep -Ei 'usb|tty|acm|cp210|ch34|ftdi|serial|cubepilot|pixhawk|px4|ardupilot|mavlink|cdc'
+ss -ulnp | grep -E '14550|14551|14540|5760' || true
 
 # Example only: replace the URL with the actual device path found above.
 ros2 launch mavros px4.launch fcu_url:=serial:///dev/ttyACM0:115200
@@ -155,15 +158,21 @@ If `/mavros/state` reports `connected: false`, check the physical endpoint first
 
 ```bash
 lsusb
-ls -l /dev/ttyACM* /dev/ttyUSB* /dev/serial/by-id/* 2>/dev/null
-sudo dmesg -T | tail -80 | grep -Ei 'usb|tty|acm|cp210|ch34|ftdi|serial'
+lsusb -t
+ls -l /dev/ttyACM* /dev/ttyUSB* /dev/ttyAMA* /dev/ttyS* /dev/serial/by-id/* /dev/serial/by-path/* /dev/serial0 /dev/serial1 2>/dev/null
+ls /dev/ | grep -E 'serial|ttyAMA|ttyS' || true
+sudo dmesg -T | tail -80 | grep -Ei 'usb|tty|acm|cp210|ch34|ftdi|serial|cubepilot|pixhawk|px4|ardupilot|mavlink|cdc'
+ss -ulnp | grep -E '14550|14551|14540|5760' || true
 ```
 
 Expected USB cases:
 
 - CubePilot / Pixhawk CDC ACM: `/dev/ttyACM0` or `/dev/serial/by-id/...`
 - USB-UART adapter (FTDI / CP210x / CH340): `/dev/ttyUSB0` or `/dev/serial/by-id/...`
-- GPIO UART: a known Pi UART device such as `/dev/serial0` if exposed and wired to the flight controller TELEM port
+- GPIO UART: a known Pi UART device such as `/dev/serial0` or a `ttyAMA*` node if exposed and wired to the flight controller TELEM port
+- UDP MAVLink: a confirmed listener / sender on a known MAVLink UDP port such as `14550`, `14551`, `14540`, or `5760`
+
+A bare Pi UART node is not enough by itself. For example, `/dev/ttyAMA10` can exist without proving CubePilot / Pixhawk telemetry; it only becomes usable after TELEM wiring is confirmed and the correct baud/profile is known.
 
 HDMI is not a MAVLink telemetry path. A cable connected to a Pi HDMI port can mirror video / desktop output to external hardware, but it will never create `/dev/ttyACM*`, `/dev/ttyUSB*`, or `/dev/serial/by-id/*` for MAVROS.
 
