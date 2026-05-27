@@ -122,7 +122,7 @@ Paper branch (slab 3): draft the Pi-side `systemd` unit structure for MAVROS aut
 - Leave `fcu_url` as `<placeholder>` — cannot be set until a real endpoint is confirmed in a future Block A.
 - Flag any ordering gap: if the autopilot USB device is slow to enumerate, `network-online.target` alone may not be sufficient; note whether a `udev` rule or `After=dev-ttyACM0.device` dependency would be needed.
 
-**Outcome:** [To fill — live (`connected: true` y/n, working FCU URL captured, dominant error class if no) OR paper (slab 3 unit draft summary + open ordering questions).]
+**Outcome:** Not executed after the Block A paper decision. The live MAVROS heartbeat branch was blocked by the missing physical MAVLink endpoint, and the paper slab 3 autostart draft was deliberately left for the next session after today's extra RealSense evidence capture and doc refresh. Slab 3 still needs a real `fcu_url` placeholder strategy plus service-ordering notes for USB/UART enumeration, but no unit file should be enabled until a serial / UART / UDP endpoint is visible.
 
 ## Block C — Telemetry beyond heartbeat (live, ≈ 30 min) OR Paper continuation (≈ 20-30 min)
 
@@ -154,25 +154,35 @@ Live branch:
 
 Paper branch: cross-reference slab 3 unit draft against Thu 21/05 §D.2 topic-name scheme. Does the `ExecStart` command launch the bridge with the right launch-time remaps onto `/sensors/*`? Does the unit ordering hold under a cold boot where the network comes up before the autopilot endpoint is enumerated? Does the slab 3 unit design account for the full-DE Pi 5 load (GNOME desktop + Remmina + RealSense) identified in the slab 4 sketch?
 
-**Outcome:** [To fill — live (IMU + GPS sample captured y/n, cross-machine discovery y/n) OR paper (cross-ref outcome).]
+**Outcome:** Not executed as a MAVROS telemetry block because no `/mavros/state connected: true` heartbeat exists. Sensor-side evidence captured outside MAVROS: RealSense D435i color/depth publishes ROS topics; IMU-only publishes `/camera/camera/imu`, `/camera/camera/accel/sample`, and `/camera/camera/gyro/sample`; combined color/depth/IMU remains power / USB-stability-sensitive after the low-voltage warning and motion-module failure. This does not provide boat GPS / IMU / battery / RC telemetry from the low-level controller.
 
 ## Block D — Debrief + action-item extraction (≈ 20 min)
 
-- [ ] Capture lessons learned — endpoint, firmware/profile, plugin-load gotchas, working config strings (live); or slab 3 design open questions / deferred decisions (paper).
-- [ ] List follow-ups — missing hardware, missing cable / endpoint, baud / firmware uncertainty, specific `mavros` plugins, power-design tasks, autostart tasks.
-- [ ] Doc-edit decision — default defer. A confirmed `connected: true` heartbeat warrants targeted `Board.md` / `wiki/Roadmap.md` updates; a continued no-endpoint result should only update docs if new evidence is added beyond 26/05.
+- [x] Capture lessons learned — endpoint, firmware/profile, plugin-load gotchas, working config strings (live); or slab 3 design open questions / deferred decisions (paper).
+- [x] List follow-ups — missing hardware, missing cable / endpoint, baud / firmware uncertainty, specific `mavros` plugins, power-design tasks, autostart tasks.
+- [x] Doc-edit decision — default defer. A confirmed `connected: true` heartbeat warrants targeted `Board.md` / `wiki/Roadmap.md` updates; a continued no-endpoint result should only update docs if new evidence is added beyond 26/05.
 
-**Outcome:** [To fill — action item bullet list + doc-edit decision (touch / defer).]
+**Outcome:** Debrief complete. Lessons learned: Remmina-first Pi access worked; ROS 2 Jazzy environment and clock are healthy; no stale MAVROS process was running; the expanded endpoint audit is still the correct gate before any MAVROS launch. No CubePilot / Pixhawk / USB-UART / UDP MAVLink endpoint is visible; `/dev/ttyAMA10` remains only a bare Pi UART node unless TELEM wiring is confirmed. `/parasit_marvin` is the `ros2cli` daemon, not a hidden data source. RealSense D435i is present and usable as a ROS camera source for color/depth, and IMU-only works; the combined color/depth/IMU load exposed a low-voltage / motion-module stability issue that should be retested with the final power topology.
+
+Follow-ups:
+
+- Physical endpoint: connect a known data-capable CubePilot / Pixhawk USB cable, TELEM UART / USB-UART path, or confirmed UDP MAVLink sender, then rerun the expanded endpoint audit before any MAVROS launch.
+- MAVROS profile: select PX4 / ArduPilot / generic only after the endpoint and firmware family are known; do not infer from installed packages or advertised `/mavros/*` topics.
+- RealSense power: retest combined color/depth/IMU with a stronger / final Pi 5 power path and, if available, privileged throttle and kernel-log checks.
+- Slab 3: draft the Pi-side `systemd` unit next, keeping `fcu_url` as a placeholder and noting USB/UART device-ordering constraints.
+- Slab 4 follow-up: convert the power/layout sketch into a combined-load acceptance checklist once the MAVLink endpoint can be attached.
+
+Doc-edit decision: targeted docs were touched because today's evidence added new durable facts beyond 26/05: the endpoint sweep widened again; `/dev/ttyAMA10` was explicitly de-promoted; RealSense color/depth and IMU-only status were verified on the post-reflash Ubuntu Desktop image; combined RealSense load exposed a power / USB-stability risk. Updates landed in `Board.md`, `wiki/Roadmap.md`, `wiki/Pi5_Bringup_Smoke_Test.md`, and this diary in commit `134edeb docs: record Pi 5 endpoint and RealSense retest`.
 
 ## Block E — Day wrap (≈ 10 min)
 
-- [ ] Final checks: `git status`, `git diff --check`, and placeholder/conflict-marker scan over this diary.
-- [ ] Fill Block E Outcome BEFORE the wrap commit.
-- [ ] Run the standard pre-commit sweep before the wrap commit.
-- [ ] Set Thu 28/05/2026 startup hint based on today's outcome.
-- [ ] Commit + push (user-run).
+- [x] Final checks: `git status`, `git diff --check`, and placeholder/conflict-marker scan over this diary.
+- [x] Fill Block E Outcome BEFORE the wrap commit.
+- [x] Run the standard pre-commit sweep before the wrap commit.
+- [x] Set Thu 28/05/2026 startup hint based on today's outcome.
+- [x] Commit; push pending.
 
-**Outcome:** [To fill at end of day — diary closed; commit subject + landed-state note.]
+**Outcome:** Day wrap ready. Wed outcome: live MAVLink heartbeat remains blocked by the missing physical endpoint; no MAVROS launch should be attempted until the Pi sees a real serial / UART / UDP MAVLink path. RealSense side-checks are useful but separate: color/depth works, IMU-only works, and combined color/depth/IMU needs a power / USB-stability retest. Slab 3 was not drafted today and remains the next paper branch if no endpoint appears on Thu 28/05/2026. Evidence-refresh commit is local as `134edeb docs: record Pi 5 endpoint and RealSense retest`. Wrap commit subject: `docs(diary): wrap 27/05 Pi 5 endpoint + RealSense retest`. Push remains pending.
 
 ## Three Asks status carry-forward
 
@@ -182,10 +192,11 @@ Paper branch: cross-reference slab 3 unit draft against Thu 21/05 §D.2 topic-na
 
 ## Next steps (Active branch)
 
-Thu 28/05/2026 startup hint: depends on Wed outcome.
+Thu 28/05/2026 startup hint: resume from the physical-link gate.
 
-- If live green (`connected: true` + IMU/GPS samples captured): Phase 5 next sub-block — telemetry-topic shape audit live on Pi against Thu 21/05 §D.2 mapping; `launch/remap.launch.yaml` Layer A/B integration scoping; autoboat-stack rewiring plan to consume `/mavros/*` through launch-time remaps onto `/sensors/*`.
-- If live partial (heartbeat OK, selected telemetry topics not flowing): root-cause write-up; plugin-list trim or `<apm|px4>_pluginlists.yaml` investigation; iterate.
-- If still blocked at endpoint: enable slab 3 unit draft once endpoint appears; refine slab 4 into a combined-load acceptance checklist.
+- If a CubePilot / Pixhawk data cable, TELEM UART / USB-UART path, or UDP MAVLink endpoint becomes available: rerun the expanded endpoint audit first, then launch MAVROS only against the confirmed path and verify `/mavros/state connected: true`.
+- If no endpoint is available: draft slab 3 — Pi-side `systemd` autostart strategy for MAVROS with `fcu_url` left as a placeholder and device-ordering caveats captured.
+- Retest RealSense combined color/depth/IMU only after improving or confirming the Pi 5 power path; IMU-only already works and should not be confused with boat IMU telemetry.
+- Convert the Slab 4 power/layout sketch into a combined-load acceptance checklist once the MAVLink endpoint is present.
 - Next supervisor meeting: Wed 03/06/2026 10h-12h.
 - VRX §8.2 weekly cadence next check: Tue 02/06/2026.
