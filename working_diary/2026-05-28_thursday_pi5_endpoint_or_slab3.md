@@ -198,23 +198,69 @@ Paper branch:
 
 Cold-boot caveat: the unit can start after `network-online.target`, but a USB autopilot / USB-UART endpoint may enumerate later. Production deployment should prefer a stable `/dev/serial/by-id/*` or `/dev/serial/by-path/*` endpoint when available, and add device-ordering only after the real adapter path is known. Until then, the unit draft is suitable as a paper strategy, not as an enable-now service.
 
+## Side Progress - Pi-side RealSense viewers
+
+After the MAVLink endpoint gate stayed closed, a camera-side Pi-local viewer check was run through Remmina. This was deliberately separate from MAVROS: it proves RealSense video visibility on the Pi 5 desktop, not boat telemetry or `/mavros/imu/data`.
+
+Color-only RealSense launch:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+ros2 launch realsense2_camera rs_launch.py enable_depth:=false enable_gyro:=false enable_accel:=false
+```
+
+Evidence from the launch:
+
+- RealSense ROS v4.57.7 with LibRealSense v2.57.7.
+- D435i serial `213622070342`, USB type `3.2`, firmware `5.14.0`, product ID `0x0B3A`.
+- Color profile opened as `RGB8`, `1280x720`, `30 FPS`.
+- `RealSense Node Is Up!` reported.
+- The missing `/home/imt-aqua-drone/.realsense-config.json` message only loaded defaults.
+
+Viewer checks:
+
+- `ros2 run rqt_image_view rqt_image_view /camera/camera/color/image_raw` initially failed because `rqt_image_view` was not installed.
+- `sudo apt update` showed all package indexes current.
+- `sudo apt install ros-jazzy-rqt-image-view` installed `ros-jazzy-rqt-image-view` 1.3.0 plus Qt / rqt dependencies; `/camera/camera/color/image_raw` then displayed in `rqt_image_view`. The `QSocketNotifier: Can only be used with threads started with QThread` message appeared but did not block viewing.
+- `sudo apt install ros-jazzy-rviz2` installed RViz2 14.1.20 plus RViz dependencies.
+- `rviz2` launched successfully, reported OpenGL `3.1 (GLSL 1.4)`, and displayed the RealSense color image topic. `Stereo is NOT SUPPORTED` appeared as a non-blocking RViz message.
+
+Outcome: Pi-side color-only RealSense viewing is now verified through both `rqt_image_view` and RViz2 on the Ubuntu Desktop image. Keep this as camera-path evidence only. Combined color/depth/IMU remains a separate power / USB-stability retest, and MAVROS remains blocked until a real serial / UART / UDP MAVLink endpoint appears.
+
 ## Block D — Debrief + action-item extraction (≈ 20 min)
 
-- [ ] Capture lessons learned — endpoint, firmware/profile, plugin-load gotchas, working config strings (live); or Slab 3 design open questions / deferred decisions (paper).
-- [ ] List follow-ups — missing hardware, missing cable / endpoint, baud / firmware uncertainty, `mavros` plugin config, power-design tasks, autostart tasks.
-- [ ] Doc-edit decision — default defer. A confirmed `connected: true` heartbeat warrants targeted `Board.md` / `wiki/Roadmap.md` updates; Slab 3 paper may warrant targeted docs only if it changes durable Phase 5 deployment planning.
+- [x] Capture lessons learned — endpoint, firmware/profile, plugin-load gotchas, working config strings (live); or Slab 3 design open questions / deferred decisions (paper).
+- [x] List follow-ups — missing hardware, missing cable / endpoint, baud / firmware uncertainty, `mavros` plugin config, power-design tasks, autostart tasks.
+- [x] Doc-edit decision — default defer. A confirmed `connected: true` heartbeat warrants targeted `Board.md` / `wiki/Roadmap.md` updates; Slab 3 paper may warrant targeted docs only if it changes durable Phase 5 deployment planning.
 
-**Outcome:** [To fill — action item bullet list + doc-edit decision (touch / defer).]
+**Outcome:** Debrief complete. Lessons learned: the Pi 5 software side is still healthy (`timedatectl`, ROS 2 Jazzy env, no stale MAVROS), but the live MAVROS path remains physically blocked because the Pi still sees no CubePilot / Pixhawk / USB-UART / UDP MAVLink endpoint. `/dev/ttyAMA10` alone is still only a bare Pi UART node until TELEM wiring and baud/profile are confirmed. The Slab 3 `systemd` strategy should stay paper-only with `fcu_url:=<placeholder>` until a real endpoint appears; `network-online.target` is not enough to guarantee USB serial enumeration. Camera startup should stay outside the MAVROS service.
+
+RealSense side progress is useful but separate: color-only D435i streaming is now verified locally on the Pi 5 desktop through both `rqt_image_view` and RViz2. The viewers are ROS subscribers; the RealSense USB handle belongs to `realsense2_camera_node`, so future "device busy" checks should look for leftover camera-node / container processes, not only viewer processes. Combined color/depth/IMU remains a power / USB-stability retest, not a green acceptance item.
+
+Follow-ups:
+
+- Connect a real MAVLink endpoint: data-capable CubePilot / Pixhawk USB, TELEM UART / USB-UART, or confirmed UDP MAVLink sender.
+- Rerun the expanded endpoint audit before any new MAVROS launch.
+- Select PX4 / ArduPilot / generic MAVROS profile only after endpoint + firmware evidence exists.
+- Convert Slab 3 from paper to a real unit only after `fcu_url` and device-ordering are known.
+- Retest combined RealSense color/depth/IMU only after improving or confirming the Pi 5 power path; keep this separate from boat telemetry.
+- Before relaunching the camera after viewer tests, check `pgrep -af 'realsense2_camera_node|component_container|rs_launch'` and `lsusb -d 8086:0b3a`.
+
+Doc-edit decision: touched durable status docs because 28/05 added two durable facts beyond the already-pushed diary draft: the endpoint absence was reconfirmed on a new day, and Pi-local color-only RealSense viewing through `rqt_image_view` + RViz2 is now proven. Updates landed in `Board.md`, `wiki/Roadmap.md`, and this diary. No `README.md`, `USER_MANUAL.md`, code, YAML, shell, or Pi-side service files were changed.
 
 ## Block E — Day wrap (≈ 10 min)
 
-- [ ] Final checks: `git status`, `git diff --check`, and placeholder/conflict-marker scan over this diary.
-- [ ] Fill Block E Outcome BEFORE the wrap commit.
-- [ ] Run the standard pre-commit sweep before the wrap commit.
-- [ ] Set next startup hint based on today's outcome.
-- [ ] Commit + push.
+- [x] Final checks: `git status`, `git diff --check`, and placeholder/conflict-marker scan over this diary.
+- [x] Fill Block E Outcome BEFORE the wrap commit.
+- [x] Run the standard pre-commit sweep before the wrap commit.
+- [x] Set next startup hint based on today's outcome.
+- [ ] Commit + push (pending user-run commit).
 
-**Outcome:** [To fill at end of day — diary closed; commit subject + landed-state note.]
+**Outcome:** Day wrap ready. Final state captured: Block A endpoint gate still selects the paper branch; Slab 3 MAVROS autostart remains a placeholder design until `fcu_url` and device ordering are known; Pi-local color-only RealSense viewing is verified through both `rqt_image_view` and RViz2; combined color/depth/IMU remains a separate power / USB-stability retest. Durable docs touched: `Board.md`, `wiki/Roadmap.md`, and this diary only.
+
+Verification before commit: `git status --short --branch` shows three modified Markdown files; `git diff --check` is clean; placeholder / conflict-marker scan is clean after this outcome fill; standard pre-commit sweep is clean. Commit subject:
+
+`docs: wrap 28/05 Pi endpoint gate + RealSense viewers`
 
 ## Three Asks status carry-forward
 
@@ -224,10 +270,10 @@ Cold-boot caveat: the unit can start after `network-online.target`, but a USB au
 
 ## Next steps (Active branch)
 
-Thu 28/05/2026 startup hint: start at Block A endpoint gate.
+Next active startup hint: resume from the physical MAVLink endpoint gate unless the session is explicitly camera-focused.
 
-- If a real MAVLink endpoint appears: launch MAVROS only against the confirmed path and verify `/mavros/state connected: true`, then capture first `/mavros/imu/data` and GPS / battery / RC samples where available.
-- If no endpoint appears: complete Slab 3 paper draft for Pi-side MAVROS autostart with `fcu_url` placeholder and explicit device-ordering caveats.
-- Keep RealSense power retest separate from MAVROS bring-up. IMU-only success is already documented; combined color/depth/IMU needs a stronger or confirmed Pi 5 power path before being treated as stable.
+- If a real MAVLink endpoint appears: rerun the expanded endpoint audit first, launch MAVROS only against the confirmed path, verify `/mavros/state connected: true`, then capture first `/mavros/imu/data` and GPS / battery / RC samples where available.
+- If no endpoint appears: do not launch MAVROS just to create `/mavros/*` topics. Keep Slab 3 as paper-only until `fcu_url` and device-ordering are known.
+- If camera work resumes: color-only Pi-local viewing is already verified through `rqt_image_view` and RViz2; next useful camera test is combined color/depth/IMU only after improving or confirming the Pi 5 power path.
 - Next supervisor meeting: Wed 03/06/2026 10h-12h.
 - VRX §8.2 weekly cadence next check: Tue 02/06/2026.
