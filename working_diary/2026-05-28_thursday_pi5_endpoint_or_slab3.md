@@ -31,7 +31,7 @@ Final commitment is a Block A decision based on actual endpoint availability whe
 
 ## Block A — Repo pre-flight + endpoint audit (≈ 15 min; ≈ 5 min if no change)
 
-- [ ] **Step 0** — Confirm repo state before live work:
+- [x] **Step 0** — Confirm repo state before live work:
 
   ```bash
   git fetch --prune
@@ -42,7 +42,7 @@ Final commitment is a Block A decision based on actual endpoint availability whe
 
   Expected: clean tree and `HEAD == origin/main`; recent log includes the 27/05 wrap commit `f2bfc6c` and evidence-refresh commit `134edeb`.
 
-- [ ] **Step 1** — Reach Pi via Remmina / Pi terminal. Confirm clock + ROS env:
+- [x] **Step 1** — Reach Pi via Remmina / Pi terminal. Confirm clock + ROS env:
 
   ```bash
   timedatectl status --no-pager
@@ -53,7 +53,7 @@ Final commitment is a Block A decision based on actual endpoint availability whe
 
   Expected: synchronized clock, NTP active, `ROS_DISTRO=jazzy`, and `/opt/ros/jazzy/bin/ros2`.
 
-- [ ] **Step 2** — Confirm no stale MAVROS process:
+- [x] **Step 2** — Confirm no stale MAVROS process:
 
   ```bash
   pgrep -af 'mavros|ros2 launch mavros' || true
@@ -61,7 +61,7 @@ Final commitment is a Block A decision based on actual endpoint availability whe
 
   Expected: empty before any new launch.
 
-- [ ] **Step 3** — Expanded endpoint audit:
+- [x] **Step 3** — Expanded endpoint audit:
 
   ```bash
   lsusb
@@ -74,10 +74,14 @@ Final commitment is a Block A decision based on actual endpoint availability whe
 
   A usable MAVLink endpoint is one of: `/dev/serial/by-id/...`, `/dev/ttyACM*`, `/dev/ttyUSB*`, a TELEM-wired UART node with wiring confirmation, or a confirmed UDP MAVLink sender / listener. `/dev/ttyAMA10` alone is not sufficient.
 
-- [ ] **Step 4** — Firmware / launch-profile decision (only if endpoint found): identify PX4 / ArduPilot / generic from autopilot label, supervisor confirmation, QGC / MP evidence, or a heartbeat dump.
-- [ ] **Step 5** — Decision: live Block B+C if endpoint confirmed; paper Slab 3 if still absent.
+- [x] **Step 4** — Firmware / launch-profile decision (N/A; no endpoint found): identify PX4 / ArduPilot / generic from autopilot label, supervisor confirmation, QGC / MP evidence, or a heartbeat dump.
+- [x] **Step 5** — Decision: live Block B+C if endpoint confirmed; paper Slab 3 if still absent.
 
-**Outcome:** [To fill — live (endpoint path, firmware/profile, go/no-go for Block B+C) OR paper (Slab 3 selected).]
+**Outcome:** Paper branch selected on 28/05/2026. Repo pre-flight was green after `git fetch --prune`: recent log began with `ca17c49`, `f2bfc6c`, and `134edeb`; `git status --short --branch` showed `## main...origin/main`; `git rev-parse HEAD origin/main` returned the same SHA `ca17c499a3a7fdba89b5ce8632e2d6314a9a25e5` for both refs.
+
+Remmina-side Pi checks were also green: `timedatectl` showed `Thu 2026-05-28 13:35:22 CEST`, `System clock synchronized: yes`, and `NTP service: active`; ROS env showed `ROS_DISTRO=jazzy` and `ros2` at `/opt/ros/jazzy/bin/ros2`; `pgrep -af 'mavros|ros2 launch mavros'` returned empty.
+
+Expanded endpoint audit still found no usable MAVLink endpoint. USB showed only root hubs, SiGma keyboard `1c4f:0027`, Intel RealSense D435i `8086:0b3a`, and Logitech mouse `046d:c08b`; `lsusb -t` showed the RealSense on USB 3 at `5000M` and HID devices only. Serial sweep found only `/dev/ttyAMA10`; there was no `/dev/serial/by-id/*`, `/dev/serial/by-path/*`, `/dev/ttyACM*`, `/dev/ttyUSB*`, `/dev/serial0`, or `/dev/serial1`. `/dev` name grep also returned only `ttyAMA10`. `sudo dmesg -T | tail -80 | grep ...` returned only `Bluetooth: RFCOMM TTY layer initialized`; there were no CubePilot / Pixhawk / PX4 / ArduPilot / MAVLink / CDC ACM lines. `ss -ulnp | grep -E '14550|14551|14540|5760'` returned empty. `/dev/ttyAMA10` remains insufficient without confirmed TELEM wiring, so MAVROS was not launched.
 
 ## Block B — Heartbeat smoke-test (live, ≈ 30-45 min) OR Slab 3 paper (≈ 60-90 min)
 
@@ -105,14 +109,56 @@ Live branch:
 Paper branch (Slab 3): draft the Pi-side `systemd` unit structure for MAVROS autostart:
 
 - `[Unit]` section: `Description=MAVROS bridge`, `After=network-online.target`, `Wants=network-online.target`.
-- `[Service]` section: `User=imt-aqua-drone`, `WorkingDirectory=/home/imt-aqua-drone`, `SupplementaryGroups=dialout`, `Type=simple`, `Restart=on-failure`, `RestartSec=5s`, `ExecStart=/bin/bash -c 'source /opt/ros/jazzy/setup.bash && ros2 launch mavros <profile>.launch fcu_url:=<placeholder>'`, `StandardOutput=journal`, `StandardError=journal`.
+- `[Service]` section: `User=imt-aqua-drone`, `WorkingDirectory=/home/imt-aqua-drone`, `SupplementaryGroups=dialout`, `Type=simple`, `Restart=on-failure`, `RestartSec=5s`, `ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && exec ros2 launch mavros <profile>.launch fcu_url:=<placeholder>'`, `StandardOutput=journal`, `StandardError=journal`.
 - `[Install]` section: `WantedBy=multi-user.target`.
 - Operator commands: `sudo systemctl enable <unit>`, `sudo systemctl start <unit>`, `systemctl status <unit>`, `journalctl -u <unit> -f`.
 - Leave `fcu_url` as `<placeholder>` until a real endpoint is confirmed.
 - Capture ordering caveats: `network-online.target` alone does not wait for slow USB enumeration; future endpoint-specific dependencies may need a `udev` rule or `After=dev-ttyACM0.device` / by-path equivalent.
 - Capture failure semantics: `Restart=on-failure` handles process exits but not a permanently wrong `fcu_url`; journal logs must make repeated serial-open failures obvious.
 
-**Outcome:** [To fill — live (`connected: true` y/n, FCU URL captured, dominant error class if no) OR paper (Slab 3 unit draft summary + open ordering questions).]
+**Outcome:** Paper Slab 3 draft captured only; no Pi-side unit file was created or enabled.
+
+Candidate unit shape:
+
+```ini
+[Unit]
+Description=MAVROS bridge
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=imt-aqua-drone
+WorkingDirectory=/home/imt-aqua-drone
+SupplementaryGroups=dialout
+Restart=on-failure
+RestartSec=5s
+ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && exec ros2 launch mavros <profile>.launch fcu_url:=<placeholder>'
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Operator command set, once the endpoint and launch profile are real:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable mavros-bridge.service
+sudo systemctl start mavros-bridge.service
+systemctl status mavros-bridge.service --no-pager
+journalctl -u mavros-bridge.service -f
+```
+
+Design constraints:
+
+- Keep `fcu_url:=<placeholder>` until a real serial / UART / UDP endpoint is confirmed by Block A evidence.
+- Keep `<profile>` unset until the firmware family is known. Use the PX4 / ArduPilot / generic profile only after endpoint + firmware evidence exists.
+- Use `/bin/bash -lc 'source ... && exec ros2 launch ...'` because `source` is shell-specific and `exec` lets `systemd` track the ROS launch process directly.
+- `Restart=on-failure` covers process exits, not a permanently wrong `fcu_url`; journal output must make repeated serial-open or heartbeat failures obvious.
+- `network-online.target` is useful for UDP links, but it does not wait for a slow USB serial endpoint. A future serial-specific deployment may need a concrete device dependency, for example a by-id / by-path `.device` unit or a `udev` rule keyed to the confirmed adapter.
+- Do not include RealSense in this unit. Camera startup belongs to a separate camera unit or a higher launch layer, so camera power / USB faults cannot restart the MAVROS bridge unnecessarily.
 
 ## Block C — Telemetry beyond heartbeat (live, ≈ 30 min) OR Slab 3 cross-check (≈ 20-30 min)
 
@@ -144,11 +190,13 @@ Live branch:
 
 Paper branch:
 
-- [ ] Cross-reference Slab 3 against Thu 21/05 §D.2 topic-name scheme: MAVROS sensor topics should remap toward neutral `/sensors/*`; thrust translation remains a Layer B bridge-node concern, not a `systemd` unit concern.
-- [ ] Check that the unit design remains valid under a cold boot where network comes up before the autopilot endpoint enumerates.
-- [ ] Check whether Slab 3 should explicitly defer RealSense startup, or simply document that camera service ordering belongs to a separate unit / launch layer.
+- [x] Cross-reference Slab 3 against Thu 21/05 §D.2 topic-name scheme: MAVROS sensor topics should remap toward neutral `/sensors/*`; thrust translation remains a Layer B bridge-node concern, not a `systemd` unit concern.
+- [x] Check that the unit design remains valid under a cold boot where network comes up before the autopilot endpoint enumerates.
+- [x] Check whether Slab 3 should explicitly defer RealSense startup, or simply document that camera service ordering belongs to a separate unit / launch layer.
 
-**Outcome:** [To fill — live (IMU + GPS sample captured y/n, cross-machine discovery y/n) OR paper (Slab 3 cross-check outcome).]
+**Outcome:** Paper cross-check complete. The Slab 3 autostart unit is only the process supervisor for MAVROS; it should not own topic translation logic. Thu 21/05 §D.2 remains the alignment baseline: MAVROS sensor outputs should be exposed toward neutral `/sensors/*` names by launch-time remaps in the future MAVROS launch wrapper, while LiDAR / camera remain separate driver concerns and thrust translation remains a Layer B bridge-node concern because `Float64` thrust commands cannot be remapped directly into MAVROS `Twist` or manual-control messages.
+
+Cold-boot caveat: the unit can start after `network-online.target`, but a USB autopilot / USB-UART endpoint may enumerate later. Production deployment should prefer a stable `/dev/serial/by-id/*` or `/dev/serial/by-path/*` endpoint when available, and add device-ordering only after the real adapter path is known. Until then, the unit draft is suitable as a paper strategy, not as an enable-now service.
 
 ## Block D — Debrief + action-item extraction (≈ 20 min)
 
