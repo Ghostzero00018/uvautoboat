@@ -39,7 +39,7 @@ Current message to prepare for the 03/06 meeting:
   git rev-parse HEAD origin/main
   ```
 
-  Expected: clean tree, `HEAD == origin/main`, latest commit `ff161ee`.
+  Expected at 29/05 Block A start: clean tree and branch synced; recent log begins with `ff161ee`.
 
 - [x] Re-read the current status anchors:
 
@@ -155,11 +155,11 @@ Design constraints for the actual Windows deck:
 
 - [x] Run the standard pre-commit sweep if committing.
 - [x] Set next startup hint for the next active day.
-- [ ] Commit + push if the diary is closed.
+- [x] Commit + push if the diary is closed.
 
-**Outcome:** Block E opened after user direction to skip Block D. No durable status docs need updates from today's PPT planning because no project state changed; this is a presentation-prep snapshot only. Final checks passed after correcting the placeholder-scan regex to avoid self-matching the command block: `git diff --check` is clean, conflict-marker / placeholder scan is clean after this outcome fill, and the standard visibility sweep is clean. Current modified file: this 29/05 diary only.
+**Outcome:** Block E opened after user direction to skip Block D. No durable status docs need updates from today's PPT planning because no project state changed; this is a presentation-prep snapshot only. Final checks passed after correcting the placeholder-scan regex to avoid self-matching the command block: `git diff --check` is clean, conflict-marker / placeholder scan is clean after this outcome fill, and the standard visibility sweep is clean. The close commit later landed and synced as `7516666 docs(diary): record 29/05 PPT prep story`.
 
-No commit or push was run from this session. Suggested commit subject if closing the diary:
+Commit subject used for the close commit:
 
 `docs(diary): record 29/05 PPT prep story`
 
