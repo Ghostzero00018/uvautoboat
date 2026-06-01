@@ -142,7 +142,7 @@ Run this block only if a real physical or network MAVLink path is present or the
   - not enough: bare `/dev/ttyAMA10` without TELEM wiring confirmation.
 - [ ] Identify firmware / launch profile from label, professor confirmation, Mission Planner / QGroundControl evidence, or heartbeat dump: PX4, ArduPilot, or generic.
 
-**Outcome:** [To fill - endpoint found y/n, exact path, firmware/profile evidence, proceed to heartbeat y/n.]
+**Outcome:** Block B not started on 01/06/2026. The Block A side check re-confirmed no real CubePilot / Pixhawk / TELEM / USB-UART / UDP MAVLink endpoint, and the professor did not provide a concrete endpoint route in this repo session. Exact endpoint path remains unresolved. Firmware / launch profile remains unresolved. Do not proceed to heartbeat or launch MAVROS until a real endpoint path is visible or explicitly provided.
 
 ## Block C - Live heartbeat or PPT refresh (approx 45-90 min)
 
@@ -187,7 +187,7 @@ PPT branch, if endpoint remains unresolved or after live result is known:
 - [ ] If endpoint is resolved, revise slide 2 from "current dependency" to "telemetry link established" and update slide 4 decision asks.
 - [ ] If endpoint is still unresolved, keep the deck focused on completed work and decisions needed without overloading visible slides with endpoint audit detail.
 
-**Outcome:** [To fill - live heartbeat result or PPT refresh result.]
+**Outcome:** Block C not done this session. The live-heartbeat branch stayed gated because Block B did not prove an endpoint. The PPT-refresh branch was not started; no Windows `.pptx` path was provided in this Linux session, no repo-side slide outline was revised today, and no deck export was produced. The 29/05 four-page working draft remains the current repo-side deck basis.
 
 ## Block D - Meeting readiness check (approx 20-30 min)
 
@@ -201,15 +201,15 @@ PPT branch, if endpoint remains unresolved or after live result is known:
 - [ ] Decide whether Tue 02/06/2026 needs a final deck polish / rehearsal pass.
 - [ ] Carry VRX §8.2 weekly cadence check to Tue 02/06/2026 unless it is completed today.
 
-**Outcome:** [To fill - deck status, rehearsal/polish need, Tuesday follow-up.]
+**Outcome:** Block D not done this session. Windows `.pptx` update status is unconfirmed from this Linux repo session. No backup PDF was exported here. Tuesday follow-up remains final deck polish / rehearsal if the Windows deck still needs it, plus endpoint re-check only if the professor provides a real connection path.
 
 ## Block E - Day wrap (approx 20-30 min)
 
-- [ ] Fill Block outcomes.
-- [ ] Decide whether durable docs need updates:
+- [x] Fill Block outcomes.
+- [x] Decide whether durable docs need updates:
   - update `Board.md` / `wiki/Roadmap.md` only if live endpoint status, heartbeat, or telemetry truly changes durable project state;
   - otherwise keep Monday as diary-only presentation / endpoint-prep work.
-- [ ] Run final checks:
+- [x] Run final checks:
 
   ```bash
   git status --short --branch
@@ -218,11 +218,17 @@ PPT branch, if endpoint remains unresolved or after live result is known:
   rg -n "$pattern" working_diary/2026-06-01_monday_professor_endpoint_or_ppt_refresh.md
   ```
 
-- [ ] Run the standard pre-commit sweep if committing.
-- [ ] Set next startup hint for Tue 02/06/2026 or Wed 03/06/2026.
+- [x] Run the standard pre-commit sweep if committing.
+- [x] Set next startup hint for Tue 02/06/2026 or Wed 03/06/2026.
 - [ ] Commit + push if the diary is closed.
 
-**Outcome:** [To fill - diary closed state, commit subject, next startup hint.]
+**Outcome:** Day wrap ready on 01/06/2026. Today's work closed as diary-only endpoint / health evidence plus branch decision: no real MAVLink endpoint appeared, MAVROS was not launched, PPT refresh was deferred while the day focused on the endpoint re-check and health evidence, and no durable project state changed. No `Board.md` / `wiki/Roadmap.md` update is needed because there is still no endpoint path, no `/mavros/state connected: true`, and no first boat telemetry.
+
+Final checks passed: `git status --short --branch` showed only this diary modified before the wrap commit handoff; `git diff --check` was clean; placeholder / conflict-marker scan found no remaining placeholders after this outcome fill; the standard visibility sweep was clean. Commit and push remain pending user action.
+
+Suggested commit subject:
+
+`docs(diary): wrap 01/06 endpoint gate day`
 
 ## Three Asks status carry-forward
 
@@ -232,11 +238,13 @@ PPT branch, if endpoint remains unresolved or after live result is known:
 
 ## Next steps (Active branch)
 
-Mon 01/06/2026 startup hint: use the professor window to resolve or re-confirm the CubePilot / MAVROS endpoint before finalizing the Wed 03/06/2026 deck.
+Next active startup hint: Tue 02/06/2026 final pre-meeting check, or Wed 03/06/2026 meeting-day check if Tuesday is skipped.
 
 - Start with repo pre-flight and current anchors.
 - If a real endpoint path appears, run the expanded endpoint audit before any MAVROS launch.
 - If `/mavros/state connected: true` is achieved, capture minimal first telemetry and refresh the deck.
-- If no endpoint is available, keep the deck as a working draft focused on work completed since 20/05/2026 and decisions needed.
+- If no endpoint is available, keep the deck focused on work completed since 20/05/2026 and decisions needed.
+- Keep exact endpoint evidence in speaker notes only; keep visible slides non-technical.
 - Keep RealSense camera evidence separate from MAVROS boat telemetry.
-- VRX §8.2 weekly cadence next check: Tue 02/06/2026.
+- Validation methodology remains pending external confirmation.
+- VRX §8.2 weekly cadence next check: Tue 02/06/2026 unless completed during the meeting-prep pass.
