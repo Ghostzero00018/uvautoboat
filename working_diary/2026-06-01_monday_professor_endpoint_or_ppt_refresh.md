@@ -30,7 +30,7 @@ Current message to carry into Monday:
 
 ## Block A - Repo pre-flight + Monday scope decision (approx 15-20 min)
 
-- [ ] Confirm repo state:
+- [x] Confirm repo state:
 
   ```bash
   git fetch --prune
@@ -41,7 +41,7 @@ Current message to carry into Monday:
 
   Expected: clean tree and branch synced; recent log includes `7516666` and this scaffold commit if it has already been committed.
 
-- [ ] If `HEAD` is behind `origin/main`, run:
+- [x] If `HEAD` is behind `origin/main`, run:
 
   ```bash
   git pull --ff-only
@@ -49,7 +49,7 @@ Current message to carry into Monday:
 
   If `HEAD` and `origin/main` diverge, stop and report the state.
 
-- [ ] Re-read current anchors:
+- [x] Re-read current anchors:
 
   ```bash
   sed -n '1,220p' working_diary/2026-05-29_friday_ppt_prep_for_03_june_meeting.md
@@ -59,13 +59,51 @@ Current message to carry into Monday:
   sed -n '1,280p' working_diary/2026-05-28_thursday_pi5_endpoint_or_slab3.md
   ```
 
-- [ ] Confirm Monday work branch:
+- [x] Confirm Monday work branch:
   - professor / hardware present and endpoint work possible;
   - or no hardware path yet, so PPT refresh / meeting prep only.
-- [ ] Confirm whether the Windows `.pptx` is available today. If not, keep working in repo-side Markdown only.
-- [ ] Do not advance to live MAVROS work until a real endpoint path is visible or explicitly provided.
+- [x] Confirm whether the Windows `.pptx` is available today. If not, keep working in repo-side Markdown only.
+- [x] Do not advance to live MAVROS work until a real endpoint path is visible or explicitly provided.
 
-**Outcome:** [To fill - repo state, professor/window status, selected branch.]
+**Outcome:** Block A complete on 01/06/2026. Repo pre-flight was green after `git fetch --prune`: `git log --oneline -5` began with `4278335`, `eb60028`, `7516666`, `ff161ee`, and `a037ebb`; `git status --short --branch` showed clean `## main...origin/main`; `git rev-parse HEAD origin/main` returned the same SHA `4278335cfe509ab83b22eeef662754978d29980d` for both refs. No push or pull was needed.
+
+Current anchors were re-read from the 01/06 and 29/05 diary entries, `Board.md`, `wiki/Roadmap.md`, and the 28/05 endpoint-gate diary. They still show the same live gate: install and camera evidence are separate from boat telemetry, and no confirmed CubePilot / Pixhawk / TELEM / USB-UART / UDP MAVLink endpoint is visible in the repo evidence. No concrete endpoint path was provided in today's startup context, so the selected branch is PPT refresh / meeting prep only. MAVROS remains gated until a real endpoint path is visible or explicitly provided.
+
+The actual Windows `.pptx` path was not provided in this Linux repo session, so work stays in repo-side Markdown outline / notes. Carry forward: validation methodology is still pending external confirmation, and VRX §8.2 weekly cadence next check remains Tue 02/06/2026 unless completed today.
+
+### Side check - Pi 5 routine health and endpoint gate evidence
+
+This was a routine Pi 5 check under the Block A / PPT branch, not a Block B endpoint-proof start. No real CubePilot / Pixhawk / TELEM / USB-UART / UDP MAVLink path was provided, so MAVROS was not launched.
+
+Pi 5 baseline from `imt-aqua-drone@imtaquadrone-desktop`:
+
+- Host / OS: `imtaquadrone-desktop`, Ubuntu `24.04.4 LTS`, kernel `6.8.0-1057-raspi`, `arm64`.
+- Clock / network: `timedatectl` showed `System clock synchronized: yes`, `NTP service: active`; `wlan0` was up at `10.120.2.162/23`; `eth0` was down.
+- Resources: uptime was about 4 min at first check; memory headroom was good (`15Gi` total, about `14Gi` available); root filesystem was `58G` total, `22%` used.
+- ROS 2: `ROS_DISTRO=jazzy`, `ros2` resolved to `/opt/ros/jazzy/bin/ros2`; idle graph showed only `/parameter_events` and `/rosout`.
+- Stale process check: no `mavros`, `ros2 launch mavros`, `realsense2_camera_node`, `component_container`, or `rs_launch` process was reported.
+
+Endpoint gate:
+
+- USB tree showed root hubs, SiGma keyboard `1c4f:0027`, Intel RealSense D435i `8086:0b3a`, and Logitech mouse `046d:c08b`.
+- RealSense D435i was on USB 3 SuperSpeed (`5000M`) in `lsusb -t`. This is USB-layer evidence only; it does not prove combined color/depth/IMU stability.
+- Serial sweep found only `/dev/ttyAMA10`; no `/dev/serial/by-id/*`, `/dev/serial/by-path/*`, `/dev/ttyACM*`, `/dev/ttyUSB*`, `/dev/serial0`, or `/dev/serial1`.
+- `/dev` serial-name grep returned only `ttyAMA10`.
+- Filtered `sudo dmesg -T` showed no CubePilot / Pixhawk / PX4 / ArduPilot / MAVLink / CDC ACM / CP210x / FTDI evidence.
+- UDP check showed no listener on `14550`, `14551`, `14540`, or `5760`.
+
+Verdict: endpoint gate remains unchanged from the 22/05 `connected: false` launch test, 27/05 audit, and 28/05 Block A audit. USB remains the unambiguous path if a data cable / adapter appears. A TELEM-to-GPIO-UART path will not create a new device node; it needs physical wiring confirmation plus byte-flow evidence on the identified UART. `/dev/ttyAMA10` alone is still insufficient.
+
+Thermal / power diagnostics:
+
+- Idle temperature settled in the high 60s: `68.85 C`, `68.3 C`, then `67.2 C`. This is acceptable for idle, but leaves limited headroom for the future combined RealSense + MAVLink load test.
+- `vcgencmd` was present on `PATH`, but both `get_throttled` and `measure_temp` failed because `/dev/vcio` was unavailable. Do not create `/dev/vcio` manually for today's endpoint / PPT path.
+- Non-root `dmesg` was blocked by the Ubuntu kernel log restriction; `sudo dmesg` is the right form.
+- Filtered `sudo dmesg -T` showed only normal thermal-governor boot registration and `mmc0/mmc1: cannot verify signal voltage switch`. The MMC lines are an SD / eMMC I/O signalling-speed footnote, not Pi supply under-voltage evidence.
+- No under-voltage, throttling, thermal-trip, `vcio`, or `vchi` fault lines appeared in this boot's logs.
+- CPU frequency readout was `scaling_cur_freq=2000000`, `scaling_max_freq=2400000`, `scaling_min_freq=1500000`; this indicates the governor is responding under the light desktop / Remmina session, but it is not a definitive load-time throttle test.
+
+Conclusion: firmware / power diagnostics are closed for today's critical path. The 27/05 low-voltage event is not forensically recoverable from this fresh boot; the remaining power question is forward-looking and should be tested later under controlled combined RealSense + MAVLink load. No Board / Roadmap update is needed unless a real endpoint, heartbeat, or durable telemetry status changes.
 
 ## Block B - Endpoint proof if professor hardware path appears (approx 30-45 min)
 
