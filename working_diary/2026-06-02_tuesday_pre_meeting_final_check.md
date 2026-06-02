@@ -153,18 +153,25 @@ Raw byte-flow check:
 
 MAVProxy cross-check:
 
-- MAVProxy was installed on the Pi with `mavproxy-1.8.74`, `pymavlink-2.4.49`, and the missing `future` dependency added afterward.
-- `mavproxy.py --master=/dev/ttyAMA10 --baudrate 57600` opened the port, waited for heartbeat, then reported `link 1 down`.
-- `mavproxy.py --master=/dev/ttyAMA10 --baudrate 115200` opened the port, waited for heartbeat, then reported `link 1 down`.
-- `mavproxy.py --master=/dev/ttyAMA10 --baudrate 921600` opened the port, waited for heartbeat, then reported `link 1 down`.
-- `mavproxy.py --master=udpin:0.0.0.0:14855` opened the UDP listener, waited for heartbeat, then reported `link 1 down`.
+- MAVProxy was installed on the Pi with `mavproxy-1.8.74`, `pymavlink-2.4.49`, and the missing `future` dependency added afterward; `mavproxy.py --version` reported `MAVProxy Version: 1.8.74`, and `python3 -c "from pymavlink import mavutil"` succeeded.
+- USB serial sweep still returned no `/dev/ttyACM*` or `/dev/ttyUSB*`; `mavproxy.py --master=/dev/ttyACM0 --show-errors` failed to open `/dev/ttyACM0` because the device did not exist.
+- `mavproxy.py --master=/dev/ttyAMA10,57600 --show-errors` opened the port, waited for heartbeat, then reported `link 1 down`.
+- `mavproxy.py --master=/dev/ttyAMA10,115200 --show-errors` opened the port, waited for heartbeat, then reported `link 1 down`.
+- `mavproxy.py --master=/dev/ttyAMA10,921600 --show-errors` opened the port, waited for heartbeat, then reported `link 1 down`.
+- `mavproxy.py --master=udpin:0.0.0.0:14855 --show-errors` opened the UDP listener, waited for heartbeat, then reported `link 1 down`.
+- `mavproxy.py --master=udpin:0.0.0.0:14550 --show-errors` also opened the UDP listener, waited for heartbeat, then reported `link 1 down`.
+- Later retest after `ModemManager` had already been uninstalled and the Pi rebooted still showed no `/dev/ttyACM*`, no `/dev/serial*`, and only `/dev/ttyAMA10`; `mavproxy.py --master=/dev/ttyAMA10 --baudrate 115200` and `mavproxy.py --master=/dev/ttyAMA10 --show-errors` both opened the port and waited for heartbeat before `link 1 down`.
+- MAVProxy still allowed local prompt commands such as `status` while the link was down; reported outbound master counters do not prove a vehicle link when inbound / heartbeat-related counters remain zero.
+- `cat mav.tlog`, `cat /dev/ttyAMA10`, and `sudo hexdump -C /dev/ttyAMA10` produced no visible MAVLink bytes in the terminal during the retest.
+- Pi boot config check showed `/boot/firmware/config.txt` exists with `enable_uart=1` and `dtoverlay=disable-bt`; `/boot/firmware/cmdline.txt` contains only `console=tty1`, so no serial console is visible in the kernel command line. Device check still showed no `/dev/serial*`; only `/dev/ttyAMA10` and `/dev/ttyS0` appeared. No `/dev/ttyAMA0` was present.
+- Late note after the wrap: user reported that after modifying `config.txt`, rebooting, and retesting the MAVProxy commands, the result still reported `link 1 down`. Exact post-reboot device enumeration and target port used after the config change should be captured next before treating this as a completed post-overlay proof.
 
 Python / `pymavlink` cross-check:
 
 - A heartbeat-only script at `~/mavlink_heartbeat_test.py` tested `/dev/ttyAMA10` at `57600`, `115200`, and `921600`.
 - Result for all three baud rates: `NO HEARTBEAT`.
 
-Verdict: MAVROS, MAVProxy, and direct `pymavlink` all start and can open `/dev/ttyAMA10`, but no heartbeat arrives on that UART at `57600`, `115200`, or `921600`. The raw hexdump showed zero bytes, so the tools agree because the line is silent; this rules out a MAVROS-specific software fault, not a wiring fault. USB was not exercised because no `/dev/ttyACM0` ever appeared, and the UDP listener had no confirmed source, so neither path is evidence either way. Since a baud mismatch usually yields garbled bytes rather than silence, the blocker is likely physical or configuration-side: TELEM TX-to-Pi RX wiring, common ground, Pi UART mapping, or whether the flight controller emits MAVLink on that port through its `SERIALx_PROTOCOL` / `SERIALx_BAUD` settings. Next test: connect the flight controller over USB and re-run the heartbeat check on `/dev/ttyACM0` to isolate flight-controller health from the UART path. No `/mavros/state connected: true` result was achieved, so no `/mavros/imu/data`, `/mavros/global_position/global`, or `/mavros/battery` telemetry capture was attempted.
+Verdict: MAVROS, MAVProxy, and direct `pymavlink` all start and can open `/dev/ttyAMA10`, but no heartbeat arrives on that UART at `57600`, `115200`, or `921600`. The raw hexdump showed zero bytes, so the tools agree because the line is silent; this rules out a MAVROS-specific software fault, not a wiring fault. USB was not exercised because no `/dev/ttyACM0` ever appeared, and the UDP listener had no confirmed source, so neither path is evidence either way. Since a baud mismatch usually yields garbled bytes rather than silence, the blocker is likely physical or configuration-side: TELEM TX-to-Pi RX wiring, common ground, Pi UART mapping, or whether the flight controller emits MAVLink on that port through its `SERIALx_PROTOCOL` / `SERIALx_BAUD` settings. `ModemManager` is no longer the current explanation after uninstall and reboot. The Pi 5 UART mapping is now suspect because no `/dev/serial*` or `/dev/ttyAMA0` exists, while `/dev/ttyAMA10` is the Pi 5 debug UART class device. Next checks are confirming which Linux device maps to GPIO header pins 8/10, enabling the correct Pi 5 UART overlay if needed, and running a real flight-controller USB enumeration test on `/dev/ttyACM0` if the board can be connected by USB. No `/mavros/state connected: true` result was achieved, so no `/mavros/imu/data`, `/mavros/global_position/global`, or `/mavros/battery` telemetry capture was attempted.
 
 ## Block C - Final deck notes / meeting story (approx 45-75 min)
 
@@ -232,24 +239,24 @@ Carry-forward note: validation methodology remains pending external confirmation
 
 ## Block D - Meeting readiness / rehearsal check (approx 20-30 min)
 
-- [ ] Prepare the short verbal version for a professor unfamiliar with ROS 2:
+- [x] Skip the short verbal rehearsal in this repo session:
   - since 20/05, the onboard computer environment and software bridge are ready;
   - the remaining dependency is the real boat-data connection path;
   - camera progress is useful but separate from boat telemetry;
   - the 03/06 meeting should confirm connection, firmware/profile, power path, and validation methodology.
-- [ ] If the Windows deck was touched, export / keep a backup PDF on the Windows machine.
-- [ ] Decide whether any Wed 03/06 morning edits are needed before the 10h-12h meeting.
-- [ ] Complete or explicitly carry the VRX §8.2 weekly cadence check.
+- [x] Skip Windows deck export from this Linux repo session; the Windows deck was not touched here.
+- [x] Defer the Wed 03/06 morning edit decision to the next meeting-day check.
+- [x] Carry the VRX §8.2 weekly cadence check forward; it was not completed during this repo session.
 
-**Outcome:** [To fill - readiness status, rehearsal/polish need, VRX cadence status.]
+**Outcome:** Block D skipped by user direction on 02/06/2026. No rehearsal pass, Windows `.pptx` export, or VRX §8.2 cadence check was completed in this repo session. Carry the meeting-day polish decision and VRX cadence check into the next startup.
 
 ## Block E - Day wrap (approx 20-30 min)
 
-- [ ] Fill Block outcomes.
-- [ ] Decide whether durable docs need updates:
+- [x] Fill Block outcomes.
+- [x] Decide whether durable docs need updates:
   - update `Board.md` / `wiki/Roadmap.md` only if live endpoint status, heartbeat, telemetry, or meeting decision state truly changes durable project state;
   - otherwise keep Tuesday as diary-only pre-meeting work.
-- [ ] Run final checks:
+- [x] Run final checks:
 
   ```bash
   git status --short --branch
@@ -258,11 +265,17 @@ Carry-forward note: validation methodology remains pending external confirmation
   rg -n "$pattern" working_diary/2026-06-02_tuesday_pre_meeting_final_check.md
   ```
 
-- [ ] Run the standard pre-commit sweep if committing.
-- [ ] Set next startup hint for Wed 03/06/2026 meeting day.
+- [x] Run the standard pre-commit sweep if committing.
+- [x] Set next startup hint for Wed 03/06/2026 meeting day.
 - [ ] Commit + push if the diary is closed.
 
-**Outcome:** [To fill - diary closed state, commit subject, next startup hint.]
+**Outcome:** Day wrap ready on 02/06/2026. Tuesday closed as diary-only pre-meeting / endpoint-proof work. The professor-window tests did not produce `/mavros/state connected: true`, first boat telemetry, or a durable endpoint path, so no `Board.md` / `wiki/Roadmap.md` update is needed from this wrap. Current evidence is sharper than the morning state: MAVROS, MAVProxy, and direct `pymavlink` all open `/dev/ttyAMA10` but receive no heartbeat; raw byte checks show the line is silent; `ModemManager` is no longer the current explanation after uninstall and reboot; Pi 5 UART mapping is now suspect because `uart0-pi5` is required for GPIOs 14-15 and no `/dev/ttyAMA0` / `/dev/serial*` appeared. A late user report says MAVProxy still returned `link 1 down` after a `config.txt` edit and reboot, but the exact post-reboot device list and tested target port still need to be captured.
+
+Final checks passed before commit handoff: `git diff --check` was clean; placeholder / conflict-marker scan found no remaining placeholders after this outcome fill; the standard visibility sweep was clean. Commit and push remain pending user action.
+
+Suggested commit subject:
+
+`docs(diary): close 02/06 endpoint proof day`
 
 ## Three Asks status carry-forward
 
@@ -272,12 +285,14 @@ Carry-forward note: validation methodology remains pending external confirmation
 
 ## Next steps (Active branch)
 
-Tue 02/06/2026 startup hint: make one final endpoint / deck branch decision before the Wed 03/06/2026 10h-12h meeting.
+Wed 03/06/2026 meeting-day startup hint: prepare for the 10h-12h group / supervisor meeting with the endpoint-proof evidence bounded tightly.
 
 - Start with repo pre-flight and current anchors.
-- If a real endpoint path appears, run the expanded endpoint audit before any MAVROS launch.
-- If `/mavros/state connected: true` is achieved, capture minimal first telemetry and refresh the deck.
-- If no endpoint is available, keep the deck focused on work completed since 20/05/2026 and decisions needed.
-- Keep exact endpoint evidence in speaker notes only; keep visible slides non-technical.
+- Keep the visible deck non-technical: software preparation ready, live boat telemetry still gated, decisions needed.
+- In speaker notes, state the exact endpoint result: no `/mavros/state connected: true`; `/dev/ttyAMA10` opens but is silent; USB was not exercised because no `/dev/ttyACM0` appeared; UDP listeners had no confirmed source; a late post-config/reboot MAVProxy retest was reported as still `link 1 down`, with exact post-reboot device enumeration still to capture.
+- If the professor wants one more live check before / during the meeting, first confirm the physical path:
+  - if TELEM is on Pi GPIO header pins 8/10, enable the correct Pi 5 GPIO UART path (`uart0-pi5`) and test the resulting device, likely `/dev/ttyAMA0`;
+  - if USB is possible, connect the flight controller by USB and confirm `/dev/ttyACM0` enumeration before MAVProxy / MAVROS heartbeat checks.
+- Do not launch MAVROS just to create topics; pass condition remains `/mavros/state connected: true`.
 - Keep RealSense camera evidence separate from MAVROS boat telemetry.
-- Carry validation methodology as a decision ask unless confirmed before the meeting.
+- Carry validation methodology and VRX Section 8.2 weekly cadence as meeting-day follow-ups unless resolved in the meeting.
