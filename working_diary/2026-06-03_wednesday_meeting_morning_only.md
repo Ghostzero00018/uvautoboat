@@ -67,19 +67,19 @@ Morning-only scope remains confirmed: attend the 10h-12h meeting, record exact d
 
 ## Block B - 10h-12h meeting notes
 
-- [ ] Keep visible story short:
+- [x] Keep visible story short:
   1. Progress since 20/05.
   2. Current dependency: MAVROS / ROS telemetry link still not proven.
   3. Ready vs pending.
   4. Decisions requested.
-- [ ] Use speaker notes for exact endpoint evidence:
+- [x] Use speaker notes for exact endpoint evidence:
   - `/dev/ttyAMA10` opened but stayed silent;
   - professor photo sent on 03/06 morning, captured on 02/06 at 22:09, shows MAVProxy on `/dev/ttyAMA0` at `57600` detecting vehicle `1:1`, mode `HOLD`, and ArduPilot EKF3 GPS status text;
   - no `/dev/ttyACM0` USB device was present;
   - UDP tests had no confirmed source;
   - `ModemManager` was removed and rebooted, but that did not produce heartbeat;
   - Pi 5 GPIO UART mapping / `uart0-pi5` now has photo evidence through `/dev/ttyAMA0`, but the exact config change and MAVROS pass still need verification.
-- [ ] Capture decisions:
+- [x] Capture decisions / unresolved items:
   - exact flight-controller board / firmware;
   - exact physical path: USB, GPIO UART, TELEM UART, or UDP router;
   - required ArduPilot `SERIALx_PROTOCOL` / `SERIALx_BAUD` values;
@@ -89,19 +89,27 @@ Morning-only scope remains confirmed: attend the 10h-12h meeting, record exact d
   - validation methodology confirmation;
   - VRX Section 8.2 weekly cadence status.
 
-**Outcome:** [To fill - meeting decisions and unresolved items.]
+**Outcome:** Meeting follow-up captured after the 03/06/2026 supervisor meeting. The two concrete professor priorities for the rest of this week are:
+
+1. Compare video frame rate on the Herelink console path against direct Pi 5 ROS viewing through `rqt_image_view` / RViz2. Keep this as camera-path evidence only, separate from MAVROS boat telemetry. First confirm the exact video source path, because earlier repo evidence showed the Herelink video pipeline can be decoupled from the Pi ROS graph, while today's task wording says the Herelink console stream is projected from the Pi 5.
+2. Start integrating real low-level-controller ROS 2 topics into the existing web dashboard while preserving the previously used full simulation stack. The immediate safe path is inventory + mapping first: real topics, sim `/wamv/*` topics, dashboard subscriptions, and `launch/remap.launch.yaml` relay / bridge shape. Python, YAML, and JavaScript edits remain gated on explicit code/config-edit approval.
+
+Items not re-confirmed in this repo session: exact flight-controller board / firmware string, exact boot overlay change that made `/dev/ttyAMA0` work, ArduPilot `SERIALx_*` values, RTS/CTS state, validation methodology, and VRX Section 8.2 weekly cadence.
 
 ## Block C - Noon handoff only
 
-- [ ] Record meeting outcome while still fresh.
-- [ ] Decide whether durable docs need updates:
+- [x] Record meeting outcome while still fresh.
+- [x] Decide whether durable docs need updates:
   - update `Board.md` / `wiki/Roadmap.md` only if the meeting changes durable project state;
   - otherwise keep this as diary-only.
-- [ ] Set the next startup hint.
-- [ ] Stop after the noon handoff unless the user explicitly reopens afternoon work.
+- [x] Set the next startup hint.
+- [x] Stop after the noon handoff unless the user explicitly reopens afternoon work.
 
-**Outcome:** [To fill - handoff state, doc update decision, next startup hint.]
+**Outcome:** Noon handoff scope closed as diary-only planning work after the pushed MAVProxy endpoint evidence commit. Durable status docs already record the 02/06 late-evening MAVProxy heartbeat evidence; the 03/06 meeting adds work priorities rather than a new proven runtime state. Follow-up scaffolds are split across Thu 04/06/2026 and Fri 05/06/2026:
+
+- Thu 04/06: video frame-rate comparison, with isolated Herelink-console and Pi-local ROS viewer runs.
+- Fri 05/06: real-topic inventory and integration plan for dashboard + whole simulation stack, with code/config edits only after explicit approval.
 
 ## Next steps
 
-Morning startup: repo pre-flight and the professor's post-reconfiguration MAVProxy photo evidence are documented. Attend the 10h-12h meeting, confirm the exact `/dev/ttyAMA0` / `57600` configuration path, decide whether to run MAVROS against that endpoint, and capture decisions. Afternoon is intentionally off-work unless explicitly reopened.
+Thu 04/06/2026 startup: read this 03/06 meeting outcome, verify clean/synced repo state, then run the video frame-rate comparison plan before starting dashboard / simulation-stack integration work. Keep camera FPS evidence separate from MAVROS telemetry, and do not edit Python / YAML / JavaScript without explicit approval.
