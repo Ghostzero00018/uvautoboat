@@ -87,14 +87,14 @@ Measurement setup verdict: Remmina is installed at `/usr/bin/remmina`, but no ac
 
 Run this in a fresh Pi terminal, not inside a terminal already occupied by a foreground process.
 
-- [ ] Start the color-only RealSense ROS path on the Pi 5:
+- [x] Start the color-only RealSense ROS path on the Pi 5:
 
   ```bash
   source /opt/ros/jazzy/setup.bash
   ros2 launch realsense2_camera rs_launch.py enable_depth:=false enable_gyro:=false enable_accel:=false
   ```
 
-- [ ] In a second Pi terminal, identify image topics and measure ROS publish rate:
+- [x] In a second Pi terminal, identify image topics and measure ROS publish rate:
 
   ```bash
   source /opt/ros/jazzy/setup.bash
@@ -102,7 +102,7 @@ Run this in a fresh Pi terminal, not inside a terminal already occupied by a for
   timeout 20 ros2 topic hz /camera/camera/color/image_raw
   ```
 
-- [ ] In a third Pi terminal or through the Pi desktop, run one viewer at a time:
+- [x] In a third Pi terminal or through the Pi desktop, run one viewer at a time:
 
   ```bash
   source /opt/ros/jazzy/setup.bash
@@ -116,8 +116,8 @@ Run this in a fresh Pi terminal, not inside a terminal already occupied by a for
   rviz2
   ```
 
-- [ ] Record whether the viewer itself exposes frame-rate information. If it does not, use `ros2 topic hz` as the Pi-local ROS publish-rate measurement and label viewer rendering as visual-only.
-- [ ] Record load / stability notes:
+- [x] Record whether the viewer itself exposes frame-rate information. If it does not, use `ros2 topic hz` as the Pi-local ROS publish-rate measurement and label viewer rendering as visual-only.
+- [x] Record load / stability notes:
 
   ```bash
   uptime
@@ -127,16 +127,24 @@ Run this in a fresh Pi terminal, not inside a terminal already occupied by a for
 
 **Outcome:** Not run on 04/06/2026. No Pi 5 desktop / Remmina session was available for a one-viewer-at-a-time RealSense ROS check. The prior 28/05 evidence still stands as historical context only: color-only RealSense viewing was verified in both `rqt_image_view` and RViz2, with the color profile opened as `RGB8 1280x720x30`; that is not a fresh 04/06 measurement.
 
+**Live addendum, 04/06/2026 11:05-11:06:** Pi-side color-only RealSense check completed on `imtaquadrone-desktop`. `lsusb -t` showed the D435i on Bus 003 / Port 001 at `5000M`; the RealSense launch reported D435I serial `213622070342`, physical port `3-1`, USB type `3.2`, firmware `5.14.0`, product ID `0x0B3A`, and opened the color stream as `RGB8 1280x720x30`. `RealSense Node Is Up!` appeared, and the node later exited cleanly after capture.
+
+`ros2 topic list` showed `/camera/camera/color/image_raw` plus related camera-info / metadata topics, and also showed an `/oakd/rgb/preview/image_raw` topic that was not part of this RealSense measurement. `ros2 topic info --verbose /camera/camera/color/image_raw` showed one publisher from node `/camera/camera`, type `sensor_msgs/msg/Image`, QoS `RELIABLE` and `TRANSIENT_LOCAL`. `timeout 20 ros2 topic hz /camera/camera/color/image_raw` ramped from about `17.659` Hz to a final reported average of `20.811` Hz over a 344-message window. Record this as ROS publish rate, not viewer render FPS.
+
+Stability notes: `uptime` showed 7 min uptime with load average `2.42, 1.88, 0.98`; `free -h` showed 15 GiB total RAM, 1.6 GiB used, 12 GiB free, 13 GiB available, and no swap used. The filtered `sudo dmesg -T` tail matched only `hid-sensor-hub 0003:8086:0B3A.0005: No report with id 0xffffffff found`; no filtered under-voltage / throttling / RealSense failure line was captured in that tail.
+
+Viewer notes: `rqt_image_view` opened `/camera/camera/color/image_raw` and displayed the video stream. The `QSocketNotifier: Can only be used with threads started with QThread` line and the class-loader unload warning on shutdown were non-blocking. RViz2 also displayed the video stream, reported OpenGL `3.1 (GLSL 1.4)`, printed the usual `Stereo is NOT SUPPORTED` line, and later showed queue-full message-filter drops for frame `camera_color_optical_frame`; those drops did not prevent visual confirmation.
+
 ## Block D - Comparison table and first conclusion
 
 Fill this table before moving to integration work.
 
 | Path | Source / topic | Resolution | Measured rate | Measurement method | Notes |
 |------|----------------|------------|---------------|--------------------|-------|
-| Herelink console | Not confirmed live | Not measured | Not measured | Not run | Hardware / console unavailable |
-| Pi ROS topic | `/camera/camera/color/image_raw` | Not measured live | Not measured live | `ros2 topic hz` planned, not run | Pi desktop unavailable |
-| Pi `rqt_image_view` | `/camera/camera/color/image_raw` | Not measured live | Not measured live | Viewer check planned, not run | Pi desktop unavailable |
-| Pi RViz2 | `/camera/camera/color/image_raw` | Not measured live | Not measured live | Viewer check planned, not run | Pi desktop unavailable |
+| Herelink console | Not confirmed live | Not measured | Not measured | Not run | Herelink console not captured in this pass |
+| Pi ROS topic | `/camera/camera/color/image_raw` | `RGB8 1280x720` | Final `ros2 topic hz` average `20.811` Hz | `timeout 20 ros2 topic hz` | D435i USB `5000M` / type `3.2`; ROS publish rate, not viewer FPS |
+| Pi `rqt_image_view` | `/camera/camera/color/image_raw` | `RGB8 1280x720` | Not numerically measured | Visual viewer check | Video stream displayed; Qt / class-loader shutdown warnings non-blocking |
+| Pi RViz2 | `/camera/camera/color/image_raw` | `RGB8 1280x720` | Not numerically measured | Visual viewer check | Video stream displayed; OpenGL `3.1`; queue-full drops later appeared |
 
 Interpretation rules:
 
@@ -145,27 +153,27 @@ Interpretation rules:
 - If simultaneous consumers break one path, record it as a consumer-exclusivity result, not a framerate result.
 - If voltage / USB warnings appear, treat the measurement as load-sensitive and rerun after power stabilization.
 
-**Outcome:** No usable 04/06 video comparison result. Confidence is high only on the negative scope claim: fresh Herelink-console and Pi-local viewer evidence was not available from this terminal session. Continue to keep Herelink / RealSense camera evidence separate from MAVROS boat telemetry.
+**Outcome:** Partial Pi-side camera result captured after the original morning fallback: the RealSense ROS topic published at a final measured average of `20.811` Hz, and both `rqt_image_view` and RViz2 displayed the video stream. The professor comparison is still incomplete because the Herelink console source path and FPS / metadata were not captured. Continue to keep Herelink / RealSense camera evidence separate from MAVROS boat telemetry.
 
 ## Block E - Real-topic inventory for Friday integration work
 
 Only start this after the video comparison has a usable first result.
 
-- [ ] Confirm whether MAVROS can use the evidenced endpoint:
+- [x] Confirm whether MAVROS can use the evidenced endpoint:
 
   ```bash
   source /opt/ros/jazzy/setup.bash
   ros2 launch mavros apm.launch fcu_url:=serial:///dev/ttyAMA0:57600
   ```
 
-- [ ] In another terminal, check the pass condition:
+- [x] In another terminal, check the pass condition:
 
   ```bash
   source /opt/ros/jazzy/setup.bash
   ros2 topic echo --once /mavros/state
   ```
 
-- [ ] If `connected: true`, capture first real topics:
+- [x] If `connected: true`, capture first real topics:
 
   ```bash
   source /opt/ros/jazzy/setup.bash
@@ -179,6 +187,33 @@ Only start this after the video comparison has a usable first result.
 - [ ] If `connected: false`, stop and record the exact endpoint / config result. Do not start dashboard integration from unproven telemetry.
 
 **Outcome:** Not started on 04/06/2026 because Block D did not produce a usable video result and no Pi 5 / MAVROS terminal was available. Do not treat MAVProxy heartbeat as a ROS telemetry pass; the MAVROS gate remains `/mavros/state connected: true` on `serial:///dev/ttyAMA0:57600`.
+
+**Live addendum, 04/06/2026 11:39:** MAVROS pass condition reached through the evidenced `/dev/ttyAMA0:57600` path via MAVProxy UDP fanout. `apm.launch` and `px4.launch` both existed under `/opt/ros/jazzy/share/mavros/launch/`; `/dev/ttyAMA0` existed as `root:dialout`; no MAVProxy process was running before the test.
+
+Actual path used: start MAVProxy on the serial endpoint with `mavproxy.py --master=/dev/ttyAMA0 --baudrate 57600 --out=udpout:127.0.0.1:14550`, then launch MAVROS with `ros2 launch mavros apm.launch fcu_url:=udp://127.0.0.1:14550@`. MAVProxy detected vehicle `1:1`, reported `online system 1`, mode `HOLD`, `fence present`, and repeated `AP: EKF3 waiting for GPS config data`. A duplicate `output add udpout:127.0.0.1:14550` command was also accepted. MAVProxy later ended with a Python `log_writer` shutdown / core-dump message; this is a MAVProxy cleanup issue after the heartbeat/fanout evidence, not the MAVROS pass criterion.
+
+MAVROS opened the UDP endpoint, detected remote address `1.1`, started UAS `MY ID 1.191, TARGET ID 1.1`, then reported `CON: Got HEARTBEAT, connected. FCU: ArduPilot`. The pass-condition sample was:
+
+```yaml
+connected: true
+armed: false
+guided: false
+manual_input: false
+mode: HOLD
+system_status: 5
+```
+
+First ROS telemetry / topic evidence was captured after `connected: true`:
+
+- `ros2 topic list -t | sort` showed the `/mavros/*` topic surface including `/mavros/state`, `/mavros/imu/data`, `/mavros/global_position/raw/fix`, `/mavros/battery`, `/mavros/rc/in`, setpoint topics, mission / geofence / rallypoint topics, and `/uas1/mavlink_source` / `/uas1/mavlink_sink`.
+- `/mavros/imu/data` published an IMU sample with frame `base_link`, orientation, angular velocity, and linear acceleration (`z` about `9.767`).
+- `/mavros/global_position/raw/fix` published a `sensor_msgs/NavSatFix` sample with `status: -1`, `service: 1`, `latitude: 0.0`, `longitude: 0.0`, `altitude: 17.163`, and covariance first entry `-1.0`; interpret this with the MAVROS launch warning `GP: No GPS fix` and FCU status `EKF3 waiting for GPS config data`.
+- `/mavros/battery` published a present battery sample at `15.984001159667969` V, `percentage: 1.0`, and `power_supply_status: 2`.
+- `/mavros/rc/in` published with `rssi: 255` and an empty `channels` list; record this as setup state, not a MAVROS connection failure.
+
+Request/response caveat from the same run: streaming telemetry succeeded, but targeted requests did not complete during the capture window. MAVROS logged autopilot-version service timeouts before switching to default capabilities, parameter request-list retries exhausted, mission / rallypoint / geofence pulls timed out, and command `520` / `410` ACK timeouts. Treat this as evidence that broadcast telemetry is available through the `57600` fanout, while command-path and write-path mapping still need a separate validation pass before dashboard integration.
+
+Interpretation: MAVROS ROS-side low-level-controller link is now proven on 04/06/2026 because `/mavros/state connected: true` was captured and first ROS telemetry topics published. GPS fix / EKF GPS configuration, RC channel population, targeted request/response behaviour, command-path mapping, and dashboard / simulation integration remain open.
 
 Fallback paper inventory completed instead:
 
@@ -205,10 +240,10 @@ Fallback paper inventory completed instead:
   rg -n "\[To fill|<{7}|={7}|>{7}" working_diary/2026-06-04_thursday_video_framerate_and_real_topic_inventory.md
   ```
 
-**Outcome:** Wrap complete as diary-only fallback work. No durable runtime state changed today: no fresh Herelink FPS, Pi-local RealSense rate, MAVROS connection, or real-topic telemetry was captured, so `Board.md` and `wiki/Roadmap.md` do not need updates. Friday 05/06/2026 handoff is set to continue from the paper inventory and collect live video / MAVROS evidence first if hardware access is available.
+**Outcome:** Wrap reopened for live Pi-side camera and MAVROS addendums after the original diary-only fallback. Durable runtime state did change today: MAVROS passed the ROS-side telemetry gate with `/mavros/state connected: true` and first ROS samples from IMU, raw GPS (no fix), battery, and RC topics. `Board.md` and `wiki/Roadmap.md` were updated for that state change. The professor video comparison remains incomplete because Herelink console source path and FPS / metadata were not captured.
 
-Final checks: `git status --short --branch` showed clean sync with one modified diary file; `git diff --check` passed; the placeholder / conflict-marker scan matched only the check command embedded in this Block F checklist, not an unresolved outcome or conflict marker.
+Final checks after the live addendums: `git status --short --branch` showed clean sync with modified `Board.md`, `wiki/Roadmap.md`, and this diary file; `git diff --check` passed; the changed-file visibility sweep returned no matches; the placeholder / conflict-marker scan matched only the check command embedded in this Block F checklist, not an unresolved outcome or conflict marker.
 
 ## Next steps
 
-Friday 05/06/2026 startup: continue from the paper inventory above. First try to collect the missing live video result if Pi 5 / Herelink access is available; otherwise start the dashboard + full simulation stack integration inventory from the current simulation dashboard contract and the planned MAVROS topic candidates. Do not edit Python / YAML / JavaScript until the user explicitly approves code/config changes.
+Friday 05/06/2026 startup: start from the proven MAVROS endpoint and the paper inventory above. First capture the missing Herelink video result if Pi 5 / Herelink access is available; otherwise start the dashboard + full simulation stack integration inventory from `/mavros/state connected: true`, the first MAVROS ROS samples, the current simulation dashboard contract, and the planned mapping candidates. Do not edit Python / YAML / JavaScript until the user explicitly approves code/config changes.
