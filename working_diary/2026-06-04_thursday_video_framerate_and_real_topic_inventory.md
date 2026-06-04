@@ -135,14 +135,24 @@ Stability notes: `uptime` showed 7 min uptime with load average `2.42, 1.88, 0.9
 
 Viewer notes: `rqt_image_view` opened `/camera/camera/color/image_raw` and displayed the video stream. The `QSocketNotifier: Can only be used with threads started with QThread` line and the class-loader unload warning on shutdown were non-blocking. RViz2 also displayed the video stream, reported OpenGL `3.1 (GLSL 1.4)`, printed the usual `Stereo is NOT SUPPORTED` line, and later showed queue-full message-filter drops for frame `camera_color_optical_frame`; those drops did not prevent visual confirmation.
 
+**Live addendum, 04/06/2026 14:41-14:44:** Afternoon simultaneous Herelink-console / Pi RealSense check completed with no `rqt_image_view` or RViz2 viewer active on the Pi side. The Herelink console acted as a portable display for the Pi desktop / video stream; no FPS overlay or stream-stat readout was available on the console. Visual-only observation: lag was acceptable and no significant lag was observed, including with the Herelink operator outside the building while the Pi 5 remained inside. Do not treat this as a measured Herelink FPS result, and do not use it to close the older Herelink RTSP / QGC consumer-exclusivity finding because this was a Pi-desktop display condition, not a numeric retest of that stream path.
+
+The Pi RealSense node was relaunched with default launch arguments via `ros2 launch realsense2_camera rs_launch.py`. The launch again found D435I serial `213622070342`, physical port `3-1`, USB type `3.2`, firmware `5.14.0`, product ID `0x0B3A`, then opened depth as `Z16 848x480x30` and color as `RGB8 1280x720x30`. The log set default `gyro_fps` and `accel_fps` parameters, but the pasted topic list showed only color/depth topics and did not show IMU / gyro / accel topics publishing in this run.
+
+Afternoon ROS publish-rate samples: `/camera/camera/color/image_raw` ramped from `8.894` Hz to a final reported average of `16.393` Hz over a 279-message window; `/camera/camera/depth/image_rect_raw` ramped from `23.374` Hz to a final reported average of `24.540` Hz over a 429-message window. The depth-rate command ended with `failed to shutdown: rcl_shutdown already called on the given context`, after the rate samples were printed.
+
+Afternoon stability notes: `uptime` showed 3 min uptime with load average `2.48, 1.22, 0.49`; `free -h` showed 15 GiB total RAM, 1.5 GiB used, 13 GiB free, 14 GiB available, and no swap used. The filtered `sudo dmesg -T` tail showed repeated `hwmon hwmon2: Undervoltage detected!` / `Voltage normalised` pairs from 14:41 through 14:44, plus the same `hid-sensor-hub 0003:8086:0B3A.0005: No report with id 0xffffffff found` line. Treat the afternoon rates as power/load-sensitive; they are not a clean replacement for the morning color-only Pi rate captured without filtered under-voltage warnings.
+
 ## Block D - Comparison table and first conclusion
 
 Fill this table before moving to integration work.
 
 | Path | Source / topic | Resolution | Measured rate | Measurement method | Notes |
 |------|----------------|------------|---------------|--------------------|-------|
-| Herelink console | Not confirmed live | Not measured | Not measured | Not run | Herelink console not captured in this pass |
-| Pi ROS topic | `/camera/camera/color/image_raw` | `RGB8 1280x720` | Final `ros2 topic hz` average `20.811` Hz | `timeout 20 ros2 topic hz` | D435i USB `5000M` / type `3.2`; ROS publish rate, not viewer FPS |
+| Herelink console | Pi desktop / video stream on portable console | Not measured | Visual-only; no numeric FPS | Operator observation | No FPS overlay/stat readout available; acceptable lag, no significant lag observed |
+| Pi ROS topic, morning color-only | `/camera/camera/color/image_raw` | `RGB8 1280x720` | Final `ros2 topic hz` average `20.811` Hz | `timeout 20 ros2 topic hz` | D435i USB `5000M` / type `3.2`; ROS publish rate, not viewer FPS |
+| Pi ROS topic, afternoon default color | `/camera/camera/color/image_raw` | `RGB8 1280x720` | Final `ros2 topic hz` average `16.393` Hz | `timeout 20 ros2 topic hz` | Simultaneous Herelink visual-only check; repeated under-voltage warnings captured |
+| Pi ROS topic, afternoon default depth | `/camera/camera/depth/image_rect_raw` | `Z16 848x480` | Final `ros2 topic hz` average `24.540` Hz | `timeout 20 ros2 topic hz` | Depth stream opened by default launch; shutdown warning after samples printed |
 | Pi `rqt_image_view` | `/camera/camera/color/image_raw` | `RGB8 1280x720` | Not numerically measured | Visual viewer check | Video stream displayed; Qt / class-loader shutdown warnings non-blocking |
 | Pi RViz2 | `/camera/camera/color/image_raw` | `RGB8 1280x720` | Not numerically measured | Visual viewer check | Video stream displayed; OpenGL `3.1`; queue-full drops later appeared |
 
@@ -153,7 +163,7 @@ Interpretation rules:
 - If simultaneous consumers break one path, record it as a consumer-exclusivity result, not a framerate result.
 - If voltage / USB warnings appear, treat the measurement as load-sensitive and rerun after power stabilization.
 
-**Outcome:** Partial Pi-side camera result captured after the original morning fallback: the RealSense ROS topic published at a final measured average of `20.811` Hz, and both `rqt_image_view` and RViz2 displayed the video stream. The professor comparison is still incomplete because the Herelink console source path and FPS / metadata were not captured. Continue to keep Herelink / RealSense camera evidence separate from MAVROS boat telemetry.
+**Outcome:** Partial camera comparison result captured after the original morning fallback. The strongest numeric Pi-side measurement remains the morning color-only run at `20.811` Hz with no filtered under-voltage warning. The afternoon default-launch run captured color at `16.393` Hz and depth at `24.540` Hz while Herelink was visually acceptable, but it also captured repeated under-voltage warnings, so treat those afternoon rates as load/power-sensitive. Herelink remains visual-only because no FPS overlay or stream metadata was available. Continue to keep Herelink / RealSense camera evidence separate from MAVROS boat telemetry.
 
 ## Block E - Real-topic inventory for Friday integration work
 
@@ -240,10 +250,10 @@ Fallback paper inventory completed instead:
   rg -n "\[To fill|<{7}|={7}|>{7}" working_diary/2026-06-04_thursday_video_framerate_and_real_topic_inventory.md
   ```
 
-**Outcome:** Wrap reopened for live Pi-side camera and MAVROS addendums after the original diary-only fallback. Durable runtime state did change today: MAVROS passed the ROS-side telemetry gate with `/mavros/state connected: true` and first ROS samples from IMU, raw GPS (no fix), battery, and RC topics. `Board.md` and `wiki/Roadmap.md` were updated for that state change. The professor video comparison remains incomplete because Herelink console source path and FPS / metadata were not captured.
+**Outcome:** Wrap reopened for live Pi-side camera and MAVROS addendums after the original diary-only fallback. Durable runtime state did change today: MAVROS passed the ROS-side telemetry gate with `/mavros/state connected: true` and first ROS samples from IMU, raw GPS (no fix), battery, and RC topics. `Board.md` and `wiki/Roadmap.md` were updated for that state change. A later afternoon camera addendum captured Herelink visual-only evidence, default RealSense color/depth rates, and repeated under-voltage warnings; no numeric Herelink FPS / metadata was available.
 
-Final checks after the live addendums: `git status --short --branch` showed clean sync with modified `Board.md`, `wiki/Roadmap.md`, and this diary file; `git diff --check` passed; the changed-file visibility sweep returned no matches; the placeholder / conflict-marker scan matched only the check command embedded in this Block F checklist, not an unresolved outcome or conflict marker.
+Final checks after the afternoon addendum: `git status --short --branch` showed clean sync with one modified diary file; `git diff --check` passed; the changed-file visibility sweep over this diary returned no matches; the placeholder / conflict-marker scan matched only the check command embedded in this Block F checklist, not an unresolved outcome or conflict marker.
 
 ## Next steps
 
-Friday 05/06/2026 startup: start from the proven MAVROS endpoint and the paper inventory above. First capture the missing Herelink video result if Pi 5 / Herelink access is available; otherwise start the dashboard + full simulation stack integration inventory from `/mavros/state connected: true`, the first MAVROS ROS samples, the current simulation dashboard contract, and the planned mapping candidates. Do not edit Python / YAML / JavaScript until the user explicitly approves code/config changes.
+Friday 05/06/2026 startup: start from the proven MAVROS endpoint and the paper inventory above. If Pi 5 / Herelink access is available, capture numeric Herelink video stats only if the console exposes them; otherwise keep Herelink as visual-only evidence. Stabilize Pi power before relying on default RealSense color+depth rates, then start the dashboard + full simulation stack integration inventory from `/mavros/state connected: true`, the first MAVROS ROS samples, the current simulation dashboard contract, and the planned mapping candidates. Do not edit Python / YAML / JavaScript until the user explicitly approves code/config changes.
