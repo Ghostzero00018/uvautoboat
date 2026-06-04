@@ -12,7 +12,8 @@ Current architecture anchors:
 - Existing dashboard subscriptions include `/wamv/sensors/gps/gps/fix`, `/wamv/thrusters/left/thrust`, and `/wamv/thrusters/right/thrust`.
 - Existing simulation stack is launched by `one_click_launch_all/launch_autoboat_complete.sh` and must keep working.
 - `launch/remap.launch.yaml` already documents a two-layer Phase 5 transition: VRX `/wamv/*` <-> neutral `/sensors` / `/actuators`, then a future real-hardware bridge.
-- MAVProxy heartbeat on `/dev/ttyAMA0:57600` is evidenced; MAVROS / ROS telemetry still needs `/mavros/state connected: true`.
+- MAVROS / ROS telemetry on `/dev/ttyAMA0:57600` is proven through MAVProxy UDP fanout with `/mavros/state connected: true`; Friday still needs a fresh combined-load re-capture while the camera node is running before dashboard integration treats the combined path as validated.
+- Prof reports the Pi 5 ROS domain is now `ROS_DOMAIN_ID=12`; confirm the value in every Pi / workstation terminal before interpreting graph discovery. Any host running `rosbridge`, `web_video_server`, or dashboard-side ROS checks must use the same domain as the Pi, or it will see an empty graph with no explicit error.
 
 ## Boundaries
 
@@ -43,7 +44,7 @@ Current architecture anchors:
 - [ ] Re-read Thursday outcome and current integration anchors:
 
   ```bash
-  sed -n '1,260p' working_diary/2026-06-04_thursday_video_framerate_and_real_topic_inventory.md
+  sed -n '1,283p' working_diary/2026-06-04_thursday_video_framerate_and_real_topic_inventory.md
   sed -n '170,200p' web_dashboard/autoboat/README_autoboat_dashboard.md
   sed -n '517,840p' web_dashboard/autoboat/app.js
   sed -n '1,140p' launch/remap.launch.yaml
@@ -54,31 +55,38 @@ Current architecture anchors:
 
 ## Block B - Real ROS 2 topic inventory
 
-Run these from a fresh Pi terminal if MAVROS / real low-level topics are available. If MAVROS is not connected, record that and skip to Block C using planned mappings only.
+Run these from a fresh Pi terminal using the known-good topology first: MAVProxy is the sole serial owner on `/dev/ttyAMA0:57600`, MAVROS consumes `udp://127.0.0.1:14550@`, and optional direct-MAVLink scripts use `14551` only. Confirm `ROS_DOMAIN_ID=12` before interpreting the graph. Capture the MAVROS inventory with the camera node off first, then attempt the combined camera + MAVROS inventory; the 04/06 combined run was power-limited and did not produce a fresh `/mavros/state` echo pass.
 
 - [ ] Confirm MAVROS state:
 
   ```bash
   source /opt/ros/jazzy/setup.bash
-  ros2 topic echo --once /mavros/state
+  echo "ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-unset}"
+  timeout 10 ros2 topic echo --once /mavros/state
   ```
 
 - [ ] Capture the real topic list with types:
 
   ```bash
   source /opt/ros/jazzy/setup.bash
+  echo "ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-unset}"
   ros2 topic list -t | sort
   ```
+
+  The 04/06 combined capture did not record `ROS_DOMAIN_ID`, so whether domain `12` isolates the earlier TurtleBot4 / Create3 / Gazebo / OAK-D graph noise is unverified. Confirm with the echo above and a fresh topic list, then still filter the inventory by source before mapping.
 
 - [ ] Capture minimal telemetry samples if connected:
 
   ```bash
   source /opt/ros/jazzy/setup.bash
-  ros2 topic echo --once /mavros/global_position/global
-  ros2 topic echo --once /mavros/imu/data
-  ros2 topic echo --once /mavros/battery
-  ros2 topic echo --once /mavros/rc/in
+  timeout 10 ros2 topic echo --once /mavros/global_position/raw/fix --qos-profile sensor_data
+  timeout 10 ros2 topic echo --once /mavros/global_position/global --qos-profile sensor_data
+  timeout 10 ros2 topic echo --once /mavros/imu/data --qos-profile sensor_data
+  timeout 10 ros2 topic echo --once /mavros/battery --qos-profile sensor_data
+  timeout 10 ros2 topic echo --once /mavros/rc/in --qos-profile sensor_data
   ```
+
+  Use `/mavros/global_position/raw/fix` as the GPS sample that can publish the no-fix state (`status: -1`). `/mavros/global_position/global` may remain empty until a valid GPS fix is available. A few "message was lost" notices before a final sample do not fail the run; an empty timeout should be recorded as topic/config state.
 
 - [ ] Capture image topics if camera integration is in scope today:
 
@@ -121,8 +129,8 @@ Fill this table before proposing edits.
 | GPS position | `/wamv/sensors/gps/gps/fix` | `/mavros/global_position/global` or `/mavros/global_position/raw/fix` | `sensor_msgs/NavSatFix` | Real -> dashboard / sim pose | [To fill] |
 | IMU | `/wamv/sensors/imu/imu/data` | `/mavros/imu/data` | `sensor_msgs/Imu` | Real -> sim / diagnostics | [To fill] |
 | Camera image | `/wamv/sensors/cameras/front_left_camera_sensor/image_raw` | `/camera/camera/color/image_raw` or confirmed Herelink-derived ROS topic | `sensor_msgs/Image` | Real -> dashboard camera | [To fill] |
-| Battery | none in current dashboard | `/mavros/battery` | likely `sensor_msgs/BatteryState` | Real -> future dashboard panel | [To fill] |
-| RC / manual state | none in current dashboard | `/mavros/rc/in` | MAVROS message | Real -> diagnostics | [To fill] |
+| Battery | none in current dashboard | `/mavros/battery` | `sensor_msgs/BatteryState` | Real -> future dashboard panel | [To fill] |
+| RC / manual state | none in current dashboard | `/mavros/rc/in` | `mavros_msgs/msg/RCIn` | Real -> diagnostics | [To fill] |
 | Thruster command | `/wamv/thrusters/*/thrust` | MAVROS setpoint / actuator path TBD | TBD | dashboard / planner -> low-level | [To fill] |
 
 Interpretation rules:
@@ -140,7 +148,7 @@ Draft the smallest safe implementation path. Do not edit code/config until expli
 Candidate shape:
 
 1. **No-regression baseline:** keep the one-click simulation launcher and existing `/wamv/*` dashboard path unchanged.
-2. **Camera quick win:** use dashboard camera topic auto-discovery / manual topic entry to point the camera panel at `/camera/camera/color/image_raw` if `web_video_server` can see it. This may need no code change.
+2. **Camera quick win:** use dashboard camera topic auto-discovery / manual topic entry to point the camera panel at `/camera/camera/color/image_raw` if `web_video_server` can see it. This may need no code change. On 04/06 the RealSense color topic published as `RELIABLE` / `TRANSIENT_LOCAL`; confirm the actual QoS again before blaming an empty viewer.
 3. **Telemetry bridge path:** prefer a launch-level topic adapter from real MAVROS topics to the dashboard's existing expected topics first, if message types match. If the adapter becomes non-trivial, then add a narrow bridge node only after approval.
 4. **Dashboard topic configurability:** if launch-level mapping is insufficient, propose a dashboard-side topic profile selector (`simulation` vs `real`) in `app.js` / `index.html`; this is JavaScript/HTML work and needs approval.
 5. **Simulation stack preservation:** run the full simulation launcher after every integration change to prove `/wamv/*` still works.
@@ -164,9 +172,12 @@ Keep this as the test plan if code/config edits are approved later.
 
    ```bash
    source /opt/ros/jazzy/setup.bash
+   echo "ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-unset}"
    ros2 topic list -t | grep -E 'mavros|camera|sensors|wamv|planning|control' || true
-   ros2 topic echo --once /mavros/state
+   timeout 10 ros2 topic echo --once /mavros/state
    ```
+
+   Use the Block B timeout + `--qos-profile sensor_data` form for best-effort telemetry topics. Do not interpret a bare empty `echo --once` as a telemetry failure before checking QoS and timeout behaviour.
 
 3. Dashboard real-topic check:
 
