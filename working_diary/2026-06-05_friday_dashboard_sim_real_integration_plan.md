@@ -60,7 +60,7 @@ Thursday's diary and the live status rows in `Board.md` / `wiki/Roadmap.md` were
 
 Run these from fresh Pi terminals using the known-good topology first: MAVProxy is the sole serial owner on `/dev/ttyAMA0:57600`, MAVROS consumes `udp://127.0.0.1:14550@`, and optional direct-MAVLink scripts use `14551` only. MAVProxy, MAVROS launch, echo / inventory commands, and RealSense launch each need their own terminal because the launch processes stay in the foreground. Each ROS 2 terminal needs its own `source /opt/ros/jazzy/setup.bash` and `export ROS_DOMAIN_ID=12` before graph checks. Capture the MAVROS inventory with the camera node off first, then attempt the combined camera + MAVROS inventory; the 04/06 combined run was power-limited and did not produce a fresh `/mavros/state` echo pass.
 
-- [ ] Confirm MAVROS state:
+- [x] Review MAVROS state from the pasted 05/06 log; direct command retained for the next live run:
 
   ```bash
   source /opt/ros/jazzy/setup.bash
@@ -74,7 +74,7 @@ Run these from fresh Pi terminals using the known-good topology first: MAVProxy 
   done
   ```
 
-- [ ] Capture the real topic list with types:
+- [x] Review the real topic list with types from the pasted 05/06 log; direct command retained for the next live run:
 
   ```bash
   source /opt/ros/jazzy/setup.bash
@@ -85,7 +85,7 @@ Run these from fresh Pi terminals using the known-good topology first: MAVProxy 
 
   The 04/06 combined capture did not record `ROS_DOMAIN_ID`, but the later 05/06 MAVROS-only capture showed the domain-12 camera-off graph was clean. Still confirm with the echo above and a fresh topic list in any combined rerun, then filter the inventory by source before mapping.
 
-- [ ] Capture minimal telemetry samples if connected:
+- [x] Review minimal telemetry samples from the pasted 05/06 log; direct command retained for the next live run:
 
   ```bash
   source /opt/ros/jazzy/setup.bash
@@ -99,7 +99,7 @@ Run these from fresh Pi terminals using the known-good topology first: MAVProxy 
 
   Use `/mavros/global_position/raw/fix` as the GPS sample that can publish the no-fix state (`status: -1`). `/mavros/global_position/global` may remain empty until a valid GPS fix is available, so keep it out of the default echo set unless it is explicitly being tested with a timeout. A few "message was lost" notices before a final sample do not fail the run; an empty timeout should be recorded as topic/config state.
 
-- [ ] Capture image topics if camera integration is in scope today:
+- [x] Record that fresh image-topic capture was not completed on 05/06; command retained for the next power-stable run:
 
   ```bash
   source /opt/ros/jazzy/setup.bash
@@ -157,7 +157,7 @@ Domain-12 graph verdict: the 05/06 MAVROS-only capture resolved the 04/06 graph-
   - mission state: `/planning/*`;
   - config: `/planning/config`, `/planning/set_config`;
   - camera default: `/wamv/sensors/cameras/front_left_camera_sensor/image_raw`, with auto-discovery through `/rosapi/topics_for_type`.
-- [ ] Confirm current full simulation stack still starts from the documented launcher:
+- [x] Record that the full simulation launcher was not run on 05/06; command retained for the next implementation pass:
 
   ```bash
   bash ~/seal_ws/src/uvautoboat/one_click_launch_all/launch_autoboat_complete.sh --use-nvidia
@@ -276,7 +276,8 @@ Keep this as the test plan if code/config edits are approved later.
 
 - [x] Fill all outcomes above.
 - [x] If no code/config edits occurred, close as diary-only planning.
-- [ ] If code/config edits occurred after explicit approval, run the verification recipe above and the standard pre-commit visibility sweep.
+- [x] No code/config edits occurred after explicit approval, so the implementation verification recipe remains planned only.
+- [x] Close live-command recipe boxes above with accurate reviewed / not-run status instead of leaving ambiguous open tasks.
 - [x] Set next startup hint.
 - [x] Run final checks:
 
