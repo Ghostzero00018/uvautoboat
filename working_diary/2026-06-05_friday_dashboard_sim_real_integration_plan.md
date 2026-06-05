@@ -58,20 +58,27 @@ Thursday's diary and the live status rows in `Board.md` / `wiki/Roadmap.md` were
 
 ## Block B - Real ROS 2 topic inventory
 
-Run these from a fresh Pi terminal using the known-good topology first: MAVProxy is the sole serial owner on `/dev/ttyAMA0:57600`, MAVROS consumes `udp://127.0.0.1:14550@`, and optional direct-MAVLink scripts use `14551` only. Confirm `ROS_DOMAIN_ID=12` before interpreting the graph. Capture the MAVROS inventory with the camera node off first, then attempt the combined camera + MAVROS inventory; the 04/06 combined run was power-limited and did not produce a fresh `/mavros/state` echo pass.
+Run these from fresh Pi terminals using the known-good topology first: MAVProxy is the sole serial owner on `/dev/ttyAMA0:57600`, MAVROS consumes `udp://127.0.0.1:14550@`, and optional direct-MAVLink scripts use `14551` only. MAVProxy, MAVROS launch, echo / inventory commands, and RealSense launch each need their own terminal because the launch processes stay in the foreground. Each ROS 2 terminal needs its own `source /opt/ros/jazzy/setup.bash` and `export ROS_DOMAIN_ID=12` before graph checks. Capture the MAVROS inventory with the camera node off first, then attempt the combined camera + MAVROS inventory; the 04/06 combined run was power-limited and did not produce a fresh `/mavros/state` echo pass.
 
 - [ ] Confirm MAVROS state:
 
   ```bash
   source /opt/ros/jazzy/setup.bash
+  export ROS_DOMAIN_ID=12
   echo "ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-unset}"
-  timeout 10 ros2 topic echo --once /mavros/state
+  for i in $(seq 1 24); do
+    out=$(timeout 8 ros2 topic echo --once /mavros/state 2>/dev/null)
+    echo "$out" | grep -q 'connected: true' && { echo "$out"; echo ">>> connected"; break; }
+    echo "attempt $i: not yet"
+    sleep 5
+  done
   ```
 
 - [ ] Capture the real topic list with types:
 
   ```bash
   source /opt/ros/jazzy/setup.bash
+  export ROS_DOMAIN_ID=12
   echo "ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-unset}"
   ros2 topic list -t | sort
   ```
@@ -82,19 +89,22 @@ Run these from a fresh Pi terminal using the known-good topology first: MAVProxy
 
   ```bash
   source /opt/ros/jazzy/setup.bash
-  timeout 10 ros2 topic echo --once /mavros/global_position/raw/fix --qos-profile sensor_data
-  timeout 10 ros2 topic echo --once /mavros/global_position/global --qos-profile sensor_data
-  timeout 10 ros2 topic echo --once /mavros/imu/data --qos-profile sensor_data
-  timeout 10 ros2 topic echo --once /mavros/battery --qos-profile sensor_data
-  timeout 10 ros2 topic echo --once /mavros/rc/in --qos-profile sensor_data
+  export ROS_DOMAIN_ID=12
+  echo "ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-unset}"
+  timeout 60 ros2 topic echo --once /mavros/global_position/raw/fix --qos-profile sensor_data
+  timeout 60 ros2 topic echo --once /mavros/imu/data --qos-profile sensor_data
+  timeout 60 ros2 topic echo --once /mavros/battery --qos-profile sensor_data
+  timeout 60 ros2 topic echo --once /mavros/rc/in --qos-profile sensor_data
   ```
 
-  Use `/mavros/global_position/raw/fix` as the GPS sample that can publish the no-fix state (`status: -1`). `/mavros/global_position/global` may remain empty until a valid GPS fix is available. A few "message was lost" notices before a final sample do not fail the run; an empty timeout should be recorded as topic/config state.
+  Use `/mavros/global_position/raw/fix` as the GPS sample that can publish the no-fix state (`status: -1`). `/mavros/global_position/global` may remain empty until a valid GPS fix is available, so keep it out of the default echo set unless it is explicitly being tested with a timeout. A few "message was lost" notices before a final sample do not fail the run; an empty timeout should be recorded as topic/config state.
 
 - [ ] Capture image topics if camera integration is in scope today:
 
   ```bash
   source /opt/ros/jazzy/setup.bash
+  export ROS_DOMAIN_ID=12
+  echo "ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-unset}"
   ros2 topic list -t | grep -E 'Image|CompressedImage|camera|image' || true
   ```
 
@@ -212,9 +222,15 @@ Keep this as the test plan if code/config edits are approved later.
 
    ```bash
    source /opt/ros/jazzy/setup.bash
+   export ROS_DOMAIN_ID=12
    echo "ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-unset}"
    ros2 topic list -t | grep -E 'mavros|camera|sensors|wamv|planning|control' || true
-   timeout 10 ros2 topic echo --once /mavros/state
+   for i in $(seq 1 24); do
+     out=$(timeout 8 ros2 topic echo --once /mavros/state 2>/dev/null)
+     echo "$out" | grep -q 'connected: true' && { echo "$out"; echo ">>> connected"; break; }
+     echo "attempt $i: not yet"
+     sleep 5
+   done
    ```
 
    Use the Block B timeout + `--qos-profile sensor_data` form for best-effort telemetry topics. Do not interpret a bare empty `echo --once` as a telemetry failure before checking QoS and timeout behaviour.
