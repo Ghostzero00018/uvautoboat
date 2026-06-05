@@ -186,8 +186,8 @@ Fill this table before proposing edits.
 
 | Function | Existing sim/dashboard topic | Candidate real topic | Type | Integration direction | Status |
 |----------|------------------------------|----------------------|------|-----------------------|--------|
-| GPS position | `/wamv/sensors/gps/gps/fix` | `/mavros/global_position/global` or `/mavros/global_position/raw/fix` | `sensor_msgs/msg/NavSatFix` | Real -> dashboard / sim pose | Same message family. Use `raw/fix` to display no-fix state; use `global` for dashboard position only after GPS fix publishes. Fresh combined camera + MAVROS recapture pending after power fix. |
-| IMU | `/wamv/sensors/imu/imu/data` | `/mavros/imu/data` | `sensor_msgs/msg/Imu` | Real -> sim / diagnostics | Camera-off MAVROS sample proven. Dashboard does not currently display IMU; adapter can feed neutral `/sensors/imu/data` later if needed. |
+| GPS position | `/wamv/sensors/gps/gps/fix` | `/mavros/global_position/global` or `/mavros/global_position/raw/fix` | `sensor_msgs/msg/NavSatFix` | Real -> dashboard / sim pose | Same message family. Use `raw/fix` to display no-fix state; use `global` for dashboard position only after GPS fix publishes. Fresh combined camera + MAVROS recapture pending after power fix. See Block H for the decided immediate Option B direction into the existing `/wamv` consumer topic with a no-fix guard. |
+| IMU | `/wamv/sensors/imu/imu/data` | `/mavros/imu/data` | `sensor_msgs/msg/Imu` | Real -> sim / diagnostics | Camera-off MAVROS sample proven. Dashboard does not currently display IMU. See Block H: the immediate Option B path feeds the existing `/wamv/sensors/imu/imu/data` consumer topic; neutral `/sensors/imu/data` remains later / preparatory. |
 | Camera image | `/wamv/sensors/cameras/front_left_camera_sensor/image_raw` | `/camera/camera/color/image_raw` or confirmed Herelink-derived ROS topic | `sensor_msgs/msg/Image` | Real -> dashboard camera | Best immediate path is manual topic entry / auto-discovery, not a code change. Herelink visual-only path is separate and not a ROS image topic yet. |
 | Battery | none in current dashboard | `/mavros/battery` | `sensor_msgs/msg/BatteryState` | Real -> future dashboard panel | Telemetry sample proven camera-off. Requires new UI or diagnostics-only logging before dashboard display. |
 | RC / manual state | none in current dashboard | `/mavros/rc/in` | `mavros_msgs/msg/RCIn` | Real -> diagnostics | Useful for manual-control state and channel sanity. Not a command path. |
@@ -200,7 +200,7 @@ Interpretation rules:
 - If types differ, record the adapter needed; do not pretend a relay is enough.
 - If command direction is uncertain, keep it diagnostics-only until the low-level command path is confirmed.
 
-**Outcome:** Mapping is clean enough for planning but not for implementation. Read-side telemetry candidates are clear: MAVROS GPS / IMU / battery / RC plus RealSense color image. Write-side control remains blocked until the low-level command path is validated. The safest adapter direction is real telemetry into existing dashboard / neutral read topics first; do not bridge dashboard thruster commands to MAVROS until the command semantics, units, arming state, and ACK behavior are proven.
+**Outcome:** Mapping is clean enough for planning but not for implementation. Read-side telemetry candidates are clear: MAVROS GPS / IMU / battery / RC plus RealSense color image. Write-side control remains blocked until the low-level command path is validated. Block H supersedes the earlier neutral-first ambiguity for the immediate MAVROS-only adapter path: feed existing `/wamv/*` read consumers under a real-adapter-on / simulation-source-off flag, keep neutral `/sensors/*` as later preparatory plumbing, and do not bridge dashboard thruster commands to MAVROS until the command semantics, units, arming state, and ACK behavior are proven.
 
 ## Block E - Implementation proposal, no edits yet
 

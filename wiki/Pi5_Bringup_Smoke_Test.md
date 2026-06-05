@@ -16,7 +16,7 @@ This page documents the first-light bring-up sequence: get a heartbeat between t
 
 - the production telemetry path — that is `mavros2`, which translates MAVLink frames into ROS 2 topics (`/mavros/imu/data`, `/mavros/global_position/global`, …) for the Linux workstation to consume over DDS. See [Roadmap §1.1](Roadmap#11-scope-clarifications-locked-30042026).
 - a robust integration test — no error handling, no recovery from disconnect, no logging.
-- usable while `mavros2` (or any other MAVLink consumer) is running on the same Pi — the GPIO serial port is exclusive. Only one consumer at a time on `/dev/serial0` unless you fan out via UDP (see §4).
+- usable while `mavros2` (or any other MAVLink consumer) is running on the same Pi — the GPIO serial port is exclusive. Only one consumer at a time on the serial device (`/dev/serial0` in the generic examples below, `/dev/ttyAMA0` on the proven current boat setup) unless you fan out via UDP (see §4).
 
 **MAVProxy vs MAVROS clarification.** These are *different* tools that are easy to confuse:
 
@@ -26,6 +26,22 @@ This page documents the first-light bring-up sequence: get a heartbeat between t
 | **MAVProxy** | MAVLink router/multiplexer + interactive terminal | Smoke test (interactive heartbeat check; can also fan out to UDP for parallel consumers). |
 
 MAVProxy does **not** translate MAVLink to ROS. Once the smoke test passes, swap to `mavros2` for the actual integration.
+
+**Proven endpoint for this boat (04/06/2026 and 05/06/2026):** the generic `/dev/serial0:115200` examples below are first-light patterns. For the current AutoBoat CCU, the verified serial owner is MAVProxy on `/dev/ttyAMA0` at `57600`, with UDP fanout for parallel consumers:
+
+```bash
+# Terminal 1 - MAVProxy as sole serial owner
+mavproxy.py --master=/dev/ttyAMA0 --baudrate 57600 \
+  --out=udpout:127.0.0.1:14550 \
+  --out=udpout:127.0.0.1:14551
+
+# Terminal 2 - MAVROS consumes the 14550 leg
+source /opt/ros/jazzy/setup.bash
+export ROS_DOMAIN_ID=12
+ros2 launch mavros apm.launch fcu_url:=udp://127.0.0.1:14550@
+```
+
+Reserve `14551` for optional direct-MAVLink inspection scripts. Do not run MAVROS directly on the serial device while MAVProxy owns `/dev/ttyAMA0`.
 
 ---
 
@@ -136,6 +152,8 @@ sudo dmesg -T | tail -80 | grep -Ei 'usb|tty|acm|cp210|ch34|ftdi|serial|cubepilo
 ss -ulnp | grep -E '14550|14551|14540|5760' || true
 
 # Example only: replace the URL with the actual device path found above.
+# Current AutoBoat ArduPilot setup uses MAVProxy fanout + apm.launch over UDP;
+# see the proven-endpoint callout above. This direct-serial px4.launch line is only a generic example.
 ros2 launch mavros px4.launch fcu_url:=serial:///dev/ttyACM0:115200
 ```
 
