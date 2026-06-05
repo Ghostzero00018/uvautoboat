@@ -4,7 +4,7 @@
 
 Continuing from Thu 04/06/2026 ([`2026-06-04`](2026-06-04_thursday_video_framerate_and_real_topic_inventory.md)).
 
-Primary work for Fri 05/06/2026 is the second professor follow-up from the 03/06 meeting: start integrating real low-level-controller ROS 2 topics into the existing web dashboard and the previously used full simulation stack. The first safe step is inventory and mapping, then a narrow implementation proposal. Python, YAML, and JavaScript edits need explicit approval before they happen.
+Primary work for Fri 05/06/2026 is the second professor follow-up from the 03/06 meeting: start integrating real low-level-controller ROS 2 topics into the existing web dashboard and the previously used full simulation stack. The first safe step is inventory and mapping, then a narrow implementation proposal. Plan-change addendum after the first diary commit: today's live priority is MAVROS + RealSense camera evidence first. If those checks are stable, use remaining time for a bounded Pi 5 light-YOLO install feasibility check only. Python, YAML, and JavaScript edits need explicit approval before they happen.
 
 Current architecture anchors:
 
@@ -17,10 +17,11 @@ Current architecture anchors:
 
 ## Boundaries
 
-- **In scope:** topic inventory, topic mapping, dashboard subscription audit, simulation-stack preservation plan, implementation proposal, verification recipe.
+- **In scope:** topic inventory, topic mapping, dashboard subscription audit, simulation-stack preservation plan, implementation proposal, verification recipe, and isolated Pi 5 light-YOLO install feasibility if MAVROS / camera time allows.
 - **Out of scope without explicit approval:** editing `web_dashboard/autoboat/app.js`, `index.html`, Python nodes, launch YAML, or Pi-side services.
 - **Simulation boundary:** preserve the default VRX / dashboard path. Real-topic support must be flag-gated or mapped so the old full simulation stack still works.
 - **Telemetry boundary:** do not build dashboard claims on MAVProxy alone. Dashboard telemetry needs ROS 2 topics, preferably from MAVROS with `/mavros/state connected: true`.
+- **YOLO boundary:** install exploration is local to the Pi 5 user environment and must not change repo code, ROS launch files, Pi services, or the camera / MAVROS runtime contract today.
 
 ## Block A - Repo and Thursday handoff pre-flight
 
@@ -253,6 +254,129 @@ Keep this as the test plan if code/config edits are approved later.
 
 **Outcome:** 05/06/2026 work stayed diary-only and source-audit only. No Python, YAML, JavaScript, launch, dashboard, or runtime config files were edited. The clean topic inventory and mapping above are bounded to verified 04/06/2026 evidence plus today's source reads. Final checks: `git status --short --branch` showed only this diary modified; `git diff --check` passed; the placeholder / conflict-marker scan matched only the check command embedded in this Block G checklist; the visibility sweep returned zero matches. Next live pass should confirm `ROS_DOMAIN_ID=12` on the Pi and workstation, run camera-off MAVProxy + MAVROS first, then attempt the combined RealSense + MAVROS inventory only if power is stable.
 
+## Plan-change addendum - MAVROS/camera first, YOLO feasibility stretch
+
+User update after the first 05/06 diary commit: focus mainly on MAVROS and the camera today; if time and power stability allow, explore how to install a light YOLO model on the Pi 5.
+
+Revised live order:
+
+1. Confirm `ROS_DOMAIN_ID=12` and run camera-off MAVProxy + MAVROS first. `/mavros/state connected: true` remains the MAVROS gate.
+2. Start the RealSense node and capture color/depth topics and rates.
+3. Attempt combined MAVROS + camera only after power looks stable. Repeated under-voltage keeps the result power-limited.
+4. Only after the MAVROS / camera capture, explore light-YOLO install feasibility with the camera and MAVROS workload stopped.
+5. If YOLO install succeeds, first test on a static image or saved frame. Continuous camera-stream inference is optional and should be low-rate (`imgsz=320`, `vid_stride` set) to avoid hiding MAVROS / camera stability issues behind CPU load.
+6. Prepare the Python environment, model weights, and exported runtime online at the bench before any field test. During boat deployment, the Pi 5 should run YOLO offline from local files because WiFi / internet access is not reliable in the field condition.
+
+External references checked 05/06/2026:
+
+- Ultralytics Raspberry Pi guide: Pi 5-focused guide recommends nano-class YOLO on Raspberry Pi and says NCNN is the preferred deployment format for ARM / embedded inference. It currently lists `YOLO26n` and `YOLO26s` as the Pi-sized models, with larger variants too slow for Raspberry Pi-class hardware.
+- Ultralytics quickstart: standard install is `pip install -U ultralytics`; headless environments can use the headless package variant, but the Raspberry Pi export path uses `ultralytics[export]`.
+- Arm / PyTorch install guide: on Arm Linux, verify `aarch64`, use a virtual environment, and install CPU PyTorch with `pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu`.
+
+Pi-side YOLO feasibility commands, to run only after the MAVROS / camera checks or during a hardware fallback window:
+
+```bash
+# Precheck, Pi terminal
+source /opt/ros/jazzy/setup.bash
+echo "ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-unset}"
+hostname
+uname -m
+python3 --version
+free -h
+df -h ~
+sudo dmesg -T | tail -80 | grep -Ei 'voltage|thrott|under-voltage|usb|error|fail' || true
+```
+
+```bash
+# Online bench prep: isolated install, Pi terminal, with MAVROS / camera stopped
+sudo apt update
+sudo apt install -y python-is-python3 python3-pip python3-venv
+python -m venv ~/venvs/yolo-pi5
+source ~/venvs/yolo-pi5/bin/activate
+python -m pip install -U pip wheel
+python -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+python -m pip install "ultralytics[export]"
+yolo settings sync=False
+```
+
+```bash
+# Online bench prep: import and model-load check
+source ~/venvs/yolo-pi5/bin/activate
+export MODEL_WEIGHTS=yolo26n.pt
+export MODEL_EXPORT="${MODEL_WEIGHTS%.pt}_ncnn_model"
+python - <<'PY'
+import os
+import platform
+import torch
+from ultralytics import YOLO
+
+print("arch:", platform.machine())
+print("torch:", torch.__version__)
+print("cuda_available:", torch.cuda.is_available())
+model = YOLO(os.environ["MODEL_WEIGHTS"])
+print("model_loaded:", os.environ["MODEL_WEIGHTS"])
+PY
+```
+
+If `yolo26n.pt` is not available from the installed package / model hub, set `MODEL_WEIGHTS=yolo11n.pt`, recompute `MODEL_EXPORT="${MODEL_WEIGHTS%.pt}_ncnn_model"`, and use that same pair for export and smoke tests.
+
+```bash
+# Online bench prep: NCNN export
+source ~/venvs/yolo-pi5/bin/activate
+export MODEL_WEIGHTS=yolo26n.pt
+export MODEL_EXPORT="${MODEL_WEIGHTS%.pt}_ncnn_model"
+python - <<'PY'
+import os
+from ultralytics import YOLO
+
+model = YOLO(os.environ["MODEL_WEIGHTS"])
+model.export(format="ncnn", imgsz=320)
+print("model_export:", os.environ["MODEL_EXPORT"])
+PY
+```
+
+Before leaving the bench, save at least one local test image on the Pi, for example a RealSense frame at `/home/imt-aqua-drone/yolo_test.jpg`. The field smoke test below must not depend on internet.
+
+```bash
+# Offline-capable static-image smoke test
+source ~/venvs/yolo-pi5/bin/activate
+export ULTRALYTICS_SKIP_REQUIREMENTS_CHECKS=1
+export MODEL_WEIGHTS=yolo26n.pt
+export MODEL_EXPORT="${MODEL_WEIGHTS%.pt}_ncnn_model"
+python - <<'PY'
+import os
+from ultralytics import YOLO
+
+ncnn_model = YOLO(os.environ["MODEL_EXPORT"])
+results = ncnn_model.predict(
+    source="/home/imt-aqua-drone/yolo_test.jpg",
+    imgsz=320,
+    device="cpu",
+    verbose=False,
+)
+print(results[0].speed)
+PY
+```
+
+Optional camera-stream smoke test only after `web_video_server` sees `/camera/camera/color/image_raw` and the Pi is not under-voltage-limited:
+
+```bash
+# Offline-capable camera-stream smoke test
+source ~/venvs/yolo-pi5/bin/activate
+export ULTRALYTICS_SKIP_REQUIREMENTS_CHECKS=1
+export MODEL_WEIGHTS=yolo26n.pt
+export MODEL_EXPORT="${MODEL_WEIGHTS%.pt}_ncnn_model"
+timeout 30 yolo predict \
+  model="${MODEL_EXPORT}" \
+  source='http://127.0.0.1:8080/stream?topic=/camera/camera/color/image_raw&type=mjpeg' \
+  imgsz=320 \
+  device=cpu \
+  vid_stride=5
+sudo dmesg -T | tail -80 | grep -Ei 'voltage|thrott|under-voltage|usb|error|fail' || true
+```
+
+Record YOLO as a feasibility result only: installed / failed, model loaded / failed, NCNN export succeeded / failed, static-image inference speed, and any power or thermal warnings. Do not treat YOLO as integrated with the ROS camera pipeline unless a separate adapter / node is later approved.
+
 ## Next steps
 
-Next startup: run the live topic capture. First confirm `ROS_DOMAIN_ID=12` in every Pi / workstation shell, then prove camera-off `/mavros/state connected: true` through the `/dev/ttyAMA0:57600` MAVProxy fanout, then add the RealSense node only if power is stable. If code/config edits are approved after that, implement the smallest flag-gated path that preserves the existing full simulation stack first, then add real-topic support.
+Next startup: run the live topic capture. First confirm `ROS_DOMAIN_ID=12` in every Pi / workstation shell, then prove camera-off `/mavros/state connected: true` through the `/dev/ttyAMA0:57600` MAVProxy fanout, then add the RealSense node only if power is stable. If time remains after MAVROS / camera capture, try the isolated Pi 5 light-YOLO feasibility path above. If code/config edits are approved after that, implement the smallest flag-gated path that preserves the existing full simulation stack first, then add real-topic support.
