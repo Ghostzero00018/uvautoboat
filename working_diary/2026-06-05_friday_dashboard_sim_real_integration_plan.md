@@ -411,6 +411,23 @@ sudo dmesg -T | tail -80 | grep -Ei 'voltage|thrott|under-voltage|usb|error|fail
 
 Record YOLO as a feasibility result only: installed / failed, model loaded / failed, NCNN export succeeded / failed, static-image inference speed, and any power or thermal warnings. Do not treat YOLO as integrated with the ROS camera pipeline unless a separate adapter / node is later approved.
 
+## Block H - Option B read-only MAVROS feed plan
+
+User update after the 05/06 MAVROS-only log review: for the next remap step, prefer the path that can light up the existing dashboard / stack with real telemetry, not only the future-neutral `/sensors/*` layer.
+
+Option A, `/mavros/*` into `/sensors/*`, remains architecturally clean but inert today because the active consumers still subscribe the `/wamv/*` names. Option B, `/mavros/*` into the existing `/wamv/*` consumer topics, is the useful first end-to-end path if it is read-only, flag-gated, and keeps the simulation default untouched.
+
+Flag invariant: a real-topic adapter must publish the `/wamv/*` targets only when the VRX / simulation publishers are off. Do not allow both real MAVROS-derived publishers and simulation publishers on the same `/wamv/*` topic. The current `use_real_hardware:=false` simulation path remains the default, and the nonexistent `bridge` package path is still deferred.
+
+"Read-only" means no FCU command, actuator, or thruster write-back. It is not passive inside the ROS graph: feeding the existing `/wamv/*` topics wakes the current callbacks in the controller, planner, visualizer, and dashboard. This stays bounded only because the real command/write path remains deferred and the GPS input is guarded before consumers can trust it.
+
+| Source | `/wamv` target | Type | Mechanism | Gating | Consumer(s) | Guard / notes |
+|--------|----------------|------|-----------|--------|-------------|---------------|
+| `/mavros/imu/data` | `/wamv/sensors/imu/imu/data` | `sensor_msgs/msg/Imu` | Relay-like | Real adapter ON only when simulation source is OFF | `heading_controller` only | Callback uses orientation for yaw; validate ENU heading reference and mounting offset before trusting closed-loop heading |
+| `/mavros/global_position/raw/fix` | `/wamv/sensors/gps/gps/fix` | `sensor_msgs/msg/NavSatFix` | Filter node, not plain relay | Real adapter ON only when simulation source is OFF | `heading_controller`, `waypoint_planner`, `waypoint_visualizer`, dashboard | Drop or hold when `status.status < 0`; today's 05/06 sample was no-fix with latitude / longitude `0.0` |
+
+Implementation is not started in this block. If code/config edits are later approved, start with the smallest flag-gated read-only path: IMU can be relay-like because the type is unchanged, while GPS needs a filter node so no-fix samples do not drive the planner or controller as a real position.
+
 ## Next steps
 
-Next startup: power-fix first. Do not retry RealSense, combined MAVROS + camera, or YOLO until the Pi 5 power rail is stable with no fresh under-voltage messages. After the power fix, run RealSense camera-only, then a MAVROS-only quick gate on `ROS_DOMAIN_ID=12`, then combined camera + MAVROS. If time remains after those checks, try the isolated Pi 5 light-YOLO feasibility path above. If code/config edits are approved after that, implement the smallest flag-gated path that preserves the existing full simulation stack first, then add real-topic support.
+Next startup: power-fix first for RealSense / combined camera work. Do not retry RealSense, combined MAVROS + camera, or YOLO until the Pi 5 power rail is stable with no fresh under-voltage messages. In parallel, the MAVROS-only read-topic remap design can continue from Block H: Option B is the useful first path, IMU is relay-like into the existing `/wamv` consumer topic, and GPS needs a no-fix guard before feeding existing consumers. After the power fix, run RealSense camera-only, then a MAVROS-only quick gate on `ROS_DOMAIN_ID=12`, then combined camera + MAVROS. If time remains after those checks, try the isolated Pi 5 light-YOLO feasibility path above. If code/config edits are approved after that, implement the smallest flag-gated path that preserves the existing full simulation stack first, then add real-topic support.
