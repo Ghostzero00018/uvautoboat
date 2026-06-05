@@ -24,7 +24,7 @@ Current architecture anchors:
 
 ## Block A - Repo and Thursday handoff pre-flight
 
-- [ ] Confirm repo state:
+- [x] Confirm repo state:
 
   ```bash
   git fetch --prune
@@ -33,7 +33,7 @@ Current architecture anchors:
   git rev-parse HEAD origin/main
   ```
 
-- [ ] If `HEAD` is behind `origin/main`, run:
+- [x] If `HEAD` is behind `origin/main`, run:
 
   ```bash
   git pull --ff-only
@@ -41,7 +41,7 @@ Current architecture anchors:
 
   If `HEAD` and `origin/main` diverge, stop and report the state.
 
-- [ ] Re-read Thursday outcome and current integration anchors:
+- [x] Re-read Thursday outcome and current integration anchors:
 
   ```bash
   sed -n '1,283p' working_diary/2026-06-04_thursday_video_framerate_and_real_topic_inventory.md
@@ -51,7 +51,9 @@ Current architecture anchors:
   sed -n '193,205p' wiki/Pi5_Bringup_Smoke_Test.md
   ```
 
-**Outcome:** [To fill - repo state, Thursday result, integration starting point.]
+**Outcome:** Block A ran on the Linux workstation on 05/06/2026. `git fetch --prune` completed. `git log --oneline -5` began with `0bf2676`, `7a54404`, `85a91d1`, `dc508fd`, and `21643ad`; `git status --short --branch` showed clean `## main...origin/main`; `git rev-parse HEAD origin/main` returned the same SHA `0bf26767e68c64e2d18838250c473801052db865` for both refs. No pull was needed, and no pre-existing user changes were present.
+
+Thursday's diary and the live status rows in `Board.md` / `wiki/Roadmap.md` were re-read before mapping. Current verified state remains: MAVProxy owns `/dev/ttyAMA0:57600`; MAVROS consumes `udp://127.0.0.1:14550@`; optional direct-MAVLink inspection uses `14551`; `/mavros/state connected: true` passed on 04/06/2026 in a camera-off topology; first ROS samples were captured from IMU, raw GPS no-fix, battery, and RC; command / write paths remain unvalidated after request/response timeouts; the 04/06/2026 camera + MAVROS run was power-limited and did not produce a fresh `/mavros/state` echo pass.
 
 ## Block B - Real ROS 2 topic inventory
 
@@ -95,11 +97,32 @@ Run these from a fresh Pi terminal using the known-good topology first: MAVProxy
   ros2 topic list -t | grep -E 'Image|CompressedImage|camera|image' || true
   ```
 
-**Outcome:** [To fill - real topic list and connected/not-connected verdict.]
+**Outcome:** No fresh 05/06/2026 Pi runtime capture was available in this terminal session, so the clean inventory below is bounded to verified 04/06/2026 diary evidence plus today's source audit. It is suitable for dashboard / simulation planning, not for closing the combined camera + MAVROS validation gate.
+
+Clean real-topic inventory:
+
+| Source | Topic / endpoint | Type / role | 04/06 evidence | 05/06 mapping status |
+|--------|------------------|-------------|----------------|----------------------|
+| MAVProxy serial input | `/dev/ttyAMA0:57600` | MAVLink serial endpoint | Proven ArduPilot heartbeat / status source | Keep MAVProxy as sole serial owner |
+| MAVProxy fanout | `udpout:127.0.0.1:14550` | MAVLink UDP leg for MAVROS | Used by MAVROS pass | Reserved for MAVROS |
+| MAVProxy fanout | `udpout:127.0.0.1:14551` | MAVLink UDP leg for direct scripts | Intended optional inspection leg | Do not use for MAVROS |
+| MAVROS state | `/mavros/state` | `mavros_msgs/msg/State` | `connected: true` in camera-off run | Gate topic for any real telemetry session |
+| MAVROS GPS raw | `/mavros/global_position/raw/fix` | `sensor_msgs/msg/NavSatFix` | Published no-fix status (`status: -1`) | Diagnostic GPS state; not navigation fix |
+| MAVROS GPS global | `/mavros/global_position/global` | `sensor_msgs/msg/NavSatFix` | May be empty until GPS fix | Candidate dashboard GPS after fix |
+| MAVROS IMU | `/mavros/imu/data` | `sensor_msgs/msg/Imu` | Sample captured, frame `base_link` | Candidate IMU adapter / diagnostics |
+| MAVROS battery | `/mavros/battery` | `sensor_msgs/msg/BatteryState` | Sample captured | Future dashboard diagnostics panel |
+| MAVROS RC | `/mavros/rc/in` | `mavros_msgs/msg/RCIn` | Empty first, then populated in no-camera recovery | Manual-input diagnostics only |
+| MAVROS raw MAVLink | `/uas1/mavlink_source`, `/uas1/mavlink_sink` | `mavros_msgs/msg/Mavlink` | Advertised in topic surface | Do not map directly to dashboard |
+| RealSense color | `/camera/camera/color/image_raw` | `sensor_msgs/msg/Image` | Color-only and default camera runs published | Best dashboard camera candidate |
+| RealSense depth | `/camera/camera/depth/image_rect_raw` | `sensor_msgs/msg/Image` | Default camera run published | Diagnostics / later perception candidate |
+| RealSense camera info | `/camera/camera/*/camera_info` | `sensor_msgs/msg/CameraInfo` | Listed with color/depth topics | Support topic, not dashboard primary |
+| RealSense IMU path | `/camera/camera/imu`, `/camera/camera/accel/sample`, `/camera/camera/gyro/sample` | IMU / sample topics | Historical IMU-only evidence; not seen in 04/06 default topic list | Candidate only; re-capture before mapping |
+
+Noise filter for the next live graph: exclude unrelated TurtleBot4 / Create3 / Gazebo / OAK-D topics observed on 04/06/2026, including examples such as `/battery_state`, `/cmd_vel`, `/scan`, and `/oakd/rgb/preview/image_raw`, unless a fresh `ROS_DOMAIN_ID=12` run proves they still belong to the active test graph.
 
 ## Block C - Existing dashboard and simulation-stack inventory
 
-- [ ] Confirm current dashboard subscriptions / publishers in `app.js`:
+- [x] Confirm current dashboard subscriptions / publishers in `app.js`:
   - GPS: `/wamv/sensors/gps/gps/fix`;
   - thrusters: `/wamv/thrusters/left/thrust`, `/wamv/thrusters/right/thrust`;
   - mission state: `/planning/*`;
@@ -113,12 +136,20 @@ Run these from a fresh Pi terminal using the known-good topology first: MAVProxy
 
   If this command is only planned and not run today, label it as untested in the outcome.
 
-- [ ] Confirm `launch/remap.launch.yaml` still matches the intended transition model:
+- [x] Confirm `launch/remap.launch.yaml` still matches the intended transition model:
   - Layer A: sim `/wamv/*` to neutral `/sensors/*`;
   - Layer B: future real-hardware bridge;
   - `use_real_hardware:=true` currently points to a non-existing `bridge` package, so do not flip it during normal simulation.
 
-**Outcome:** [To fill - current dashboard/sim topic contract.]
+**Outcome:** Source audit only; the full simulation launcher was not run today.
+
+Current dashboard / simulation topic contract:
+
+- Dashboard connects to `rosbridge` on `9090`; camera MJPEG comes from `web_video_server` on `8080`; HTTP serving remains `serve_dashboard.py` on `8002`.
+- Dashboard read topics are simulation-first: `/wamv/sensors/gps/gps/fix`, `/wamv/thrusters/left/thrust`, `/wamv/thrusters/right/thrust`, `/planning/mission_status`, `/planning/waypoints`, `/planning/current_target`, `/perception/obstacle_info`, `/control/status`, `/control/anti_stuck_status`, `/planning/config`, param ranges, `/rosout`, and optional health-check topics.
+- Dashboard write / service paths are `/planning/set_config`, `/planning/mission_command`, `/planning/emergency_stop`, `/planning/stop_mission`, `/planning/generate_waypoints`, and `/health_check/run`.
+- The camera panel default is `/wamv/sensors/cameras/front_left_camera_sensor/image_raw`, but it already supports manual topic entry and `/rosapi/topics_for_type` discovery for `sensor_msgs/msg/Image` and `sensor_msgs/msg/CompressedImage`. This makes `/camera/camera/color/image_raw` the lowest-friction real camera test if `rosbridge` and `web_video_server` share the Pi's domain.
+- `launch/remap.launch.yaml` still implements only the Phase 5.0 simulation relay layer when `use_real_hardware:=false`: `/wamv/sensors/gps/gps/fix -> /sensors/gps/fix`, `/wamv/sensors/imu/imu/data -> /sensors/imu/data`, `/wamv/sensors/lidars/lidar_wamv_sensor/points -> /sensors/lidar/points`, `/wamv/sensors/cameras/front_left_camera_sensor/image_raw -> /sensors/camera/image_raw`, and neutral actuator relays back to `/wamv/thrusters/*/thrust`. The `use_real_hardware:=true` branch still points to the not-yet-existing `bridge` package, so it must stay off for the default simulation stack.
 
 ## Block D - Mapping table
 
@@ -126,12 +157,13 @@ Fill this table before proposing edits.
 
 | Function | Existing sim/dashboard topic | Candidate real topic | Type | Integration direction | Status |
 |----------|------------------------------|----------------------|------|-----------------------|--------|
-| GPS position | `/wamv/sensors/gps/gps/fix` | `/mavros/global_position/global` or `/mavros/global_position/raw/fix` | `sensor_msgs/NavSatFix` | Real -> dashboard / sim pose | [To fill] |
-| IMU | `/wamv/sensors/imu/imu/data` | `/mavros/imu/data` | `sensor_msgs/Imu` | Real -> sim / diagnostics | [To fill] |
-| Camera image | `/wamv/sensors/cameras/front_left_camera_sensor/image_raw` | `/camera/camera/color/image_raw` or confirmed Herelink-derived ROS topic | `sensor_msgs/Image` | Real -> dashboard camera | [To fill] |
-| Battery | none in current dashboard | `/mavros/battery` | `sensor_msgs/BatteryState` | Real -> future dashboard panel | [To fill] |
-| RC / manual state | none in current dashboard | `/mavros/rc/in` | `mavros_msgs/msg/RCIn` | Real -> diagnostics | [To fill] |
-| Thruster command | `/wamv/thrusters/*/thrust` | MAVROS setpoint / actuator path TBD | TBD | dashboard / planner -> low-level | [To fill] |
+| GPS position | `/wamv/sensors/gps/gps/fix` | `/mavros/global_position/global` or `/mavros/global_position/raw/fix` | `sensor_msgs/msg/NavSatFix` | Real -> dashboard / sim pose | Same message family. Use `raw/fix` to display no-fix state; use `global` for dashboard position only after GPS fix publishes. Fresh domain-12 recapture pending. |
+| IMU | `/wamv/sensors/imu/imu/data` | `/mavros/imu/data` | `sensor_msgs/msg/Imu` | Real -> sim / diagnostics | Camera-off MAVROS sample proven. Dashboard does not currently display IMU; adapter can feed neutral `/sensors/imu/data` later if needed. |
+| Camera image | `/wamv/sensors/cameras/front_left_camera_sensor/image_raw` | `/camera/camera/color/image_raw` or confirmed Herelink-derived ROS topic | `sensor_msgs/msg/Image` | Real -> dashboard camera | Best immediate path is manual topic entry / auto-discovery, not a code change. Herelink visual-only path is separate and not a ROS image topic yet. |
+| Battery | none in current dashboard | `/mavros/battery` | `sensor_msgs/msg/BatteryState` | Real -> future dashboard panel | Telemetry sample proven camera-off. Requires new UI or diagnostics-only logging before dashboard display. |
+| RC / manual state | none in current dashboard | `/mavros/rc/in` | `mavros_msgs/msg/RCIn` | Real -> diagnostics | Useful for manual-control state and channel sanity. Not a command path. |
+| MAVROS connection | none in current dashboard | `/mavros/state` | `mavros_msgs/msg/State` | Real -> dashboard diagnostics / integration gate | Add only if a diagnostics panel is approved. Use `connected: true` as the gate before trusting MAVROS telemetry. |
+| Thruster command | `/wamv/thrusters/*/thrust` | MAVROS setpoint / actuator path TBD | TBD | dashboard / planner -> low-level | Not mapped. Targeted request/response and command ACK paths timed out on 04/06/2026, so do not infer a real thrust command route from VRX `Float64` topics. |
 
 Interpretation rules:
 
@@ -139,7 +171,7 @@ Interpretation rules:
 - If types differ, record the adapter needed; do not pretend a relay is enough.
 - If command direction is uncertain, keep it diagnostics-only until the low-level command path is confirmed.
 
-**Outcome:** [To fill - topic mapping and open adapters.]
+**Outcome:** Mapping is clean enough for planning but not for implementation. Read-side telemetry candidates are clear: MAVROS GPS / IMU / battery / RC plus RealSense color image. Write-side control remains blocked until the low-level command path is validated. The safest adapter direction is real telemetry into existing dashboard / neutral read topics first; do not bridge dashboard thruster commands to MAVROS until the command semantics, units, arming state, and ACK behavior are proven.
 
 ## Block E - Implementation proposal, no edits yet
 
@@ -153,7 +185,14 @@ Candidate shape:
 4. **Dashboard topic configurability:** if launch-level mapping is insufficient, propose a dashboard-side topic profile selector (`simulation` vs `real`) in `app.js` / `index.html`; this is JavaScript/HTML work and needs approval.
 5. **Simulation stack preservation:** run the full simulation launcher after every integration change to prove `/wamv/*` still works.
 
-**Outcome:** [To fill - recommended option and approval needed.]
+**Outcome:** Recommended no-edit path:
+
+1. Re-run the live Pi capture with `ROS_DOMAIN_ID=12` confirmed in every Pi and workstation terminal.
+2. Start camera-off MAVProxy + MAVROS first and require `/mavros/state connected: true`.
+3. If stable, start RealSense and re-capture `/mavros/state`, MAVROS telemetry samples, and camera topic rates in the same run.
+4. For dashboard camera, first use the existing camera topic input with `/camera/camera/color/image_raw` and `web_video_server`; this should need no JavaScript / HTML edit if discovery sees the topic.
+5. For telemetry, prefer a small launch-level or bridge-node adapter only after approval, and keep the default `/wamv/*` simulation path unchanged.
+6. Do not implement real thruster / actuator mapping until command-path validation passes separately.
 
 ## Block F - Verification recipe for any approved implementation
 
@@ -196,15 +235,15 @@ Keep this as the test plan if code/config edits are approved later.
    rg -n "wamv|mavros|camera|dashboard|web_video_server|rosbridge|remap" README.md USER_MANUAL.md wiki web_dashboard/autoboat/README_autoboat_dashboard.md
    ```
 
-**Outcome:** [To fill - verification status if implementation starts.]
+**Outcome:** No implementation started on 05/06/2026, so the recipe remains a planned verification path only. If code or launch edits are approved later, run the simulation baseline first, then the real-topic read-only check, then the dashboard real-topic check with matching `ROS_DOMAIN_ID`.
 
 ## Block G - Day wrap
 
-- [ ] Fill all outcomes above.
-- [ ] If no code/config edits occurred, close as diary-only planning.
+- [x] Fill all outcomes above.
+- [x] If no code/config edits occurred, close as diary-only planning.
 - [ ] If code/config edits occurred after explicit approval, run the verification recipe above and the standard pre-commit visibility sweep.
-- [ ] Set next startup hint.
-- [ ] Run final checks:
+- [x] Set next startup hint.
+- [x] Run final checks:
 
   ```bash
   git status --short --branch
@@ -212,8 +251,8 @@ Keep this as the test plan if code/config edits are approved later.
   rg -n "\[To fill|<{7}|={7}|>{7}" working_diary/2026-06-05_friday_dashboard_sim_real_integration_plan.md
   ```
 
-**Outcome:** [To fill - wrap state, implementation status, next startup hint.]
+**Outcome:** 05/06/2026 work stayed diary-only and source-audit only. No Python, YAML, JavaScript, launch, dashboard, or runtime config files were edited. The clean topic inventory and mapping above are bounded to verified 04/06/2026 evidence plus today's source reads. Final checks: `git status --short --branch` showed only this diary modified; `git diff --check` passed; the placeholder / conflict-marker scan matched only the check command embedded in this Block G checklist; the visibility sweep returned zero matches. Next live pass should confirm `ROS_DOMAIN_ID=12` on the Pi and workstation, run camera-off MAVProxy + MAVROS first, then attempt the combined RealSense + MAVROS inventory only if power is stable.
 
 ## Next steps
 
-Next startup: continue from the mapping table. If the user approves code/config edits, implement the smallest flag-gated path that preserves the existing full simulation stack first, then add real-topic support.
+Next startup: run the live topic capture. First confirm `ROS_DOMAIN_ID=12` in every Pi / workstation shell, then prove camera-off `/mavros/state connected: true` through the `/dev/ttyAMA0:57600` MAVProxy fanout, then add the RealSense node only if power is stable. If code/config edits are approved after that, implement the smallest flag-gated path that preserves the existing full simulation stack first, then add real-topic support.
