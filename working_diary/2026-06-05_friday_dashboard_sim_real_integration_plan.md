@@ -431,3 +431,13 @@ Implementation is not started in this block. If code/config edits are later appr
 ## Next steps
 
 Next startup: power-fix first for RealSense / combined camera work. Do not retry RealSense, combined MAVROS + camera, or YOLO until the Pi 5 power rail is stable with no fresh under-voltage messages. In parallel, the MAVROS-only read-topic remap design can continue from Block H: Option B is the useful first path, IMU is relay-like into the existing `/wamv` consumer topic, and GPS needs a no-fix guard before feeding existing consumers. After the power fix, run RealSense camera-only, then a MAVROS-only quick gate on `ROS_DOMAIN_ID=12`, then combined camera + MAVROS. If time remains after those checks, try the isolated Pi 5 light-YOLO feasibility path above. If code/config edits are approved after that, implement the smallest flag-gated path that preserves the existing full simulation stack first, then add real-topic support.
+
+## End-of-day handoff
+
+EOD decision on Fri 05/06/2026: stop here for the week. Do not start the Pi 5 power / RealSense / combined camera work or the read-only Option B adapter implementation today. Both move to next week.
+
+Next-week order:
+
+1. Hardware first: fix / verify the Pi 5 power rail, then run RealSense camera-only, MAVROS-only quick gate on `ROS_DOMAIN_ID=12`, and combined camera + MAVROS.
+2. Repo implementation only after explicit code/config approval: implement the smallest read-only Option B adapter that keeps the default simulation path untouched, relays IMU into `/wamv/sensors/imu/imu/data`, and filters GPS before `/wamv/sensors/gps/gps/fix` so no-fix samples do not drive existing consumers.
+3. Keep YOLO as a stretch task after MAVROS / camera stability, using the isolated Pi 5 environment and offline-capable runtime path already documented above.
