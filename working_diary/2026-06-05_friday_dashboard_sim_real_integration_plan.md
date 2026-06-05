@@ -83,7 +83,7 @@ Run these from fresh Pi terminals using the known-good topology first: MAVProxy 
   ros2 topic list -t | sort
   ```
 
-  The 04/06 combined capture did not record `ROS_DOMAIN_ID`, so whether domain `12` isolates the earlier TurtleBot4 / Create3 / Gazebo / OAK-D graph noise is unverified. Confirm with the echo above and a fresh topic list, then still filter the inventory by source before mapping.
+  The 04/06 combined capture did not record `ROS_DOMAIN_ID`, but the later 05/06 MAVROS-only capture showed the domain-12 camera-off graph was clean. Still confirm with the echo above and a fresh topic list in any combined rerun, then filter the inventory by source before mapping.
 
 - [ ] Capture minimal telemetry samples if connected:
 
@@ -108,7 +108,25 @@ Run these from fresh Pi terminals using the known-good topology first: MAVProxy 
   ros2 topic list -t | grep -E 'Image|CompressedImage|camera|image' || true
   ```
 
-**Outcome:** No fresh 05/06/2026 Pi runtime capture was available in this terminal session, so the clean inventory below is bounded to verified 04/06/2026 diary evidence plus today's source audit. It is suitable for dashboard / simulation planning, not for closing the combined camera + MAVROS validation gate.
+**Outcome:** Fresh 05/06/2026 Pi runtime evidence was reviewed from `/home/ghostzero/Desktop/test_log_pi5_05_06_2026_pi5.txt` after the earlier diary-only commit. The log proves a clean MAVROS-only / camera-off pass and resolves the domain-noise question, but it does not prove a fresh RealSense launch or combined camera + MAVROS pass.
+
+05/06 MAVROS-only evidence:
+
+- Pi precheck showed `ROS_DOMAIN_ID=12`, hostname `imtaquadrone-desktop`, D435i present on Bus 003 at `5000M`, `/dev/ttyAMA0` present as `root:dialout`, and no stale MAVProxy / MAVROS / RealSense / direct-MAVLink script processes.
+- The same precheck also showed chronic Pi 5 power-rail trouble before the RealSense step: six `hwmon hwmon2: Undervoltage detected!` / `Voltage normalised` cycles from 14:58 to 15:06. The MAVROS battery sample below is the vehicle battery over MAVLink, not the Pi 5 V rail.
+- MAVProxy on `/dev/ttyAMA0` at `57600` detected vehicle `1:1`, reported `online system 1`, mode `HOLD`, `fence present`, and ArduPilot `EKF3 waiting for GPS config data`.
+- The `/mavros/state` poll loop succeeded on the first attempt with `connected: true`, `armed: false`, `guided: false`, `manual_input: false`, mode `HOLD`, and `system_status: 5`.
+- `ros2 topic list -t | sort` captured a clean domain-12 graph: 144 typed topics total, 136 `/mavros/*` topics, and 8 non-MAVROS support topics (`/diagnostics`, `/move_base_simple/goal`, `/parameter_events`, `/rosout`, `/tf`, `/tf_static`, `/uas1/mavlink_sink`, `/uas1/mavlink_source`). No TurtleBot4 / Create3 / Gazebo / OAK-D noise such as `/scan`, `/cmd_vel`, `/battery_state`, or `/oakd/*` appeared.
+- `/mavros/global_position/raw/fix` published no-fix GPS (`status: -1`, latitude / longitude `0.0`, altitude `17.163000000000004`).
+- `/mavros/imu/data` published an IMU sample with frame `base_link` and linear acceleration `z: 9.77723005`.
+- `/mavros/battery` published `voltage: 16.242000579833984`, `percentage: 1.0`, and `present: true`; this is vehicle-side MAVLink battery telemetry, not Pi supply health.
+- `/mavros/rc/in` published `rssi: 255` with `channels: []`. Today's run did not reproduce the later 04/06 populated-RC-channel state.
+
+Camera / combined result:
+
+- The pasted log explicitly marks `T4 RealSense`, `T5 Camera Topics + Rates`, and `Combined Check` as `NOT DONE`.
+- The `/camera/camera/*` topics in the pasted file are under the section labeled "Logs of yesterday near the end-of-day"; they are not a fresh 05/06 camera-topic capture.
+- User observed the Pi 5 shut down when trying to launch the RealSense node. That shutdown is not captured in the pasted log, so the logged conclusion is bounded to: camera / combined evidence was not captured under chronic undervoltage. The operational conclusion remains power-fix-first before retrying RealSense, combined MAVROS + camera, or YOLO.
 
 Clean real-topic inventory:
 
@@ -117,19 +135,19 @@ Clean real-topic inventory:
 | MAVProxy serial input | `/dev/ttyAMA0:57600` | MAVLink serial endpoint | Proven ArduPilot heartbeat / status source | Keep MAVProxy as sole serial owner |
 | MAVProxy fanout | `udpout:127.0.0.1:14550` | MAVLink UDP leg for MAVROS | Used by MAVROS pass | Reserved for MAVROS |
 | MAVProxy fanout | `udpout:127.0.0.1:14551` | MAVLink UDP leg for direct scripts | Intended optional inspection leg | Do not use for MAVROS |
-| MAVROS state | `/mavros/state` | `mavros_msgs/msg/State` | `connected: true` in camera-off run | Gate topic for any real telemetry session |
-| MAVROS GPS raw | `/mavros/global_position/raw/fix` | `sensor_msgs/msg/NavSatFix` | Published no-fix status (`status: -1`) | Diagnostic GPS state; not navigation fix |
-| MAVROS GPS global | `/mavros/global_position/global` | `sensor_msgs/msg/NavSatFix` | May be empty until GPS fix | Candidate dashboard GPS after fix |
-| MAVROS IMU | `/mavros/imu/data` | `sensor_msgs/msg/Imu` | Sample captured, frame `base_link` | Candidate IMU adapter / diagnostics |
-| MAVROS battery | `/mavros/battery` | `sensor_msgs/msg/BatteryState` | Sample captured | Future dashboard diagnostics panel |
-| MAVROS RC | `/mavros/rc/in` | `mavros_msgs/msg/RCIn` | Empty first, then populated in no-camera recovery | Manual-input diagnostics only |
+| MAVROS state | `/mavros/state` | `mavros_msgs/msg/State` | `connected: true` in 04/06 and 05/06 camera-off runs | Gate topic for any real telemetry session |
+| MAVROS GPS raw | `/mavros/global_position/raw/fix` | `sensor_msgs/msg/NavSatFix` | Published no-fix status (`status: -1`) on 04/06 and 05/06 | Diagnostic GPS state; not navigation fix |
+| MAVROS GPS global | `/mavros/global_position/global` | `sensor_msgs/msg/NavSatFix` | May be empty until GPS fix | Candidate dashboard GPS after fix; keep out of default echo set unless timeout-bound |
+| MAVROS IMU | `/mavros/imu/data` | `sensor_msgs/msg/Imu` | Samples captured, frame `base_link` | Candidate IMU adapter / diagnostics |
+| MAVROS battery | `/mavros/battery` | `sensor_msgs/msg/BatteryState` | Sample captured; 05/06 vehicle battery `16.242000579833984` V | Future dashboard diagnostics panel; do not treat as Pi 5 V rail health |
+| MAVROS RC | `/mavros/rc/in` | `mavros_msgs/msg/RCIn` | 05/06 sample had `rssi: 255`, `channels: []`; 04/06 later recovery observed populated channels | Manual-input diagnostics only; populated channels not reproduced today |
 | MAVROS raw MAVLink | `/uas1/mavlink_source`, `/uas1/mavlink_sink` | `mavros_msgs/msg/Mavlink` | Advertised in topic surface | Do not map directly to dashboard |
-| RealSense color | `/camera/camera/color/image_raw` | `sensor_msgs/msg/Image` | Color-only and default camera runs published | Best dashboard camera candidate |
-| RealSense depth | `/camera/camera/depth/image_rect_raw` | `sensor_msgs/msg/Image` | Default camera run published | Diagnostics / later perception candidate |
-| RealSense camera info | `/camera/camera/*/camera_info` | `sensor_msgs/msg/CameraInfo` | Listed with color/depth topics | Support topic, not dashboard primary |
+| RealSense color | `/camera/camera/color/image_raw` | `sensor_msgs/msg/Image` | 04/06 / prior logs published; 05/06 precheck showed D435i physically present | Best dashboard camera candidate; no fresh 05/06 camera-rate capture due power |
+| RealSense depth | `/camera/camera/depth/image_rect_raw` | `sensor_msgs/msg/Image` | 04/06 / prior logs published; 05/06 pasted camera topics are from yesterday section | Diagnostics / later perception candidate; no fresh 05/06 depth-rate capture |
+| RealSense camera info | `/camera/camera/*/camera_info` | `sensor_msgs/msg/CameraInfo` | Listed with color/depth topics in prior / yesterday log section | Support topic, not dashboard primary |
 | RealSense IMU path | `/camera/camera/imu`, `/camera/camera/accel/sample`, `/camera/camera/gyro/sample` | IMU / sample topics | Historical IMU-only evidence; not seen in 04/06 default topic list | Candidate only; re-capture before mapping |
 
-Noise filter for the next live graph: exclude unrelated TurtleBot4 / Create3 / Gazebo / OAK-D topics observed on 04/06/2026, including examples such as `/battery_state`, `/cmd_vel`, `/scan`, and `/oakd/rgb/preview/image_raw`, unless a fresh `ROS_DOMAIN_ID=12` run proves they still belong to the active test graph.
+Domain-12 graph verdict: the 05/06 MAVROS-only capture resolved the 04/06 graph-noise question for the camera-off topology. No unrelated TurtleBot4 / Create3 / Gazebo / OAK-D topics appeared. Still filter by source in any future combined camera + MAVROS capture, because adding RealSense or workstation-side services can change the graph.
 
 ## Block C - Existing dashboard and simulation-stack inventory
 
@@ -168,7 +186,7 @@ Fill this table before proposing edits.
 
 | Function | Existing sim/dashboard topic | Candidate real topic | Type | Integration direction | Status |
 |----------|------------------------------|----------------------|------|-----------------------|--------|
-| GPS position | `/wamv/sensors/gps/gps/fix` | `/mavros/global_position/global` or `/mavros/global_position/raw/fix` | `sensor_msgs/msg/NavSatFix` | Real -> dashboard / sim pose | Same message family. Use `raw/fix` to display no-fix state; use `global` for dashboard position only after GPS fix publishes. Fresh domain-12 recapture pending. |
+| GPS position | `/wamv/sensors/gps/gps/fix` | `/mavros/global_position/global` or `/mavros/global_position/raw/fix` | `sensor_msgs/msg/NavSatFix` | Real -> dashboard / sim pose | Same message family. Use `raw/fix` to display no-fix state; use `global` for dashboard position only after GPS fix publishes. Fresh combined camera + MAVROS recapture pending after power fix. |
 | IMU | `/wamv/sensors/imu/imu/data` | `/mavros/imu/data` | `sensor_msgs/msg/Imu` | Real -> sim / diagnostics | Camera-off MAVROS sample proven. Dashboard does not currently display IMU; adapter can feed neutral `/sensors/imu/data` later if needed. |
 | Camera image | `/wamv/sensors/cameras/front_left_camera_sensor/image_raw` | `/camera/camera/color/image_raw` or confirmed Herelink-derived ROS topic | `sensor_msgs/msg/Image` | Real -> dashboard camera | Best immediate path is manual topic entry / auto-discovery, not a code change. Herelink visual-only path is separate and not a ROS image topic yet. |
 | Battery | none in current dashboard | `/mavros/battery` | `sensor_msgs/msg/BatteryState` | Real -> future dashboard panel | Telemetry sample proven camera-off. Requires new UI or diagnostics-only logging before dashboard display. |
@@ -268,13 +286,13 @@ Keep this as the test plan if code/config edits are approved later.
   rg -n "\[To fill|<{7}|={7}|>{7}" working_diary/2026-06-05_friday_dashboard_sim_real_integration_plan.md
   ```
 
-**Outcome:** 05/06/2026 work stayed diary-only and source-audit only. No Python, YAML, JavaScript, launch, dashboard, or runtime config files were edited. The clean topic inventory and mapping above are bounded to verified 04/06/2026 evidence plus today's source reads. Final checks: `git status --short --branch` showed only this diary modified; `git diff --check` passed; the placeholder / conflict-marker scan matched only the check command embedded in this Block G checklist; the visibility sweep returned zero matches. Next live pass should confirm `ROS_DOMAIN_ID=12` on the Pi and workstation, run camera-off MAVProxy + MAVROS first, then attempt the combined RealSense + MAVROS inventory only if power is stable.
+**Outcome:** 05/06/2026 work originally closed as diary-only and source-audit only, with no Python, YAML, JavaScript, launch, dashboard, or runtime config files edited. Later log review of `/home/ghostzero/Desktop/test_log_pi5_05_06_2026_pi5.txt` converted Block B from planning-only to an evidence-backed MAVROS-only result: domain `12` was confirmed, `/mavros/state connected: true` passed, a clean 136-topic `/mavros/*` graph was captured without the 04/06 TurtleBot / Create / Gazebo / OAK-D noise, and raw GPS no-fix / IMU / battery / empty-RC-channel samples were recorded. Camera / combined evidence remains not captured in the pasted 05/06 log under chronic undervoltage, and user-reported RealSense-launch shutdown is an observed event outside the pasted log. Final checks before the earlier wrap: `git status --short --branch` showed only this diary modified; `git diff --check` passed; the placeholder / conflict-marker scan matched only the check command embedded in this Block G checklist; the visibility sweep returned zero matches. Next live pass should be power-fix-first, then RealSense camera-only, then MAVROS-only quick gate, then combined camera + MAVROS.
 
 ## Plan-change addendum - MAVROS/camera first, YOLO feasibility stretch
 
 User update after the first 05/06 diary commit: focus mainly on MAVROS and the camera today; if time and power stability allow, explore how to install a light YOLO model on the Pi 5.
 
-Revised live order:
+Earlier revised live order before the 05/06 log review; the power-fix-first `Next steps` below now supersede this until the Pi 5 power rail is stable:
 
 1. Confirm `ROS_DOMAIN_ID=12` and run camera-off MAVProxy + MAVROS first. `/mavros/state connected: true` remains the MAVROS gate.
 2. Start the RealSense node and capture color/depth topics and rates.
@@ -395,4 +413,4 @@ Record YOLO as a feasibility result only: installed / failed, model loaded / fai
 
 ## Next steps
 
-Next startup: run the live topic capture. First confirm `ROS_DOMAIN_ID=12` in every Pi / workstation shell, then prove camera-off `/mavros/state connected: true` through the `/dev/ttyAMA0:57600` MAVProxy fanout, then add the RealSense node only if power is stable. If time remains after MAVROS / camera capture, try the isolated Pi 5 light-YOLO feasibility path above. If code/config edits are approved after that, implement the smallest flag-gated path that preserves the existing full simulation stack first, then add real-topic support.
+Next startup: power-fix first. Do not retry RealSense, combined MAVROS + camera, or YOLO until the Pi 5 power rail is stable with no fresh under-voltage messages. After the power fix, run RealSense camera-only, then a MAVROS-only quick gate on `ROS_DOMAIN_ID=12`, then combined camera + MAVROS. If time remains after those checks, try the isolated Pi 5 light-YOLO feasibility path above. If code/config edits are approved after that, implement the smallest flag-gated path that preserves the existing full simulation stack first, then add real-topic support.
