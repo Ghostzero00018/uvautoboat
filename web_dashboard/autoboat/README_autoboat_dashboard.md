@@ -42,6 +42,10 @@ Real-time web-based monitoring and control dashboard for the AutoBoat autonomous
 
 > **Not ros2-web-bridge.** A separate project ([ros2-web-bridge](https://github.com/RobotWebTools/ros2-web-bridge)) offered a Node.js-based alternative but was **archived in November 2025** (last targeted ROS 2 Dashing, 2019). This dashboard uses `rosbridge_suite`, the actively maintained official ROS package.
 
+## Current Real-Boat Status
+
+As of 08/06/2026, this dashboard remains simulation-first: it reads and writes the existing `/wamv/*` topic contract. The Pi 5 MAVProxy / MAVROS camera-off telemetry path is proven, but no real-topic adapter is implemented here yet. For RealSense checks, use the camera topic selector or manual topic entry for `/camera/camera/color/image_raw` only after `web_video_server` can see that topic. Do not use dashboard mission or thruster controls against the real FCU until the command path is separately validated.
+
 ## Quick Start
 
 ### Option A: One-Click Launch
@@ -181,8 +185,8 @@ Perception and Controller share the `/planning/set_config` topic. Parameters wit
 | `/control/status`              | Heading controller status            |
 | `/control/anti_stuck_status`   | Anti-stuck escape status             |
 | `/planning/config`              | Current config values (syncs fields) |
-| `/wamv/thrusters/left/thrust`  | Left thruster command                |
-| `/wamv/thrusters/right/thrust` | Right thruster command               |
+| `/wamv/thrusters/left/thrust`  | Left thruster command feedback       |
+| `/wamv/thrusters/right/thrust` | Right thruster command feedback      |
 
 ### Published (Write)
 
@@ -191,6 +195,8 @@ Perception and Controller share the `/planning/set_config` topic. Parameters wit
 | `/planning/set_config`      | Parameter updates (JSON)                       |
 | `/planning/mission_command` | Mission commands (start, resume, go_home, etc.) |
 | `/planning/emergency_stop`  | Safety-critical E-Stop (latched Bool)          |
+| `/wamv/thrusters/left/thrust`  | Manual left thruster command                 |
+| `/wamv/thrusters/right/thrust` | Manual right thruster command                |
 
 ### Called (Service Clients)
 
