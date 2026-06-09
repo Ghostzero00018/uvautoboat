@@ -268,3 +268,7 @@ Wrap checks: `git status --short --branch` showed only this diary modified. `git
 ## Next steps
 
 Next session: polish the requested graph once the exact repo file or external `.pptx` path is provided, then decide whether the lean Pi YOLO environment should be simplified from the heavy `[export]` install path. Keep YOLO as Pi-local feasibility only until a separate camera-stream / ROS integration step is explicitly approved. Keep Option B adapter implementation, command-path mapping, continuous camera-stream inference, and combined RealSense + MAVROS work parked unless explicitly reopened.
+
+## Post-close docs update
+
+Durable status docs refreshed post-close in `4b924fd` — `Board.md` (09/06 timeline + status rows, version 9.21) and `wiki/Roadmap.md` (Phase 5 feasibility row + revision log). Scope unchanged: Pi-local feasibility only.
