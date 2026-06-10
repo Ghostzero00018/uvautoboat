@@ -130,7 +130,7 @@ ls -lh ~/yolo26n.pt ~/yolo26n_ncnn_model/model.ncnn.param ~/yolo26n_ncnn_model/m
 - [ ] Record whether the venv, model weights, and NCNN export artifacts are still present.
 - [ ] If the model or export directory is missing, stop and record the missing artifact before re-exporting.
 
-**Outcome:** [To fill during 10/06 session.]
+**Outcome:** Not run as a separate Block C step on 10/06/2026. After Block B was recorded, no explicit approval was given to start a new YOLO follow-up block; the static-image YOLO evidence from the live demo remains recorded under Block B only.
 
 ### C.2 Repeat static-image timing and warning check
 
@@ -180,7 +180,7 @@ sudo dmesg -T | tail -80 | grep -Ei 'voltage|thrott|under-voltage|usb|error|fail
 - [ ] Record test image source, five-run timing, detection counts, before/after temperature, and warning-filter output.
 - [ ] Treat this as static-image feasibility only. Do not imply camera-stream readiness.
 
-**Outcome:** [To fill during 10/06 session.]
+**Outcome:** Not run as a separate Block C step on 10/06/2026. The live demo already captured five static-image runs, five detections per run, mean inference `84.09` ms, and temperature 68.8 C -> 72.2 C; no additional post-Block-B timing rerun or warning-filter pass was started from this scaffold.
 
 ## Block D - Decision gate for any wider YOLO step
 
@@ -191,26 +191,32 @@ Do not start this block automatically. Use it only if the professor check or the
 - [ ] If the request is ROS / dashboard / service / launch integration, stop and ask for explicit code/config approval before editing anything.
 - [ ] If the request is a graph or slide update, identify whether it is a repo Markdown/diagram file or an external `.pptx`; ask for the external path if needed.
 
-**Outcome:** [To fill during 10/06 session.]
+**Outcome:** Not started on 10/06/2026. The professor feedback was positive continuation only; no request approved camera-stream YOLO, ROS / dashboard / service / launch integration, or other wider YOLO work. The later QGC work stayed offline and produced a `.plan` import path only, not a vehicle upload or command/write path.
 
 ## Block E - Wrap and next steps
 
-- [ ] Fill outcomes for Blocks A-D.
-- [ ] If professor feedback changes durable status, update only the relevant Markdown docs.
-- [ ] If YOLO remains static-image / Pi-local only, record it as feasibility only, not integration.
-- [ ] If no Pi access, network access, or professor feedback is available, record the blocker and prepare the next-session command set from this diary.
-- [ ] Run checks after any Markdown edit:
+- [x] Fill outcomes for Blocks A-D.
+- [x] If professor feedback changes durable status, update only the relevant Markdown docs.
+- [x] If YOLO remains static-image / Pi-local only, record it as feasibility only, not integration.
+- [x] If no Pi access, network access, or professor feedback is available, record the blocker and prepare the next-session command set from this diary.
+- [x] Run checks after any Markdown edit:
 
   ```bash
   git status --short --branch
   git diff --check
-  rg -n "\[To fill|<{7}|={7}|>{7}" working_diary/2026-06-10_wednesday_yolo_professor_check.md
+  rg -n "\[To[ ]fill|<{7}|={7}|>{7}" working_diary/2026-06-10_wednesday_yolo_professor_check.md
   ```
 
   Also run the standard public-repo visibility sweep from the terminal, then eyeball the commit subject manually before commit.
 
-**Outcome:** [To fill during 10/06 session.]
+**Outcome:** Wrapped on 10/06/2026. Block A pre-flight, Block B professor feedback, live Pi 5 demo evidence, and Blocks C-D non-start outcomes are now recorded. Pi access, network access, and professor feedback were available, so the no-access blocker branch did not fire. The professor's only recorded feedback was "good" and "keep working"; it did not widen YOLO scope or approve code/config work. YOLO remains static-image Pi-local feasibility only: no camera-stream inference, ROS node, dashboard integration, service, launch, or command-path work was added.
+
+Durable docs were updated narrowly in `Board.md` and `wiki/Roadmap.md`: 10/06 evidence now records the RealSense camera path, Pi-proven `web_video_server`, MAVROS read-side demo plus telemetry caveats, the five-run static-image YOLO timing, the narrow combined-load observation, and the offline QGC Plan-view import result. The command/write path remains unvalidated, GPS no-fix / EKF GPS configuration remains open, and the combined-load result is not treated as closing the Pi power blocker.
+
+The offline QGC waypoint track also completed after the demo: `tools/qgc_plan_from_dashboard.py` was committed in `5c05c6d`, then accepted by QGC Plan view from the dashboard cache. The exported cache had 5 waypoints and origin `-33.722768660802124`, `150.67399109012482`; the generated plan had 5 mission items, the same planned home position, and route geometry matching the dashboard pattern. This proves dashboard cache -> `.plan` conversion -> QGC visual import only. No FCU upload, MAVLink mission transfer, or vehicle command was attempted.
+
+Post-edit checks passed: `git status --short --branch`, `git diff --check`, the diary placeholder / conflict-marker grep, and the standard public-repo visibility sweep.
 
 ## Next steps
 
-Start 10/06 by recording the professor check outcome before advancing any YOLO block. Keep the next YOLO work static-image / Pi-local unless the user explicitly approves a wider camera-stream, ROS, dashboard, service, launch, or code/config step.
+Next session should start from the 10/06 wrap state: QGC Plan-view import is accepted offline, but vehicle waypoint upload remains a separate unvalidated command/write-path task. Keep any future FCU upload behind bench-safety checks and explicit approval. For Pi 5 work, preserve the same boundaries: GPS no-fix / EKF GPS configuration is still open, RealSense + MAVROS combined load needs a fuller topic-rate and telemetry recapture before being called stable, and any camera-stream YOLO, ROS integration, dashboard integration, service, launch, or code/config step still needs explicit approval.
