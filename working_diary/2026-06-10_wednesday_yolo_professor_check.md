@@ -29,7 +29,7 @@ Current state to preserve:
 
 ## Block A - Repo pre-flight and source refresh
 
-- [ ] Confirm repo state:
+- [x] Confirm repo state:
 
   ```bash
   git fetch --prune
@@ -38,8 +38,8 @@ Current state to preserve:
   git rev-parse HEAD origin/main
   ```
 
-- [ ] If `git fetch --prune` fails, stop and report the network / auth error. Do not continue from stale remote state.
-- [ ] If `HEAD` is behind `origin/main`, run:
+- [x] If `git fetch --prune` fails, stop and report the network / auth error. Do not continue from stale remote state.
+- [x] If `HEAD` is behind `origin/main`, run:
 
   ```bash
   git pull --ff-only
@@ -47,8 +47,8 @@ Current state to preserve:
 
   If `HEAD` and `origin/main` diverge, stop and report both SHAs.
 
-- [ ] If the tree is dirty before work starts, identify changed files and do not overwrite user changes.
-- [ ] Re-read the current anchors:
+- [x] If the tree is dirty before work starts, identify changed files and do not overwrite user changes.
+- [x] Re-read the current anchors:
 
   ```bash
   sed -n '121,274p' working_diary/2026-06-09_tuesday_feedback_and_pi5_yolo_trial.md
@@ -58,7 +58,9 @@ Current state to preserve:
   sed -n '604,608p' wiki/Roadmap.md
   ```
 
-**Outcome:** [To fill during 10/06 session.]
+**Outcome:** Block A completed on 10/06/2026. `git fetch --prune` completed, `git log --oneline -5` began with `f8844e8`, `4c88c3e`, `4b924fd`, `fdecfe8`, and `8d7731c`; `git status --short --branch` showed clean `## main...origin/main`; `git rev-parse HEAD origin/main` returned the same SHA `f8844e8c9bca42d9f20983913b6bf354871e0a47` for both refs. No pull was needed, no divergence was present, and no pre-existing user changes were present.
+
+The required anchors were re-read before recording any 10/06 claims: this 10/06 diary, the 09/06 meeting / Pi-local YOLO diary, `Board.md` rows around Pi 5 MAVProxy / MAVROS / RealSense / YOLO status plus the 09/06 timeline row, and `wiki/Roadmap.md` Phase 5 rows for Pi power, RealSense, MAVROS, YOLO feasibility, and the 09/06 revision-log entry. Current scoped state remains unchanged: professor feedback must be recorded only from the user's pasted outcome; YOLO remains Pi-local static-image feasibility unless explicitly widened; RealSense / combined camera + MAVROS remains power-blocked; GPS / EKF GPS configuration and command / write path validation remain open.
 
 ## Block B - Professor check and feedback capture
 
@@ -69,17 +71,33 @@ Use this short visible story for the professor check:
 - YOLO is now proven only as Pi-local CPU feasibility: `yolo26n.pt` -> NCNN -> static-image inference at about 244 ms inference time for `imgsz=320`.
 - Remaining blockers are still RealSense / combined-load power, GPS no-fix / EKF GPS configuration, and unvalidated command/write path.
 
-- [ ] Record professor feedback exactly as provided by the user.
-- [ ] Classify each feedback item:
+- [x] Record professor feedback exactly as provided by the user.
+- [x] Classify each feedback item:
   - decision that changes the YOLO next step;
   - blocker / risk to keep visible;
   - documentation or graph update needed;
   - implementation request needing explicit code/config approval;
   - camera-stream request needing power checks and explicit approval;
   - external slide / `.pptx` request needing a user-provided path.
-- [ ] If the professor asks for implementation, camera-stream inference, dashboard integration, or a slide refresh, stop and ask for the missing approval / path before proceeding.
+- [x] If the professor asks for implementation, camera-stream inference, dashboard integration, or a slide refresh, stop and ask for the missing approval / path before proceeding.
 
-**Outcome:** [To fill during 10/06 session.]
+**Outcome:** Recorded on 10/06/2026. A live Pi 5 demo ran and its evidence is captured below from the pasted terminal log (`test_log_10_06_2026_pi5.txt`, 1462 lines).
+
+- **Professor feedback:** the professor said "good" and "keep working".
+- **Professor feedback classification:** positive continuation feedback and a decision to keep working. This does not change the scoped YOLO next step, does not add a new blocker, does not add a new documentation / graph update request (the 09/06 graph-polish ask stays open), does not request code/config implementation, does not request camera-stream inference, and does not request an external slide / `.pptx` update.
+- **Live demo evidence captured on 10/06/2026:**
+  - Camera path passed via default `rs_launch.py` (color and depth both opened, not the color-only form): D435I serial `213622070342`, USB type `3.2`, FW `5.14.0`, live `rqt_image_view` video, and `/camera/camera/color/image_raw` at a final `ros2 topic hz` average of `18.341` Hz (cumulative average still ramping on a 30 FPS profile), QoS `RELIABLE` / `TRANSIENT_LOCAL`. Only serial `213622070342` appeared anywhere in the log, so the 09/06 serial question (`221123060503`) did not recur.
+  - `web_video_server` is now Pi-proven for `/camera/camera/color/image_raw`: `ros-jazzy-web-video-server` `3.1.0` was installed (large ~143-package dependency chain including `libboost-all-dev` and `ffmpeg`) and the MJPEG stream was served and viewed over port `8080`.
+  - MAVROS telemetry passed for read-side heartbeat and samples: MAVProxy owned `/dev/ttyAMA0:57600` with fanout to `14550` / `14551`; `/mavros/state` returned `connected: true`, mode `HOLD`; IMU, raw GPS (no-fix `status: -1`), and battery (`16.281` V, 99%) samples all returned.
+  - Telemetry quality caveats: `system_status: 5` in both state echoes, repeated `EKF3 waiting for GPS config data` warnings, FCU request/response timeouts (autopilot version, params, waypoints, rallypoints, geofence, command acks), and `/mavros/rc/in` returned `channels: []` (populated on 04/06; transmitter likely off today).
+  - YOLO stays static-image only: 5 detections on all 5 runs against the local `bus.jpg`, mean inference `84.09` ms (5-run mean; per-run `68.7`-`103.8` ms) versus the 09/06 single-run `244.42` ms, temp 68.8 C -> 72.2 C. Run-1 warm-up inflates the preprocess/postprocess means, and the run script's `imgsz` is not printed in the log.
+  - Combined-load result is narrow: camera + MAVROS coexisted in single `ros2 topic list` / `ros2 node list` snapshots and `/mavros/state connected: true` returned during the window, with no fresh under-voltage or throttling in the pasted dmesg tail (all voltage-keyword matches carried boot timestamps), but no combined camera Hz sample or combined IMU/GPS/battery echo was captured; temp reached 82.6 C and the live dmesg watcher was not kept running through the whole window.
+- **Classification / effect on next steps:**
+  - Durable docs update candidate at wrap (`Board.md` + `wiki/Roadmap.md`), with the combined-load wording kept narrow: improved versus 04/06 (no fresh under-voltage in the pasted tail), but the full combined topic-rate / telemetry inventory remains not closed.
+  - Command / write path remains unvalidated; today's request/response timeout storm re-confirms the open item.
+  - GPS no-fix / EKF GPS configuration remains open.
+  - Camera-stream YOLO precondition partially improved: `web_video_server` now sees `/camera/camera/color/image_raw` on the Pi, but combined-load power stability is only narrowly observed and camera-stream YOLO was not approved or run.
+  - Block C remains gated on explicit approval before any further YOLO work starts.
 
 ## Block C - Bounded YOLO follow-up after approval
 
