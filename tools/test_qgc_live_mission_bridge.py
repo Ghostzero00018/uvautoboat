@@ -165,6 +165,37 @@ class QgcLiveMissionBridgeTest(unittest.TestCase):
         self.assertEqual(len(param_calls), 3)
         self.assertEqual(param_calls[0][1][0], b"SYSID_THISMAV")
 
+    def test_heartbeat_uses_local_mavlink_version(self):
+        server = FakeServer(self._snapshot())
+
+        server._send_heartbeat()
+
+        self.assertEqual(server.connection.mav.calls[0][0], "heartbeat_send")
+        self.assertEqual(
+            server.connection.mav.calls[0][1],
+            (
+                bridge.MAV_TYPE_SURFACE_BOAT,
+                bridge.MAV_AUTOPILOT_ARDUPILOTMEGA,
+                bridge.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+                0,
+                bridge.MAV_STATE_STANDBY,
+                bridge.MAVLINK_VERSION,
+            ),
+        )
+
+    def test_home_position_uses_current_pymavlink_signature(self):
+        server = FakeServer(self._snapshot())
+
+        server._send_home_position(server.gate.active)
+
+        home_call = server.connection.mav.calls[0]
+        global_call = server.connection.mav.calls[1]
+        self.assertEqual(home_call[0], "home_position_send")
+        self.assertEqual(len(home_call[1]), 10)
+        self.assertEqual(home_call[1][0], int(round(50.0 * 1e7)))
+        self.assertEqual(home_call[1][1], int(round(3.0 * 1e7)))
+        self.assertEqual(global_call[0], "global_position_int_send")
+
 
 class FakeMessage:
     def __init__(self, message_type, **fields):
@@ -185,6 +216,15 @@ class FakeMessage:
 class FakeMav:
     def __init__(self):
         self.calls = []
+
+    def heartbeat_send(self, *args):
+        self.calls.append(("heartbeat_send", args))
+
+    def home_position_send(self, *args):
+        self.calls.append(("home_position_send", args))
+
+    def global_position_int_send(self, *args):
+        self.calls.append(("global_position_int_send", args))
 
     def mission_count_send(self, *args):
         self.calls.append(("mission_count_send", args))

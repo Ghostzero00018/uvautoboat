@@ -259,18 +259,24 @@ timeout 4 /home/ghostzero/venvs/uvautoboat-qgc-bridge/bin/python tools/qgc_live_
 
 Result: the bridge starts and logs that it is waiting for a confirmed `READY` mission before sending QGC heartbeat. The first `timeout` run exposed a shutdown traceback from `ExternalShutdownException` / repeated `rclpy.shutdown()`. The bridge was patched to handle `KeyboardInterrupt` / `ExternalShutdownException` and only call `rclpy.shutdown()` while the context is still live. The rerun stopped by `timeout` with no traceback.
 
-Live QGC acceptance is still not started. QGC, the simulator/dashboard stack, Generate / Confirm, and visual mission verification have not been run yet. No `.plan` import was used, and no real FCU / Pi 5 upload path was connected.
+Live QGC acceptance passed on the same Linux workstation on 11/06/2026. The simulation / dashboard stack was running, and verification showed `/planning/config`, `/planning/mission_status`, and `/planning/waypoints` present; ports `9090` and `8002` listening; and `curl -I http://localhost:8002` returning `HTTP/1.0 200 OK`. QGC started with the known non-fatal `libva` / `speechd` noise; later APM QML warnings after connect were also accepted as console noise for this visual-only v1 because the bridge intentionally serves only 3 minimal params.
+
+The first live Terminal D run built the active mission from the dashboard topics, then crashed at heartbeat send because the active `pymavlink.dialects.v10.ardupilotmega` module did not define `MAVLINK_VERSION`. The bridge was patched to use a local `MAVLINK_VERSION = 3`, and `home_position_send()` was hardened to match the active local `pymavlink` signature instead of passing a timestamp into `force_mavlink1`. Tests were extended for heartbeat and home/global-position sends.
+
+Live rerun nuance: restarting only the bridge after Confirm can leave it waiting because `/planning/waypoints` is not periodic / latched. The reliable rerun sequence is: start the bridge, click Generate again, then click Confirm again so the bridge receives fresh waypoints and the `READY` gate.
+
+Final live evidence: after Generate -> Confirm, the bridge logged `active QGC visual mission: 7 items, origin=(-33.72276864, 150.67399117)`, then served 3 minimal params, `MISSION_COUNT=7`, and mission items `seq=0` through `seq=6`. QGC displayed the route on the map matching the dashboard route. No `.plan` import was used, no mission folder write was used, and no real FCU / Pi 5 upload path was connected. This is a local visual bridge acceptance only; command/write path and real vehicle waypoint upload remain unvalidated.
 
 ## Block F - Wrap and docs
 
-- [ ] Record whether the day stayed design-only or implemented the bridge.
-- [ ] If implemented, record exact files changed and test results.
-- [ ] If live QGC acceptance passes, update `Board.md` and `wiki/Roadmap.md` narrowly:
+- [x] Record whether the day stayed design-only or implemented the bridge.
+- [x] If implemented, record exact files changed and test results.
+- [x] If live QGC acceptance passes, update `Board.md` and `wiki/Roadmap.md` narrowly:
   - live QGC visual bridge accepted;
   - still no real FCU upload;
   - command/write path remains unvalidated.
-- [ ] If it does not pass, record the failing protocol step and the next hypothesis.
-- [ ] Run checks after any edit:
+- [x] If it does not pass, record the failing protocol step and the next hypothesis. N/A: live acceptance passed.
+- [x] Run checks after any edit:
 
   ```bash
   git status --short --branch
@@ -280,9 +286,9 @@ Live QGC acceptance is still not started. QGC, the simulator/dashboard stack, Ge
 
   Also run the standard public-repo visibility sweep from the terminal before commit.
 
-**Outcome:** Interim wrap after Block D implementation on 11/06/2026. The repo was refreshed and clean at pushed commit `35768f4`, the professor request was recorded and classified, the v1 bridge design was reviewed, and the standalone bridge implementation was added under `tools/`. Post-review corrections remain preserved around QGC's initial mission download, bridge heartbeat identity, initial-connect side requests, Plan View prompt expectations, and the boundary between same-machine local acceptance and a later Herelink/QGC network variant. No live QGC acceptance has started. `Board.md` and `wiki/Roadmap.md` were not updated because live QGC visual bridge acceptance has not passed.
+**Outcome:** Wrap after Block E live acceptance on 11/06/2026. The repo was refreshed from the pushed Block D state, the professor request was recorded and classified, the v1 bridge design was reviewed, and the standalone bridge implementation was added under `tools/`. Post-review corrections remain preserved around QGC's initial mission download, bridge heartbeat identity, initial-connect side requests, Plan View prompt expectations, and the boundary between same-machine local acceptance and a later Herelink/QGC network variant. The live local QGC visual bridge now passes: after dashboard Generate -> Confirm, QGC requested params and the mission, the bridge served 7 mission items, and QGC showed a route matching the dashboard. `Board.md` and `wiki/Roadmap.md` were updated narrowly for visual local acceptance only. No real FCU upload, arming, thruster, actuator, Pi upload, or command/write path was attempted.
 
-Checks run after Block D code:
+Checks run after Block D / E code:
 
 - `python3 tools/test_qgc_live_mission_bridge.py` -> 8 tests passed.
 - `python3 tools/test_qgc_plan_from_dashboard.py` -> 5 tests passed.
@@ -294,9 +300,14 @@ Checks run after Block D code:
 - `/home/ghostzero/venvs/uvautoboat-qgc-bridge/bin/python -c "import rclpy; import pymavlink; print('rclpy+pymavlink ok')"` -> passed after Block E venv setup.
 - `/home/ghostzero/venvs/uvautoboat-qgc-bridge/bin/python tools/qgc_live_mission_bridge.py --help` -> help rendered.
 - `timeout 4 /home/ghostzero/venvs/uvautoboat-qgc-bridge/bin/python tools/qgc_live_mission_bridge.py --poll-period 0.1` -> startup smoke passed after the shutdown fix; bridge waited for confirmed `READY` mission and exited under `timeout` without traceback.
+- `python3 -m unittest discover tools -p 'test_qgc_*.py'` -> 15 tests passed after heartbeat / position-send coverage was added.
+- `python3 -m py_compile tools/qgc_live_mission_bridge.py tools/test_qgc_live_mission_bridge.py tools/qgc_plan_from_dashboard.py tools/test_qgc_plan_from_dashboard.py` -> passed after the live heartbeat fix.
+- `python3 -m flake8 --config .linters/ament_flake8.ini tools/qgc_live_mission_bridge.py tools/test_qgc_live_mission_bridge.py` -> passed after the live heartbeat fix.
+- Direct actual-`pymavlink` probe for `_send_heartbeat()` and `_send_home_position()` -> passed.
+- Live Terminal D after Generate -> Confirm -> served 3 params, `MISSION_COUNT=7`, and mission items `seq=0` through `seq=6`; QGC displayed the route matching the dashboard.
 - `git diff --check` -> clean.
 - Line-length scan for the new bridge/test files -> no lines over 99 chars.
 
 ## Next steps
 
-Next step is Block E only after explicit approval: install or select an environment with `pymavlink`, keep the run local to the workstation via `127.0.0.1:14550`, start QGC and the bridge in separate idle terminals, then test Generate -> Confirm -> QGC mission display. Keep the run visual-only and keep the real FCU upload path out of scope. Treat Herelink/QGC as a later network acceptance variant with separate system-id, firewall / routing, and FCU-isolation checks.
+Next step is commit / push of the live heartbeat fix, extended bridge tests, and narrow status-doc updates. Later work should keep Herelink/QGC as a separate network acceptance variant with separate system-id, firewall / routing, and FCU-isolation checks. Real FCU upload, arming, thruster, actuator, Pi upload, and command/write validation remain out of scope until explicitly approved.

@@ -39,6 +39,7 @@ MAV_AUTOPILOT_ARDUPILOTMEGA = 3
 MAV_CMD_NAV_WAYPOINT = 16
 MAV_COMP_ID_AUTOPILOT1 = 1
 MAV_FRAME_GLOBAL_RELATIVE_ALT_INT = 6
+MAVLINK_VERSION = 3
 MAV_MISSION_ACCEPTED = 0
 MAV_MISSION_ERROR = 1
 MAV_MISSION_UNSUPPORTED = 3
@@ -369,47 +370,31 @@ class MavlinkMissionServer:
         self._send_command_ack(command, MAV_RESULT_UNSUPPORTED)
 
     def _send_heartbeat(self) -> None:
-        mavlink = self.mavutil.mavlink
         self.connection.mav.heartbeat_send(
             MAV_TYPE_SURFACE_BOAT,
             MAV_AUTOPILOT_ARDUPILOTMEGA,
             MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
             0,
             MAV_STATE_STANDBY,
-            mavlink.MAVLINK_VERSION,
+            MAVLINK_VERSION,
         )
 
     def _send_home_position(self, snapshot: MissionSnapshot) -> None:
         lat_int = int(round(snapshot.home_lat * 1e7))
         lon_int = int(round(snapshot.home_lon * 1e7))
         alt_mm = int(round(snapshot.altitude * 1000.0))
-        try:
-            self.connection.mav.home_position_send(
-                lat_int,
-                lon_int,
-                alt_mm,
-                0.0,
-                0.0,
-                0.0,
-                [1.0, 0.0, 0.0, 0.0],
-                0.0,
-                0.0,
-                0.0,
-                int(time.time() * 1e6),
-            )
-        except TypeError:
-            self.connection.mav.home_position_send(
-                lat_int,
-                lon_int,
-                alt_mm,
-                0.0,
-                0.0,
-                0.0,
-                [1.0, 0.0, 0.0, 0.0],
-                0.0,
-                0.0,
-                0.0,
-            )
+        self.connection.mav.home_position_send(
+            lat_int,
+            lon_int,
+            alt_mm,
+            0.0,
+            0.0,
+            0.0,
+            [1.0, 0.0, 0.0, 0.0],
+            0.0,
+            0.0,
+            0.0,
+        )
         self.connection.mav.global_position_int_send(
             int(time.monotonic() * 1000.0) & 0xFFFFFFFF,
             lat_int,
