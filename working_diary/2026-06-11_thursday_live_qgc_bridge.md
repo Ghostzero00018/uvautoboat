@@ -311,3 +311,25 @@ Checks run after Block D / E code:
 ## Next steps
 
 Next step is commit / push of the live heartbeat fix, extended bridge tests, and narrow status-doc updates. Later work should keep Herelink/QGC as a separate network acceptance variant with separate system-id, firewall / routing, and FCU-isolation checks. Real FCU upload, arming, thruster, actuator, Pi upload, and command/write validation remain out of scope until explicitly approved.
+
+## Block E addendum - system-Python rerun, 11/06/2026 afternoon
+
+After the morning acceptance and the Block D/E commits were pushed, `pymavlink` `2.4.49` was installed for the system interpreter with `/usr/bin/python3 -m pip install --user --break-system-packages pymavlink`. Context checked before install: no apt candidate exists for `python3-pymavlink` in the configured sources (`ros-jazzy-mavlink` is the C library, not the Python module), the system Python 3.12 is PEP 668 externally-managed, and `~/.local/lib/python3.12/site-packages` already carried user-level packages (`casadi`, `h5py`, `mat73`), so the user-scope install matched existing practice. Only `fastcrc` came along as a new dependency; `lxml` `5.2.1` was already present system-wide. The venv at `/home/ghostzero/venvs/uvautoboat-qgc-bridge` remains available as a fallback.
+
+The Block E pipeline was then rerun with the bridge on plain `python3` — no venv prefix. This is the first live validation of the system-Python dependency path.
+
+Rerun evidence:
+
+- Full stack launched with `--use-nvidia` in 54 s; quick health check passed with `PASS: 19  TUNED: 0  FAIL: 0  WARN: 0` and planner state `IDLE (planner: INIT)`.
+- `/planning/config`, `/planning/mission_status`, and `/planning/waypoints` present; ports `9090` / `8002` listening; `curl -I http://localhost:8002` returned `HTTP/1.0 200 OK`; both `timeout 8 ros2 topic echo --once` probes returned promptly; QGC bound UDP `14550` (`ss -lunp` showed `UNCONN`, the normal bound-UDP state).
+- The bridge activated three confirmed missions in one continuous run, all with origin `(-33.72276868, 150.67399107)`: 11 items at 15:17, 5 items at 15:33, and 1 item at 16:06.
+- QGC was launched three times. Run 1 segfaulted (core dump) after ~561 s; run 2 exited cleanly after ~214 s; run 3 stayed up. Each launch produced exactly one full initial-connect serve from the bridge: params + `MISSION_COUNT=11` + items `seq=0` to `seq=10` at 15:17 and again at 15:30 (runs 1 and 2), then params + `MISSION_COUNT=5` + items `seq=0` to `seq=4` at 15:34 (run 3).
+- QGC displayed the same route as the dashboard for the downloaded missions.
+
+Refresh-limitation evidence: `_send_all_params()` fires only on `PARAM_REQUEST_LIST`, and in this rerun that request appeared exactly once per QGC launch, so each `served 3 minimal params` log line marks a fresh QGC connection. All three mission downloads in this rerun were therefore initial-connect pulls; the log contains no same-session refresh. The 5-item route reached QGC only because QGC had been relaunched between confirms, and the final 1-item mission was activated under a still-connected QGC and was never requested — QGC kept its 5-item plan. This is the first live demonstration of the known v1 limitation that repeated mission replacement within one QGC session needs an explicit refresh mechanism.
+
+QGC stability note: one segfault in three runs; restart recovered. The APM QML `TypeError` warnings shared the crash timestamp in run 1 but also appeared at ~20 s in runs 2 and 3 without a crash, at the point where QGC populates vehicle-setup summaries from the 3-param surface. Recorded as hypothesis only; serving a larger param set is the candidate mitigation if the crash recurs. The `libva` / `speechd` startup noise stayed non-fatal as previously classified.
+
+Scope unchanged: same-machine local visual bridge only — no `.plan` import, no mission-folder write, no real FCU upload, no arming / thruster / actuator path, no Herelink network variant.
+
+Next step from this addendum: none pending; the v1 in-session refresh mechanism and the Herelink network variant remain future, explicitly-approved work.
