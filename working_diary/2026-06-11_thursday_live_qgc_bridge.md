@@ -186,17 +186,33 @@ Implementation is still gated. Stop here before Block D.
 
 Start only after the user explicitly approves code/config edits.
 
-- [ ] Add the smallest testable unit first:
+- [x] Add the smallest testable unit first:
   - conversion reuse from `tools/qgc_plan_from_dashboard.py`;
   - mission item construction from local waypoint payload;
   - confirm/READY gating logic if implemented outside ROS callbacks.
-- [ ] Implement the bridge with the smallest surface that satisfies v1.
-- [ ] Keep the professor reference file external unless the user explicitly asks to import or copy it into the repo.
-- [ ] Avoid dashboard JavaScript edits unless the ROS-subscribing bridge cannot meet the professor's workflow.
-- [ ] Avoid launch/package integration until the standalone bridge works.
-- [ ] Keep the later Block E test local to the workstation via `127.0.0.1:14550`; do not fold Herelink/QGC network behavior into the first implementation acceptance gate.
+- [x] Implement the bridge with the smallest surface that satisfies v1.
+- [x] Keep the professor reference file external unless the user explicitly asks to import or copy it into the repo.
+- [x] Avoid dashboard JavaScript edits unless the ROS-subscribing bridge cannot meet the professor's workflow.
+- [x] Avoid launch/package integration until the standalone bridge works.
+- [x] Keep the later Block E test local to the workstation via `127.0.0.1:14550`; do not fold Herelink/QGC network behavior into the first implementation acceptance gate.
 
-**Outcome:** Not started on 11/06/2026. Code/config implementation has not been approved yet. No Python, JavaScript, YAML, launch, package, service, or config file was edited, and the professor reference file was not copied into the repo.
+**Outcome:** Block D started after explicit approval on 11/06/2026 and stayed inside the approved v1 implementation boundary.
+
+Files added:
+
+- `tools/qgc_live_mission_bridge.py`
+- `tools/test_qgc_live_mission_bridge.py`
+
+Implementation summary:
+
+- Added a standalone ROS 2 / MAVLink tool under `tools/`, with no dashboard JavaScript, launch, package, YAML, service, or dependency-manifest edits.
+- Reused the same local-to-GPS conversion path from `tools/qgc_plan_from_dashboard.py`.
+- Added helper coverage for waypoint payload parsing, GPS-origin validation, mission item construction, Confirm / `READY` gating, and empty fence / rally mission counts.
+- The bridge subscribes to `/planning/waypoints`, `/planning/config`, and `/planning/mission_status`; it caches generated waypoints but only exposes an active QGC visual mission after planner state is `READY`.
+- The MAVLink side defaults to `udpout:127.0.0.1:14550`, source system id `42`, and source component `MAV_COMP_ID_AUTOPILOT1` (`1`). It withholds heartbeat until a confirmed mission exists, answers `MISSION_REQUEST_LIST`, `MISSION_REQUEST`, and `MISSION_REQUEST_INT`, sends empty counts for unsupported fence / rally mission types, and serves a minimal parameter set for QGC initial connect.
+- Pre-Block-E review hardening: repeated `READY` status updates now use a stable mission signature and return/log only when the active mission actually changes; `MISSION_CLEAR_ALL` is rejected as unsupported for v1 and leaves the dashboard-owned fake mission intact.
+- The professor reference file stayed external and was not copied into the repo.
+- Runtime dependency status: `rclpy` imports in the current environment, but `pymavlink` is missing. The script now exits clearly with `error: pymavlink is required for live QGC bridge runtime; install it in the selected bridge environment before Block E`. No install was attempted.
 
 ## Block E - Live acceptance test plan
 
@@ -233,7 +249,7 @@ Separate Herelink/QGC network acceptance variant, not for the first Block E run:
 - Before attempting that variant, verify routing / firewall, bridge source system id versus any real vehicle id, and isolation from any real FCU link.
 - Record it as a separate acceptance result so the local workstation v1 cannot be mistaken for a Herelink network pass.
 
-**Outcome:** Not started on 11/06/2026. Live QGC acceptance requires an implemented bridge plus explicit approval for Block E. No QGC live acceptance run was attempted from the design-only state.
+**Outcome:** Not started on 11/06/2026. The bridge implementation now exists, but live QGC acceptance still requires explicit Block E approval plus `pymavlink` in the selected bridge environment. No QGC live acceptance run was attempted, no `.plan` import was used, and no real FCU / Pi 5 upload path was connected.
 
 ## Block F - Wrap and docs
 
@@ -254,8 +270,20 @@ Separate Herelink/QGC network acceptance variant, not for the first Block E run:
 
   Also run the standard public-repo visibility sweep from the terminal before commit.
 
-**Outcome:** Interim wrap after Blocks A-C on 11/06/2026. The day is design-only so far: the repo was refreshed and clean, the professor request was recorded and classified, and the v1 bridge design was reviewed. Post-review corrections tightened the design around QGC's initial mission download, bridge heartbeat identity, initial-connect side requests, Plan View prompt expectations, and the boundary between same-machine local acceptance and a later Herelink/QGC network variant. No implementation or live QGC acceptance has started. `Board.md` and `wiki/Roadmap.md` were not updated because live QGC visual bridge acceptance has not passed.
+**Outcome:** Interim wrap after Block D implementation on 11/06/2026. The repo was refreshed and clean at pushed commit `35768f4`, the professor request was recorded and classified, the v1 bridge design was reviewed, and the standalone bridge implementation was added under `tools/`. Post-review corrections remain preserved around QGC's initial mission download, bridge heartbeat identity, initial-connect side requests, Plan View prompt expectations, and the boundary between same-machine local acceptance and a later Herelink/QGC network variant. No live QGC acceptance has started. `Board.md` and `wiki/Roadmap.md` were not updated because live QGC visual bridge acceptance has not passed.
+
+Checks run after Block D code:
+
+- `python3 tools/test_qgc_live_mission_bridge.py` -> 8 tests passed.
+- `python3 tools/test_qgc_plan_from_dashboard.py` -> 5 tests passed.
+- `python3 -m unittest discover tools -p 'test_qgc_*.py'` -> 13 tests passed.
+- `python3 -m py_compile tools/qgc_live_mission_bridge.py tools/test_qgc_live_mission_bridge.py tools/qgc_plan_from_dashboard.py tools/test_qgc_plan_from_dashboard.py` -> passed.
+- `python3 -m flake8 --config .linters/ament_flake8.ini tools/qgc_live_mission_bridge.py tools/test_qgc_live_mission_bridge.py` -> passed.
+- `python3 tools/qgc_live_mission_bridge.py --help` -> help rendered.
+- `python3 tools/qgc_live_mission_bridge.py` -> blocked as expected because `pymavlink` is not installed in the current environment.
+- `git diff --check` -> clean.
+- Line-length scan for the new bridge/test files -> no lines over 99 chars.
 
 ## Next steps
 
-Await explicit approval to start Block D implementation. If approved, build the ROS-subscribing MAVLink visual bridge first, include the delayed-heartbeat / refresh decision and QGC initial-connect handling in the first code pass, keep Block E local to the workstation via `127.0.0.1:14550`, keep it visual-only, and keep the real FCU upload path out of scope. Treat Herelink/QGC as a later network acceptance variant with separate system-id, firewall / routing, and FCU-isolation checks. If not approved, continue with design review, protocol trace, and a paste-ready test plan only.
+Next step is Block E only after explicit approval: install or select an environment with `pymavlink`, keep the run local to the workstation via `127.0.0.1:14550`, start QGC and the bridge in separate idle terminals, then test Generate -> Confirm -> QGC mission display. Keep the run visual-only and keep the real FCU upload path out of scope. Treat Herelink/QGC as a later network acceptance variant with separate system-id, firewall / routing, and FCU-isolation checks.
