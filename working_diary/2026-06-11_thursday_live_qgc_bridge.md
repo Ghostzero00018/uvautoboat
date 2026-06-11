@@ -249,7 +249,17 @@ Separate Herelink/QGC network acceptance variant, not for the first Block E run:
 - Before attempting that variant, verify routing / firewall, bridge source system id versus any real vehicle id, and isolation from any real FCU link.
 - Record it as a separate acceptance result so the local workstation v1 cannot be mistaken for a Herelink network pass.
 
-**Outcome:** Not started on 11/06/2026. The bridge implementation now exists, but live QGC acceptance still requires explicit Block E approval plus `pymavlink` in the selected bridge environment. No QGC live acceptance run was attempted, no `.plan` import was used, and no real FCU / Pi 5 upload path was connected.
+**Outcome:** Block E preflight started on 11/06/2026 after the Block D commit landed. A local venv was created at `/home/ghostzero/venvs/uvautoboat-qgc-bridge` with `--system-site-packages`, then `pymavlink` was installed there (`pymavlink` `2.4.49`, `fastcrc` `0.3.6`). The venv can import both `rclpy` and `pymavlink`, and `tools/qgc_live_mission_bridge.py --help` renders under the venv.
+
+Short startup smoke:
+
+```bash
+timeout 4 /home/ghostzero/venvs/uvautoboat-qgc-bridge/bin/python tools/qgc_live_mission_bridge.py --poll-period 0.1
+```
+
+Result: the bridge starts and logs that it is waiting for a confirmed `READY` mission before sending QGC heartbeat. The first `timeout` run exposed a shutdown traceback from `ExternalShutdownException` / repeated `rclpy.shutdown()`. The bridge was patched to handle `KeyboardInterrupt` / `ExternalShutdownException` and only call `rclpy.shutdown()` while the context is still live. The rerun stopped by `timeout` with no traceback.
+
+Live QGC acceptance is still not started. QGC, the simulator/dashboard stack, Generate / Confirm, and visual mission verification have not been run yet. No `.plan` import was used, and no real FCU / Pi 5 upload path was connected.
 
 ## Block F - Wrap and docs
 
@@ -281,6 +291,9 @@ Checks run after Block D code:
 - `python3 -m flake8 --config .linters/ament_flake8.ini tools/qgc_live_mission_bridge.py tools/test_qgc_live_mission_bridge.py` -> passed.
 - `python3 tools/qgc_live_mission_bridge.py --help` -> help rendered.
 - `python3 tools/qgc_live_mission_bridge.py` -> blocked as expected because `pymavlink` is not installed in the current environment.
+- `/home/ghostzero/venvs/uvautoboat-qgc-bridge/bin/python -c "import rclpy; import pymavlink; print('rclpy+pymavlink ok')"` -> passed after Block E venv setup.
+- `/home/ghostzero/venvs/uvautoboat-qgc-bridge/bin/python tools/qgc_live_mission_bridge.py --help` -> help rendered.
+- `timeout 4 /home/ghostzero/venvs/uvautoboat-qgc-bridge/bin/python tools/qgc_live_mission_bridge.py --poll-period 0.1` -> startup smoke passed after the shutdown fix; bridge waited for confirmed `READY` mission and exited under `timeout` without traceback.
 - `git diff --check` -> clean.
 - Line-length scan for the new bridge/test files -> no lines over 99 chars.
 

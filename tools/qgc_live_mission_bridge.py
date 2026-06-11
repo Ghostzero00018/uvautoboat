@@ -25,10 +25,12 @@ from qgc_plan_from_dashboard import (  # noqa: E402
 
 try:
     import rclpy
+    from rclpy.executors import ExternalShutdownException
     from rclpy.node import Node
     from std_msgs.msg import String
 except ImportError:
     rclpy = None
+    ExternalShutdownException = Exception
     Node = object
     String = None
 
@@ -629,12 +631,15 @@ def main() -> int:
     try:
         node = QgcLiveMissionBridgeNode(args)
         rclpy.spin(node)
+    except (KeyboardInterrupt, ExternalShutdownException):
+        pass
     except RuntimeError as exc:
         raise SystemExit(f"error: {exc}") from exc
     finally:
         if node is not None:
             node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
     return 0
 
 
