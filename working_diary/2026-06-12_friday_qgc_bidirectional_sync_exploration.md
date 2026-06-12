@@ -112,7 +112,7 @@ The only accidental QGC upload attempt produced `Mission transfer failed. Error:
 - [ ] Decide the capture method for incoming `target_system` values on the local link: bridge debug logging is a code edit (gated); a packet capture in the user's own terminal needs interactive sudo. Choose and record before running.
 - [ ] Per-anomaly outcome table: confirmed / refuted / needs local-only A/B comparison.
 
-**Status:** not started on 12/06/2026. This block requires equipment availability and explicit approval. It stays user-run by default because it involves QGC GUI, Herelink / real-vehicle topology, and possible packet capture.
+**Status:** not started on 12/06/2026. Deferred to Wednesday 17/06/2026 unless explicitly rescheduled. This block requires equipment availability and explicit approval. It stays user-run by default because it involves QGC GUI, Herelink / real-vehicle topology, and possible packet capture.
 
 ## Block D - v2 bidirectional design review (no code)
 
@@ -177,7 +177,7 @@ Start only after the user explicitly approves code/config edits. Not expected on
 ## Block F - Wrap and docs
 
 - [x] Record which hypotheses were confirmed / refuted and whether the day stayed design-only.
-- [x] Keep durable docs frozen pending explicit approval; no `Board.md` / `wiki/Roadmap.md` edits made.
+- [x] Record durable-doc state: initially frozen pending approval; later narrow `Board.md` / `wiki/Roadmap.md` retouch approved and landed.
 - [x] Run checks after any edit:
 
   ```bash
@@ -188,7 +188,7 @@ Start only after the user explicitly approves code/config edits. Not expected on
 
   Also run the standard public-repo visibility sweep from the terminal before commit.
 
-**Outcome:** Day stayed diagnosis/design-only through Block D, then added a user-run clean local-only A/B observation. No Python, JavaScript, launch, YAML, package, durable-doc, real-FCU, control-box, arming, mode-change, parameter-write, actuator, thruster, Pi-upload, or real vehicle command path was touched.
+**Outcome:** Day stayed diagnosis/design-only through Block D, then added a user-run clean local-only A/B observation. No Python, JavaScript, launch, YAML, package, real-FCU, control-box, arming, mode-change, parameter-write, actuator, thruster, Pi-upload, or real vehicle command path was touched. Durable-doc work, after explicit approval, was Markdown-only and limited to the forward-looking `Board.md` / `wiki/Roadmap.md` paragraphs.
 
 Hypothesis status from source review:
 
@@ -197,13 +197,15 @@ Hypothesis status from source review:
 - **Likely but not proven:** H1 selected-vehicle mismatch for "Flight plan received" with unchanged visible plan remains plausible for the mixed real+fake topology.
 - **Secondary / no positive clean-local evidence:** H4 mid-transaction replacement can contribute to count/item mismatch but is not the primary explanation for repeated count-only loops.
 
-Durable docs remain frozen on 12/06/2026 because no explicit durable-doc retouch approval has been given. If approved later, retouch only the forward-looking Phase 5.2+ paragraphs in `Board.md` and `wiki/Roadmap.md`; do not edit the dated 23/04/2026 history rows.
+**Closeout note:** after the initial wrap, durable-doc retouch was explicitly approved and landed in `81bb3e1` (`docs: refresh QGC mission sync direction`). Scope was only the forward-looking Phase 5.2+ paragraphs in `Board.md` and `wiki/Roadmap.md`; dated history rows stayed untouched. A later stale-doc audit found only metadata / line-anchor cleanup items for a future docs pass, not additional stale QGC mission-sync content.
+
+Known docs-cleanup targets from the late audit: `Board.md` date/version, `wiki/Roadmap.md` 12/06 revision-log row, `web_dashboard/autoboat/README_autoboat_dashboard.md` footer, `USER_MANUAL.md` footer, `working_diary/README.md` span/date, and partially stale line anchors in `wiki/Design_Rationale.md`, `wiki/Dashboard_Security.md`, and `wiki/Roadmap.md`. Caveat for that pass: `app.js:354` still correctly points to the OSM tile layer.
 
 ## Next steps
 
 Next options, all still gated:
 
-1. Optional clean-local QGC reconnect / relaunch check, user-run by default, if another proof of the already-known initial-connect workaround is useful.
-2. Block C mixed-topology observation only if equipment is available and explicitly approved.
-3. Durable-doc retouch of only the forward-looking Phase 5.2+ paragraphs if explicitly approved.
+1. Wednesday 17/06/2026: Block C mixed-topology observation only if equipment is available and explicitly approved; keep it user-run by default. Prep reminder: capture equipment availability, QGC vehicle/system ids, comm-link list, MAVLink forwarding state, Herelink console QGC state, and chosen capture method. No upload or control path.
+2. Optional clean-local QGC reconnect / relaunch check, user-run by default, only if another proof of the already-known initial-connect workaround is useful.
+3. Optional docs cleanup for the known metadata and stale line-anchor findings, if explicitly approved.
 4. Block E implementation only after explicit code/config approval, with upload transaction tests before live QGC upload.
