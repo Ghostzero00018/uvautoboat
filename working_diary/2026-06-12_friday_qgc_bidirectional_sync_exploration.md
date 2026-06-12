@@ -76,7 +76,7 @@ Anchors re-read before Block B/D claims: this 12/06 diary, the 11/06 diary Block
   - **H4 - mid-transaction replacement:** the active mission was swapped while a download transaction was in flight, desynchronising count and item sequences.
 - [x] Design the discriminating A/B retest: repeat the same Generate / Confirm sequence in the clean local-only topology (no Herelink link, no control box). If count-only loops and triplets disappear locally, the anomalies are topology-coupled rather than bridge-internal logic faults. Record expected observations for both branches before running anything.
 
-**Outcome:** Block B completed as diagnosis/design only. No live QGC, Herelink, real vehicle, or FCU path was touched.
+**Initial outcome:** Block B source diagnosis completed as diagnosis/design only. During that source-review phase, no live QGC, Herelink, real vehicle, or FCU path was touched.
 
 | Anomaly | Classification | Current explanation | Retest discriminator |
 | --- | --- | --- | --- |
@@ -92,6 +92,14 @@ Discriminating A/B retest design:
 
 - **A: clean local-only repeat.** Preconditions: no Herelink link in local QGC, no powered real control box visible to local QGC, one local UDP link on `127.0.0.1:14550`, bridge system id `42`, and QGC Plan View empty/clean before the first pull. Expected v1 success branch: initial-connect or manual download yields one coherent `MISSION_COUNT=N` followed by item requests `seq=0..N-1`, no triplets, no repeated count-only loop, and QGC displays the downloaded bridge route. Expected v1 limitation branch: a later dashboard Generate -> Confirm in the same QGC session activates a new bridge mission but does not update QGC until relaunch/manual redownload.
 - **B: mixed topology observation.** Preconditions: record selected vehicle, vehicle system ids, QGC comm links, MAVLink forwarding state, and whether Herelink console QGC is running before interaction. Expected topology-coupled branch: triplets/count-only loops reappear only with the real vehicle / second GCS topology. This branch needs either code-gated debug logging or user-run packet capture to prove incoming `target_system` values.
+
+**Clean local-only A/B evidence (user-run, 12/06/2026):** The local-only stack launched with `--use-nvidia` in 42 s. Quick health check passed with `PASS: 19  TUNED: 0  FAIL: 0  WARN: 0`, planner state `IDLE (planner: INIT)`, and `/planning/config`, `/planning/mission_status`, and `/planning/waypoints` present. Ports `9090` and `8002` listened on `0.0.0.0`; `curl -I http://localhost:8002` returned `HTTP/1.0 200 OK`; and plain `python3` imported both `rclpy` and `pymavlink`. QGC bound UDP `14550` (`UNCONN 0.0.0.0:14550`, process `QGroundControl`). The QGC UI comm-link list was reported as seemingly empty, so the exact one-link UI inventory was not proven from the UI, but the terminal-side UDP bind was captured.
+
+Test A1 used dashboard Generate and Confirm at 10:39. The bridge started first, logged `waiting for confirmed READY mission before sending QGC heartbeat`, then activated `active QGC visual mission: 19 items, origin=(-33.72276868, 150.67399112)`. QGC then requested a clean initial pull: the bridge served 3 minimal params, `MISSION_COUNT=19 for mission_type=0`, and mission items `seq=0` through `seq=18`. The user observed the same generated waypoints in QGC and the web dashboard. No manual Plan View download prompt and no QGC retry warning were reported.
+
+Test A2 kept the same QGC and bridge sessions running. The dashboard generated and confirmed a changed route at 10:43. The bridge activated `active QGC visual mission: 7 items, origin=(-33.72276868, 150.67399112)`, but no new `served ...` mission item lines were observed afterwards. QGC stayed on the stale A1 route. No manual Plan View download prompt and no QGC retry warning were reported.
+
+Clean-local conclusion: A1 passed the expected local visual initial-pull path. A2 confirmed the same-session refresh limitation in the clean local topology: the bridge updates its active mission, but already-connected QGC does not redownload automatically. The clean run did not reproduce the 11/06 evening count-only loops, triplicated counts, clear bursts, or retry warnings, which strengthens the H2/H3 mixed-topology explanation for those anomalies. H1 remains a plausible explanation for the mixed-topology visible-plan mismatch, but it was not directly tested because no real vehicle was selected in the clean run. H4 has no positive evidence from the clean run.
 
 ## Block C - Mixed-topology observation plan (only if equipment is available and the user approves)
 
@@ -176,13 +184,14 @@ Start only after the user explicitly approves code/config edits. Not expected on
 
   Also run the standard public-repo visibility sweep from the terminal before commit.
 
-**Outcome:** Day stayed diagnosis/design-only through Block D. No Python, JavaScript, launch, YAML, package, durable-doc, real-FCU, control-box, arming, mode-change, parameter-write, actuator, thruster, Pi-upload, or real vehicle command path was touched.
+**Outcome:** Day stayed diagnosis/design-only through Block D, then added a user-run clean local-only A/B observation. No Python, JavaScript, launch, YAML, package, durable-doc, real-FCU, control-box, arming, mode-change, parameter-write, actuator, thruster, Pi-upload, or real vehicle command path was touched.
 
 Hypothesis status from source review:
 
-- **Confirmed:** missing QGC-upload capability is a v1 scope gap; identical resend silence is expected signature dedup; same-session refresh is a known v1 limitation; current planner has no generic external-waypoint injection surface.
-- **Likely but not proven:** H1 selected-vehicle mismatch for "Flight plan received" with unchanged visible plan; H2/H3 mixed-topology duplicate / wrong-target mission transactions for count-only loops, triplets, and clear bursts.
-- **Secondary / needs retest:** H4 mid-transaction replacement can contribute to count/item mismatch but is not the primary explanation for repeated count-only loops.
+- **Confirmed:** missing QGC-upload capability is a v1 scope gap; identical resend silence is expected signature dedup; same-session refresh is a known v1 limitation and was reproduced in clean local-only A2; current planner has no generic external-waypoint injection surface.
+- **Strengthened:** H2/H3 mixed-topology duplicate / wrong-target mission transactions remain the best explanation for the 11/06 evening count-only loops, triplets, and clear bursts because the clean local-only A1/A2 run did not reproduce them.
+- **Likely but not proven:** H1 selected-vehicle mismatch for "Flight plan received" with unchanged visible plan remains plausible for the mixed real+fake topology.
+- **Secondary / no positive clean-local evidence:** H4 mid-transaction replacement can contribute to count/item mismatch but is not the primary explanation for repeated count-only loops.
 
 Durable docs remain frozen on 12/06/2026 because no explicit durable-doc retouch approval has been given. If approved later, retouch only the forward-looking Phase 5.2+ paragraphs in `Board.md` and `wiki/Roadmap.md`; do not edit the dated 23/04/2026 history rows.
 
@@ -190,7 +199,7 @@ Durable docs remain frozen on 12/06/2026 because no explicit durable-doc retouch
 
 Next options, all still gated:
 
-1. Clean local-only A/B retest, user-run by default, to separate v1 refresh limitation from mixed-topology effects.
+1. Optional clean-local manual Plan View download check, user-run by default, to see whether an operator-triggered redownload is a usable v1 workaround after A2 leaves QGC stale.
 2. Block C mixed-topology observation only if equipment is available and explicitly approved.
 3. Durable-doc retouch of only the forward-looking Phase 5.2+ paragraphs if explicitly approved.
 4. Block E implementation only after explicit code/config approval, with upload transaction tests before live QGC upload.
