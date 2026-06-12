@@ -41,7 +41,7 @@ Code-level facts verified on 11/06 against `tools/qgc_live_mission_bridge.py`:
 
 ## Block A - Repo pre-flight and source refresh
 
-- [ ] Confirm repo state:
+- [x] Confirm repo state:
 
   ```bash
   git fetch --prune
@@ -50,12 +50,16 @@ Code-level facts verified on 11/06 against `tools/qgc_live_mission_bridge.py`:
   git rev-parse HEAD origin/main
   ```
 
-- [ ] If the tree is dirty or refs diverge, stop and report before continuing.
-- [ ] Re-read anchors before any claim: the 11/06 diary (including both addenda context), `tools/qgc_live_mission_bridge.py` message handling and gate logic, the planner command surface in `plan/plan/waypoint_planner.py` (what `/planning/mission_command` accepts today), and the QGC / bridge rows in `Board.md` and `wiki/Roadmap.md`.
+- [x] If the tree is dirty or refs diverge, stop and report before continuing.
+- [x] Re-read anchors before any claim: the 11/06 diary (including both addenda context), `tools/qgc_live_mission_bridge.py` message handling and gate logic, the planner command surface in `plan/plan/waypoint_planner.py` (what `/planning/mission_command` accepts today), and the QGC / bridge rows in `Board.md` and `wiki/Roadmap.md`.
+
+**Outcome:** Block A completed on 12/06/2026. `git fetch --prune` completed, `git log --oneline -5` began with `dadad6b`, `3bdbc81`, `817d41d`, `8f83b16`, and `05ab402`; `git status --short --branch` showed clean `## main...origin/main`; and `git rev-parse HEAD origin/main` returned the same SHA `dadad6bf18f2246ee33e25afaaa52f22d14d6843` for both refs. No pull was needed, and no divergence or dirty worktree was present.
+
+Anchors re-read before Block B/D claims: this 12/06 diary, the 11/06 diary Block E and system-Python addendum, `tools/qgc_live_mission_bridge.py` `MissionGate` and `handle_message` / send paths, `plan/plan/waypoint_planner.py` generate + `/planning/mission_command` callback, `Board.md` Phase 5 + 11/06 QGC row, and `wiki/Roadmap.md` Phase 5.2+ + MP/QGC rows.
 
 ## Block B - Anomaly diagnosis from the 11/06 evidence
 
-- [ ] Classify each anomaly and assign hypotheses:
+- [x] Classify each anomaly and assign hypotheses:
 
   | Anomaly | Candidate explanation |
   | --- | --- |
@@ -65,12 +69,29 @@ Code-level facts verified on 11/06 against `tools/qgc_live_mission_bridge.py`:
   | Maximum-retry warning in QGC | Downstream symptom of the failing download transaction |
   | No new logs on identical resend | Already explained: signature dedup; confirm wording for docs only |
 
-- [ ] Hypotheses to evaluate:
+- [x] Hypotheses evaluated:
   - **H1 - vehicle selection:** with two vehicles (real + bridge id 42), QGC shows the selected vehicle's plan; a completed background download from the unselected bridge does not change the visible plan.
   - **H2 - missing target filtering:** mission requests addressed to the real vehicle but visible on the 14550 link are answered by the bridge, corrupting transaction state on both sides.
   - **H3 - multiple GCS:** local QGC and the Herelink console QGC (likely both GCS system id 255) both issue requests; replies go to whichever asked last.
   - **H4 - mid-transaction replacement:** the active mission was swapped while a download transaction was in flight, desynchronising count and item sequences.
-- [ ] Design the discriminating A/B retest: repeat the same Generate / Confirm sequence in the clean local-only topology (no Herelink link, no control box). If count-only loops and triplets disappear locally, the anomalies are topology-coupled rather than bridge-internal logic faults. Record expected observations for both branches before running anything.
+- [x] Design the discriminating A/B retest: repeat the same Generate / Confirm sequence in the clean local-only topology (no Herelink link, no control box). If count-only loops and triplets disappear locally, the anomalies are topology-coupled rather than bridge-internal logic faults. Record expected observations for both branches before running anything.
+
+**Outcome:** Block B completed as diagnosis/design only. No live QGC, Herelink, real vehicle, or FCU path was touched.
+
+| Anomaly | Classification | Current explanation | Retest discriminator |
+| --- | --- | --- | --- |
+| `Flight plan received` but visible plan unchanged | H1 likely, not yet proven | The 11/06 evening run had at least two vehicles visible to local QGC. A complete background download from bridge system `42` can coexist with Plan View still showing the selected real vehicle's plan. This is a UI/selection hypothesis, not a bridge-source proof yet. | In clean local-only QGC, there should be only the fake bridge vehicle. If QGC downloads a changed bridge mission and Plan View still stays stale, H1 is weakened and the refresh mechanism becomes the primary cause. |
+| Count-only serve loops, no item requests | H2/H3 primary; H4 secondary | The bridge answers every `MISSION_REQUEST_LIST` it sees and does not inspect incoming `target_system`. It records only the requesting source and replies to that source. In a mixed real+fake link, requests meant for the real vehicle or from a second GCS can trigger bridge counts without a clean item-request sequence. H4 can explain isolated count/item mismatch around an active-mission replacement, but it does not explain repeated count-only loops as well as H2/H3. | If the loops disappear in clean local-only topology, treat them as topology-coupled. If they persist locally, inspect QGC's download state and add `target_system`/transaction logging under the implementation gate. |
+| Triplicated counts and clear rejections within ~100 ms | H2/H3 strong | The current code logs one count or clear rejection per incoming request; it has no internal timer that should emit three identical responses in ~100 ms. Triplets therefore point to duplicate incoming MAVLink messages, likely forwarding/noise from the mixed topology or a second QGC. | Clean local-only should not produce triplets. If triplets still appear with only one QGC and one bridge vehicle, the next suspect is QGC retry state or duplicated local UDP links. |
+| Maximum-retry warning in QGC | Downstream symptom | MAVLink mission operations retry when the expected next message does not arrive. A contended transaction, wrong selected vehicle, wrong target, or mid-transaction replacement can leave QGC waiting for an item or ACK that never matches its active transaction. | Pair QGC console timestamps with bridge logs. If warnings align with count-only loops or triplets, H2/H3 are strengthened; if they align exactly with mission replacement, H4 strengthens. |
+| No new logs on identical resend | Confirmed v1 behaviour | `MissionGate._maybe_activate()` computes a stable signature from origin, altitude, and waypoint x/y tuples. If the signature is unchanged, it returns without replacing `active` or logging a new active mission. | No live retest required; use a changed waypoint set when testing refresh. |
+| QGC-side mission upload does nothing | Confirmed missing capability | `handle_message()` handles download-side requests, parameter requests, clear rejection, and unsupported command ACKs. It has no upload transaction path for incoming `MISSION_COUNT` followed by `MISSION_ITEM_INT`. This is outside v1 scope, not a v1 regression. | Implementation gate only: add upload transaction tests before any live QGC upload test. |
+| New active mission with no later serve | Confirmed v1 refresh limitation | Mission activation updates the bridge's in-memory snapshot, but the bridge has no mechanism that tells an already-connected QGC to redownload. The 11/06 addendum proved QGC got new routes after relaunch/initial-connect pulls, not through same-session refresh. | Local-only same-session replacement should still remain stale unless QGC is relaunched, manually redownloads, or a new refresh mechanism is implemented. |
+
+Discriminating A/B retest design:
+
+- **A: clean local-only repeat.** Preconditions: no Herelink link in local QGC, no powered real control box visible to local QGC, one local UDP link on `127.0.0.1:14550`, bridge system id `42`, and QGC Plan View empty/clean before the first pull. Expected v1 success branch: initial-connect or manual download yields one coherent `MISSION_COUNT=N` followed by item requests `seq=0..N-1`, no triplets, no repeated count-only loop, and QGC displays the downloaded bridge route. Expected v1 limitation branch: a later dashboard Generate -> Confirm in the same QGC session activates a new bridge mission but does not update QGC until relaunch/manual redownload.
+- **B: mixed topology observation.** Preconditions: record selected vehicle, vehicle system ids, QGC comm links, MAVLink forwarding state, and whether Herelink console QGC is running before interaction. Expected topology-coupled branch: triplets/count-only loops reappear only with the real vehicle / second GCS topology. This branch needs either code-gated debug logging or user-run packet capture to prove incoming `target_system` values.
 
 ## Block C - Mixed-topology observation plan (only if equipment is available and the user approves)
 
@@ -79,10 +100,12 @@ Code-level facts verified on 11/06 against `tools/qgc_live_mission_bridge.py`:
 - [ ] Decide the capture method for incoming `target_system` values on the local link: bridge debug logging is a code edit (gated); a packet capture in the user's own terminal needs interactive sudo. Choose and record before running.
 - [ ] Per-anomaly outcome table: confirmed / refuted / needs local-only A/B comparison.
 
+**Status:** not started on 12/06/2026. This block requires equipment availability and explicit approval. It stays user-run by default because it involves QGC GUI, Herelink / real-vehicle topology, and possible packet capture.
+
 ## Block D - v2 bidirectional design review (no code)
 
-- [ ] Verify the current planner command surface first; do not design the injection path from memory.
-- [ ] Design questions to answer in writing:
+- [x] Verify the current planner command surface first; do not design the injection path from memory.
+- [x] Design questions to answer in writing:
   - **Mission authority:** a single source of truth for the active mission, with the dashboard and QGC as two editors of the same state — not a dashboard-owned mission that QGC merely views.
   - **QGC upload reception:** accept the incoming upload transaction (`MISSION_COUNT`, `MISSION_ITEM_INT` sequence, final ACK), validate it, convert GPS back to the local frame (inverse of `local_to_gps()`), and inject it into the planner.
   - **Planner entry point:** a dedicated external-waypoint command or service vs reuse of the existing generate / confirm flow, and what confirm means for a QGC-authored mission (is the QGC upload itself the approval, or does the dashboard still confirm?).
@@ -91,7 +114,49 @@ Code-level facts verified on 11/06 against `tools/qgc_live_mission_bridge.py`:
   - **Protocol hygiene:** filter by `target_system`, address replies to the requesting GCS, and replace stateless replies with a per-transaction state machine; required regardless of which refresh mechanism is chosen.
   - **Scope split:** mission data is bidirectional; water-quality and similar telemetry stays dashboard-only.
   - **Safety split:** the visual bridge and any future real-FCU command path stay architecturally separated; bidirectional mission sync must not silently become a real-vehicle upload path.
-- [ ] Output: a written v2 proposal with explicit non-goals and over-design traps avoided. Implementation remains gated behind explicit approval.
+- [x] Output: a written v2 proposal with explicit non-goals and over-design traps avoided. Implementation remains gated behind explicit approval.
+
+**Current planner command surface:** `/planning/generate_waypoints` is a `Trigger` service that generates the lawnmower path, sets `WAITING_CONFIRM`, publishes `/planning/waypoints`, and republishes mission status. `/planning/mission_command` is a JSON-over-String command channel. The callback currently recognises `confirm_waypoints`, `start_mission`, `resume_mission`, `cancel_waypoints`, `reset_mission`, `joystick_enable`, `joystick_disable`, and `go_home`. None of those commands accepts an arbitrary external waypoint list; `go_home` is a special one-point overwrite, not a general mission import surface. Therefore QGC-authored waypoint injection needs a new planner entry point or an explicit extension of the command schema; it should not be described as already supported.
+
+**Recommended v2 shape: peer mission editor model.** Treat the planner-side mission authority as the single source of truth, with QGC and the web dashboard as two editors of that state. The bridge should stop being "dashboard mission viewer for QGC" and become a protocol adapter between MAVLink mission transactions and the mission authority. The active mission record should carry at least a version / opaque id, source editor, waypoint list in local x/y, GPS origin, state (`DRAFT`, `WAITING_CONFIRM`, `READY`, `DRIVING`, etc.), and timestamp.
+
+**QGC upload reception.** Add an upload transaction state machine before any live upload test. Per the MAVLink Mission Protocol checked on 12/06/2026 (<https://mavlink.io/en/services/mission.html>), QGC upload starts with `MISSION_COUNT`; the vehicle side requests each item with `MISSION_REQUEST_INT`; QGC replies with `MISSION_ITEM_INT`; and the vehicle sends final `MISSION_ACK` after the last valid item. The v2 bridge should:
+
+- accept only mission type `MAV_MISSION_TYPE_MISSION` for the visual bridge;
+- reject or ignore fence/rally until explicitly scoped;
+- filter incoming upload/download messages by `target_system == 42` and the bridge component where applicable;
+- keep a per-GCS transaction keyed by requester system/component, not a single global `_target_system`;
+- request items in sequence and reject/cancel out-of-window or unsupported commands;
+- validate finite lat/lon/alt, `MAV_CMD_NAV_WAYPOINT`, supported global `_INT` frame, count limits, and duplicate/out-of-sequence behaviour;
+- convert GPS waypoints back to local x/y using the inverse of `local_to_gps()` against the current `/planning/config` origin;
+- publish to the planner only after the complete upload validates, so a partial upload never replaces the current mission.
+
+**Planner entry point.** Preferred later implementation: a dedicated planner import surface with ACK/error semantics, e.g. `load_external_waypoints` carrying source, version, origin, and local waypoints. If custom ROS interfaces are deferred, a narrow JSON command extension on `/planning/mission_command` can work for a prototype, but it must publish a clear status/error event so the MAVLink side can send the correct final `MISSION_ACK`. Reusing `generate_waypoints` is wrong because QGC-authored geometry is already defined; it should not trigger lawnmower generation.
+
+**Confirm semantics.** For peer editing, a successful QGC upload should mean "mission approved by QGC editor" and should land as `READY`, not as a dashboard preview waiting for a second dashboard Confirm. It still must not start motion; `start_mission` / driving remains a separate operator action. Dashboard-generated waypoints keep the existing Generate -> Confirm flow. The dashboard should display QGC-authored missions as current/ready and expose Reset/Start/Cancel consistently.
+
+**Conflict rules.** Do not silently overwrite an unconfirmed dashboard draft. Initial v2 rule: if the dashboard is in `WAITING_CONFIRM`, reject a QGC upload with a busy/error result and keep the existing draft. If no unconfirmed draft exists, accept the QGC upload as the new `READY` mission and increment the mission version. Later UI work can add an operator prompt or explicit lock, but last-writer-wins is too easy to misread during mixed QGC/dashboard operation.
+
+**Same-session refresh.** Use a deliberate refresh mechanism instead of relying on relaunch. Recommended protocol-aligned path: maintain a mission version / opaque id, expose it through `MISSION_CURRENT` and `MISSION_COUNT` where supported, and make QGC redownload when it detects the id changed or when the operator triggers Plan View download. Because QGC behaviour still needs live confirmation, keep a fallback for v2 acceptance: a documented manual Plan View redownload or clean reconnect proves the transaction path while a later enhancement tests automatic same-session refresh. Avoid fake "new vehicle id per edit" as the main design; it hides state-management bugs and creates vehicle clutter.
+
+**Protocol hygiene required for both directions.** Add target filtering, per-requester transactions, idle/upload/download states, timeout/cancel handling, and explicit unsupported ACKs. The current stateless "reply to latest source" model is enough for local visual v1 but unsafe in any mixed topology.
+
+**Safety and scope split.** Bidirectional mission sync remains a visual/planner-data path until separately validated. It must not upload to the real FCU, arm, change mode, write parameters, or drive actuators. Water-quality and similar telemetry remain dashboard-only display unless a separate design changes that. Real-FCU mission upload should be a different path with its own bench-safety gate.
+
+**Non-goals for v2 design.**
+
+- No real vehicle mission upload or command/write path.
+- No Herelink acceptance claim from local-only evidence.
+- No water-quality editing in QGC.
+- No generic MAVLink command bridge for arbitrary commands.
+- No replacement of the dashboard UX; QGC and dashboard become peer editors of mission data only.
+
+**Over-design traps avoided.**
+
+- Do not build a general MAVLink router inside the bridge; use narrow mission-protocol handling.
+- Do not store `.plan` files as the source of truth; keep them as debug/export artifacts only.
+- Do not add dashboard prompts before the minimal conflict rule is needed.
+- Do not combine visual bridge and real-FCU upload in one class or launch path.
 
 ## Block E - Implementation gate
 
@@ -99,9 +164,9 @@ Start only after the user explicitly approves code/config edits. Not expected on
 
 ## Block F - Wrap and docs
 
-- [ ] Record which hypotheses were confirmed / refuted and whether the day stayed design-only.
-- [ ] Narrow updates to `Board.md` / `wiki/Roadmap.md` only if a diagnosis or design decision lands.
-- [ ] Run checks after any edit:
+- [x] Record which hypotheses were confirmed / refuted and whether the day stayed design-only.
+- [x] Keep durable docs frozen pending explicit approval; no `Board.md` / `wiki/Roadmap.md` edits made.
+- [x] Run checks after any edit:
 
   ```bash
   git status --short --branch
@@ -111,6 +176,21 @@ Start only after the user explicitly approves code/config edits. Not expected on
 
   Also run the standard public-repo visibility sweep from the terminal before commit.
 
+**Outcome:** Day stayed diagnosis/design-only through Block D. No Python, JavaScript, launch, YAML, package, durable-doc, real-FCU, control-box, arming, mode-change, parameter-write, actuator, thruster, Pi-upload, or real vehicle command path was touched.
+
+Hypothesis status from source review:
+
+- **Confirmed:** missing QGC-upload capability is a v1 scope gap; identical resend silence is expected signature dedup; same-session refresh is a known v1 limitation; current planner has no generic external-waypoint injection surface.
+- **Likely but not proven:** H1 selected-vehicle mismatch for "Flight plan received" with unchanged visible plan; H2/H3 mixed-topology duplicate / wrong-target mission transactions for count-only loops, triplets, and clear bursts.
+- **Secondary / needs retest:** H4 mid-transaction replacement can contribute to count/item mismatch but is not the primary explanation for repeated count-only loops.
+
+Durable docs remain frozen on 12/06/2026 because no explicit durable-doc retouch approval has been given. If approved later, retouch only the forward-looking Phase 5.2+ paragraphs in `Board.md` and `wiki/Roadmap.md`; do not edit the dated 23/04/2026 history rows.
+
 ## Next steps
 
-To fill at wrap on 12/06/2026.
+Next options, all still gated:
+
+1. Clean local-only A/B retest, user-run by default, to separate v1 refresh limitation from mixed-topology effects.
+2. Block C mixed-topology observation only if equipment is available and explicitly approved.
+3. Durable-doc retouch of only the forward-looking Phase 5.2+ paragraphs if explicitly approved.
+4. Block E implementation only after explicit code/config approval, with upload transaction tests before live QGC upload.
