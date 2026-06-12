@@ -101,6 +101,10 @@ Test A2 kept the same QGC and bridge sessions running. The dashboard generated a
 
 Clean-local conclusion: A1 passed the expected local visual initial-pull path. A2 confirmed the same-session refresh limitation in the clean local topology: the bridge updates its active mission, but already-connected QGC does not redownload automatically. The clean run did not reproduce the 11/06 evening count-only loops, triplicated counts, clear bursts, or retry warnings, which strengthens the H2/H3 mixed-topology explanation for those anomalies. H1 remains a plausible explanation for the mixed-topology visible-plan mismatch, but it was not directly tested because no real vehicle was selected in the clean run. H4 has no positive evidence from the clean run.
 
+**Manual-download follow-up (user-run, same clean-local session):** Manual Plan View download from vehicle was not located / not successfully triggered in the clean local-only QGC UI after A2. The bridge log `/tmp/qgc_bridge_clean_ab_20260612_103850.log` still ended at the A2 activation line (`active QGC visual mission: 7 items`) with no later `served MISSION_COUNT=7` and no `seq=0` through `seq=6` serve. The user reported that QGC's vehicle-choice / download controls had only appeared in prior mixed control-box / Herelink testing; that topology was deliberately not enabled here because it would invalidate the clean-local result.
+
+The only accidental QGC upload attempt produced `Mission transfer failed. Error: Mission write mission count failed, maximum retries exceeded.` This is consistent with the known v1 upload gap and does not test the manual-download workaround. Clean-local conclusion after this follow-up: the only proven v1 same-session workaround remains QGC reconnect / relaunch initial-connect pull, not manual Plan View download.
+
 ## Block C - Mixed-topology observation plan (only if equipment is available and the user approves)
 
 - [ ] Pre-test inventory, recorded before any interaction: QGC vehicle list with system ids (real vehicle vs bridge `42`), QGC comm-link list (local UDP 14550 vs Herelink link), the QGC MAVLink-forwarding setting, and whether the Herelink console QGC is running.
@@ -199,7 +203,7 @@ Durable docs remain frozen on 12/06/2026 because no explicit durable-doc retouch
 
 Next options, all still gated:
 
-1. Optional clean-local manual Plan View download check, user-run by default, to see whether an operator-triggered redownload is a usable v1 workaround after A2 leaves QGC stale.
+1. Optional clean-local QGC reconnect / relaunch check, user-run by default, if another proof of the already-known initial-connect workaround is useful.
 2. Block C mixed-topology observation only if equipment is available and explicitly approved.
 3. Durable-doc retouch of only the forward-looking Phase 5.2+ paragraphs if explicitly approved.
 4. Block E implementation only after explicit code/config approval, with upload transaction tests before live QGC upload.
