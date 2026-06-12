@@ -107,6 +107,8 @@ The only accidental QGC upload attempt produced `Mission transfer failed. Error:
 
 ## Block C - Mixed-topology observation plan (only if equipment is available and the user approves)
 
+Not run on 12/06/2026 - deferred to Wednesday 17/06/2026. Checklist below intentionally stays unticked; see the Status note and Next steps option 1.
+
 - [ ] Pre-test inventory, recorded before any interaction: QGC vehicle list with system ids (real vehicle vs bridge `42`), QGC comm-link list (local UDP 14550 vs Herelink link), the QGC MAVLink-forwarding setting, and whether the Herelink console QGC is running.
 - [ ] Observation-only repro of one count-only loop and one triplet burst, with QGC console log and bridge terminal captured side by side.
 - [ ] Decide the capture method for incoming `target_system` values on the local link: bridge debug logging is a code edit (gated); a packet capture in the user's own terminal needs interactive sudo. Choose and record before running.
