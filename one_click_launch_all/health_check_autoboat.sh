@@ -40,6 +40,31 @@ TUNED=0
 # Per-ROS-CLI-call cap. The dashboard service has a 90 s whole-script watchdog;
 # individual probes must degrade to WARN before that watchdog kills the run.
 ROS_PROBE_TIMEOUT=${ROS_PROBE_TIMEOUT:-8}
+ROS_PROBE_KILL_AFTER=${ROS_PROBE_KILL_AFTER:-2s}
+
+run_ros_probe() {
+    local output_file=$1
+    shift
+    timeout -k "$ROS_PROBE_KILL_AFTER" "$ROS_PROBE_TIMEOUT" "$@" >"$output_file" 2>/dev/null
+}
+
+capture_ros_probe() {
+    local __cap_var=$1
+    shift
+    local __cap_file __cap_out __cap_status
+    __cap_file=$(mktemp) || return 1
+    run_ros_probe "$__cap_file" "$@"
+    __cap_status=$?
+    __cap_out=$(<"$__cap_file")
+    rm -f "$__cap_file"
+    printf -v "$__cap_var" '%s' "$__cap_out"
+    return "$__cap_status"
+}
+
+probe_timed_out() {
+    # 124 = timeout expired; 137 = timeout escalated to SIGKILL via -k.
+    [ "$1" -eq 124 ] || [ "$1" -eq 137 ]
+}
 
 pass() { echo -e "  ${GREEN}[PASS]${NC} $1"; ((PASS++)); }
 fail() { echo -e "  ${RED}[FAIL]${NC} $1"; ((FAIL++)); }
@@ -53,15 +78,18 @@ section() { echo -e "\n${BLUE}========== $1 ==========${NC}"; }
 # startup often returns incomplete results due to discovery lag. Poll with
 # `--no-daemon` to sidestep any stale `ros2 daemon` cache (see Common_Issues
 # "ros2 node list empty"), exiting as soon as at least one node is visible.
-# Caps at 10 s; if the graph is still empty, downstream checks will report
-# the real state rather than a false pass.
-elapsed=0
-while [ "$elapsed" -lt 10 ]; do
-    if [ "$(ros2 node list --no-daemon 2>/dev/null | wc -l)" -gt 0 ]; then
+# Caps at roughly 10 s; if the graph is still empty, downstream checks will
+# report the real state rather than a false pass.
+prime_start=$SECONDS
+while [ $((SECONDS - prime_start)) -lt 10 ]; do
+    PRIME_NODES=""
+    capture_ros_probe PRIME_NODES ros2 node list --no-daemon
+    prime_status=$?
+    if ! probe_timed_out "$prime_status" && [ -n "$PRIME_NODES" ]; then
         break
     fi
+    [ $((SECONDS - prime_start)) -ge 10 ] && break
     sleep 1
-    elapsed=$((elapsed + 1))
 done
 
 # ============================================================================
@@ -77,9 +105,15 @@ EXPECTED_NODES=(
     "/web_video_server"
 )
 
-RUNNING_NODES=$(ros2 node list 2>/dev/null)
+RUNNING_NODES=""
+capture_ros_probe RUNNING_NODES ros2 node list
+node_list_status=$?
 
-if [ -z "$RUNNING_NODES" ]; then
+if probe_timed_out "$node_list_status"; then
+    fail "Cannot reach ROS 2 graph — node list timed out after ${ROS_PROBE_TIMEOUT}s"
+    echo -e "\n${RED}Aborting: no ROS 2 nodes found.${NC}"
+    exit 1
+elif [ -z "$RUNNING_NODES" ]; then
     fail "Cannot reach ROS 2 graph — is the simulation running?"
     echo -e "\n${RED}Aborting: no ROS 2 nodes found.${NC}"
     exit 1
@@ -115,7 +149,12 @@ done
 # ============================================================================
 section "Boat State Detection"
 
-RUNNING_TOPICS=$(ros2 topic list 2>/dev/null)
+RUNNING_TOPICS=""
+capture_ros_probe RUNNING_TOPICS ros2 topic list
+topic_list_status=$?
+if probe_timed_out "$topic_list_status"; then
+    warn "ROS 2 topic list timed out after ${ROS_PROBE_TIMEOUT}s"
+fi
 
 # Detect mission state by reading actual planner state from topic content
 # Topics persist after first publish, so topic existence alone is not reliable
@@ -123,7 +162,13 @@ BOAT_STATE="IDLE"
 if echo "$RUNNING_TOPICS" | grep -q "^/planning/mission_status$"; then
     # Read one message (8s timeout), strip ANSI codes, extract state from JSON.
     # The planner may publish infrequently when idle, so 8s avoids false timeouts.
-    MISSION_MSG=$(timeout 8 ros2 topic echo /planning/mission_status --once 2>&1 | sed 's/\x1b\[[0-9;]*m//g')
+    MISSION_MSG=""
+    capture_ros_probe MISSION_MSG ros2 topic echo /planning/mission_status --once
+    mission_msg_status=$?
+    if probe_timed_out "$mission_msg_status"; then
+        MISSION_MSG=""
+    fi
+    MISSION_MSG=$(echo "$MISSION_MSG" | sed 's/\x1b\[[0-9;]*m//g')
     PLANNER_STATE=$(echo "$MISSION_MSG" | grep -oP '"state":\s*"\K[^"]+')
     if [ -n "$PLANNER_STATE" ]; then
         # INIT/IDLE/FINISHED/JOYSTICK = not actively navigating
@@ -213,9 +258,10 @@ check_publisher() {
 
     # Try up to 2 times (retry once after 2s if first attempt fails — covers DDS lag)
     for attempt in 1 2; do
-        tinfo=$(timeout "$ROS_PROBE_TIMEOUT" ros2 topic info "$topic" 2>/dev/null)
+        tinfo=""
+        capture_ros_probe tinfo ros2 topic info "$topic"
         probe_status=$?
-        if [ "$probe_status" -eq 124 ]; then
+        if probe_timed_out "$probe_status"; then
             timed_out=true
             break
         fi
@@ -259,9 +305,10 @@ is_node_tuned() {
     # message since launch (config_tuned flag flipped), "false" otherwise.
     local node=$1
     local output status raw
-    output=$(timeout "$ROS_PROBE_TIMEOUT" ros2 param get "$node" "config_tuned" 2>/dev/null)
+    output=""
+    capture_ros_probe output ros2 param get "$node" "config_tuned"
     status=$?
-    if [ "$status" -eq 124 ]; then
+    if probe_timed_out "$status"; then
         echo "timeout"
         return
     fi
@@ -276,9 +323,10 @@ check_param() {
     local node_tuned=${4:-false}  # Result of is_node_tuned, passed in by caller
     local output status raw
     # Strip ANSI color codes and RTPS error noise, then extract the value from "X value is: Y"
-    output=$(timeout "$ROS_PROBE_TIMEOUT" ros2 param get "$node" "$param" 2>/dev/null)
+    output=""
+    capture_ros_probe output ros2 param get "$node" "$param"
     status=$?
-    if [ "$status" -eq 124 ]; then
+    if probe_timed_out "$status"; then
         warn "$param — param read timed out after ${ROS_PROBE_TIMEOUT}s"
         return
     fi
