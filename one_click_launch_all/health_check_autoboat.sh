@@ -346,45 +346,45 @@ check_param() {
 
 controller_tuned=$(is_node_tuned "/heading_controller_node")
 if [ "$controller_tuned" == "timeout" ]; then
-    warn "/heading_controller_node config_tuned — param read timed out after ${ROS_PROBE_TIMEOUT}s"
-    controller_tuned="unknown"
+    warn "/heading_controller_node parameter service timed out after ${ROS_PROBE_TIMEOUT}s — skipping parameter checks"
+else
+    check_param "/heading_controller_node" "kp" "500.0" "$controller_tuned"
+    check_param "/heading_controller_node" "kd" "150.0" "$controller_tuned"
+    check_param "/heading_controller_node" "base_speed" "400.0" "$controller_tuned"
+    check_param "/heading_controller_node" "obstacle_slow_factor" "0.5" "$controller_tuned"
+    check_param "/heading_controller_node" "turn_deadband_deg" "0.5" "$controller_tuned"
+    check_param "/heading_controller_node" "critical_distance" "6.0" "$controller_tuned"
+    check_param "/heading_controller_node" "min_safe_distance" "12.0" "$controller_tuned"
+    check_param "/heading_controller_node" "max_avoidance_turn_deg" "45.0" "$controller_tuned"
 fi
-check_param "/heading_controller_node" "kp" "500.0" "$controller_tuned"
-check_param "/heading_controller_node" "kd" "150.0" "$controller_tuned"
-check_param "/heading_controller_node" "base_speed" "400.0" "$controller_tuned"
-check_param "/heading_controller_node" "obstacle_slow_factor" "0.5" "$controller_tuned"
-check_param "/heading_controller_node" "turn_deadband_deg" "0.5" "$controller_tuned"
-check_param "/heading_controller_node" "critical_distance" "6.0" "$controller_tuned"
-check_param "/heading_controller_node" "min_safe_distance" "12.0" "$controller_tuned"
-check_param "/heading_controller_node" "max_avoidance_turn_deg" "45.0" "$controller_tuned"
 
 section "Parameter Check (Planner)"
 
 planner_tuned=$(is_node_tuned "/waypoint_planner_node")
 if [ "$planner_tuned" == "timeout" ]; then
-    warn "/waypoint_planner_node config_tuned — param read timed out after ${ROS_PROBE_TIMEOUT}s"
-    planner_tuned="unknown"
+    warn "/waypoint_planner_node parameter service timed out after ${ROS_PROBE_TIMEOUT}s — skipping parameter checks"
+else
+    check_param "/waypoint_planner_node" "scan_length" "15.0" "$planner_tuned"
+    check_param "/waypoint_planner_node" "scan_width" "30.0" "$planner_tuned"
+    check_param "/waypoint_planner_node" "lanes" "10" "$planner_tuned"
+    check_param "/waypoint_planner_node" "waypoint_tolerance" "3.5" "$planner_tuned"
+    check_param "/waypoint_planner_node" "max_block_time" "30.0" "$planner_tuned"
+    check_param "/waypoint_planner_node" "astar_resolution" "3.0" "$planner_tuned"
+    check_param "/waypoint_planner_node" "astar_safety_margin" "12.0" "$planner_tuned"
+    check_param "/waypoint_planner_node" "astar_max_expansions" "20000" "$planner_tuned"
 fi
-check_param "/waypoint_planner_node" "scan_length" "15.0" "$planner_tuned"
-check_param "/waypoint_planner_node" "scan_width" "30.0" "$planner_tuned"
-check_param "/waypoint_planner_node" "lanes" "10" "$planner_tuned"
-check_param "/waypoint_planner_node" "waypoint_tolerance" "3.5" "$planner_tuned"
-check_param "/waypoint_planner_node" "max_block_time" "30.0" "$planner_tuned"
-check_param "/waypoint_planner_node" "astar_resolution" "3.0" "$planner_tuned"
-check_param "/waypoint_planner_node" "astar_safety_margin" "12.0" "$planner_tuned"
-check_param "/waypoint_planner_node" "astar_max_expansions" "20000" "$planner_tuned"
 
 section "Parameter Check (Perception)"
 
 perception_tuned=$(is_node_tuned "/lidar_perception_node")
 if [ "$perception_tuned" == "timeout" ]; then
-    warn "/lidar_perception_node config_tuned — param read timed out after ${ROS_PROBE_TIMEOUT}s"
-    perception_tuned="unknown"
+    warn "/lidar_perception_node parameter service timed out after ${ROS_PROBE_TIMEOUT}s — skipping parameter checks"
+else
+    check_param "/lidar_perception_node" "perception_min_safe_distance" "10.0" "$perception_tuned"
+    check_param "/lidar_perception_node" "perception_critical_distance" "5.5" "$perception_tuned"
+    check_param "/lidar_perception_node" "min_height" "-1.2" "$perception_tuned"
+    check_param "/lidar_perception_node" "max_range" "100.0" "$perception_tuned"
 fi
-check_param "/lidar_perception_node" "perception_min_safe_distance" "10.0" "$perception_tuned"
-check_param "/lidar_perception_node" "perception_critical_distance" "5.5" "$perception_tuned"
-check_param "/lidar_perception_node" "min_height" "-1.2" "$perception_tuned"
-check_param "/lidar_perception_node" "max_range" "100.0" "$perception_tuned"
 
 # ============================================================================
 # 6. SERVICE / CONNECTIVITY CHECK
