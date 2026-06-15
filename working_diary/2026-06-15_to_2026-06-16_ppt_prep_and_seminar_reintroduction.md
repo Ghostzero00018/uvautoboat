@@ -21,6 +21,14 @@ The Tuesday 16/06/2026 seminar at IMT Mines Alès needs a simple re-introduction
 - [ ] Keep technical claims bounded to what is already recorded in `Board.md`, `wiki/Roadmap.md`, and recent working diaries.
 - [ ] Prepare a short ending slide: practical work resumes Wednesday 17/06/2026.
 
+## Dashboard reset exception - 15/06/2026
+
+A small dashboard-only fix landed during the PPT-prep window after a live Advanced Configuration issue was noticed: `ee9c366` (`fix(dashboard): reset waypoint approach fields, gate on all defaults`) updates `web_dashboard/autoboat/app.js` so Advanced Configuration Reset Defaults restores the Waypoint Approach fields as well as the PID / speed / safe-distance fields.
+
+Scope stayed narrow: no Gazebo, QGC, Herelink, Pi, real-FCU, arming, upload, parameter-write, thruster, actuator, or live vehicle work was run. Static checks passed before commit: `git diff --check` and `node --check web_dashboard/autoboat/app.js`. Dashboard hard-refresh / live UI retest remains operator-side if needed.
+
+No Board / Roadmap update is needed for this narrow dashboard bug fix; it is not a durable project-status change.
+
 ## Tuesday 16/06/2026 - IMT Mines Alès seminar
 
 - [ ] Present the project re-introduction at the seminar.
