@@ -124,7 +124,7 @@ uvautoboat/
 │   └── Common_Issues.md             # Troubleshooting guide
 ├── one_click_launch_all/       # Automated launcher scripts
 │   ├── launch_autoboat_complete.sh   # One-click full system launch
-│   ├── health_check_autoboat.sh      # System health check (49 checks)
+│   ├── health_check_autoboat.sh      # System health check
 │   └── patch_vrx.sh                 # VRX xacro fix safety-net (publish_model_pose; baked into fork commit e384cd65)
 ├── scripts/                    # Repo-maintenance helpers
 │   └── sync_wiki.sh                # Sync `wiki/*.md` → published GitHub Wiki
@@ -206,7 +206,7 @@ uvautoboat/
 | **A\* Path Planning** | Grid-based pathfinding algorithm with obstacle inflation |
 | **Emergency Stop** | Latching emergency stop from dashboard or CLI — cuts thrust immediately |
 | **JSON Log Export** | Export panel contents (health check, logs, terminal, mission) as JSON files |
-| **Health Check Service** | ROS 2 node streaming 49 system checks to the dashboard with live output |
+| **Health Check Service** | ROS 2 node streaming system checks to the dashboard with live output |
 
 ---
 
@@ -813,7 +813,7 @@ sudo apt install ros-jazzy-rosbridge-suite ros-jazzy-web-video-server
 | **Configuration** | Path, PID, Speed parameter controls (with Apply) |
 | **Perception Configuration** | Perception parameters (height, range, clustering) |
 | **Controller Configuration** | Control parameters (safety distances, avoidance, anti-stuck) |
-| **Health Check** | Live-streaming system health check (49 checks) with elapsed time |
+| **Health Check** | Live-streaming system health check with elapsed time |
 | **System Logs** | Live ROS log feed |
 | **ROS2 Terminal** | Direct ROS2 command output |
 | **Mission Control** | Generate, confirm, start, stop, resume, emergency stop, go home, reset |
@@ -1452,7 +1452,7 @@ ros2 topic echo /control/anti_stuck_status
 ### Health Check
 
 ```bash
-# Run system health check (49 checks: nodes, topics, params, connectivity)
+# Run system health check (nodes, topics, params, connectivity)
 bash one_click_launch_all/health_check_autoboat.sh
 
 # Quick mode (nodes + topics only)

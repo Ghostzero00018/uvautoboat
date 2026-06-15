@@ -128,7 +128,7 @@ Other controls: **Stop**, **Resume**, **Emergency Stop**, **Go Home** (return to
 bash ~/seal_ws/src/uvautoboat/one_click_launch_all/health_check_autoboat.sh
 ```
 
-Runs 49 checks (nodes, topics, parameters, connectivity). Parameter values are reported as `PASS` (matches YAML baseline) or `TUNED` (user-applied via preset/dashboard — counted as healthy); `WARN` means unexpected drift, `FAIL` means unreadable. Auto-detects IDLE/ACTIVE state. Also available from the dashboard Health Check panel with live-streaming output.
+Runs system checks across nodes, topics, parameters, and connectivity. Parameter values are reported as `PASS` (matches YAML baseline) or `TUNED` (user-applied via preset/dashboard — counted as healthy); `WARN` means a non-fatal issue such as unexpected drift, a slow probe, or skipped parameter checks; `FAIL` means a required check failed. Auto-detects IDLE/ACTIVE state. Also available from the dashboard Health Check panel with live-streaming output.
 
 ---
 
@@ -239,7 +239,7 @@ uvautoboat/
 | Anti-stuck recovery (SASS) | ✅ Working |
 | A\* detour planning | ✅ Working |
 | Web dashboard with live map | ✅ Working |
-| Health check (49 checks) | ✅ Working |
+| Health check | ✅ Working |
 | CLI mission control | ✅ Working |
 | Emergency stop (dashboard + CLI) | ✅ Working |
 | JSON log export | ✅ Working |
