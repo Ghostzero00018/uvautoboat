@@ -37,6 +37,10 @@ FAIL=0
 WARN=0
 TUNED=0
 
+# Per-ROS-CLI-call cap. The dashboard service has a 90 s whole-script watchdog;
+# individual probes must degrade to WARN before that watchdog kills the run.
+ROS_PROBE_TIMEOUT=${ROS_PROBE_TIMEOUT:-8}
+
 pass() { echo -e "  ${GREEN}[PASS]${NC} $1"; ((PASS++)); }
 fail() { echo -e "  ${RED}[FAIL]${NC} $1"; ((FAIL++)); }
 warn() { echo -e "  ${YELLOW}[WARN]${NC} $1"; ((WARN++)); }
@@ -205,11 +209,16 @@ check_publisher() {
     local topic=$1
     local label=$2
     local mission_only=${3:-false}  # "true" = only expected during active mission
-    local tinfo pub_count sub_count
+    local tinfo pub_count sub_count probe_status timed_out=false
 
     # Try up to 2 times (retry once after 2s if first attempt fails — covers DDS lag)
     for attempt in 1 2; do
-        tinfo=$(ros2 topic info "$topic" 2>/dev/null)
+        tinfo=$(timeout "$ROS_PROBE_TIMEOUT" ros2 topic info "$topic" 2>/dev/null)
+        probe_status=$?
+        if [ "$probe_status" -eq 124 ]; then
+            timed_out=true
+            break
+        fi
         pub_count=$(echo "$tinfo" | grep -oP 'Publisher count: \K\d+')
         sub_count=$(echo "$tinfo" | grep -oP 'Subscription count: \K\d+')
         if [ -n "$pub_count" ] && [ "$pub_count" -ge 1 ]; then
@@ -218,7 +227,9 @@ check_publisher() {
         [ "$attempt" -eq 1 ] && sleep 2
     done
 
-    if [ -z "$pub_count" ]; then
+    if [ "$timed_out" == "true" ]; then
+        warn "$label — topic info timed out after ${ROS_PROBE_TIMEOUT}s"
+    elif [ -z "$pub_count" ]; then
         if [ "$mission_only" == "true" ] && [ "$BOAT_STATE" == "IDLE" ]; then
             info "$label — not yet active (normal in IDLE state)"
         else
@@ -247,8 +258,14 @@ is_node_tuned() {
     # Returns "true" if the node has processed at least one /planning/set_config
     # message since launch (config_tuned flag flipped), "false" otherwise.
     local node=$1
-    local raw
-    raw=$(ros2 param get "$node" "config_tuned" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | grep -oP 'value is: \K\w+' | tail -1)
+    local output status raw
+    output=$(timeout "$ROS_PROBE_TIMEOUT" ros2 param get "$node" "config_tuned" 2>/dev/null)
+    status=$?
+    if [ "$status" -eq 124 ]; then
+        echo "timeout"
+        return
+    fi
+    raw=$(echo "$output" | sed 's/\x1b\[[0-9;]*m//g' | grep -oP 'value is: \K\w+' | tail -1)
     [ "$raw" == "True" ] && echo "true" || echo "false"
 }
 
@@ -257,9 +274,15 @@ check_param() {
     local param=$2
     local expected=$3
     local node_tuned=${4:-false}  # Result of is_node_tuned, passed in by caller
-    local raw
+    local output status raw
     # Strip ANSI color codes and RTPS error noise, then extract the value from "X value is: Y"
-    raw=$(ros2 param get "$node" "$param" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | grep -oP 'value is: \K[-\d.]+')
+    output=$(timeout "$ROS_PROBE_TIMEOUT" ros2 param get "$node" "$param" 2>/dev/null)
+    status=$?
+    if [ "$status" -eq 124 ]; then
+        warn "$param — param read timed out after ${ROS_PROBE_TIMEOUT}s"
+        return
+    fi
+    raw=$(echo "$output" | sed 's/\x1b\[[0-9;]*m//g' | grep -oP 'value is: \K[-\d.]+')
     local actual
     actual=$(echo "$raw" | tail -1)
     if [ -z "$actual" ]; then
@@ -274,6 +297,10 @@ check_param() {
 }
 
 controller_tuned=$(is_node_tuned "/heading_controller_node")
+if [ "$controller_tuned" == "timeout" ]; then
+    warn "/heading_controller_node config_tuned — param read timed out after ${ROS_PROBE_TIMEOUT}s"
+    controller_tuned="unknown"
+fi
 check_param "/heading_controller_node" "kp" "500.0" "$controller_tuned"
 check_param "/heading_controller_node" "kd" "150.0" "$controller_tuned"
 check_param "/heading_controller_node" "base_speed" "400.0" "$controller_tuned"
@@ -286,6 +313,10 @@ check_param "/heading_controller_node" "max_avoidance_turn_deg" "45.0" "$control
 section "Parameter Check (Planner)"
 
 planner_tuned=$(is_node_tuned "/waypoint_planner_node")
+if [ "$planner_tuned" == "timeout" ]; then
+    warn "/waypoint_planner_node config_tuned — param read timed out after ${ROS_PROBE_TIMEOUT}s"
+    planner_tuned="unknown"
+fi
 check_param "/waypoint_planner_node" "scan_length" "15.0" "$planner_tuned"
 check_param "/waypoint_planner_node" "scan_width" "30.0" "$planner_tuned"
 check_param "/waypoint_planner_node" "lanes" "10" "$planner_tuned"
@@ -298,6 +329,10 @@ check_param "/waypoint_planner_node" "astar_max_expansions" "20000" "$planner_tu
 section "Parameter Check (Perception)"
 
 perception_tuned=$(is_node_tuned "/lidar_perception_node")
+if [ "$perception_tuned" == "timeout" ]; then
+    warn "/lidar_perception_node config_tuned — param read timed out after ${ROS_PROBE_TIMEOUT}s"
+    perception_tuned="unknown"
+fi
 check_param "/lidar_perception_node" "perception_min_safe_distance" "10.0" "$perception_tuned"
 check_param "/lidar_perception_node" "perception_critical_distance" "5.5" "$perception_tuned"
 check_param "/lidar_perception_node" "min_height" "-1.2" "$perception_tuned"
