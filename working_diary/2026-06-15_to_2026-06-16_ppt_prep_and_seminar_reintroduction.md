@@ -21,6 +21,10 @@ The Tuesday 16/06/2026 seminar at IMT Mines Alès needs a simple re-introduction
 - [ ] Keep technical claims bounded to what is already recorded in `Board.md`, `wiki/Roadmap.md`, and recent working diaries.
 - [ ] Prepare a short ending slide: practical work resumes Wednesday 17/06/2026.
 
+**EOD 15/06/2026:** Monday closed. The PPT-only day was instead spent on two narrow, now-landed code exceptions (documented below); the seminar re-introduction draft was not started, so the five preparation tasks above carry forward into the 16/06 prep window.
+
+**Next steps:** complete the carried-forward PPT re-introduction draft in the 16/06 window. The 16/06 seminar and 17/06 restart plans recorded below are unchanged.
+
 ## Dashboard reset exception - 15/06/2026
 
 A small dashboard-only fix landed during the PPT-prep window after a live Advanced Configuration issue was noticed: `ee9c366` (`fix(dashboard): reset waypoint approach fields, gate on all defaults`) updates `web_dashboard/autoboat/app.js` so Advanced Configuration Reset Defaults restores the Waypoint Approach fields as well as the PID / speed / safe-distance fields.
