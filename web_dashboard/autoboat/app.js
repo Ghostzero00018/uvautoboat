@@ -1481,6 +1481,14 @@ setInterval(() => {
     document.getElementById('local-y').textContent = local.y.toFixed(1) + 'm';
 }, 1000);
 
+const MAIN_CONFIG_RESET_INPUTS = [
+    'cfg-kp', 'cfg-ki', 'cfg-kd',
+    'cfg-base-speed', 'cfg-max-speed', 'cfg-safe-dist',
+    'cfg-waypoint-tolerance',
+    'cfg-approach-slow-distance',
+    'cfg-approach-slow-factor'
+];
+
 // Initialize configuration panel
 function initConfigPanel() {
     if (DEBUG_MODE) console.log('Initializing config panel...');
@@ -1630,12 +1638,7 @@ function initConfigPanel() {
 
 // Reset configuration to default values
 function resetConfigToDefaults() {
-    const configInputs = [
-        'cfg-kp', 'cfg-ki', 'cfg-kd',
-        'cfg-base-speed', 'cfg-max-speed', 'cfg-safe-dist'
-    ];
-
-    configInputs.forEach(id => {
+    MAIN_CONFIG_RESET_INPUTS.forEach(id => {
         const input = document.getElementById(id);
         if (!input) return;
         const def = getCanonicalDefault(input);
@@ -3488,11 +3491,11 @@ function applyRangesToDashboard(rangesJson) {
 function gateResetButtons() {
     const keys = Object.keys(liveDefaults);
     const ready = {
-        // Config Reset touches the 6 PID/speed cfg-* inputs (heading_controller params).
-        // 'cfg-kp' in liveDefaults means heading_controller's param_ranges has fired —
-        // a generic 'cfg-' prefix would match planner-published keys (cfg-lanes / cfg-astar-*)
-        // and falsely enable the button before the relevant defaults arrived.
-        'btn-reset-config': 'cfg-kp' in liveDefaults,
+        // Config Reset touches 8 controller-owned fields (PID/speed/safe-dist +
+        // approach_slow_distance/factor) plus 1 planner-owned field
+        // (waypoint_tolerance), so its defaults arrive on two param_ranges topics.
+        // Wait for every required default so Reset cannot silently be partial.
+        'btn-reset-config': MAIN_CONFIG_RESET_INPUTS.every(id => id in liveDefaults),
         // A* params arrive together from waypoint_planner_node's param_ranges
         // publish — single-key check is sufficient.
         'btn-reset-astar': 'cfg-astar-resolution' in liveDefaults,
