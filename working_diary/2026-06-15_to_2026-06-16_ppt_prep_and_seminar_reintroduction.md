@@ -43,10 +43,18 @@ The deeper root cause — the perception node's parameter service being unrespon
 
 ## Tuesday 16/06/2026 - IMT Mines Alès seminar
 
-- [ ] Present the project re-introduction at the seminar.
-- [ ] Record only concrete feedback, questions, or action items that are actually said during or after the seminar.
-- [ ] Do not infer extra requirements from vague discussion; keep follow-up notes factual.
-- [ ] If feedback changes the project direction, record it before restarting practical work.
+- [x] Present the project re-introduction at the seminar.
+- [x] Record only concrete feedback, questions, or action items that are actually said during or after the seminar.
+- [x] Do not infer extra requirements from vague discussion; keep follow-up notes factual.
+- [x] If feedback changes the project direction, record it before restarting practical work.
+
+**EOD 16/06/2026:** Tuesday seminar closed. No concrete new seminar requirement or direction change was recorded here. The only follow-up captured today is a separate dashboard-control anomaly noticed during testing: after Stop paused an active mission, hovering over the Resume button appeared to restart motion before an actual click.
+
+Source inspection found no mission-control hover handler in `web_dashboard/autoboat/app.js` or `web_dashboard/autoboat/index.html`: Start, Stop, Resume, Reset, Return Home, E-Stop, and joystick controls are all `click`-wired, and `resume_mission` is published only inside the Resume click callback (the single publish site). CSS hover rules for mission buttons only change visual styling. Planner/controller inspection confirmed `PAUSED` is sticky: the planning loop returns while not `DRIVING`, the only writes back to `DRIVING` come from `start_mission` / `resume_mission` / `go_home`, and the controller mirrors planner state with no independent re-enable. So the boat cannot resume without one of those commands.
+
+Live repro (16/06/2026, full stack, single browser tab) did not reproduce the anomaly: hovering Resume published nothing on `/planning/mission_command`, and the boat did not move. Stop reached a sticky `PAUSED` (held at waypoint 15/20 across every status tick), and only the three deliberate commands appeared on the echo (`confirm_waypoints`, `start_mission`, `resume_mission`). One method note: `ros2 topic info /planning/mission_command -v` reported `Publisher count: 0` because rosbridge advertises a publisher only transiently per publish, so `ros2 topic echo` is the reliable signal and `ss -tnp | grep ':9090'` is the right check for the number of open dashboard tabs.
+
+Most likely cause of the original observation: residual momentum/drift in the moments after Stop, or a one-off accidental real click (touchpad tap-to-click) — neither a code defect. As a low-cost safeguard, the dashboard Start and Resume buttons now carry the same `confirm()` accidental-click guard that Reset, Go Home, and Emergency Stop already use; Stop stays immediate. If the behaviour ever recurs, capture `/planning/mission_command` (echo) plus the rosbridge socket count to confirm whether a real command was sent.
 
 ## Wednesday 17/06/2026 restart note
 
@@ -57,5 +65,6 @@ First planned practical option from the 12/06 closeout: Block C mixed-topology Q
 ## Next steps after seminar
 
 - Wednesday 17/06/2026: decide whether to start Block C mixed-topology observation.
+- Dashboard Resume-hover anomaly: live repro found no hover command path and the boat did not move; Start/Resume confirm guard added. Closed unless it recurs.
 - Optional docs cleanup remains separate and approval-gated.
 - Block E implementation remains separate and approval-gated.
