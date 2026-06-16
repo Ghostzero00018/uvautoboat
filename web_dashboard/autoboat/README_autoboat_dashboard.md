@@ -158,7 +158,7 @@ Perception and Controller share the `/planning/set_config` topic. Parameters wit
 2. Set lanes/length/width in Route Configuration
 3. Click **Generate Waypoints** — waypoints appear on map, state -> WAITING_CONFIRM
 4. Click **Confirm Waypoints** — state -> READY
-5. Click **Start Mission** — state -> DRIVING, boat navigates
+5. Click **Start Mission**, confirm the prompt — state -> DRIVING, boat navigates
 6. Monitor: waypoint progress, obstacle clearance, trajectory on map
 
 ### Controls During Mission
@@ -170,6 +170,8 @@ Perception and Controller share the `/planning/set_config` topic. Parameters wit
 | **Emergency Stop** | Cut thrust, latch stop. Two shortcut badges pulse red while latched: header (`🚨 E-STOP`) and floating bottom-right FAB — both scroll to the real button and flash it (they don't fire E-Stop directly). Resume to recover. |
 | **Go Home**        | Navigate back to spawn point                                    |
 | **Reset**          | Clear waypoints, return to INIT                                 |
+
+Start, Resume, Go Home, Reset, and Emergency Stop prompt a confirmation before acting (accidental-click guard); Stop acts immediately.
 
 ## ROS Topics
 

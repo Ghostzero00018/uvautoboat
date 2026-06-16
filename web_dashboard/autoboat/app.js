@@ -2229,10 +2229,14 @@ function initMissionControl() {
 
     // Step 3: Start/Stop/Resume/Reset Mission
     document.getElementById('btn-start-mission').addEventListener('click', () => {
-        debounceCommand(() => {
-            sendMissionCommand('start_mission');
-            setTimeout(() => alert('✅ Mission Started\n\nThe boat will begin navigation.\n\n✅ Mission Démarrée\n\nLe bateau va commencer la navigation.'), 100);
-        });
+        // Accidental-click guard — a stray click/tap should not start motion
+        // without a deliberate confirm (mirrors Reset/Go-Home/E-Stop).
+        if (confirm('✅ Start mission? The boat will begin navigation. | Démarrer la mission? Le bateau va commencer la navigation.')) {
+            debounceCommand(() => {
+                sendMissionCommand('start_mission');
+                setTimeout(() => alert('✅ Mission Started\n\nThe boat will begin navigation.\n\n✅ Mission Démarrée\n\nLe bateau va commencer la navigation.'), 100);
+            });
+        }
     });
 
     document.getElementById('btn-stop-mission').addEventListener('click', () => {
@@ -2256,10 +2260,14 @@ function initMissionControl() {
     });
 
     document.getElementById('btn-resume-mission').addEventListener('click', () => {
-        debounceCommand(() => {
-            sendMissionCommand('resume_mission');
-            setTimeout(() => alert('▶️ Mission Resumed\n\nNavigation continuing.\n\n▶️ Mission Reprise\n\nNavigation en cours.'), 100);
-        });
+        // Accidental-click guard — a stray click/tap should not resume motion
+        // without a deliberate confirm (mirrors Reset/Go-Home/E-Stop).
+        if (confirm('▶️ Resume mission? The boat will continue navigation. | Reprendre la mission? Le bateau va continuer la navigation.')) {
+            debounceCommand(() => {
+                sendMissionCommand('resume_mission');
+                setTimeout(() => alert('▶️ Mission Resumed\n\nNavigation continuing.\n\n▶️ Mission Reprise\n\nNavigation en cours.'), 100);
+            });
+        }
     });
 
     document.getElementById('btn-reset-mission').addEventListener('click', () => {

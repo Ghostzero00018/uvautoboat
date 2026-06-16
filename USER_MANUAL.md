@@ -841,6 +841,8 @@ Three independent configuration sections, each with its own Apply button:
 | **Go Home** | Return to spawn point |
 | **Reset** | Clear waypoints and reset mission |
 
+**Confirmation guard:** Start, Resume, Go Home, Reset, and Emergency Stop prompt a confirmation dialog before acting, so an accidental click cannot change the boat's motion state. Stop is intentionally immediate (no dialog) so a halt is never delayed.
+
 **JSON Export:** Four panels (Health Check, System Logs, ROS2 Terminal, Mission Control) include export buttons to download panel contents as JSON files.
 
 **Copy to Clipboard:** Health Check, System Logs, and ROS2 Terminal panels include a "Copy" button for quick clipboard copy of panel contents.

@@ -120,6 +120,8 @@ Then open **<http://localhost:8002>** for the web dashboard.
 
 Other controls: **Stop**, **Resume**, **Emergency Stop**, **Go Home** (return to spawn), **Reset** (clear and start over).
 
+Start, Resume, Go Home, Reset, and Emergency Stop ask you to confirm before acting (accidental-click guard); Stop acts immediately.
+
 ---
 
 ## 🩺 Health Check
