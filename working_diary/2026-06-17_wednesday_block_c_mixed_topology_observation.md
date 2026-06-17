@@ -70,7 +70,7 @@ Pre-test inventory, recorded before interaction:
   - bridge debug logging: code edit, approval-gated
   - packet capture: user terminal, interactive sudo if needed
 
-**Inventory note:** the structured pre-test inventory above was not fully captured before interaction, so those boxes stay unticked. The pasted preset only established that Herelink console QGC was not brought up and that Linux QGC could not see the real vehicle id.
+**Inventory note:** the structured pre-test inventory above is scoped to values captured before interaction, and the artifacts do not prove that checklist was completed before Generate / Confirm. The boxes therefore stay unticked. The first pasted preset only established that Herelink console QGC was not brought up and that Linux QGC could not see the real vehicle id. The later Herelink-hotspot run still provides interpretation evidence: real vehicle sysid `1`, selected vehicle `1`, Herelink console QGC running, and Linux QGC on `IMT-Aquatic-drone`; bridge sysid attribution, QGC comm-link list, MAVLink forwarding state, and incoming `target_system` evidence remained unknown.
 
 Observation:
 
@@ -96,6 +96,25 @@ Result table:
 | QGC retry warning | No | QGC console showed VA-API, `speechd`, and APM QML warnings only | No mission retry / transfer failure evidence |
 | Visible plan mismatch | Not tested | Real vehicle id was not visible in Linux QGC | H1 selected-vehicle mismatch remains untested |
 
+**Second run evidence:** Herelink-hotspot attempt saved under `/home/ghostzero/Desktop/test_logs_folder/block_c_20260617_1447/`.
+
+Pre-test inventory improved but stayed partial. Linux was connected to `IMT-Aquatic-drone` with `wlp147s0` at `192.168.43.160/24` and default route `192.168.43.1`. QGC had UDP `14550` open plus two additional UDP sockets (`42504`, `42505`). The manual inventory recorded that the real vehicle was visible in Linux QGC as sysid `1`, selected vehicle in Plan View was `1`, and Herelink console QGC was running. Bridge sysid, QGC link list, and MAVLink forwarding state were not captured.
+
+Planner evidence stayed safety-clean. The navigation log recorded 9 generated waypoints, then `MISSION COMMAND: confirm_waypoints`, then `Waypoints confirmed - ready to start`. No `start_mission`, `resume_mission`, `go_home`, `DRIVING`, or thrust-command transition appeared in the searched navigation excerpt.
+
+Bridge evidence also stayed clean. The bridge waited for confirmed `READY`, activated one 9-item visual mission about 1 ms after planner confirm, served 3 minimal params, then served one `MISSION_COUNT=9` and mission items `seq=0` through `seq=8` once each. It then served empty fence and rally counts (`MISSION_COUNT=0` for mission types `1` and `2`). No count-only loop, triplicated mission count, clear-rejection burst, QGC retry warning, or mid-transaction replacement appeared.
+
+Herelink console QGC did not show the waypoint route and did not auto-center to Sydney Regatta. This is consistent with the bridge's loopback MAVLink URL (`udpout:127.0.0.1:14550`): the fake visual mission is isolated to the Linux workstation QGC and is not broadcast to the Herelink console. That isolation is safety-positive. The main operational hazard remains QGC-side operator error: Linux QGC had real vehicle sysid `1` selected while a simulated mission was visible, so an accidental QGC Upload action could target the selected real vehicle. The no-upload rule remains mandatory.
+
+Updated result table:
+
+| Anomaly | Observed? | Evidence | Interpretation |
+| --- | --- | --- | --- |
+| Count-only serve loop | No | First run: one `MISSION_COUNT=11`, `seq=0` through `seq=10`; second run: one `MISSION_COUNT=9`, `seq=0` through `seq=8` | Symptom not reproduced |
+| Triplicated counts / clear bursts | No | No repeated mission counts for mission type `0`; no `rejected QGC clear request` lines | H2/H3 symptom not reproduced |
+| QGC retry warning | No | QGC logs showed GUI/environment noise only; no mission retry / transfer failure lines | No failed mission transaction evidence |
+| Visible plan mismatch | Partially observed, not resolved | Linux QGC had real sysid `1` selected and showed the waypoint route; Herelink console QGC showed no route | H1 weakened but not closed; vehicle attribution in Linux QGC was not captured |
+
 ## Block D - Interpretation
 
 - [x] Use the H1-H4 definitions from `working_diary/2026-06-12_friday_qgc_bidirectional_sync_exploration.md` Block B.
@@ -104,9 +123,13 @@ Result table:
 - [x] Keep same-session refresh separate from mixed-topology contention.
 - [x] Do not claim Herelink or real-FCU acceptance from visual-bridge evidence.
 
-**Interpretation:** this was a clean single-GCS local visual pull, not a true mixed-topology reproduction. It supports the known clean-local side of the 12/06 A/B result: when only local QGC pulls from the bridge, the bridge can serve a coherent mission count and item sequence. H1 remains untested because there was no real-vs-bridge vehicle selection state in Linux QGC. H2/H3 were not reproduced and not fully exercised because Herelink console QGC was not running and no real vehicle appeared in Linux QGC. H4 has no evidence because there was one mission activation and one coherent download, with no mid-transaction replacement.
+**Interpretation:** Block C now has one clean local visual pull and one valid Herelink-hotspot mixed-topology attempt. In the second run, the real vehicle was visible in Linux QGC as sysid `1`, selected vehicle was recorded as `1`, Herelink console QGC was running, and Linux QGC was on the Herelink hotspot. Despite that contention setup, the 11/06 count-only loops, triplicated counts, clear bursts, and QGC retry warnings did not reproduce. This weakens H2/H3 for the observed setup, but does not refute them because bridge sysid attribution, QGC link list, MAVLink forwarding state, and incoming `target_system` values were not captured.
 
-The discriminating Block C target therefore remains open: rerun only after the real vehicle is visible in Linux QGC and/or the Herelink console QGC is running, with vehicle ids, selected vehicle, comm links, MAVLink forwarding state, and capture method recorded before dashboard Generate / Confirm.
+Compared with the 12/06 clean local-only A/B result, the second run added real-vehicle visibility and Herelink-hotspot networking, but the bridge transaction still looked clean: one activation, one mission count, ordered mission items, no retry loop, and no triplet burst.
+
+H1 is weakened but still not closed: Linux QGC showed the route while selected vehicle was recorded as sysid `1`, which is not a simple "unselected bridge route stayed hidden" outcome. However, the diary still lacks proof of which vehicle QGC attributed the displayed mission to. H4 has no evidence: both runs had one mission activation and one coherent download, with no mid-transaction replacement.
+
+Same-session refresh remains separate from mixed-topology contention. The Herelink console not showing the route is expected for the current local loopback bridge and is not Herelink acceptance or real-FCU upload evidence. No upload/control path was used.
 
 ## Block E - Optional follow-ups
 
@@ -128,8 +151,8 @@ The discriminating Block C target therefore remains open: rerun only after the r
 - [x] Confirm public-repo visibility after commit.
 - [x] Next steps are bounded to the actual outcome above.
 
-**Current status:** Block C was approved and attempted, but the first run did not establish mixed topology. It is recorded as an observation-safe clean local visual pull with the discriminating mixed-topology observation still open.
+**Current status:** Block C was approved and attempted twice. The first run was an observation-safe clean local visual pull. The second run established a real Herelink-hotspot mixed-topology attempt and stayed safety-clean, but the 11/06 count-only / triplet symptoms did not reproduce. H1-H3 are weakened but not closed because vehicle attribution, QGC link list, MAVLink forwarding state, and incoming `target_system` evidence remain missing.
 
 **Visibility note:** commit `90fceba` had already landed before this wrap checkbox was closed. A repo-wide visibility sweep was run afterward and returned zero matches; no tracked content leak was found.
 
-**Next steps:** repeat Block C only after confirming the real vehicle is visible in Linux QGC and/or Herelink console QGC is running. Before Generate / Confirm, record real vehicle id, bridge id `42`, selected vehicle, local UDP `14550`, Herelink / real link state, MAVLink forwarding state, Herelink console QGC state, and the chosen capture method. Keep the same no-upload / no-control boundary.
+**Next steps:** if Block C is repeated, capture the remaining attribution gaps before Generate / Confirm: QGC vehicle list including bridge id `42`, which vehicle QGC attributes the displayed mission to, full comm-link list, MAVLink forwarding state, and incoming `target_system` evidence if approved. Keep the same no-upload / no-control boundary; in mixed topology, QGC Upload is specifically unsafe while the real vehicle is selected.
