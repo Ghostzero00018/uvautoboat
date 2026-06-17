@@ -125,9 +125,11 @@ The discriminating Block C target therefore remains open: rerun only after the r
   rg -n "\[To[ ]fill|<{7}|={7}|>{7}" working_diary/2026-06-17_wednesday_block_c_mixed_topology_observation.md
   ```
 
-- [ ] Run the public-repo visibility sweep before any commit.
+- [x] Confirm public-repo visibility after commit.
 - [x] Next steps are bounded to the actual outcome above.
 
 **Current status:** Block C was approved and attempted, but the first run did not establish mixed topology. It is recorded as an observation-safe clean local visual pull with the discriminating mixed-topology observation still open.
+
+**Visibility note:** commit `90fceba` had already landed before this wrap checkbox was closed. A repo-wide visibility sweep was run afterward and returned zero matches; no tracked content leak was found.
 
 **Next steps:** repeat Block C only after confirming the real vehicle is visible in Linux QGC and/or Herelink console QGC is running. Before Generate / Confirm, record real vehicle id, bridge id `42`, selected vehicle, local UDP `14550`, Herelink / real link state, MAVLink forwarding state, Herelink console QGC state, and the chosen capture method. Keep the same no-upload / no-control boundary.
