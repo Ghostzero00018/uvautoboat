@@ -8,8 +8,8 @@
 |---|---|
 | **Project** | AutoBoat Navigation System |
 | **Repository** | [Ghostzero00018/uvautoboat](https://github.com/Ghostzero00018/uvautoboat) |
-| **Last Updated** | 11/06/2026 |
-| **Status** | 🟢 Simulation ready (A\* path planning + one-click launcher + wiki docs + dashboard config system + MP/QGC install). First wet test completed 07/05/2026: boat survived float/manual-control bring-up, Herelink manual control works, QGC/MP MAVLink arm/disarm works. Herelink video A/B campus side verified 11/05/2026 — Linux QGC video works via the `Source = Herelink Hotspot` preset and `ffplay rtsp://<herelink-ip>:8554/fpv_stream` independently confirms the underlying LIVE555 H.264 stream; Linux MP video + arm/disarm also working after a host-local SkiaSharp 2.88.8 NuGet swap + `~/MissionPlanner/libdl.so` → `libdl.so.2` symlink (11/05/2026 late-day fix, reversible — see `wiki/Common_Issues.md` MP-Linux entry); GDAL/OGR/OSR Mono gaps from 24/04 remain (terrain / advanced geo-ref still degraded) but no longer block the video panel. Second-site (lake) retest deferred to next field session. |
+| **Last Updated** | 17/06/2026 |
+| **Status** | 🟢 Simulation ready (A\* path planning + one-click launcher + wiki docs + dashboard config system + MP/QGC install). First wet test completed 07/05/2026: boat survived float/manual-control bring-up, Herelink manual control works, QGC/MP MAVLink arm/disarm works. Herelink video A/B campus side verified 11/05/2026 — Linux QGC video works via the `Source = Herelink Hotspot` preset and `ffplay rtsp://<herelink-ip>:8554/fpv_stream` independently confirms the underlying LIVE555 H.264 stream; Linux MP video + arm/disarm also working after a host-local SkiaSharp 2.88.8 NuGet swap + `~/MissionPlanner/libdl.so` → `libdl.so.2` symlink (11/05/2026 late-day fix, reversible — see `wiki/Common_Issues.md` MP-Linux entry); GDAL/OGR/OSR Mono gaps from 24/04 remain (terrain / advanced geo-ref still degraded) but no longer block the video panel. Second-site (lake) retest deferred to next field session. Pi 5 MAVLink telemetry path proven 04/06/2026 (`/mavros/state connected: true` via MAVProxy → MAVROS on the reconfigured ArduPilot endpoint; GPS fix / EKF config still open). Local dashboard/planner → QGC visual mission bridge accepted 10-11/06/2026 (`tools/qgc_live_mission_bridge.py` over `127.0.0.1:14550`) and observed under a Herelink-hotspot mixed-topology setup 17/06/2026; visual-only — real-FCU upload, bidirectional sync, and command/write validation remain open. |
 
 ---
 
@@ -394,7 +394,7 @@ Current position ──────>│  (in Planner)       │
 
 ## 📜 Acknowledgments
 
-**Document Version**: 9.23 | **Last Updated**: 11/06/2026
+**Document Version**: 9.24 | **Last Updated**: 17/06/2026
 
 **Maintained By**: AutoBoat Development Team
 

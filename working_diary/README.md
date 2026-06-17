@@ -45,10 +45,10 @@ the prior one. Only the current day's entry is open for free editing.
 
 ## Archiving
 
-The diary spans ~6 weeks of internship work as of 13/05/2026. Older entries
+The diary spans ~11 weeks of internship work as of 17/06/2026. Older entries
 may be archived or summarized at end-of-internship or mid-review checkpoints;
 no automatic rollover is in place.
 
 ---
 
-Last updated: 13/05/2026
+Last updated: 17/06/2026

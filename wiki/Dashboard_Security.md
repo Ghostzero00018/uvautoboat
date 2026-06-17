@@ -165,7 +165,7 @@ CDN libraries (`roslibjs`, Leaflet JS + CSS + 5 marker / layer images, Google Fo
 | Resource | Origin | Source line |
 |:--|:--|:--|
 | OSM tiles | `https://*.tile.openstreetmap.org` | `app.js:354` |
-| rosbridge WebSocket | `ws://<host>:9090` | `app.js:518` |
+| rosbridge WebSocket | `ws://<host>:9090` | `new ROSLIB.Ros` in `app.js` |
 | MJPEG camera stream | `http://<host>:8080` | dashboard `<img>` element |
 
 #### Inline-content + eval scan (constraints on the policy)

@@ -281,4 +281,4 @@ Part of the uvautoboat project — Apache License 2.0.
 
 Built with [roslibjs](http://robotwebtools.org/), [Leaflet.js](https://leafletjs.com/), [OpenStreetMap](https://www.openstreetmap.org/).
 
-Last updated: 07/05/2026
+Last updated: 08/06/2026
