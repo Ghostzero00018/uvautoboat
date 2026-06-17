@@ -133,7 +133,7 @@ Same-session refresh remains separate from mixed-topology contention. The Hereli
 
 ## Block E - Optional follow-ups
 
-- [ ] Optional docs cleanup only if explicitly approved.
+- [x] Optional docs cleanup: approved and landed in `a491b48` (docs-only sync).
 - [ ] Block E implementation only if explicitly approved, with upload transaction tests before any live QGC upload test.
 
 ## Wrap
@@ -156,3 +156,5 @@ Same-session refresh remains separate from mixed-topology contention. The Hereli
 **Visibility note:** commit `90fceba` had already landed before this wrap checkbox was closed. A repo-wide visibility sweep was run afterward and returned zero matches; no tracked content leak was found.
 
 **Next steps:** if Block C is repeated, capture the remaining attribution gaps before Generate / Confirm: QGC vehicle list including bridge id `42`, which vehicle QGC attributes the displayed mission to, full comm-link list, MAVLink forwarding state, and incoming `target_system` evidence if approved. Keep the same no-upload / no-control boundary; in mixed topology, QGC Upload is specifically unsafe while the real vehicle is selected.
+
+**Post-wrap note:** the approved docs-sync cleanup landed in `a491b48` — refreshed stale metadata dates and replaced drift-prone code-reference anchors across `Board.md`, `wiki/Roadmap.md`, `wiki/Design_Rationale.md`, `wiki/Dashboard_Security.md`, `web_dashboard/autoboat/README_autoboat_dashboard.md`, and `working_diary/README.md`. Docs only; no code, config, or live-path change.

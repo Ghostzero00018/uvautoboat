@@ -15,6 +15,7 @@ Default focus: capture the QGC vehicle / link / forwarding details that were sti
 - H1-H3 are weakened but not closed because bridge sysid attribution, QGC comm-link list, MAVLink forwarding state, and incoming `target_system` evidence were not captured.
 - H4 has no evidence from 17/06: both runs had one mission activation and one coherent download.
 - Same-session refresh remains separate from mixed-topology contention.
+- After the 17/06 wrap, approved docs-sync cleanup landed in `a491b48` (docs only, no code/config/live-path change).
 
 ## Boundaries
 
@@ -114,7 +115,7 @@ Start only if explicitly approved after the attribution capture.
 
 ## Block F - Optional follow-ups
 
-- [ ] Optional docs cleanup only if explicitly approved.
+- [ ] Known docs-cleanup carry-over is closed by `a491b48`; only start new docs cleanup if fresh stale docs are found and explicitly approved.
 - [ ] Implementation only if explicitly approved, with upload transaction tests before any live QGC upload test.
 
 ## Wrap
