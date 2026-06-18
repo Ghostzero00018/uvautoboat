@@ -37,11 +37,37 @@ Default focus: capture the QGC vehicle / link / forwarding details that were sti
 - The first-time guide popup difference was explained as browser-origin storage: `http://localhost:8002` and `http://127.0.0.1:8002` have separate `localStorage`, so the tutorial flag is not shared between them. No dashboard code change is needed for that behavior.
 - Local checks passed after the dashboard/doc edits: `node --check web_dashboard/autoboat/app.js`, `git diff --check`, conflict-marker grep, and the public-repo visibility sweep.
 
-Next steps:
+Carry-forward after the pivot:
 
-- Commit and push the dashboard camera-topic warning fix while still on internet WiFi.
 - Resume QGC Block C attribution next week as observation-only work, with the original upload/control prohibitions still active.
-- Treat the Pi / IoT RealSense acceptance run as a separate live-network check; if used, bind exposure deliberately and stop `rosbridge`, `web_video_server`, and the dashboard when finished.
+- The Pi / IoT RealSense acceptance run is recorded below; it did not change any QGC, upload, control, or command/write boundary.
+
+## 18/06 Pipeline C RealSense dashboard result
+
+- The dashboard camera-topic warning fix and its behavior docs were committed and pushed as `bed76fe`; the first diary pivot note was committed and pushed as `7a8e04a`.
+- Pi 5 RealSense launch passed: `realsense2_camera` v4.58.1 / LibRealSense v2.58.1 detected Intel RealSense D435I serial `213622070342`, firmware `5.14.0`, USB type `3.2`, port `3-1`, and exposed `/camera/camera/color/image_raw`.
+- Workstation discovery initially failed with only `ROS_DOMAIN_ID=12`; adding `ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET`, unsetting localhost-only discovery, and restarting the ROS daemon made `/camera/camera/color/image_raw` visible on the workstation.
+- Browser-facing services were kept loopback-only during the live test: rosbridge on `127.0.0.1:9090`, `web_video_server` on `127.0.0.1:8080`, and the dashboard on `127.0.0.1:8002`.
+- The dashboard displayed the Pi RealSense image. This proves the camera-only path `Pi RealSense -> workstation DDS -> web_video_server -> dashboard`; it does not prove mission, thruster, Herelink, QGC, MAVROS, or real-FCU command/write behavior.
+- Default color/depth launch and `enable_depth:=false` at the default color profile were too heavy for smooth dashboard viewing over the IoT WiFi. The `640x480x15` color-only profile still showed unstable workstation receive rate with long gaps.
+- The practical dashboard profile today was:
+
+  ```bash
+  ros2 launch realsense2_camera rs_launch.py enable_depth:=false rgb_camera.color_profile:=424x240x15
+  ```
+
+- With `424x240x15`, the dashboard feed became visibly smoother. During the full dashboard stack, workstation `ros2 topic hz /camera/camera/color/image_raw` initially reported near `15 Hz`; one long `27.821 s` gap made the later `10.35 Hz` value a gap-skewed cumulative average, not the clean steady rate. After stopping other subscribers and measuring the camera path cleanly, a fresh workstation `timeout 20 ros2 topic hz /camera/camera/color/image_raw` sample stayed near `14.8-15.0 Hz` with low jitter.
+- A dedicated warning / procedure page was added at `wiki/RealSense_Dashboard_Testing.md`.
+- Additional user observation: with the whole simulation stack and dashboard running, replacing only the dashboard Camera panel topic with `/camera/camera/color/image_raw` kept the RealSense feed visible while a full simulated out-and-return-home mission appeared to complete normally. This is simulation UI coexistence evidence only; it does not prove real-boat control, QGC upload, Herelink acceptance, MAVROS telemetry, or real-FCU command/write behavior.
+- Durable docs were refreshed to carry the new camera-only evidence and procedure link: `Board.md`, `wiki/Roadmap.md`, `wiki/Home.md`, `wiki/README_WIKI.md`, and `USER_MANUAL.md`.
+- Local docs-quality pass checked changed durable docs, wiki sync inclusion, link targets, whitespace, conflict markers, and public-repo visibility. The QGC scaffold checkboxes remain unticked because the QGC attribution block was deferred.
+
+Current next steps:
+
+- Stop the Pi RealSense node, rosbridge, `web_video_server`, and dashboard server after the test window.
+- For future field camera checks, start from the `424x240x15` color-only profile and verify workstation `ros2 topic hz` before opening the dashboard.
+- Keep the QGC Block C attribution follow-up deferred to next week and observation-only.
+- Commit and push the RealSense dashboard procedure docs while still on internet WiFi.
 
 ## Block A - Repo and source refresh
 
