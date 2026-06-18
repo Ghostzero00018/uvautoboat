@@ -175,6 +175,7 @@ uvautoboat/
 | [Roadmap](wiki/Roadmap.md) | Phase 5 hardware deployment + research-extensions scope |
 | [Simple Anti-Stuck](wiki/SASS.md) | Simple anti-stuck recovery system |
 | [3D LIDAR Processing](wiki/3D_LIDAR_Processing.md) | LiDAR perception system details |
+| [RealSense Dashboard Testing](wiki/RealSense_Dashboard_Testing.md) | Camera-only procedure for showing the Pi 5 RealSense feed in the workstation dashboard |
 | [Dashboard Security](wiki/Dashboard_Security.md) | Security posture, known vulnerabilities, mitigations |
 | [Node Naming Refactor Plan](wiki/Node_Naming_Refactor_Plan.md) | Record of the functional-naming rename |
 | [Common Issues](wiki/Common_Issues.md) | Comprehensive troubleshooting guide |
@@ -1738,7 +1739,7 @@ Open an issue on [GitHub](https://github.com/Ghostzero00018/uvautoboat/issues) w
 
 Project finished by IMT NORD EUROPE DNM DMI-2026
 
-Last updated at 06/05/2026
+Last updated at 18/06/2026
 
 ---
 

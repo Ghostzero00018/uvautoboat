@@ -21,6 +21,7 @@ The following pages are published to the wiki by `scripts/sync_wiki.sh`:
 | **SASS.md** | Simple Anti-Stuck recovery system (active) |
 | **3D_LIDAR_Processing.md** | LiDAR Perception system explained (VFH + threshold rationale) |
 | **Pi5_Bringup_Smoke_Test.md** | Manual procedure to verify Pi 5 ↔ flight-controller serial link via MAVProxy + a `pymavlink` script, before `mavros2` enters the picture |
+| **RealSense_Dashboard_Testing.md** | Camera-only procedure for showing the Pi 5 RealSense feed in the workstation dashboard, with loopback-only browser services and explicit non-goals |
 | **MP_QGC_Update_Procedures.md** | Host-local update workflow for Mission Planner (under Mono on Linux) + QGroundControl (AppImage), including the SkiaSharp/libdl fix re-apply step after MP updates |
 | **VRX_Fork_Migration.md** | Repoint guide for teammates with a pre-06/05/2026 VRX checkout from `osrf/vrx` to the fork `Ghostzero00018/vrx` branch `autoboat/main` |
 | **Common_Issues.md** | Troubleshooting guide |
@@ -143,5 +144,5 @@ When contributing to the wiki:
 
 ---
 
-**Last Updated**: 21/05/2026
+**Last Updated**: 18/06/2026
 **Maintained By**: AutoBoat Development Team
