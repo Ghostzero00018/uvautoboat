@@ -26,6 +26,23 @@ Default focus: capture the QGC vehicle / link / forwarding details that were sti
 - Code, launch, YAML, package, or bridge debug edits need separate explicit approval.
 - Packet capture needing interactive sudo must be run by the user in a real terminal and pasted back.
 
+## 18/06 actual scope pivot
+
+- QGC mixed-topology attribution follow-up is deferred to next week. No QGC / Herelink / real-vehicle observation, no dashboard Generate -> Confirm, no QGC Upload, and no command/write path were run today.
+- The missing Block C attribution evidence remains open: QGC vehicle attribution, comm-link list, MAVLink forwarding state, Herelink console mission visibility, and incoming `target_system` evidence still need to be captured before any future Generate -> Confirm if possible.
+- Actual work shifted to dashboard hygiene and RealSense camera-feed preparation. The workstation `~/.bashrc` was updated locally to export `ROS_DOMAIN_ID=12` for new interactive shells; already-open shells still need `source ~/.bashrc`.
+- Dashboard camera-topic hygiene was updated: syntactically invalid topics are still blocked, while valid topics outside the discovered image-topic list now warn but still try the MJPEG stream. This preserves the late-starting / restarted camera escape hatch and does not change mission, thruster, auth, TLS, or real-FCU behavior.
+- User-run Pipeline A passed for dashboard-only branch behavior.
+- User-run Pipeline B passed on the workstation with loopback-only services: `127.0.0.1:9090` for rosbridge, `127.0.0.1:8080` for `web_video_server`, and `127.0.0.1:8002` for the dashboard. The synthetic image topic `/camera/camera/color/image_raw` was visible and stable at about `30.305 Hz`; `web_video_server` handled requests for the default sim camera, the RealSense-style topic, and the valid-but-nonexistent warning-path topic.
+- The first-time guide popup difference was explained as browser-origin storage: `http://localhost:8002` and `http://127.0.0.1:8002` have separate `localStorage`, so the tutorial flag is not shared between them. No dashboard code change is needed for that behavior.
+- Local checks passed after the dashboard/doc edits: `node --check web_dashboard/autoboat/app.js`, `git diff --check`, conflict-marker grep, and the public-repo visibility sweep.
+
+Next steps:
+
+- Commit and push the dashboard camera-topic warning fix while still on internet WiFi.
+- Resume QGC Block C attribution next week as observation-only work, with the original upload/control prohibitions still active.
+- Treat the Pi / IoT RealSense acceptance run as a separate live-network check; if used, bind exposure deliberately and stop `rosbridge`, `web_video_server`, and the dashboard when finished.
+
 ## Block A - Repo and source refresh
 
 - [ ] Run repo guard:
