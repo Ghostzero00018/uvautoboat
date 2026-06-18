@@ -598,6 +598,19 @@ function initCameraFeed() {
 // Rejects URL-special chars (?, #, &, spaces, etc.) so we can't construct a
 // malformed web_video_server query via user typo or hostile clipboard paste.
 const ROS_TOPIC_PATTERN = /^\/[a-zA-Z0-9_/]+$/;
+let cameraTopicWhitelist = new Set();
+let cameraTopicWhitelistReady = false;
+
+function refreshCameraTopicWhitelist() {
+    const options = document.getElementById('camera-topic-options');
+    if (!options) return;
+    cameraTopicWhitelist = new Set(
+        [...options.querySelectorAll('li[data-topic]')]
+            .map(li => li.dataset.topic)
+            .filter(Boolean)
+    );
+    cameraTopicWhitelistReady = cameraTopicWhitelist.size > 0;
+}
 
 function updateCameraStream() {
     if (!cameraImageEl || !cameraTopicInput || !cameraStatusEl) {
@@ -611,6 +624,8 @@ function updateCameraStream() {
         cameraStatusEl.dataset.userError = 'true';
         return;
     }
+    refreshCameraTopicWhitelist();
+    const topicOutsideWhitelist = cameraTopicWhitelistReady && !cameraTopicWhitelist.has(topic);
     // If the field was blank, surface the default we're actually using.
     if (!cameraTopicInput.value.trim()) {
         cameraTopicInput.value = topic;
@@ -627,7 +642,12 @@ function updateCameraStream() {
     // Valid topic — clear any sticky user-input error so load handler can resume updates.
     cameraStatusEl.dataset.userError = '';
     cameraStatusEl.classList.remove('error');
-    cameraStatusEl.textContent = `Connecting to ${topic}...`;
+    cameraStatusEl.textContent = topicOutsideWhitelist
+        ? `Connecting to ${topic} (not in discovered image-topic list)...`
+        : `Connecting to ${topic}...`;
+    if (topicOutsideWhitelist) {
+        showFeedback('Camera topic not in discovered list; trying anyway', 'warning');
+    }
     const streamUrl = buildCameraUrl(topic);
     // Tear the old stream down explicitly before opening the new one. Without
     // this interval, rapid img.src swaps race web_video_server's per-client
@@ -658,6 +678,7 @@ function initCameraTopicCombobox() {
     const toggle = document.getElementById('camera-topic-toggle');
     const options = document.getElementById('camera-topic-options');
     if (!input || !toggle || !options) return;
+    refreshCameraTopicWhitelist();
 
     const hide = () => { options.hidden = true; };
     const show = () => {
@@ -758,6 +779,7 @@ async function populateCameraTopicList() {
         li.title = topic;  // tooltip for hover when text-overflow truncates the entry
         return li;
     }));
+    refreshCameraTopicWhitelist();
     if (DEBUG_MODE) console.log(`Camera topic list: ${imageTopics.length} topics discovered`);
 }
 

@@ -2,7 +2,7 @@
 
 Security posture, known vulnerabilities, and recommended mitigations for the AutoBoat web dashboard.
 
-**Status:** Assessment completed 16/04/2026. Initial code fixes (SRI hashes, server-side `PARAM_RANGES` bounds) landed 17/04/2026; dashboard XSS rendering fixes landed 04/05/2026; CSP wrapper + CDN-free Path A vendoring landed 05/05/2026; CSP `'unsafe-inline'` drop on `script-src` + `style-src` + per-request Host derivation landed 06/05/2026. Remaining items below.
+**Status:** Assessment completed 16/04/2026. Initial code fixes (SRI hashes, server-side `PARAM_RANGES` bounds) landed 17/04/2026; dashboard XSS rendering fixes landed 04/05/2026; CSP wrapper + CDN-free Path A vendoring landed 05/05/2026; CSP `'unsafe-inline'` drop on `script-src` + `style-src` + per-request Host derivation landed 06/05/2026; camera free-text topic warning landed 18/06/2026. Remaining items below.
 
 ---
 
@@ -77,14 +77,14 @@ PID gains, speeds, safety distances, A\* settings, and other tunables are now va
 - **Files:** `control/control/heading_controller.py` (`_validate`), `plan/plan/waypoint_planner.py` (`_validate`), `plan/plan/lidar_perception.py` (range check inside config callback)
 - **Impact:** range-out values rejected; valid-but-unsafe operational commands still succeed without authentication.
 
-#### 6. Camera topic input — only syntactic validation, no type check
+#### 6. Camera topic input — syntactic validation plus image-topic warning
 
 The camera topic input is validated against `ROS_TOPIC_PATTERN` (`/^\/[a-zA-Z0-9_/]+$/`), which blocks URL-special characters (`?`, `#`, `&`, spaces) and enforces ROS-shaped names. As of 23/04/2026 the combobox also restricts the dropdown to topics that `/rosapi/topics_for_type` reports as `sensor_msgs/Image` or `sensor_msgs/CompressedImage`, filtered by an `image_{raw,rect,color,compressed}` name pattern.
 
-Residual gap: free-text input still bypasses the dropdown whitelist, and `web_video_server` does not itself enforce that a requested topic is image-typed — it will subscribe to any name as `sensor_msgs/Image` and leak a zombie subscription if the real publisher type differs.
+As of 18/06/2026, free-text input is compared against the same dropdown / discovered-topic list before the dashboard updates the MJPEG URL. If the topic is not in that list, the dashboard warns but still tries the stream. This preserves manual entry for late-starting or restarted camera topics while nudging operators toward topics discovered by rosbridge.
 
 - **File:** `web_dashboard/autoboat/app.js` — `updateCameraStream`, `populateCameraTopicList`
-- **Impact:** attacker with dashboard access can still construct an arbitrary `image_raw`-named stream URL; mostly a nuisance (fails silently) rather than an exfiltration path, but contributes to `web_video_server` state leaks.
+- **Residual:** `web_video_server` remains unauthenticated on the LAN and still trusts direct HTTP requests to `:8080`; this dashboard-side warning does not protect clients that bypass the dashboard.
 
 #### 7. Direct thrust publishing via rosbridge
 
@@ -141,7 +141,7 @@ The `/rosout` subscription displays all debug/info/warning/error messages from a
 |:----|:-----------|
 | Basic authentication | Use nginx as a reverse proxy with `htpasswd` for HTTP basic auth in front of all 3 ports (lands with [Option B](#implementation-paths-recommended-order-of-adoption)) |
 | Enable WSS/HTTPS | Configure nginx TLS termination with a self-signed certificate for LAN use (lands with [Option B](#implementation-paths-recommended-order-of-adoption)) |
-| Whitelist camera topics | **Partially implemented 23/04/2026** — combobox dropdown is restricted to topics advertising `sensor_msgs/Image` via `/rosapi/topics_for_type`, plus an `image_raw`/`image_rect`/etc. name-pattern filter. Remaining gap: free-text input in the same field still bypasses the whitelist; a complete fix would reject non-image topics at `updateCameraStream` entry before hitting web_video_server. |
+| Warn on non-listed camera topics | **Done 18/06/2026** — combobox dropdown is restricted to topics advertising `sensor_msgs/Image` or `sensor_msgs/CompressedImage` via `/rosapi/topics_for_type`, plus an `image_raw`/`image_rect`/etc. name-pattern filter; free-text input outside that list warns but still tries the stream to support late-starting camera topics. |
 | ~~Server-side param bounds~~ | **Already done 17/04/2026** — `PARAM_RANGES` rejection in each node's config callback (`heading_controller`, `waypoint_planner`, `lidar_perception`). See finding #5 above for the residual operational risk (valid-but-tactically-dangerous values within bounds + missing auth). |
 
 ### Full hardening (future architecture)

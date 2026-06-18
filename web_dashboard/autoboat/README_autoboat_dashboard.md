@@ -44,7 +44,7 @@ Real-time web-based monitoring and control dashboard for the AutoBoat autonomous
 
 ## Current Real-Boat Status
 
-As of 08/06/2026, this dashboard remains simulation-first: it reads and writes the existing `/wamv/*` topic contract. The Pi 5 MAVProxy / MAVROS camera-off telemetry path is proven, but no real-topic adapter is implemented here yet. For RealSense checks, use the camera topic selector or manual topic entry for `/camera/camera/color/image_raw` only after `web_video_server` can see that topic. Do not use dashboard mission or thruster controls against the real FCU until the command path is separately validated.
+As of 18/06/2026, this dashboard remains simulation-first: it reads and writes the existing `/wamv/*` topic contract. The Pi 5 MAVProxy / MAVROS camera-off telemetry path is proven, but no real-topic adapter is implemented here yet. For RealSense checks, prefer the camera topic selector after rosbridge discovery lists `/camera/camera/color/image_raw`; manual entry can still try the topic for late-starting cameras, but the dashboard warns if it is not in the discovered list. Do not use dashboard mission or thruster controls against the real FCU until the command path is separately validated.
 
 ## Quick Start
 
@@ -138,8 +138,8 @@ algorithmic tuning as field footguns.
 To promote a launch-only param to dashboard-tunable, wire all eight surfaces:
 `PARAM_RANGES` range tuple + node `config_callback` branch + `PARAM_TO_INPUT_IDS`
 in `app.js` + apply function's local `idMap` (`controllerIdMap` /
-`perceptionIdMap` / `mainIdMap` in `sendConfig`) + apply function's `fullParams`
-+ `allConfigInputs` (dirty-state listener) + `updateXxxInputs` guarded set +
+`perceptionIdMap` / `mainIdMap` in `sendConfig`) + apply function's `fullParams` +
+`allConfigInputs` (dirty-state listener) + `updateXxxInputs` guarded set +
 matching `<input>` in `index.html`. Add the DOM-id to `PRESET_INPUT_IDS` too if
 presets should diff/flash this field.
 
@@ -281,4 +281,4 @@ Part of the uvautoboat project — Apache License 2.0.
 
 Built with [roslibjs](http://robotwebtools.org/), [Leaflet.js](https://leafletjs.com/), [OpenStreetMap](https://www.openstreetmap.org/).
 
-Last updated: 08/06/2026
+Last updated: 18/06/2026
