@@ -61,13 +61,13 @@ Carry-forward after the pivot:
 - Additional user observation: with the whole simulation stack and dashboard running, replacing only the dashboard Camera panel topic with `/camera/camera/color/image_raw` kept the RealSense feed visible while a full simulated out-and-return-home mission appeared to complete normally. This is simulation UI coexistence evidence only; it does not prove real-boat control, QGC upload, Herelink acceptance, MAVROS telemetry, or real-FCU command/write behavior.
 - Durable docs were refreshed to carry the new camera-only evidence and procedure link: `Board.md`, `wiki/Roadmap.md`, `wiki/Home.md`, `wiki/README_WIKI.md`, and `USER_MANUAL.md`.
 - Local docs-quality pass checked changed durable docs, wiki sync inclusion, link targets, whitespace, conflict markers, and public-repo visibility. The QGC scaffold checkboxes remain unticked because the QGC attribution block was deferred.
+- EOD 18/06/2026: RealSense dashboard procedure docs landed as `a84f65d`, the Pipeline C diary result landed as `5f8b4f0`, and local `main` matched `origin/main` before this final closeout edit. QGC Block C attribution remains parked for next week as observation-only work.
 
 Current next steps:
 
 - Stop the Pi RealSense node, rosbridge, `web_video_server`, and dashboard server after the test window.
 - For future field camera checks, start from the `424x240x15` color-only profile and verify workstation `ros2 topic hz` before opening the dashboard.
 - Keep the QGC Block C attribution follow-up deferred to next week and observation-only.
-- Commit and push the RealSense dashboard procedure docs while still on internet WiFi.
 
 ## Block A - Repo and source refresh
 
