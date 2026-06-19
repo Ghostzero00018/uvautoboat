@@ -146,6 +146,20 @@ Pi 5 side:
 - Pi-side packages were not live-checked in this block. The workstation stayed on `IMT Nord Europe 5G`; the Pi is normally checked on `IoT IMT Nord Europe`, and no WiFi switch / SSH package audit was run.
 - Do not infer Pi 5 MAVROS, MAVProxy, or ROS 2 Jazzy update status from the workstation package state. A future Pi-side read-only package check should be run on the Pi itself, separate from camera evidence and before any camera-OFF MAVProxy / MAVROS health re-check.
 
+## 19/06 Pi 5 update-impact live check (camera OFF)
+
+Closes the Pi-side open item above. The read-only MAVProxy / MAVROS / ROS 2 Jazzy update-impact check was run on the Pi 5 itself over `IoT IMT Nord Europe`, with RealSense OFF. Result: PASS, no regression.
+
+- Pi inventory clean: ROS 2 Jazzy, `ROS_DOMAIN_ID=12`, `dpkg --audit` clean, and `apt` reports all packages up to date after `apt update`. No local `~/seal_ws/install` on the Pi, so no colcon rebuild is implied.
+- The Pi received the same 18/06/2026 ROS sync as the workstation (one bulk `ros-jazzy` package transaction). MAVROS held upstream `2.14.0` across `ros-jazzy-mavros`, `ros-jazzy-mavros-extras`, and `ros-jazzy-mavros-msgs` (timestamped rebuild, no version bump); `ros-jazzy-ros-base` `0.11.0` and `ros-jazzy-web-video-server` `3.1.0` were rebuild-only as well. `ros-jazzy-realsense2-camera` `4.57.7 -> 4.58.1` was the only real bump and is camera-side / out of scope here. `ros-jazzy-rosbridge-server` is not installed on the Pi.
+- MAVProxy runs from `pip --user` at `/home/imt-aqua-drone/.local/bin/mavproxy.py`, outside apt, so the ROS sync did not touch it. Its exact version was not captured because the `pipx` probes returned empty; "MAVProxy works" is proven by heartbeat only.
+- Serial path clear: `/dev/ttyAMA0` present, `serial-getty@ttyAMA0.service` disabled / inactive, no UDP port contention. MAVProxy reached the FCU at baud `57600`: `Detected vehicle 1:1`, `online system 1`, Mode HOLD.
+- MAVROS read-side green: 136 `/mavros/*` topics, `/mavros/state` `connected: true`, live `/mavros/imu/data` (linear acceleration near gravity), and `/mavros/battery` `16.322 V`, `present: true`.
+- Cross-machine DDS over `IoT IMT Nord Europe` green: the workstation received the Pi `/dds_check` publisher, then saw 136 `/mavros/*` topics, `/mavros/state` `connected: true`, and live IMU. No AP client isolation observed on this network.
+- Expected-open (not regressions): EKF GPS-config waiting, no GPS fix, wrong FCU time, empty RC channels, `system_status: 5` — consistent with the known bench state.
+
+**Next steps:** record the exact MAVProxy / `pymavlink` version on the Pi (`mavproxy.py --version`, `pip show MAVProxy pymavlink`) at the next Pi session; `ros-jazzy-realsense2-camera` `4.58.1` vs latest `4.58.2` is a camera-side patch to revisit when the camera path is in scope.
+
 ## Block D - Optional camera observation
 
 Run only if explicitly approved.
