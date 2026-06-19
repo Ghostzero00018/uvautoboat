@@ -99,6 +99,53 @@ Main work for the day. Inspect first; edit only after the stale claim or defect 
   - defer
   - no change needed
 
+## 19/06 Block C dashboard hygiene audit result
+
+Scope today: docs-only dashboard / camera hygiene. No live Pi, RealSense, rosbridge, `web_video_server`, browser, simulation-stack, QGC, MAVROS, or real-FCU check was run. `web_dashboard/autoboat/app.js` was spot-checked only to confirm the existing camera topic validation / warning path.
+
+Apply now:
+
+- `wiki/RealSense_Dashboard_Testing.md` now explains why the workstation ROS daemon restart remains part of W1 for this field check: on 18/06/2026, the workstation only discovered the Pi camera topic after the environment was set and the daemon was restarted.
+- `wiki/RealSense_Dashboard_Testing.md` now makes AP client isolation / DDS multicast filtering an explicit troubleshooting branch if the Pi sees `/camera/camera/color/image_raw` but the workstation still does not.
+- `wiki/RealSense_Dashboard_Testing.md` now records the `localhost` vs `127.0.0.1` browser-storage split for the first-time guide popup, so it is not mistaken for a dashboard connection fault.
+- `web_dashboard/autoboat/README_autoboat_dashboard.md` now points RealSense camera-display checks to `wiki/RealSense_Dashboard_Testing.md` and keeps the simulation-first `/wamv/*` contract / no-real-topic-adapter wording intact.
+- `wiki/Dashboard_Security.md` now states loopback-only guidance for all three unauthenticated browser-facing services: dashboard `:8002`, rosbridge `:9090`, and `web_video_server` `:8080`.
+
+Defer:
+
+- No compressed-image / bandwidth recommendation was promoted beyond the current discovered-topic support. The dashboard can list `sensor_msgs/msg/CompressedImage`, but the proven 18/06 RealSense dashboard path used `/camera/camera/color/image_raw` through the MJPEG stream, so a compressed-topic recommendation still needs separate evidence.
+- Optional live camera observation, simulation-stack coexistence, and camera-OFF Pi 5 MAVProxy / MAVROS read-only health re-check were not run.
+
+No change needed:
+
+- The dashboard remains simulation-first and still uses the `/wamv/*` topic contract.
+- No real-topic adapter is implemented.
+- Mission / thruster controls remain out of scope for real-FCU use.
+- QGC Block C attribution remains parked for next week as observation-only work.
+
+## 19/06 package-update impact check
+
+Workstation checks:
+
+- `apt list --upgradable` reported no pending packages after the local updates.
+- The 18/06/2026 ROS 2 Jazzy update was a large package sync / binary rebuild set, not a distro or repo migration. It included packages directly relevant to this project surface, including `ros-jazzy-rosbridge-server` `2.6.0 -> 2.7.0`, `ros-jazzy-rosbridge-suite` `2.6.0 -> 2.7.0`, `ros-jazzy-web-video-server` rebuilt as `3.1.0-1noble.20260615.150732`, `ros-jazzy-mavros` rebuilt as `2.14.0-1noble.20260615.151804`, `ros-jazzy-mavros-msgs` rebuilt as `2.14.0-1noble.20260615.130828`, `ros-jazzy-ros-gz` rebuilt as `1.0.22-1noble.20260616.074726`, and `ros-jazzy-rviz2` `14.1.20 -> 14.1.22`.
+- Installed changelogs show `rosbridge_server` 2.7.0 adds separate publish / subscribe topic glob arguments and an optional EventsExecutor path; the current dashboard docs still use the same `rosbridge_websocket_launch.xml address:=127.0.0.1` shape, so no repo edit is required from this audit.
+- Installed changelogs show `web_video_server` remained upstream 3.1.0, with only a timestamped binary rebuild in the installed package; the existing MJPEG URL and loopback bind docs still match the current use.
+- Installed changelogs show the current `ros-jazzy-mavros` package is still upstream 2.14.0; the installed binary is a timestamped rebuild. This does not change the documented camera-OFF MAVProxy fanout -> MAVROS `apm.launch fcu_url:=udp://127.0.0.1:14550@` check.
+- The 19/06/2026 Gazebo update installed Gazebo Sim 8 packages `8.13.0 -> 8.14.0` (`python3-gz-sim8`, `libgz-sim8`, `libgz-sim8-dev`, `libgz-sim8-plugins`, `gz-sim8-cli`). The local Debian changelog only records `gz-sim8 8.14.0-1 release`.
+- Active `gz sim --version` still reports `Gazebo Sim, version 8.11.0` through `/opt/ros/jazzy/opt/gz_tools_vendor/bin/gz`; `/usr/bin/gz` also reports 8.11.0. Treat this as an installed-package update, not proof that the active VRX runtime is using 8.14.0, until a normal simulation smoke test is run.
+
+Project impact:
+
+- No source, launch, dashboard, wiki, or Board change is required solely because of the 18/06 ROS sync or 19/06 Gazebo package update.
+- Because rosbridge and Gazebo packages are in the runtime path, the next approved simulation/dashboard run should include a normal launcher smoke test before relying on previous runtime behaviour.
+- No camera, MAVROS, or simulation live acceptance was run as part of this update check.
+
+Pi 5 side:
+
+- Pi-side packages were not live-checked in this block. The workstation stayed on `IMT Nord Europe 5G`; the Pi is normally checked on `IoT IMT Nord Europe`, and no WiFi switch / SSH package audit was run.
+- Do not infer Pi 5 MAVROS, MAVProxy, or ROS 2 Jazzy update status from the workstation package state. A future Pi-side read-only package check should be run on the Pi itself, separate from camera evidence and before any camera-OFF MAVProxy / MAVROS health re-check.
+
 ## Block D - Optional camera observation
 
 Run only if explicitly approved.
