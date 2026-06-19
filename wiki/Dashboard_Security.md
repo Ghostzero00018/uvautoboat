@@ -13,7 +13,7 @@ Security posture, known vulnerabilities, and recommended mitigations for the Aut
 | Authentication | None — no login required |
 | Authorization | None — all users have full control (start mission, emergency stop, modify parameters) |
 | Transport encryption | None — plain HTTP (8002), WS (9090), HTTP (8080) |
-| Network binding | `0.0.0.0` on all 3 ports — accessible to entire LAN |
+| Network binding | Default launch posture is `0.0.0.0` on all 3 ports — accessible to entire LAN. Loopback-only test runs should bind `8002`, `9090`, and `8080` to `127.0.0.1`. |
 | Input validation | **Two-layer (since 17/04/2026):** client-side HTML `min`/`max` attributes + server-side `PARAM_RANGES` rejection in each Python node (`heading_controller`, `waypoint_planner`, `lidar_perception`). Out-of-range values rejected with `Rejected <name>=<value> (valid range: lo–hi)` at WARN level. |
 | XSS protection | Improved — world banner, rosout terminal, event logs, mission history, and waypoint validation all write dynamic text via `textContent`. CSP wrapper deployed 05/05/2026 (CDN-free after Roadmap §1.3 path A vendoring landed same day); `'unsafe-inline'` dropped from `script-src` + `style-src` 06/05/2026 — see [Content Security Policy](#content-security-policy) below. |
 
@@ -85,6 +85,7 @@ As of 18/06/2026, free-text input is compared against the same dropdown / discov
 
 - **File:** `web_dashboard/autoboat/app.js` — `updateCameraStream`, `populateCameraTopicList`
 - **Residual:** `web_video_server` remains unauthenticated on the LAN and still trusts direct HTTP requests to `:8080`; this dashboard-side warning does not protect clients that bypass the dashboard.
+- **Operational note:** camera-display tests should keep `web_video_server`, rosbridge, and the dashboard bound to `127.0.0.1` unless there is a deliberate exposure reason, then verify the bind result with `ss`.
 
 #### 7. Direct thrust publishing via rosbridge
 
@@ -254,11 +255,13 @@ sudo ufw deny 9090
 sudo ufw deny 8080
 ```
 
-Or bind services to localhost only (prevents all remote access):
+Or bind browser-facing services to localhost only (prevents remote access to the dashboard, rosbridge, and the MJPEG stream):
 
 ```bash
-# In launch script, change the HTTP server command to:
+ros2 launch rosbridge_server rosbridge_websocket_launch.xml address:=127.0.0.1
+ros2 run web_video_server web_video_server --ros-args -p address:=127.0.0.1
 python3 serve_dashboard.py 8002 127.0.0.1
+ss -tlnp | grep -E ':(8002|8080|9090)\b'
 ```
 
 ### For field deployment

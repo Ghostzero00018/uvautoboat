@@ -24,6 +24,8 @@ The workstation `~/.bashrc` sets `ROS_DOMAIN_ID=12` for new interactive shells, 
 
 `ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET` is per-terminal in this procedure. If one terminal sees the camera and another does not, check that each terminal exported it before starting its ROS process.
 
+Keep the workstation ROS daemon restart in the W1 recipe for this field check. On 18/06/2026, the workstation only discovered the Pi camera topic after the environment was set and the daemon was restarted.
+
 ## Recommended RealSense Profile
 
 Use this profile first for dashboard viewing:
@@ -80,7 +82,7 @@ Pass criteria:
 - `/camera/camera/color/image_raw` appears in `ros2 topic list`.
 - `ros2 topic hz` reports frames on the workstation.
 
-If the topic is unknown on the workstation but exists on the Pi, this is a DDS discovery / network issue, not a dashboard issue. Re-check `ROS_DOMAIN_ID`, `ROS_AUTOMATIC_DISCOVERY_RANGE`, `ROS_LOCALHOST_ONLY`, WiFi, and the ROS daemon.
+If the topic is unknown on the workstation but exists on the Pi, this is a DDS discovery / network issue, not a dashboard issue. Re-check `ROS_DOMAIN_ID`, `ROS_AUTOMATIC_DISCOVERY_RANGE`, `ROS_LOCALHOST_ONLY`, WiFi, and the ROS daemon. If that still fails, suspect AP client isolation or DDS multicast filtering before changing dashboard settings; verify both machines are on the same SSID/subnet and repeat a simple ROS 2 talker/listener check as described in [Roadmap §1.1](Roadmap#11-scope-clarifications-locked-30042026).
 
 QoS note: `ros2 topic hz` in ROS 2 Jazzy uses a RELIABLE subscription and has no `--qos-*` flag. Check `ros2 topic info --verbose /camera/camera/color/image_raw` and read the `Reliability` line. If a future camera configuration publishes BEST_EFFORT, use the repo's QoS-aware probe instead:
 
@@ -132,6 +134,8 @@ http://127.0.0.1:8002
 ```
 
 For a pre-populated camera dropdown, open the dashboard only after W1 has already proven that `/camera/camera/color/image_raw` is visible. The dashboard asks rosbridge for image topics when the page connects; if the camera starts later, type the topic manually or hard-refresh the page after W1 passes.
+
+Use the same browser origin during one evidence capture. `http://localhost:8002` and `http://127.0.0.1:8002` have separate browser storage, so the first-time guide may appear on one URL and not the other. That is expected and does not indicate a dashboard connection fault.
 
 ## Workstation Terminal W5 - Confirm Local-Only Exposure
 

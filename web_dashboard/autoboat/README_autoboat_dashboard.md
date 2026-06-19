@@ -44,7 +44,7 @@ Real-time web-based monitoring and control dashboard for the AutoBoat autonomous
 
 ## Current Real-Boat Status
 
-As of 18/06/2026, this dashboard remains simulation-first: it reads and writes the existing `/wamv/*` topic contract. The Pi 5 MAVProxy / MAVROS camera-off telemetry path is proven, but no real-topic adapter is implemented here yet. For RealSense checks, prefer the camera topic selector after rosbridge discovery lists `/camera/camera/color/image_raw`; manual entry can still try the topic for late-starting cameras, but the dashboard warns if it is not in the discovered list. Do not use dashboard mission or thruster controls against the real FCU until the command path is separately validated.
+As of 18/06/2026, this dashboard remains simulation-first: it reads and writes the existing `/wamv/*` topic contract. The Pi 5 MAVProxy / MAVROS camera-off telemetry path is proven, but no real-topic adapter is implemented here yet. For RealSense camera-display checks, follow [RealSense Dashboard Testing](../../wiki/RealSense_Dashboard_Testing.md): prefer the camera topic selector after rosbridge discovery lists `/camera/camera/color/image_raw`; manual entry can still try the topic for late-starting cameras, but the dashboard warns if it is not in the discovered list. Do not use dashboard mission or thruster controls against the real FCU until the command path is separately validated.
 
 ## Quick Start
 
@@ -226,7 +226,7 @@ Start, Resume, Go Home, Reset, and Emergency Stop prompt a confirmation before a
 | Port 9090 in use                  | Kill old instance: `pkill -9 -f rosbridge`                            |
 | Apply buttons stay grey           | Nodes not publishing `/planning/config` — check navigation is launched |
 | Reset then Apply sends old values | Fixed — Reset now marks inputs dirty to prevent ROS sync race         |
-| Camera feed not showing           | Check web_video_server: `ros2 run web_video_server web_video_server`  |
+| Camera feed not showing           | Check `web_video_server`; for Pi RealSense use the loopback-only procedure in `wiki/RealSense_Dashboard_Testing.md` and compare the direct MJPEG URL before changing the camera launch |
 | Map tiles not loading             | Requires internet for OpenStreetMap tiles. For offline deployment see Roadmap §1.3 Path B (offline tile server). |
 | ROSLIB not defined (console)      | Vendored roslib failed to load — check `vendor/roslib/roslib.min.js` and browser console (F12). |
 | Half the page missing             | Vendored dashboard asset failed to load — check `vendor/roslib/`, `vendor/leaflet/`, and browser console (F12). |
@@ -264,7 +264,7 @@ sudo ufw status
 
 ## Security
 
-The dashboard currently has **no authentication, encryption, or access control**. All 3 ports (8002, 9090, 8080) are accessible to any device on the same network.
+The dashboard currently has **no authentication, encryption, or access control**. With the default all-interface launch posture, all 3 ports (8002, 9090, 8080) are accessible to any device on the same network.
 
 This is acceptable for local simulation but poses risks on shared networks or field deployments. See **[wiki/Dashboard_Security.md](../../wiki/Dashboard_Security.md)** for the full security assessment, known vulnerabilities, and recommended mitigations.
 
