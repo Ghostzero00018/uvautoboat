@@ -151,7 +151,7 @@ Pi 5 side:
 Closes the Pi-side open item above. The read-only MAVProxy / MAVROS / ROS 2 Jazzy update-impact check was run on the Pi 5 itself over `IoT IMT Nord Europe`, with RealSense OFF. Result: PASS, no regression.
 
 - Pi inventory clean: ROS 2 Jazzy, `ROS_DOMAIN_ID=12`, `dpkg --audit` clean, and `apt` reports all packages up to date after `apt update`. No local `~/seal_ws/install` on the Pi, so no colcon rebuild is implied.
-- The Pi received the same 18/06/2026 ROS sync as the workstation (one bulk `ros-jazzy` package transaction). MAVROS held upstream `2.14.0` across `ros-jazzy-mavros`, `ros-jazzy-mavros-extras`, and `ros-jazzy-mavros-msgs` (timestamped rebuild, no version bump); `ros-jazzy-ros-base` `0.11.0` and `ros-jazzy-web-video-server` `3.1.0` were rebuild-only as well. `ros-jazzy-realsense2-camera` `4.57.7 -> 4.58.1` was the only real bump and is camera-side / out of scope here. `ros-jazzy-rosbridge-server` is not installed on the Pi.
+- The Pi received the same 18/06/2026 ROS sync as the workstation (one bulk `ros-jazzy` transaction). For the packages checked here, MAVROS stayed upstream `2.14.0` (`ros-jazzy-mavros` / `-extras` / `-msgs`) and `ros-jazzy-ros-base` `0.11.0` / `ros-jazzy-web-video-server` `3.1.0` were same-upstream-version rebuilds (timestamp suffix only); `ros-jazzy-realsense2-camera` bumped `4.57.7 -> 4.58.1` (camera-side / out of scope here). Other ROS dependency packages did move in the sync — patch-level, e.g. `rclcpp` `28.1.18 -> 28.1.21`, `rcl` `9.2.9 -> 9.2.11`, `rmw-fastrtps-cpp` `8.4.3 -> 8.4.4`, `tf2` `0.36.20 -> 0.36.21` — so it is the live MAVROS re-check below, not a rebuild-only assumption, that clears regression risk. `ros-jazzy-rosbridge-server` is not installed on the Pi.
 - MAVProxy runs from `pip --user` at `/home/imt-aqua-drone/.local/bin/mavproxy.py`, outside apt, so the ROS sync did not touch it. Its exact version was not captured because the `pipx` probes returned empty; "MAVProxy works" is proven by heartbeat only.
 - Serial path clear: `/dev/ttyAMA0` present, `serial-getty@ttyAMA0.service` disabled / inactive, no UDP port contention. MAVProxy reached the FCU at baud `57600`: `Detected vehicle 1:1`, `online system 1`, Mode HOLD.
 - MAVROS read-side green: 136 `/mavros/*` topics, `/mavros/state` `connected: true`, live `/mavros/imu/data` (linear acceleration near gravity), and `/mavros/battery` `16.322 V`, `present: true`.
@@ -160,9 +160,17 @@ Closes the Pi-side open item above. The read-only MAVProxy / MAVROS / ROS 2 Jazz
 
 **Next steps:** record the exact MAVProxy / `pymavlink` version on the Pi (`mavproxy.py --version`, `pip show MAVProxy pymavlink`) at the next Pi session; `ros-jazzy-realsense2-camera` `4.58.1` vs latest `4.58.2` is a camera-side patch to revisit when the camera path is in scope.
 
+## 19/06 Cross-machine discovery range pinned in bashrc
+
+Follow-up to the live check: `export ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET` was added to `~/.bashrc` on both the Pi 5 (host `imtaquadrone-desktop`, confirmed by `tail -3 ~/.bashrc` showing the appended line plus a live `echo`; this post-dates the saved test-log capture, whose bashrc paste ends at `ROS_DOMAIN_ID=12`) and the workstation, so new interactive terminals inherit the cross-machine discovery range and no longer need the per-terminal export the DDS leg used. Both `~/.bashrc` ROS blocks now match: source ROS 2 Jazzy, `ROS_DOMAIN_ID=12`, `ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET`. The lines sit below the interactive guard, so the values apply to interactive terminals only; non-interactive SSH one-liners and systemd units do not inherit them. `wiki/RealSense_Dashboard_Testing.md` updated to note the pinned default.
+
+## 19/06 EOD closeout
+
+Actual work today was docs-only plus a read-only Pi-side live check: the Block C dashboard / camera hygiene audit, the workstation and Pi 5 package-update impact check, the camera-OFF Pi 5 MAVProxy / MAVROS / ROS 2 Jazzy update-impact live check (PASS, no regression), the cross-machine discovery-range bashrc pinning above, and the durable-doc notes added to `Board.md` and `wiki/Roadmap.md`. Optional Blocks D and E (live camera observation, simulation-stack coexistence) were not run. The Block C note that the camera-OFF MAVROS health re-check was not run is block-scoped wording for that earlier block; the 19/06 Pi 5 update-impact live check above supersedes it for the day.
+
 ## Block D - Optional camera observation
 
-Run only if explicitly approved.
+Run only if explicitly approved. **Not run today (docs-only session).**
 
 Use `wiki/RealSense_Dashboard_Testing.md` as the canonical recipe. Do not duplicate the command sequence here.
 
@@ -183,7 +191,7 @@ Do not use dashboard mission or thruster controls during this block.
 
 ## Block E - Optional simulation-stack coexistence check
 
-Run only if explicitly approved after Block D or instead of Block D.
+Run only if explicitly approved after Block D or instead of Block D. **Not run today.**
 
 - [ ] Start normal simulation/dashboard stack.
 - [ ] Change only the dashboard Camera panel topic to `/camera/camera/color/image_raw`.
@@ -193,9 +201,11 @@ Run only if explicitly approved after Block D or instead of Block D.
 
 ## Wrap
 
-- [ ] Record whether today was docs-only, camera observation, or small approved fix.
-- [ ] Record exact commands / snippets used for any live claim.
-- [ ] If docs were edited, run:
+Day wrapped: repo documentation plus a read-only Pi-side live check (camera OFF). No repo code/config changed; the only config touched was `~/.bashrc` on the Pi and the workstation. The edited-docs checks and the public-repo visibility sweep ran clean, and the two-commit split (durable docs + diary) is prepared. Only commit + push remain; do them after switching back to normal internet WiFi.
+
+- [x] Record whether today was docs-only, camera observation, or small approved fix. — repo docs + a read-only Pi-side live check (camera OFF).
+- [x] Record exact commands / snippets used for any live claim. — captured in the sections above and the saved Pi test log.
+- [x] If docs were edited, run:
 
   ```bash
   git status --short --branch
@@ -203,9 +213,9 @@ Run only if explicitly approved after Block D or instead of Block D.
   rg -n "^(<{7}|={7}|>{7})" <edited-files>
   ```
 
-- [ ] Run the public-repo visibility sweep before any commit.
-- [ ] Keep commit scope split:
+- [x] Run the public-repo visibility sweep before any commit. — clean.
+- [x] Keep commit scope split:
   - dashboard/docs changes separate from diary changes
   - diary-only commit uses `docs(diary): ...`
-- [ ] Commit and push while still on internet WiFi.
-- [ ] End with bounded next steps and no stale completed action.
+- [ ] Commit and push while still on internet WiFi. — pending, final step.
+- [x] End with bounded next steps and no stale completed action.
