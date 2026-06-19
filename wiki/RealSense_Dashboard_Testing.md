@@ -20,9 +20,9 @@ Use this on the Pi and workstation:
 - `ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET`.
 - `ROS_LOCALHOST_ONLY` unset.
 
-The workstation `~/.bashrc` sets `ROS_DOMAIN_ID=12` for new interactive shells, but the commands below still set the discovery range explicitly.
+As of 19/06/2026, both the Pi 5 and the workstation `~/.bashrc` set `ROS_DOMAIN_ID=12` and `ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET` for new interactive shells, so a fresh terminal already carries the cross-machine discovery range; the commands below still set it explicitly as a safe redundancy and to cover non-interactive shells.
 
-`ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET` is per-terminal in this procedure. If one terminal sees the camera and another does not, check that each terminal exported it before starting its ROS process.
+Re-exporting `ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET` per terminal is harmless given that bashrc default. If one terminal sees the camera and another does not, check that each terminal has the value set — inherited from `~/.bashrc` or exported — before starting its ROS process.
 
 Keep the workstation ROS daemon restart in the W1 recipe for this field check. On 18/06/2026, the workstation only discovered the Pi camera topic after the environment was set and the daemon was restarted.
 
