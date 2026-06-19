@@ -217,5 +217,5 @@ Day wrapped: repo documentation plus a read-only Pi-side live check (camera OFF)
 - [x] Keep commit scope split:
   - dashboard/docs changes separate from diary changes
   - diary-only commit uses `docs(diary): ...`
-- [ ] Commit and push while still on internet WiFi. — pending, final step.
+- [x] Commit and push while still on internet WiFi. — done; the day's docs and diary commits were pushed on the current WiFi (`0eb3036`).
 - [x] End with bounded next steps and no stale completed action.
