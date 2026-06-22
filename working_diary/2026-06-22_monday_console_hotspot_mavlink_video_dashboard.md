@@ -260,6 +260,94 @@ MAVLink-to-ROS source is selected and measured. Console video first needs an
 RTSP-to-ROS-image or RTSP-to-MJPEG adapter decision. LiDAR and all command/write
 surfaces remain blocked.
 
+## 22/06 Blocks C-D-E live observation result
+
+Run folder:
+`/home/ghostzero/Desktop/test_logs_folder/console_hotspot_20260622_1441/`.
+
+Scope stayed observation-only. No QGC Upload, mission upload, arming, mode
+change, parameter write, thruster, actuator, real-FCU command path, MAVROS
+launch, MAVProxy router, or dashboard mission/thruster use was run. The Pi
+RealSense camera node and `rqt_image_view` were started only because the current
+Herelink image-transmission setup now forwards the Pi desktop rather than a
+direct camera feed.
+
+### Block C - hotspot/network inventory
+
+Evidence: `block_c_network_inventory.txt`.
+
+- Workstation was on `IMT-Aquatic-drone`.
+- Workstation interface `wlp147s0` had `192.168.43.160/24`.
+- Default route was `192.168.43.1` via `wlp147s0`; neighbor entry for
+  `192.168.43.1` was reachable.
+- QGroundControl later bound UDP `0.0.0.0:14550` during Block E.
+- First paste attempts lost `RUN_DIR`, so `tee` tried to write under `/` and
+  failed with permission errors. The run directory was restored and the useful
+  artifacts were saved afterward.
+
+### Block D - video path
+
+Evidence: `block_d_ffplay_tcp.txt` plus the earlier terminal paste for the UDP
+attempt.
+
+- Direct RTSP from the workstation to
+  `rtsp://192.168.43.1:8554/fpv_stream` worked.
+- The stream is LIVE555 H.264 High, `1920x1080`, `30 fps`.
+- UDP RTSP connected but showed repeated packet-loss / decode-error lines.
+- TCP RTSP connected cleanly and is the transport to prefer for this current
+  stream.
+- The actual video content was the Pi 5 desktop showing `rqt_image_view` /
+  ROS camera viewing, not a direct Herelink camera feed.
+
+Interpretation: Herelink RTSP transport to the workstation is proven, but the
+current image-transmission setup has regressed for the dashboard goal. It now
+requires a Pi-side camera node plus a GUI viewer, then forwards a desktop
+screen capture through Herelink RTSP. That adds camera -> ROS -> GUI render ->
+desktop capture -> H.264 -> RTSP latency, fixes the stream to the desktop output
+shape, and re-enters the 13/05 camera-consumer-exclusivity risk. Do not design a
+dashboard adapter around this desktop-capture path. The setup should be raised
+with the professor and, if possible, restored to a direct camera-to-Herelink
+video path before dashboard integration work.
+
+### Block E - MAVLink observation
+
+Evidence: `block_e_udp_inventory.txt`.
+
+- QGroundControl was running and bound UDP `0.0.0.0:14550`.
+- QGC telemetry was visible without control actions.
+- Repeated `EKF3 waiting for GPS config data` messages appeared; this matches
+  the known expected-open GPS/config state.
+- Battery/status was visible in QGC, but only a percent-style observation was
+  captured. A displayed `100%` battery percentage is not itself a fault because
+  prior ArduPilot/MAVROS captures also reported `percentage: 1.0`; the useful
+  next datum is battery voltage.
+- Selected vehicle sysid, mode, QGC comm-link list, MAVLink forwarding state,
+  and separate output/forwarding availability were not captured.
+- The optional `tcpdump` was not run, so the MAVLink sender IP/port and unicast
+  vs broadcast shape are still unknown.
+- MAVROS was not launched, and no ROS 2 `/mavros/*` source was created from the
+  console link.
+
+Interpretation: MAVLink transport from the Herelink/console path to workstation
+QGC is proven. The remaining MAVLink problem is forking that stream to a
+read-only ROS 2 consumer without disturbing QGC. Before choosing QGC forwarding
+vs workstation MAVProxy/router, capture the MAVLink sender with `tcpdump` while
+QGC telemetry is live.
+
+### `/wamv/*` replacement readiness after live evidence
+
+- Video: blocked for adapter design until the source is corrected. RTSP
+  reachability is good, but the current source is a Pi desktop/rqt screen
+  capture, not a clean camera stream.
+- GPS/IMU telemetry: still a read-only adapter candidate only after a confirmed
+  ROS 2 source exists. Today's evidence proves QGC MAVLink transport but not
+  MAVLink -> ROS 2 translation, QoS, rate, frame, or fix status.
+- Battery/status: QGC telemetry exists, but voltage was not captured; battery
+  percentage alone is not adapter-quality evidence.
+- LiDAR: no real topic proven.
+- Thrusters / mission / config commands: still unsafe command/write paths and
+  out of scope.
+
 ## Block G - Optional adapter design, no code unless approved
 
 Start only if Blocks D-F produce enough evidence and the user explicitly asks for design work.
@@ -288,10 +376,10 @@ Non-goals:
 
 ## Wrap
 
-- [ ] Record which live blocks ran and which stayed deferred.
-- [ ] Record exact network, console, QGC, and ROS evidence paths.
-- [ ] Keep video, MAVLink telemetry, and topic-replacement readiness as separate result sections.
-- [ ] If docs were edited, run:
+- [x] Record which live blocks ran and which stayed deferred.
+- [x] Record exact network, console, QGC, and ROS evidence paths.
+- [x] Keep video, MAVLink telemetry, and topic-replacement readiness as separate result sections.
+- [x] If docs were edited, run:
 
   ```bash
   git status --short --branch
@@ -299,6 +387,13 @@ Non-goals:
   rg -n "^(<{7}|={7}|>{7})" working_diary/2026-06-22_monday_console_hotspot_mavlink_video_dashboard.md
   ```
 
-- [ ] Run the public-repo visibility sweep before any commit.
-- [ ] Commit and push diary/docs work on normal internet WiFi.
-- [ ] End with bounded next steps and no stale completed action.
+- [x] Run the public-repo visibility sweep before any commit.
+- [x] Commit and push diary/docs work on normal internet WiFi.
+- [x] End with bounded next steps and no stale completed action.
+
+**Next steps:**
+
+- Raise the current Herelink video-source regression with the professor: restore or identify a direct camera-to-Herelink feed before any dashboard adapter design.
+- Re-run the Block E packet capture while workstation QGC telemetry is live to identify the MAVLink sender IP / port and unicast / broadcast shape.
+- After the sender is known, choose the read-only fork strategy for ROS 2 telemetry: QGC forwarding or a workstation MAVProxy/router feeding QGC and MAVROS on distinct ports.
+- Keep the dashboard simulation-first on `/wamv/*`; do not implement a real-topic adapter or map command/write topics until read-only ROS 2 topics are proven.
