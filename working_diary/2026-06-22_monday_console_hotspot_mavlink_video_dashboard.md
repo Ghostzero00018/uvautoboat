@@ -311,7 +311,8 @@ video path before dashboard integration work.
 
 ### Block E - MAVLink observation
 
-Evidence: `block_e_udp_inventory.txt`.
+Initial evidence: `block_e_udp_inventory.txt`.
+Later addendum evidence: `block_e_mavlink_udp_packets.txt`.
 
 - QGroundControl was running and bound UDP `0.0.0.0:14550`.
 - QGC telemetry was visible without control actions.
@@ -323,16 +324,25 @@ Evidence: `block_e_udp_inventory.txt`.
   next datum is battery voltage.
 - Selected vehicle sysid, mode, QGC comm-link list, MAVLink forwarding state,
   and separate output/forwarding availability were not captured.
-- The optional `tcpdump` was not run, so the MAVLink sender IP/port and unicast
-  vs broadcast shape are still unknown.
+- At the initial Block E snapshot, the optional `tcpdump` had not yet been run.
 - MAVROS was not launched, and no ROS 2 `/mavros/*` source was created from the
   console link.
 
+16:07 addendum: packet capture completed while workstation QGC telemetry was
+live. The saved file contains 100 packet lines: 90 inbound packets from
+`192.168.43.1:52600` to workstation `192.168.43.160:14550`, 5 QGC replies from
+`192.168.43.160:14550` to `192.168.43.1:52600`, and 5 QGC replies from
+`192.168.43.160:14550` to `192.168.43.1:54804`. The terminal summary reported
+100 packets captured and 0 packets dropped by the kernel.
+
 Interpretation: MAVLink transport from the Herelink/console path to workstation
-QGC is proven. The remaining MAVLink problem is forking that stream to a
-read-only ROS 2 consumer without disturbing QGC. Before choosing QGC forwarding
-vs workstation MAVProxy/router, capture the MAVLink sender with `tcpdump` while
-QGC telemetry is live.
+QGC is proven as unicast UDP into QGC's `14550` socket. The remaining MAVLink
+problem is forking that stream to a read-only ROS 2 consumer without disturbing
+QGC. Because the Herelink gateway is sending unicast to QGC, a second passive
+MAVROS bind on `14550` is not a valid duplication strategy. QGC MAVLink
+forwarding to a separate local UDP port is the first-choice next test; a
+workstation MAVProxy/router stays reserved for cases where QGC forwarding is
+insufficient or a later command-capable route is explicitly approved.
 
 ### `/wamv/*` replacement readiness after live evidence
 
@@ -360,8 +370,11 @@ Design questions:
   - QGC-only video viewer for now?
 - Should real telemetry reach the dashboard by:
   - MAVROS on Pi 5 -> DDS -> workstation -> adapter;
-  - MAVROS on workstation consuming console MAVLink directly;
-  - MAVProxy router on workstation feeding MAVROS and QGC separately;
+  - QGC MAVLink forwarding -> workstation MAVROS on a separate local UDP port;
+  - MAVROS on workstation consuming a forwarded/router MAVLink port, not QGC's
+    occupied `14550` socket directly;
+  - MAVProxy router on workstation feeding MAVROS and QGC separately, reserved
+    for later if QGC forwarding is insufficient;
   - no dashboard telemetry until a safe topic adapter is written?
 - Should the adapter publish `/wamv/*` compatibility topics, or should dashboard/navigation code learn a real-topic mode?
 - How will read-only telemetry be separated from any real-FCU write path?
@@ -394,6 +407,6 @@ Non-goals:
 **Next steps:**
 
 - Raise the current Herelink video-source regression with the professor: restore or identify a direct camera-to-Herelink feed before any dashboard adapter design.
-- Re-run the Block E packet capture while workstation QGC telemetry is live to identify the MAVLink sender IP / port and unicast / broadcast shape.
-- After the sender is known, choose the read-only fork strategy for ROS 2 telemetry: QGC forwarding or a workstation MAVProxy/router feeding QGC and MAVROS on distinct ports.
+- Test QGC MAVLink forwarding first: keep QGC on `14550`, forward telemetry one-way to a separate local UDP port, then attach workstation MAVROS to that forwarded port.
+- Reserve a workstation MAVProxy/router for later only if QGC forwarding is lossy / unavailable or if a command-capable route is explicitly approved.
 - Keep the dashboard simulation-first on `/wamv/*`; do not implement a real-topic adapter or map command/write topics until read-only ROS 2 topics are proven.
