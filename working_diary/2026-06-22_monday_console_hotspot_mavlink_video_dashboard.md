@@ -38,7 +38,7 @@ This should be treated as observation and prerequisite mapping first. The curren
 
 ## Block A - Repo guard and source refresh
 
-- [ ] Run:
+- [x] Run:
 
   ```bash
   git fetch --prune
@@ -47,10 +47,10 @@ This should be treated as observation and prerequisite mapping first. The curren
   git rev-parse HEAD origin/main
   ```
 
-- [ ] If fetch fails while still on normal internet WiFi, stop and report.
-- [ ] If behind `origin/main`, run `git pull --ff-only`, then re-check status.
-- [ ] If ahead, diverged, or dirty, stop and report before continuing.
-- [ ] Re-read:
+- [x] If fetch fails while still on normal internet WiFi, stop and report.
+- [x] If behind `origin/main`, run `git pull --ff-only`, then re-check status.
+- [x] If ahead, diverged, or dirty, stop and report before continuing.
+- [x] Re-read:
   - `working_diary/2026-06-19_friday_dashboard_hygiene_camera.md`
   - `working_diary/2026-06-18_thursday_block_c_attribution_followup.md`
   - `working_diary/2026-06-17_wednesday_block_c_mixed_topology_observation.md`
@@ -60,6 +60,17 @@ This should be treated as observation and prerequisite mapping first. The curren
   - `web_dashboard/autoboat/README_autoboat_dashboard.md`
   - `Board.md` MAVROS, RealSense, QGC / Herelink rows
   - `wiki/Roadmap.md` Phase 5 rows for MAVROS, RealSense, QGC / Herelink, and `/wamv/*` topic adaptation
+
+**Outcome:** repo guard passed on 22/06/2026. `git fetch --prune`
+completed, latest commit was `54ebbbd` (`docs(diary): scaffold 22/06
+console hotspot dashboard path`), `git status --short --branch` showed clean
+`## main...origin/main`, and `git rev-parse HEAD origin/main` returned the
+same SHA `54ebbbde803f192e9db926167bcdd8bb7451da97` for both refs. The active
+22/06 scaffold, the 19/06, 18/06, and 17/06 diaries, and the requested
+Board/wiki/dashboard source anchors were re-read before static interpretation.
+
+No live console, Herelink, QGC, Pi, browser, rosbridge, `web_video_server`, or
+network observation has run yet.
 
 ## Block B - Scope and go/no-go
 
@@ -191,18 +202,63 @@ Current sim-facing contract to preserve unless an adapter is approved:
 
 Checklist:
 
-- [ ] Inventory current dashboard subscriptions / publishers in `web_dashboard/autoboat/app.js`.
-- [ ] Inventory navigation-node `/wamv/*` dependencies in `plan/` and `control/`.
-- [ ] Compare against `launch/remap.launch.yaml` Layer A / Layer B notes.
+- [x] Inventory current dashboard subscriptions / publishers in `web_dashboard/autoboat/app.js`.
+- [x] Inventory navigation-node `/wamv/*` dependencies in `plan/` and `control/`.
+- [x] Compare against `launch/remap.launch.yaml` Layer A / Layer B notes.
 - [ ] Confirm which real topics exist from MAVROS or a video adapter.
-- [ ] Record message type compatibility, QoS compatibility, nominal rate, and missing fields.
-- [ ] Classify each replacement as:
+- [ ] Record runtime topic compatibility: live QoS, nominal rate, and missing fields.
+- [x] Classify each replacement as:
   - ready for read-only adapter design;
   - blocked by missing topic;
   - blocked by semantic mismatch;
   - unsafe because it is a command/write path.
 
 Do not implement the adapter in this block.
+
+## 22/06 Block F static source inventory
+
+Inspect-only source pass; no code/config/launch edits and no live ROS graph.
+
+Current consumers / publishers:
+
+- Dashboard camera panel defaults to
+  `/wamv/sensors/cameras/front_left_camera_sensor/image_raw`, builds
+  `web_video_server` MJPEG URLs as `:8080/stream?topic=<topic>&type=mjpeg`,
+  and discovers ROS image topics through rosbridge. It does not consume RTSP
+  directly.
+- Dashboard read side uses `/wamv/sensors/gps/gps/fix` as
+  `sensor_msgs/NavSatFix` plus `/wamv/thrusters/left/thrust` and
+  `/wamv/thrusters/right/thrust` as `std_msgs/Float64` feedback.
+- Dashboard write side can publish manual zero-thrust / E-stop thrust messages
+  to `/wamv/thrusters/*`; do not connect that surface to a real FCU.
+- `waypoint_planner` and `waypoint_visualizer` subscribe to
+  `/wamv/sensors/gps/gps/fix` with default queue depth `10`.
+- `heading_controller` subscribes to `/wamv/sensors/gps/gps/fix` and
+  `/wamv/sensors/imu/imu/data` with default queue depth `10`, then publishes
+  `/wamv/thrusters/left/thrust` and `/wamv/thrusters/right/thrust`.
+- `lidar_perception` subscribes to
+  `/wamv/sensors/lidars/lidar_wamv_sensor/points` with
+  `qos_profile_sensor_data`.
+- `launch/remap.launch.yaml` still describes additive Layer A relays: sensor
+  relays run `/wamv/*` to `/sensors/*`, while actuator relays run
+  `/actuators/*` to `/wamv/*`. The active stack still consumes `/wamv/*`.
+
+Replacement prerequisites:
+
+| Surface | Real candidate | Must exist before replacement | Static classification |
+| --- | --- | --- | --- |
+| GPS | `/mavros/global_position/raw/fix` or `/mavros/global_position/global` | `sensor_msgs/NavSatFix`, live QoS, rate, `status.status`, nonzero/fix semantics, frame/coordinate interpretation, and a no-fix guard before feeding navigation consumers | Ready for read-only adapter design on the known Pi MAVROS path; console path still needs Block E proof |
+| IMU | `/mavros/imu/data` | `sensor_msgs/Imu`, live QoS, rate, `frame_id`, orientation validity, yaw frame convention, and mounting/ENU interpretation before closed-loop use | Ready for read-only adapter design after live QoS/rate/frame capture |
+| Camera | console-decoded ROS image topic, if created later | A ROS `sensor_msgs/Image` or compatible image topic on the workstation, known source identity, rate, latency, and `web_video_server` MJPEG compatibility | Blocked by missing topic for the console path |
+| LiDAR | no proven real topic | Real `sensor_msgs/PointCloud2` topic, frame, QoS, rate, range/height semantics compatible with `lidar_perception` | Blocked by missing topic |
+| Thrusters | no approved real write path | Proven low-level command contract, safety interlock, bench validation, and explicit write-path approval | Unsafe command/write path; out of scope today |
+| Dashboard mission / config commands | existing `/planning/*` sim/planner topics | A deliberate real-FCU command architecture and upload/control validation | Unsafe command/write path for real FCU; out of scope today |
+
+Block F conclusion before live evidence: `/wamv/*` replacement is not a single
+switch. GPS and IMU are plausible read-only adapter surfaces once the live
+MAVLink-to-ROS source is selected and measured. Console video first needs an
+RTSP-to-ROS-image or RTSP-to-MJPEG adapter decision. LiDAR and all command/write
+surfaces remain blocked.
 
 ## Block G - Optional adapter design, no code unless approved
 
