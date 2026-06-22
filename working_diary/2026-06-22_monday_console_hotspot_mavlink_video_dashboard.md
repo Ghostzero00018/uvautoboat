@@ -69,8 +69,8 @@ same SHA `54ebbbde803f192e9db926167bcdd8bb7451da97` for both refs. The active
 22/06 scaffold, the 19/06, 18/06, and 17/06 diaries, and the requested
 Board/wiki/dashboard source anchors were re-read before static interpretation.
 
-No live console, Herelink, QGC, Pi, browser, rosbridge, `web_video_server`, or
-network observation has run yet.
+At this Block A checkpoint, no live console, Herelink, QGC, Pi, browser,
+rosbridge, `web_video_server`, or network observation had run yet.
 
 ## Block B - Scope and go/no-go
 
@@ -92,6 +92,11 @@ network observation has run yet.
   - Block E MAVLink telemetry observation;
   - Block F topic-replacement prerequisite check.
 
+Closure note: live Blocks C-D-E were later user-run and are recorded in
+`22/06 Blocks C-D-E live observation result`. The scaffold boxes above remain
+unchecked because not every gate item was captured in its original checklist
+form.
+
 ## Block C - Console hotspot network inventory
 
 Run only if approved.
@@ -107,6 +112,10 @@ Record before changing application settings:
 - [ ] Whether workstation can still reach the repo / internet. Treat missing internet and blank map tiles as expected on this local link.
 
 No Generate / Confirm, Upload, arm/disarm, mode, param, or control action in this block.
+
+Closure note: partial Block C evidence was captured in
+`block_c_network_inventory.txt` and summarized below; exact QGC / console UI
+wording was not fully captured, so the scaffold boxes remain unchecked.
 
 ## Block D - Console video path observation
 
@@ -139,6 +148,11 @@ Candidate next designs, only after evidence:
 - Decode console RTSP on the workstation into a ROS image topic, then let `web_video_server` serve that topic to the existing dashboard panel.
 - Add a separate MJPEG proxy for the RTSP stream and update dashboard camera handling only if explicitly approved.
 - Leave QGC as the operator video viewer and keep the dashboard for telemetry/map until a safe adapter is designed.
+
+Closure note: Block D evidence was captured in `block_d_ffplay_tcp.txt` plus
+the earlier UDP terminal paste and summarized below. The checklist remains
+unchecked because QGC simultaneous/contended-viewer details were not fully
+captured.
 
 ## Block E - Console MAVLink to ROS 2 telemetry observation
 
@@ -182,6 +196,11 @@ Flag only new failures:
 - `/mavros/state connected: false` after a known-good endpoint is selected;
 - console video works but MAVLink path is invisible to all workstation tools;
 - parallel MAVLink consumer disrupts QGC or the real vehicle link.
+
+Closure note: Block E evidence was captured in `block_e_udp_inventory.txt` and
+the later `block_e_mavlink_udp_packets.txt` addendum. MAVLink transport and
+sender shape were proven, but MAVROS was not launched and live ROS 2 topic QoS /
+rate was not captured, so the scaffold boxes remain unchecked.
 
 ## Block F - Other ROS 2 topic replacement prerequisite check
 
