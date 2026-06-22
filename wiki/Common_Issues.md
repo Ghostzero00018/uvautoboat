@@ -365,6 +365,17 @@ site link condition". Linux Mission Planner on the same link fails with a
 separate runtime issue (see "Mission Planner on Linux: libSkiaSharp
 DllNotFoundException" below).
 
+**Follow-up retest (22/06/2026)**: the workstation again reached
+`rtsp://192.168.43.1:8554/fpv_stream` on `IMT-Aquatic-drone`; TCP-interleaved
+RTSP was clean, while UDP showed packet loss / decode errors. The important
+change was the stream content: the current Herelink image-transmission setup
+was forwarding the Pi desktop with `rqt_image_view` open after the Pi camera
+node was started, not a direct camera feed. Treat that as a source-regression
+finding, not a good dashboard integration path. It adds camera -> ROS -> GUI
+render -> desktop capture -> H.264 -> RTSP latency and re-enters the 13/05
+camera-consumer-exclusivity risk. Restore or confirm a direct camera-to-Herelink
+source before designing a dashboard adapter around this RTSP stream.
+
 **Log triage**:
 
 | Log signal | Likely meaning |
@@ -412,8 +423,11 @@ DllNotFoundException" below).
 
 3. **Branch on the generic-tool result.**
 
-   - If `ffplay` shows video: the Herelink RTSP stream is reachable; QGC's
-     side is the variable. Open Linux QGC →
+   - If `ffplay` shows video: the Herelink RTSP stream is reachable. First
+     identify the stream content. If it is a Pi desktop / `rqt_image_view`
+     screen capture, treat the source path as misconfigured or regressed before
+     doing dashboard work. If it is the intended camera feed, QGC's side is the
+     next variable. Open Linux QGC →
      **Application Settings → General → Video** → set Source to **Herelink
      Hotspot** (the built-in preset QGC ships for CubePilot Herelink
      hotspot mode, verified-good 11/05/2026); restart QGC if needed.
