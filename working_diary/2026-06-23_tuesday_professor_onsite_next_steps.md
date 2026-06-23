@@ -91,6 +91,34 @@ or hardware run.
 - Do not combine heavy RealSense + YOLO + MAVROS workloads on the Pi 5 until
   the dedicated `>=5A` power path is confirmed and monitored.
 
+### Workstation Toolchain And Wiki Closeout
+
+Workstation-only validation and documentation, no Pi / QGC / Herelink / MAVROS
+live test:
+
+- CUDA training gate passed in `~/venvs/yolo-ws`:
+  `torch.cuda.is_available()` returned `True` and the device name was
+  `NVIDIA RTX A3000 Laptop GPU`.
+- One-epoch smoke training ran outside the repo under
+  `/home/ghostzero/datasets/uvautoboat_yolo_2026-06`:
+  `yolo train data=coco8.yaml model=yolo26n.pt epochs=1 imgsz=640 device=0`
+  wrote `runs/smoke/weights/best.pt`.
+- NCNN export succeeded from that smoke checkpoint and wrote
+  `runs/smoke/weights/best_ncnn_model`.
+- The smoke metrics are toolchain evidence only. They do not measure project
+  detector quality because `coco8.yaml` is a tiny COCO sample and the model
+  starts from COCO-pretrained weights.
+- The NCNN export disabled the end-to-end branch and produced the classic
+  output shape `(1, 84, 8400)`, so Pi-side NCNN inference still needs normal
+  NMS postprocessing.
+- `wiki/YOLO_Dataset_Plan.md` was added and linked from the wiki/root doc
+  surfaces in commit `8fdb975` (`docs(wiki): add YOLO dataset plan and status
+  links`). That page records the first-pass classes, label rules, capture
+  protocol, dataset layout, clean training shell, export caveat, and Pi
+  validation gates.
+- No custom RealSense dataset capture, real-data training, Pi NCNN validation,
+  ROS node, dashboard integration, or live hardware test was run today.
+
 ## Block C - Optional Live Test Only If Approved
 
 Candidate test, read-only only:
@@ -113,10 +141,10 @@ Pass criteria if run:
 
 ## Wrap
 
-- [ ] Record professor decisions and exact wording.
-- [ ] Keep video-source decision separate from MAVLink-forwarding decision.
-- [ ] Keep `/wamv/*` replacement as design-only unless explicitly approved.
-- [ ] If docs/diary changed, run:
+- [x] Record professor decisions and exact wording.
+- [x] Keep video-source decision separate from MAVLink-forwarding decision.
+- [x] Keep `/wamv/*` replacement as design-only unless explicitly approved.
+- [x] If docs/diary changed, run:
 
   ```bash
   git status --short --branch
@@ -124,5 +152,16 @@ Pass criteria if run:
   rg -n "^(<{7}|={7}|>{7})" working_diary/2026-06-23_tuesday_professor_onsite_next_steps.md
   ```
 
-- [ ] Run the public-repo visibility sweep before any commit.
-- [ ] End with bounded next steps.
+- [x] Run the public-repo visibility sweep before any commit.
+- [x] End with bounded next steps.
+
+**Wrap outcome:** professor was absent, so there were no professor decisions to
+record beyond the unanswered questions above. Video-source repair, QGC-forwarded
+MAVROS, and `/wamv/*` replacement remain separate future decisions. Today's
+executed work stayed workstation-only and documentation-only.
+
+**Next steps:** verify X-AnyLabeling separately from `~/venvs/yolo-ws`
+(launches, can create boxes, can export YOLO format). On a later approved Pi
+capture day, create the real `data.yaml` / `dataset_card.md`, capture diverse
+RealSense RGB frames, label a first dataset, then train on the workstation and
+validate the NCNN model on Pi 5 before any ROS/dashboard integration.
