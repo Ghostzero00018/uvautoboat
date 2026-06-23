@@ -9,6 +9,7 @@ quality guide, not a ROS node, dashboard adapter, or real-FCU command path.
 | Area | Verified state |
 |:-----|:---------------|
 | Pi 5 inference | 09/06/2026 and 10/06/2026 proved Pi-local static-image YOLO feasibility: `yolo26n.pt` loaded, exported to `yolo26n_ncnn_model`, and ran CPU inference on `bus.jpg`. This used a stock pretrained COCO model, not a custom maritime dataset. |
+| Workstation-to-Pi handoff | 23/06/2026 proved a workstation-exported NCNN model can run on the Pi 5 runtime: `best_ncnn_model` from the workstation `coco8.yaml` smoke test was copied to `imt-aqua-drone@10.120.2.249` and ran 3 static CPU inferences at `imgsz=640` on `000000000042.jpg`, with `boxes=2`, steady-state inference `226.0-281.1` ms, and temp `68.85 C -> 68.30 C`. This remains COCO-model handoff evidence, not custom maritime-detector evidence. |
 | RealSense source | The Pi 5 RealSense D435i has published `/camera/camera/color/image_raw`; the workstation dashboard displayed the feed on 18/06/2026 through DDS, loopback-only rosbridge, and `web_video_server`. This remains camera-display evidence only. |
 | Workstation training | 23/06/2026 workstation smoke test passed with `Ultralytics 8.4.75`, `torch-2.12.1+cu130`, and CUDA on `NVIDIA RTX A3000 Laptop GPU`. One-epoch `coco8.yaml` training wrote `runs/smoke/weights/best.pt`, then NCNN export wrote `runs/smoke/weights/best_ncnn_model`. |
 | Project scope | Pi 5 is the capture and deployment-validation target. Custom training runs on the Linux workstation GPU. |
