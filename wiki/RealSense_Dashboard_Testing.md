@@ -245,3 +245,4 @@ It only proves the camera display path from Pi RealSense to workstation dashboar
 - [Dashboard Security](Dashboard_Security)
 - [Pi 5 Bringup Smoke Test](Pi5_Bringup_Smoke_Test)
 - [Roadmap](Roadmap)
+- [YOLO Dataset Plan](YOLO_Dataset_Plan)

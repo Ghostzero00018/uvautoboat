@@ -176,6 +176,7 @@ uvautoboat/
 | [Simple Anti-Stuck](wiki/SASS.md) | Simple anti-stuck recovery system |
 | [3D LIDAR Processing](wiki/3D_LIDAR_Processing.md) | LiDAR perception system details |
 | [RealSense Dashboard Testing](wiki/RealSense_Dashboard_Testing.md) | Camera-only procedure for showing the Pi 5 RealSense feed in the workstation dashboard |
+| [YOLO Dataset Plan](wiki/YOLO_Dataset_Plan.md) | Object-detection dataset plan for Pi 5 RealSense frames, workstation training, NCNN export, and Pi validation |
 | [Dashboard Security](wiki/Dashboard_Security.md) | Security posture, known vulnerabilities, mitigations |
 | [Node Naming Refactor Plan](wiki/Node_Naming_Refactor_Plan.md) | Record of the functional-naming rename |
 | [Common Issues](wiki/Common_Issues.md) | Comprehensive troubleshooting guide |

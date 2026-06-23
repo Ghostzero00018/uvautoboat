@@ -41,6 +41,7 @@ Welcome to the **AutoBoat Wiki**! This documentation provides comprehensive guid
 
 - **[Pi 5 Bring-up Smoke Test](Pi5_Bringup_Smoke_Test)** — manual procedure to verify Pi 5 ↔ flight-controller serial link via MAVProxy + a `pymavlink` script, before `mavros2` enters the picture. Smoke test only — production telemetry path is `mavros2`, see [Roadmap §1.1](Roadmap#11-scope-clarifications-locked-30042026).
 - **[RealSense Dashboard Testing](RealSense_Dashboard_Testing)** — camera-only procedure for showing the Pi 5 RealSense feed in the workstation web dashboard, with loopback-only browser services and explicit non-goals.
+- **[YOLO Dataset Plan](YOLO_Dataset_Plan)** — object-detection dataset plan for Pi 5 RealSense frames, workstation GPU training, NCNN export, and Pi-side validation gates.
 - **[MP + QGC Update Procedures](MP_QGC_Update_Procedures)** — host-local update workflow for Mission Planner (under Mono on Linux) and QGroundControl (AppImage). Includes how to check for newer builds + the SkiaSharp / libdl fix re-apply step after MP updates.
 
 ### 🐛 Troubleshooting & Security
@@ -70,7 +71,7 @@ See [Board.md](https://github.com/Ghostzero00018/uvautoboat/blob/main/Board.md) 
 **Institution**: [IMT Nord Europe](https://imt-nord-europe.fr/) — Industry 4.0 Students & Faculty
 **License**: Apache 2.0
 
-**Last Updated**: 18/06/2026
+**Last Updated**: 23/06/2026
 
 ---
 
