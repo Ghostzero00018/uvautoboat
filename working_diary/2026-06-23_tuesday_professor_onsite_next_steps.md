@@ -116,6 +116,11 @@ live test:
   links`). That page records the first-pass classes, label rules, capture
   protocol, dataset layout, clean training shell, export caveat, and Pi
   validation gates.
+- X-AnyLabeling `4.0.0-beta.10` launched from the separate
+  `~/venvs/x-anylabeling` environment, and a disposable `coco8` image
+  successfully exported YOLO-Hbb as a valid `.txt` row using class order
+  `buoy`, `vessel`, `dock`, `obstacle`, `person`. The disposable test
+  `.txt` / `.json` files were removed after verification.
 - No custom RealSense dataset capture, real-data training, Pi NCNN validation,
   ROS node, dashboard integration, or live hardware test was run today.
 
@@ -160,8 +165,7 @@ record beyond the unanswered questions above. Video-source repair, QGC-forwarded
 MAVROS, and `/wamv/*` replacement remain separate future decisions. Today's
 executed work stayed workstation-only and documentation-only.
 
-**Next steps:** verify X-AnyLabeling separately from `~/venvs/yolo-ws`
-(launches, can create boxes, can export YOLO format). On a later approved Pi
-capture day, create the real `data.yaml` / `dataset_card.md`, capture diverse
-RealSense RGB frames, label a first dataset, then train on the workstation and
-validate the NCNN model on Pi 5 before any ROS/dashboard integration.
+**Next steps:** on a later approved Pi capture day, create the real
+`data.yaml` / `dataset_card.md`, capture diverse RealSense RGB frames, label a
+first dataset, then train on the workstation and validate the NCNN model on Pi 5
+before any ROS/dashboard integration.
