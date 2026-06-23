@@ -91,10 +91,10 @@ or hardware run.
 - Do not combine heavy RealSense + YOLO + MAVROS workloads on the Pi 5 until
   the dedicated `>=5A` power path is confirmed and monitored.
 
-### Workstation Toolchain And Wiki Closeout
+### YOLO Toolchain And Wiki Closeout
 
-Workstation-only validation and documentation, no Pi / QGC / Herelink / MAVROS
-live test:
+Static YOLO toolchain validation and documentation, with no RealSense live
+stream, QGC, Herelink, MAVROS, dashboard, ROS node, or real-FCU path:
 
 - CUDA training gate passed in `~/venvs/yolo-ws`:
   `torch.cuda.is_available()` returned `True` and the device name was
@@ -121,8 +121,22 @@ live test:
   successfully exported YOLO-Hbb as a valid `.txt` row using class order
   `buoy`, `vessel`, `dock`, `obstacle`, `person`. The disposable test
   `.txt` / `.json` files were removed after verification.
-- No custom RealSense dataset capture, real-data training, Pi NCNN validation,
-  ROS node, dashboard integration, or live hardware test was run today.
+- Pi 5 static-image handoff check ran on `imt-aqua-drone@10.120.2.249` using
+  the workstation-exported `best_ncnn_model` and `000000000042.jpg`. The Pi
+  `~/venvs/yolo-pi5` runtime had `ultralytics 8.4.62` and
+  `ncnn 1.0.20260526`.
+- The Pi loaded the NCNN export and completed three CPU inference runs at
+  `imgsz=640`, with `boxes=2` each time. Wall times were `729.1 ms`,
+  `304.2 ms`, and `251.6 ms`; reported inference times were `211.4 ms`,
+  `281.1 ms`, and `226.0 ms`. Treat run 1 as warm-up.
+- Pi CPU temperature stayed stable from `68.85 C` before inference to
+  `68.30 C` after inference. `dmesg` showed only boot-time storage-bus voltage
+  messages, not undervoltage or throttling evidence.
+- This proves the workstation-to-Pi NCNN handoff and Pi CPU inference runtime
+  only. The model metadata still contains COCO classes, not the future
+  `buoy` / `vessel` / `dock` / `obstacle` / `person` detector. No custom
+  RealSense dataset capture, real-data training, live RealSense inference, ROS
+  node, dashboard integration, MAVROS, QGC, Herelink, or real-FCU path was run.
 
 ## Block C - Optional Live Test Only If Approved
 
@@ -163,9 +177,12 @@ Pass criteria if run:
 **Wrap outcome:** professor was absent, so there were no professor decisions to
 record beyond the unanswered questions above. Video-source repair, QGC-forwarded
 MAVROS, and `/wamv/*` replacement remain separate future decisions. Today's
-executed work stayed workstation-only and documentation-only.
+executed work stayed outside live command/control paths: documentation,
+workstation YOLO setup, X-AnyLabeling export verification, and a Pi static-image
+NCNN handoff check only.
 
 **Next steps:** on a later approved Pi capture day, create the real
 `data.yaml` / `dataset_card.md`, capture diverse RealSense RGB frames, label a
-first dataset, then train on the workstation and validate the NCNN model on Pi 5
-before any ROS/dashboard integration.
+first maritime dataset, train on the workstation, export NCNN, and repeat Pi
+static-image validation with that custom model before any live RealSense,
+ROS/dashboard, MAVROS, QGC, Herelink, or real-FCU integration.
