@@ -83,6 +83,8 @@ pgrep -af 'realsense|mavros|MAVProxy|web_video_server|rosbridge|yolo' || true
 Pass criteria:
 
 - Pi hostname and IP are recorded.
+- Pi power source is confirmed before streaming. Prefer the stable dedicated USB-C supply decoupled from the main `14.8 V` LiPo path; do not rely on the historically weak GPIO-5V path for RealSense load.
+- If Herelink video is expected from the same camera path, treat `realsense2_camera` as a possible camera-consumer conflict. Starting it may preempt the existing video fork and interrupt Herelink RTSP until the camera is released.
 - `ultralytics` and `ncnn` still import in `~/venvs/yolo-pi5`.
 - Temperature is recorded before camera launch.
 - No undervoltage or throttle evidence is present in the recent kernel log.
