@@ -289,6 +289,23 @@ reduced to small-background-person examples; `oblique` carries the strongest
 foreground-person examples. This remains thin, skewed pipeline-validation data,
 not detector-quality `person` coverage.
 
+**R2 labeling outcome:** X-AnyLabeling exported YOLO-Hbb labels to
+`raw/labels/` rather than beside the active JPGs. The active 11-image set has
+matching labels there: 7 person images with class `4` rows and 4 clean
+`neg_20260624_150606_*` negatives with empty `.txt` files. A structural and
+visual check passed: all active label rows use class `4`, coordinates are
+normalized in `[0, 1]`, every visible person in the kept frames is boxed, the
+four negatives are genuinely empty, and labels that exist for rejected frames
+are ignored for the split.
+
+**R3 split outcome:** The 11 active image/label pairs were copied into the
+Ultralytics layout outside the repo. Split: 9 train and 2 val. Train contains
+6 positive images and 3 negatives; val contains
+`oblique_20260624_144553_0006` (2 person boxes) and
+`neg_20260624_150606_0004` (empty negative). Split lint passed: image/label
+stem parity is complete, no rejected stems were copied, all class IDs are `4`,
+and all box coordinates remain normalized.
+
 ## Block E - Optional Static YOLO Sanity After Camera Shutdown
 
 Only after the RealSense camera process is stopped and temperature is stable, it is acceptable to repeat the 23/06 static-image NCNN check as a regression sanity check.
@@ -342,12 +359,14 @@ smoke test wrote five throwaway JPEGs under `/tmp`. A first 424x240 pilot of 30
 frames was then captured into the real raw directory, but the static-camera set
 was too low-diversity to carry forward. The afternoon re-capture was reviewed
 and culled for R1: 11 images are kept at the raw top level and 17 are preserved
-in a rejected holding folder; no static YOLO regression check was run. This is
-RealSense RGB stream readiness, dataset-layout readiness, saver-smoke,
-capture-mechanics, and R1 cull evidence only; it does not prove dataset quality,
-labeling, training, custom maritime detection, live RealSense inference,
-dashboard integration, MAVROS, QGC, Herelink, `/wamv/*` replacement, or any
-real-FCU command/write path.
+in a rejected holding folder. R2 labeling and R3 split then passed structural
+lint, producing a tiny 9/2 train/val split for a single-class `person` pilot;
+no static YOLO regression check was run. This is RealSense RGB stream
+readiness, dataset-layout readiness, saver-smoke, capture-mechanics, R1 cull,
+R2 label, and R3 split evidence only; it does not prove detector quality,
+training, custom maritime detection, live RealSense inference, dashboard
+integration, MAVROS, QGC, Herelink, `/wamv/*` replacement, or any real-FCU
+command/write path.
 
 If docs/diary changed, run:
 
@@ -372,10 +391,10 @@ git diff --check
 
 Run the standard public-repo visibility sweep from the terminal before any commit. Eyeball the one-line conventional commit subject before committing.
 
-**Next steps:** R2 label the 11 kept images: draw `person` (index 4) boxes for
-every visible person in the 7 kept person frames and create empty `.txt` files
-for the 4 clean `neg_20260624_150606_*` negatives. Then split 80/20 with a
-person example in both splits, train a first custom `yolo26n` model on the
-workstation, and export NCNN for a Pi static-image validation.
+**Next steps:** On the workstation, run the YOLO environment/CUDA gate, train a
+first custom `yolo26n` pipeline-validation model from `data.yaml`, validate only
+as informational evidence because the split is tiny, then export NCNN for a Pi
+static-image validation. Keep this separate from live RealSense inference,
+MAVROS, QGC, Herelink, dashboard integration, and any real-FCU path.
 
 **Later:** After the 424x240 pipeline-validation pilot, plan a separate higher-resolution detector-seed capture day, starting with a camera-only 640x480x15 check: topic rate, Pi temperature via thermal_zone0, and dmesg undervoltage/throttle tail. If workstation-over-DDS WiFi is unstable at the higher profile, run the saver on the Pi locally and rsync images afterward.
