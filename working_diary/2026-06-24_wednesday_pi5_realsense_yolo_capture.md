@@ -242,6 +242,19 @@ storage-bus voltage-switch messages, with no undervoltage or throttle evidence.
 No real pilot capture, labeling, training, live YOLO inference, dashboard,
 MAVROS, QGC, Herelink, `/wamv/*` replacement, or real-FCU path was run.
 
+**Pilot capture outcome (D2):** A first 424x240 pilot was captured into the real
+raw directory `raw/2026-06-24_pi_realsense_rgb` with the scratch saver (prefix
+`pilot`): 30 JPEGs, all `424x240` 3-channel, correct colors, saver exited
+cleanly. Pi health stayed clean through the run: temperature `71600`-`72700`
+(`71.6`-`72.7 C`), with only the two boot-time storage-bus voltage-switch
+messages and no undervoltage or throttle. However, the set is a static-camera
+capture: all 30 frames share one fixed lab viewpoint with near-identical file
+sizes, the only labelable class present is a small, distant, partially occluded
+background `person`, and there is no distance/angle/background variation. It
+fails the diversity bar, so it is NOT carried forward to review or labeling; the
+frames stay in `raw/` as a holding area pending a diverse re-capture. Capture
+mechanics and Pi thermal/power are proven; capture content is not yet usable.
+
 ## Block E - Optional Static YOLO Sanity After Camera Shutdown
 
 Only after the RealSense camera process is stopped and temperature is stable, it is acceptable to repeat the 23/06 static-image NCNN check as a regression sanity check.
@@ -291,9 +304,11 @@ Update this diary with:
 
 **Wrap outcome:** the approved 24/06 camera-only readiness check passed, the
 pilot dataset scaffold was created outside the repo, and the scratch saver
-smoke test wrote five throwaway JPEGs under `/tmp`. No raw pilot image files
-were captured, and no static YOLO regression check was run. This is RealSense
-RGB stream readiness, dataset-layout readiness, and saver-smoke evidence only;
+smoke test wrote five throwaway JPEGs under `/tmp`. A first 424x240 pilot of 30
+frames was then captured into the real raw directory, but the static-camera set
+was too low-diversity to carry forward, so a diverse re-capture is planned; no
+static YOLO regression check was run. This is RealSense RGB stream readiness,
+dataset-layout readiness, saver-smoke, and capture-mechanics evidence only;
 it does not prove dataset quality, labeling, training, custom maritime
 detection, live RealSense inference, dashboard integration, MAVROS, QGC,
 Herelink, `/wamv/*` replacement, or any real-FCU command/write path.
@@ -321,6 +336,6 @@ git diff --check
 
 Run the standard public-repo visibility sweep from the terminal before any commit. Eyeball the one-line conventional commit subject before committing.
 
-**Next steps:** If the Pi RealSense RGB stream is stable, collect a small pilot image set, review frames for diversity and duplicates, label the pilot in X-AnyLabeling with YOLO-Hbb, then train a first custom `yolo26n` model on the workstation and export NCNN for a Pi static-image validation.
+**Next steps:** Afternoon resume — clear the morning's 30 static frames from `raw/2026-06-24_pi_realsense_rgb` first, then re-capture a diverse 424x240 pilot: move the camera/subject across near/mid/far distance, head-on and oblique angles, and two to three backgrounds, include a few empty negatives, and aim for roughly 20-30 genuinely distinct frames via a few short saver runs. Then review for diversity and duplicates, label in X-AnyLabeling with YOLO-Hbb, train a first custom `yolo26n` model on the workstation, and export NCNN for a Pi static-image validation.
 
 **Later:** After the 424x240 pipeline-validation pilot, plan a separate higher-resolution detector-seed capture day, starting with a camera-only 640x480x15 check: topic rate, Pi temperature via thermal_zone0, and dmesg undervoltage/throttle tail. If workstation-over-DDS WiFi is unstable at the higher profile, run the saver on the Pi locally and rsync images afterward.
