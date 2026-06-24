@@ -228,6 +228,20 @@ scaffold now includes `raw/2026-06-24_pi_realsense_rgb`,
 pilot image files were created yet; saver implementation and capture remain
 gated.
 
+**Saver smoke outcome:** D1 passed with a scratch script outside the repo at
+`/tmp/realsense_rgb_saver.py`. The workstation subscribed to
+`/camera/camera/color/image_raw` with RELIABLE + VOLATILE + KEEP_LAST QoS and
+saved five throwaway JPEGs under `/tmp/rs_smoke_2026-06-24` using prefix
+`smoke`. The saved files were `424x240`, 3-channel JPEGs, readable by OpenCV,
+and a visual check showed normal colors with no obvious red/blue swap. The real
+pilot raw directory
+`/home/ghostzero/datasets/uvautoboat_yolo_2026-06/raw/2026-06-24_pi_realsense_rgb`
+remained empty. Pi temperature after the smoke save was `72150` (`72.15 C`);
+the post-run kernel-log filter still showed only the two boot-time
+storage-bus voltage-switch messages, with no undervoltage or throttle evidence.
+No real pilot capture, labeling, training, live YOLO inference, dashboard,
+MAVROS, QGC, Herelink, `/wamv/*` replacement, or real-FCU path was run.
+
 ## Block E - Optional Static YOLO Sanity After Camera Shutdown
 
 Only after the RealSense camera process is stopped and temperature is stable, it is acceptable to repeat the 23/06 static-image NCNN check as a regression sanity check.
@@ -275,13 +289,14 @@ Update this diary with:
 - Whether any pilot dataset folder or files were created.
 - Whether any static YOLO regression check was run.
 
-**Wrap outcome:** the approved 24/06 camera-only readiness check passed, and the
-pilot dataset scaffold was created outside the repo. No raw pilot image files
+**Wrap outcome:** the approved 24/06 camera-only readiness check passed, the
+pilot dataset scaffold was created outside the repo, and the scratch saver
+smoke test wrote five throwaway JPEGs under `/tmp`. No raw pilot image files
 were captured, and no static YOLO regression check was run. This is RealSense
-RGB stream readiness plus dataset-layout readiness evidence only; it does not
-prove dataset quality, labeling, training, custom maritime detection, live
-RealSense inference, dashboard integration, MAVROS, QGC, Herelink, `/wamv/*`
-replacement, or any real-FCU command/write path.
+RGB stream readiness, dataset-layout readiness, and saver-smoke evidence only;
+it does not prove dataset quality, labeling, training, custom maritime
+detection, live RealSense inference, dashboard integration, MAVROS, QGC,
+Herelink, `/wamv/*` replacement, or any real-FCU command/write path.
 
 If docs/diary changed, run:
 
@@ -307,3 +322,5 @@ git diff --check
 Run the standard public-repo visibility sweep from the terminal before any commit. Eyeball the one-line conventional commit subject before committing.
 
 **Next steps:** If the Pi RealSense RGB stream is stable, collect a small pilot image set, review frames for diversity and duplicates, label the pilot in X-AnyLabeling with YOLO-Hbb, then train a first custom `yolo26n` model on the workstation and export NCNN for a Pi static-image validation.
+
+**Later:** After the 424x240 pipeline-validation pilot, plan a separate higher-resolution detector-seed capture day, starting with a camera-only 640x480x15 check: topic rate, Pi temperature via thermal_zone0, and dmesg undervoltage/throttle tail. If workstation-over-DDS WiFi is unstable at the higher profile, run the saver on the Pi locally and rsync images afterward.
