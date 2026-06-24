@@ -215,6 +215,19 @@ Pilot capture rules:
 - Do not move images into `images/train` or `images/val` until obvious duplicates and bad frames are removed.
 - Do not label or train until the pilot images are reviewed.
 
+**Outcome:** Block D scaffold was created outside the repo under
+`/home/ghostzero/datasets/uvautoboat_yolo_2026-06`. Existing 23/06 smoke
+artifacts were preserved (`classes.txt`, `yolo26n.pt`, and `runs/smoke`).
+`data.yaml` now records the five-class order `0: buoy`, `1: vessel`, `2: dock`,
+`3: obstacle`, `4: person`. `dataset_card.md` records the Pi hostname/IP,
+RealSense topic, `RGB8 424x240x15` profile, RELIABLE publisher QoS with a
+RELIABLE + VOLATILE + KEEP_LAST capture-subscriber note, the obstacle
+precedence rule, and the planned `runs/pilot_2026-06-24` output. Directory
+scaffold now includes `raw/2026-06-24_pi_realsense_rgb`,
+`images/{train,val}`, `labels/{train,val}`, and `runs/pilot_2026-06-24`. No raw
+pilot image files were created yet; saver implementation and capture remain
+gated.
+
 ## Block E - Optional Static YOLO Sanity After Camera Shutdown
 
 Only after the RealSense camera process is stopped and temperature is stable, it is acceptable to repeat the 23/06 static-image NCNN check as a regression sanity check.
@@ -262,13 +275,13 @@ Update this diary with:
 - Whether any pilot dataset folder or files were created.
 - Whether any static YOLO regression check was run.
 
-**Wrap outcome:** the approved 24/06 camera-only readiness check passed. No
-pilot dataset folder or image files were created, and no static YOLO regression
-check was run. This is RealSense RGB stream readiness evidence for future YOLO
-dataset capture only; it does not prove dataset quality, labeling, training,
-custom maritime detection, live RealSense inference, dashboard integration,
-MAVROS, QGC, Herelink, `/wamv/*` replacement, or any real-FCU command/write
-path.
+**Wrap outcome:** the approved 24/06 camera-only readiness check passed, and the
+pilot dataset scaffold was created outside the repo. No raw pilot image files
+were captured, and no static YOLO regression check was run. This is RealSense
+RGB stream readiness plus dataset-layout readiness evidence only; it does not
+prove dataset quality, labeling, training, custom maritime detection, live
+RealSense inference, dashboard integration, MAVROS, QGC, Herelink, `/wamv/*`
+replacement, or any real-FCU command/write path.
 
 If docs/diary changed, run:
 
