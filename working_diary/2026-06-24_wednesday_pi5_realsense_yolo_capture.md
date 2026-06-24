@@ -275,8 +275,19 @@ A re-shot `neg_20260624_150606_*` set (4 frames, desk vacated, confirmed no
 person) is used as the clean empty negatives. The pilot is therefore a
 single-class `person` set (24 frames) plus 4 clean negatives, not negatives-free.
 The clean negatives were saved to the home directory (the `$OUT` shell variable
-was unset again) and must be moved into `raw/2026-06-24_pi_realsense_rgb` with the
-earlier contaminated set removed.
+was unset again), then moved into `raw/2026-06-24_pi_realsense_rgb` with the
+earlier contaminated set removed before R1.
+
+**R1 review/dedup outcome:** The raw top level was culled non-destructively to
+11 kept images: `mid_20260624_144445_0001.jpg`,
+`far_20260624_144508_0001.jpg`, `far_20260624_144508_0006.jpg`, four
+`oblique_20260624_144553_*` frames (`0001`, `0002`, `0004`, `0006`), and the
+four clean `neg_20260624_150606_*` negatives. The 17 rejected frames were moved
+to `raw/2026-06-24_pi_realsense_rgb/rejected_2026-06-24/`. The `near` run was
+dropped because it only shows an arm/hand plus desk; `mid` and `far` were
+reduced to small-background-person examples; `oblique` carries the strongest
+foreground-person examples. This remains thin, skewed pipeline-validation data,
+not detector-quality `person` coverage.
 
 ## Block E - Optional Static YOLO Sanity After Camera Shutdown
 
@@ -329,12 +340,14 @@ Update this diary with:
 pilot dataset scaffold was created outside the repo, and the scratch saver
 smoke test wrote five throwaway JPEGs under `/tmp`. A first 424x240 pilot of 30
 frames was then captured into the real raw directory, but the static-camera set
-was too low-diversity to carry forward, so a diverse re-capture is planned; no
-static YOLO regression check was run. This is RealSense RGB stream readiness,
-dataset-layout readiness, saver-smoke, and capture-mechanics evidence only;
-it does not prove dataset quality, labeling, training, custom maritime
-detection, live RealSense inference, dashboard integration, MAVROS, QGC,
-Herelink, `/wamv/*` replacement, or any real-FCU command/write path.
+was too low-diversity to carry forward. The afternoon re-capture was reviewed
+and culled for R1: 11 images are kept at the raw top level and 17 are preserved
+in a rejected holding folder; no static YOLO regression check was run. This is
+RealSense RGB stream readiness, dataset-layout readiness, saver-smoke,
+capture-mechanics, and R1 cull evidence only; it does not prove dataset quality,
+labeling, training, custom maritime detection, live RealSense inference,
+dashboard integration, MAVROS, QGC, Herelink, `/wamv/*` replacement, or any
+real-FCU command/write path.
 
 If docs/diary changed, run:
 
@@ -359,6 +372,10 @@ git diff --check
 
 Run the standard public-repo visibility sweep from the terminal before any commit. Eyeball the one-line conventional commit subject before committing.
 
-**Next steps:** Move the clean `neg_20260624_150606_*` frames into `raw/2026-06-24_pi_realsense_rgb` and remove the contaminated `neg_20260624_144631_*` set, then R1 review/dedup the 24 `person` frames (cull near-duplicates within each `near`/`mid`/`far`/`oblique` run), label every visible person as `person` (index 4) in X-AnyLabeling with YOLO-Hbb and give each of the 4 clean negatives an empty `.txt`, split 80/20 with a person example in both splits, train a first custom `yolo26n` model on the workstation, and export NCNN for a Pi static-image validation.
+**Next steps:** R2 label the 11 kept images: draw `person` (index 4) boxes for
+every visible person in the 7 kept person frames and create empty `.txt` files
+for the 4 clean `neg_20260624_150606_*` negatives. Then split 80/20 with a
+person example in both splits, train a first custom `yolo26n` model on the
+workstation, and export NCNN for a Pi static-image validation.
 
 **Later:** After the 424x240 pipeline-validation pilot, plan a separate higher-resolution detector-seed capture day, starting with a camera-only 640x480x15 check: topic rate, Pi temperature via thermal_zone0, and dmesg undervoltage/throttle tail. If workstation-over-DDS WiFi is unstable at the higher profile, run the saver on the Pi locally and rsync images afterward.
