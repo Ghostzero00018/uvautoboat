@@ -118,7 +118,9 @@ ros2 topic info /camera/camera/color/image_raw --verbose
 ros2 topic hz /camera/camera/color/image_raw
 ```
 
-If `ros2 topic hz` does not report cleanly because of QoS, use the existing probe from the repo:
+If `ros2 topic info --verbose` shows `Reliability: BEST_EFFORT`, or if
+`ros2 topic hz` reports `0 Hz` / stalls after the topic is listed, use the
+existing probe from the repo:
 
 ```bash
 cd /home/ghostzero/seal_ws/src/uvautoboat
