@@ -13,6 +13,7 @@ quality guide, not a ROS node, dashboard adapter, or real-FCU command path.
 | RealSense source | The Pi 5 RealSense D435i has published `/camera/camera/color/image_raw`; the workstation dashboard displayed the feed on 18/06/2026 through DDS, loopback-only rosbridge, and `web_video_server`. This remains camera-display evidence only. |
 | Workstation training | 23/06/2026 workstation smoke test passed with `Ultralytics 8.4.75`, `torch-2.12.1+cu130`, and CUDA on `NVIDIA RTX A3000 Laptop GPU`. One-epoch `coco8.yaml` training wrote `runs/smoke/weights/best.pt`, then NCNN export wrote `runs/smoke/weights/best_ncnn_model`. |
 | Project scope | Pi 5 is the capture and deployment-validation target. Custom training runs on the Linux workstation GPU. |
+| First pilot split | 24/06/2026 camera-only RealSense RGB capture at `424x240x15` produced a tiny pipeline-validation pilot outside the repo. After review/dedup, X-AnyLabeling YOLO-Hbb export, and lint, 7 `person` images plus 4 clean negatives were copied into a 9/2 train/val split. This proves capture -> label -> split mechanics only; it is not detector-quality data and no custom model has been trained yet. |
 
 The `coco8.yaml` smoke-test metrics are not project quality evidence. They only
 prove the local train-to-export toolchain; the sample dataset is a tiny COCO
@@ -36,6 +37,10 @@ public repo:
 /home/ghostzero/datasets/uvautoboat_yolo_2026-06/
   data.yaml
   dataset_card.md
+  raw/
+    2026-06-24_pi_realsense_rgb/
+      rejected_2026-06-24/
+    labels/
   images/
     train/
     val/
@@ -47,6 +52,11 @@ public repo:
 
 Use `project=/home/ghostzero/datasets/uvautoboat_yolo_2026-06/runs` for
 Ultralytics commands so `runs/` does not appear under the repository root.
+
+X-AnyLabeling may write native `.json` sidecars beside raw images and export
+YOLO `.txt` files into `raw/labels/`. Copy only reviewed active stems into
+`images/{train,val}` and `labels/{train,val}`. Rejected frames and labels stay
+out of train/val.
 
 ## First-Pass Classes
 
