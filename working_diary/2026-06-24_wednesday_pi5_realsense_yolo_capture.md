@@ -55,6 +55,13 @@ Read first:
 - `Board.md` YOLO / RealSense rows
 - `wiki/Roadmap.md` YOLO / RealSense rows
 
+**Outcome:** repo guard passed on 24/06/2026 before the hardware log review and
+diary update. `git fetch --prune` completed, latest commit was `8d1aa29`
+(`docs(diary): make RealSense QoS fallback trigger observable`),
+`git status --short --branch` showed clean `## main...origin/main`, and
+`git rev-parse HEAD origin/main` returned the same SHA
+`8d1aa292a80963f7b2de4350b966444da02376c6` for both refs.
+
 ## Block B - Pi 5 Preflight
 
 Goal: confirm the Pi, environment, network address, camera readiness, and thermal/power baseline before starting RealSense.
@@ -89,6 +96,19 @@ Pass criteria:
 - Temperature is recorded before camera launch.
 - No undervoltage or throttle evidence is present in the recent kernel log.
 - Any already-running RealSense or heavy process is understood before starting a new camera launch.
+
+**Outcome:** Block B passed from
+`/home/ghostzero/Desktop/test_logs_folder/testlogs_24_06_2026.txt`. Pi hostname
+was `imtaquadrone-desktop`, IP was `10.120.2.249`, `ROS_DOMAIN_ID=12`,
+`ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET`, and `ROS_LOCALHOST_ONLY=unset`.
+`~/venvs/yolo-pi5` imported `ultralytics 8.4.62` and `ncnn 1.0.20260526`.
+Pre-launch temperature was `68850` from `/sys/class/thermal/thermal_zone0/temp`
+(`68.85 C`). The process check returned no existing RealSense, MAVROS,
+MAVProxy, `web_video_server`, rosbridge, or YOLO process. Power source was a
+separate power bank and cable, not the Pi's default charger and not the shared
+boat power path. The recent kernel log showed only boot-time
+`cannot verify signal voltage switch` storage-bus messages, not undervoltage or
+throttle evidence.
 
 ## Block C - Camera-Only RealSense Publish
 
@@ -138,6 +158,30 @@ Pass criteria:
 - A color stream rate is recorded for at least 20 seconds.
 - Pi temperature is recorded again after the camera has been running.
 - No undervoltage or throttle evidence appears after the run.
+
+**Outcome:** Block C passed as a camera-only RealSense publish check. The Pi ran
+`realsense2_camera` ROS `v4.58.1` with LibRealSense `v2.58.1`, detected Intel
+RealSense D435I serial `213622070342`, firmware `5.14.0`, USB type `3.2`, and
+opened the requested profile: color `RGB8`, width `424`, height `240`, FPS `15`.
+The launch reached `RealSense Node Is Up!`.
+
+On the workstation, both `/camera/camera/color/camera_info` and
+`/camera/camera/color/image_raw` were visible after the ROS daemon restart.
+`ros2 topic info --verbose /camera/camera/color/image_raw` recorded publisher
+count `1`, QoS `Reliability: RELIABLE`, `Durability: TRANSIENT_LOCAL`, and
+subscription count `0` before the rate subscriber was started. `ros2 topic hz`
+then received the image stream cleanly, with repeated averages around
+`14.96-15.03 Hz`; the final visible sample was `14.971 Hz` with window `802`,
+min `0.037 s`, max `0.127 s`, and std dev `0.00620 s`. The QoS fallback was not
+required, but the optional `tools/rate_probe.py` check also received the stream:
+`N=298`, elapsed `20.01 s`, mean `14.93 Hz`.
+
+Pi temperature while the camera was still running was `69950` (`69.95 C`), and
+after the camera was stopped it was still `69950` (`69.95 C`). Both post-run
+kernel-log checks again showed only the two boot-time storage-bus voltage-switch
+messages, with no undervoltage or throttle evidence. No YOLO, MAVROS, QGC,
+Herelink, dashboard, `web_video_server`, mission control, or real-FCU path was
+run in this block.
 
 ## Block D - Pilot Dataset Setup Only If Block C Passes
 
@@ -217,6 +261,14 @@ Update this diary with:
 - Voltage/throttle evidence.
 - Whether any pilot dataset folder or files were created.
 - Whether any static YOLO regression check was run.
+
+**Wrap outcome:** the approved 24/06 camera-only readiness check passed. No
+pilot dataset folder or image files were created, and no static YOLO regression
+check was run. This is RealSense RGB stream readiness evidence for future YOLO
+dataset capture only; it does not prove dataset quality, labeling, training,
+custom maritime detection, live RealSense inference, dashboard integration,
+MAVROS, QGC, Herelink, `/wamv/*` replacement, or any real-FCU command/write
+path.
 
 If docs/diary changed, run:
 
