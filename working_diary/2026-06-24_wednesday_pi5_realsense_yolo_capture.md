@@ -255,6 +255,29 @@ fails the diversity bar, so it is NOT carried forward to review or labeling; the
 frames stay in `raw/` as a holding area pending a diverse re-capture. Capture
 mechanics and Pi thermal/power are proven; capture content is not yet usable.
 
+**Pilot re-capture outcome (D2, afternoon):** The morning static set was cleared
+and a varied re-capture was run as five short saver passes tagged
+`near`/`mid`/`far`/`oblique`/`neg` (28 frames, `424x240`). The saver wrote to the
+home directory because `$OUT` was unset in that shell; the 28 JPEGs were then
+copied into `raw/2026-06-24_pi_realsense_rgb` (28 verified present). Pi health
+stayed clean: `69950` (`69.95 C`), only the two boot-time storage-bus
+voltage-switch messages, no undervoltage or throttle. Visual review: diversity
+improved over the morning, but a colleague is seated at the far-left desk in
+essentially every frame (including the `neg` ones), so the set has no clean
+negatives and the foreground subject is framed with the head cut off. Decision:
+proceed as a negatives-free single-class `person` pilot - label every visible
+person (foreground and background) as `person`, no empty-label negatives. This
+remains a pipeline-validation pilot, not detector-quality data.
+
+**Negatives update (D2, afternoon):** The first `neg_20260624_144631_*` set still
+showed the background colleague, so it is dropped rather than used as negatives.
+A re-shot `neg_20260624_150606_*` set (4 frames, desk vacated, confirmed no
+person) is used as the clean empty negatives. The pilot is therefore a
+single-class `person` set (24 frames) plus 4 clean negatives, not negatives-free.
+The clean negatives were saved to the home directory (the `$OUT` shell variable
+was unset again) and must be moved into `raw/2026-06-24_pi_realsense_rgb` with the
+earlier contaminated set removed.
+
 ## Block E - Optional Static YOLO Sanity After Camera Shutdown
 
 Only after the RealSense camera process is stopped and temperature is stable, it is acceptable to repeat the 23/06 static-image NCNN check as a regression sanity check.
@@ -336,6 +359,6 @@ git diff --check
 
 Run the standard public-repo visibility sweep from the terminal before any commit. Eyeball the one-line conventional commit subject before committing.
 
-**Next steps:** Afternoon resume — clear the morning's 30 static frames from `raw/2026-06-24_pi_realsense_rgb` first, then re-capture a diverse 424x240 pilot: move the camera/subject across near/mid/far distance, head-on and oblique angles, and two to three backgrounds, include a few empty negatives, and aim for roughly 20-30 genuinely distinct frames via a few short saver runs. Then review for diversity and duplicates, label in X-AnyLabeling with YOLO-Hbb, train a first custom `yolo26n` model on the workstation, and export NCNN for a Pi static-image validation.
+**Next steps:** Move the clean `neg_20260624_150606_*` frames into `raw/2026-06-24_pi_realsense_rgb` and remove the contaminated `neg_20260624_144631_*` set, then R1 review/dedup the 24 `person` frames (cull near-duplicates within each `near`/`mid`/`far`/`oblique` run), label every visible person as `person` (index 4) in X-AnyLabeling with YOLO-Hbb and give each of the 4 clean negatives an empty `.txt`, split 80/20 with a person example in both splits, train a first custom `yolo26n` model on the workstation, and export NCNN for a Pi static-image validation.
 
 **Later:** After the 424x240 pipeline-validation pilot, plan a separate higher-resolution detector-seed capture day, starting with a camera-only 640x480x15 check: topic rate, Pi temperature via thermal_zone0, and dmesg undervoltage/throttle tail. If workstation-over-DDS WiFi is unstable at the higher profile, run the saver on the Pi locally and rsync images afterward.
