@@ -300,6 +300,143 @@ run on static images. The zero detections are informational only and do not
 prove detector quality. No RealSense stream, live inference, ROS/dashboard
 integration, MAVROS, QGC, Herelink, or real-FCU path was run.
 
+## Block F - RealSense NCNN Procedure Spike
+
+Do not start this block unless Block E is complete and the Pi is on dedicated
+USB-C power. This block is a procedure and power/thermal spike using the
+current custom NCNN export and current tiny dataset result. It is not a
+detector-quality test.
+
+Boundaries:
+
+- Run from a Pi terminal on `imtaquadrone-desktop`.
+- Use `~/venvs/yolo-pi5`.
+- Use the already copied custom model at
+  `/home/imt-aqua-drone/yolo_tests/custom_20260625_static/best_ncnn_model`.
+- Use the D435I serial `213622070342` at `RGB8 424x240x15`.
+- For the ROS fallback, run only the RealSense camera node plus the ROS CLI /
+  helper subscribers needed for this test.
+- Keep dashboard, MAVROS, QGC, Herelink, and real-FCU paths stopped.
+- Treat detection counts as informational only; expect `0` boxes from the
+  current tiny overfit model at the default confidence threshold.
+- Stop on any fresh undervoltage/throttle evidence or fast temperature rise.
+
+### F0 - Pi Preflight
+
+The direct `pyrealsense2` helper path was blocked before the ROS fallback:
+`pyrealsense2` was absent from `~/venvs/yolo-pi5`, and `/usr/bin/python3` also
+had no system `pyrealsense2` module. No direct-SDK capture or inference was
+run. The fallback used the ROS camera node already proven on 24/06.
+
+**Outcome:** ROS fallback F0 passed from
+`/home/ghostzero/Desktop/test_logs_folder/testlogs_25_06_2026_BlockF.txt`.
+The workstation reached `imt-aqua-drone@10.120.2.249`, and helper scripts were
+copied to:
+
+```text
+/home/imt-aqua-drone/yolo_tests/realsense_spike_20260625
+```
+
+Pi preflight ran on `imtaquadrone-desktop` with `matching_process_count 0`.
+After sourcing `/opt/ros/jazzy/setup.bash` and `~/venvs/yolo-pi5`, imports
+worked for `rclpy`, `sensor_msgs`, Ultralytics `8.4.62`, `ncnn 1.0.20260526`,
+OpenCV `4.11.0`, and NumPy `1.26.4`. The custom NCNN files were present:
+
+- `model.ncnn.param` (`26394` bytes)
+- `model.ncnn.bin` (`9604452` bytes)
+- `metadata.yaml` (`401` bytes)
+- `model_ncnn.py` (`729` bytes)
+
+Preflight temperature was `73.8 C` from the helper and `72.7 C` from the
+follow-up thermal read. The dmesg voltage/throttle filter showed only the two
+boot-time storage-bus voltage-switch messages, not undervoltage or throttle
+evidence.
+
+### F1 - Snapshot Then Static Inference
+
+The ROS fallback launched the camera in a separate Pi terminal with:
+
+```bash
+ros2 launch realsense2_camera rs_launch.py enable_depth:=false rgb_camera.color_profile:=424x240x15
+```
+
+The camera node reported RealSense ROS `v4.58.1`, LibRealSense `v2.58.1`,
+D435I serial `213622070342`, firmware `5.14.0`, USB type `3.2`, and profile
+`RGB8 424x240x15`. It reached `RealSense Node Is Up!`.
+
+Camera-only ROS topic flow was steady before inference. `ros2 topic hz
+/camera/camera/color/image_raw --window 30` reported rates from about
+`14.939` to `15.012` Hz. The camera-only follow-up thermal read was `73.25 C`,
+and the dmesg voltage/throttle filter still showed only the same two boot-time
+storage-bus voltage-switch messages.
+
+F1 then ran `gate1_ros_snapshot_infer.py` from
+`~/yolo_tests/realsense_spike_20260625` using:
+
+```text
+/home/imt-aqua-drone/venvs/yolo-pi5/bin/python
+```
+
+The helper warmed up 20 frames, saved 5 ROS snapshots as `rgb8` images with
+shape `(240, 424, 3)`, and each write returned `ok True`:
+
+- `ros_snap_00.jpg`
+- `ros_snap_01.jpg`
+- `ros_snap_02.jpg`
+- `ros_snap_03.jpg`
+- `ros_snap_04.jpg`
+
+The custom NCNN model loaded from:
+
+```text
+/home/imt-aqua-drone/yolo_tests/custom_20260625_static/best_ncnn_model
+```
+
+All 5 snapshots returned `0` boxes at the default confidence threshold. Wall
+times were `785.0 ms`, `225.0 ms`, `374.8 ms`, `380.3 ms`, and `348.8 ms`;
+recorded NCNN inference times were `309.3 ms`, `197.5 ms`, `352.7 ms`,
+`358.9 ms`, and `326.4 ms`. F1 temperatures were `75.45 C` before capture,
+`76.0 C` after capture, and `77.65 C` after inference; the follow-up thermal
+read was `73.8 C`. The dmesg voltage/throttle filter remained clean apart from
+the same boot-time storage-bus messages.
+
+### F2 - Short Live Inference
+
+Only run if F1 is clean. The first F2 command was issued from the wrong working
+directory and failed with a missing-script path; the user then changed to
+`~/yolo_tests/realsense_spike_20260625` and reran the helper successfully.
+
+**Outcome:** F2 exercised the ROS image topic -> custom NCNN live path, but it
+ended by the intended thermal abort rather than by the full time/frame cap. The
+run warmed up 15 frames, loaded the same custom NCNN model, processed `30`
+frames in `10.4 s`, and reported `mean_fps=2.90` with `mean_inf_ms=340.9`.
+The live status lines were:
+
+- `t=5.3s`, `n=14`, `fps=2.6`, `inf_ms=435`, `boxes=0`, `temp=79.30C`
+- `t=10.4s`, `n=30`, `fps=2.9`, `inf_ms=416`, `boxes=0`, `temp=80.95C`
+
+The helper then printed `TEMP ABORT 80.95`. Its final temperature was
+`80.95 C`; the follow-up thermal read was `75.45 C`. The post-F2 dmesg
+voltage/throttle filter again showed only the same boot-time storage-bus
+voltage-switch messages. The camera node was then stopped with `Ctrl+C` and
+reported `Stop Sensor: RGB Camera`, `Close Sensor - Done`, and a clean process
+finish.
+
+### F Outcome
+
+Block F proved the ROS fallback procedure can run the current RealSense color
+topic through the custom NCNN model on the Pi, and that the safety abort path
+works. It did not prove the direct `pyrealsense2` path, because that module was
+missing. It did not prove detector quality; all snapshot and live frames
+returned `0` boxes at the default confidence threshold. It also did not prove a
+thermally clean sustained live-inference profile: the short live run hit the
+`80.0 C` abort threshold after `10.4 s`. The likely limiter is thermal headroom:
+the Pi was already around `72.7-73.8 C` before the camera/inference spike, the
+camera-only baseline was `73.25 C`, and F2 began at `76.55 C` before reaching
+`80.95 C`. This is a cooling-baseline finding, not proof that the model is too
+heavy. No undervoltage or throttle evidence appeared in the recorded dmesg
+filters. No dashboard, MAVROS, QGC, Herelink, or real-FCU path was run.
+
 ## Wrap
 
 Update this diary with:
@@ -324,12 +461,16 @@ rg -n "\[[[:space:]]\]" working_diary/2026-06-25_thursday_yolo_training_gate.md
 Run the standard public-repo visibility sweep from the terminal before any commit. Eyeball the one-line conventional commit subject before committing.
 
 **Wrap outcome:** the tiny pilot chain has now passed capture -> label ->
-split -> train -> validate -> export -> Pi static-image load/run. It is still
-not detector-quality evidence. Live RealSense inference, ROS/dashboard
-integration, MAVROS, QGC, Herelink, and real-FCU paths remain unproven.
+split -> train -> validate -> export -> Pi static-image load/run, plus a
+bounded ROS-camera-node fallback procedure that fed RealSense RGB frames into
+the custom NCNN model on the Pi. It is still not detector-quality evidence, and
+it is not a sustained thermally clean live-inference result because the live
+run hit the `80.0 C` abort threshold after `10.4 s` from an already-hot
+`72.7-73.8 C` baseline. The direct `pyrealsense2` path remains unproven.
+Dashboard integration, MAVROS, QGC, Herelink, and real-FCU paths remain
+unproven.
 
-**Next steps:** keep live RealSense inference separate from this static check.
-The next approval gate should be a camera-off dataset-quality decision: either
-collect a larger, more diverse detector-seed dataset before further model work,
-or explicitly approve a separate live RealSense inference planning block. Keep
-ROS/dashboard integration, MAVROS, QGC, Herelink, and real-FCU paths deferred.
+**Next steps:** decide whether to park YOLO here or plan a separate thermal /
+load-reduction pass for live inference. Any retest should keep the same safety
+guards, start from a cooled Pi, and remain separate from dashboard, MAVROS,
+QGC, Herelink, and real-FCU paths unless those blocks are explicitly approved.
