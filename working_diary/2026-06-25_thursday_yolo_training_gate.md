@@ -249,9 +249,56 @@ Do not run this unless explicitly approved after Block D. If approved, keep it s
 
 This block validates a custom exported model can load and run on the Pi. It still does not prove live camera inference or any ROS/dashboard integration.
 
-**Outcome:** skipped. Pi static-image validation was not explicitly approved in
-this block, and no Pi, RealSense stream, MAVROS, QGC, Herelink, dashboard, or
-real-FCU path was run.
+**Outcome:** Block E passed as a static-image Pi custom-model load/run check
+from `/home/ghostzero/Desktop/test_logs_folder/testlogs_25_06_2026.txt`.
+Workstation W0 reached `imt-aqua-drone@10.120.2.249`; the Pi reported hostname
+`imtaquadrone-desktop` and IP `10.120.2.249`. W1 copied the custom NCNN export,
+the two validation JPGs, and helper script to:
+
+```text
+/home/imt-aqua-drone/yolo_tests/custom_20260625_static
+```
+
+The copied model files were present on the Pi:
+
+- `best_ncnn_model/model.ncnn.param` (`26394` bytes)
+- `best_ncnn_model/model.ncnn.bin` (`9604452` bytes)
+- `best_ncnn_model/metadata.yaml` (`401` bytes)
+- `best_ncnn_model/model_ncnn.py` (`729` bytes)
+
+Copied static inputs were:
+
+- `images/oblique_20260624_144553_0006.jpg` (`41231` bytes)
+- `images/neg_20260624_150606_0004.jpg` (`39927` bytes)
+
+Pi preflight found no matching RealSense, MAVROS, MAVProxy,
+`web_video_server`, rosbridge, or YOLO processes. `~/venvs/yolo-pi5` imported
+Ultralytics `8.4.62` and `ncnn 1.0.20260526`. Pre-run temperature was `66650`
+from `/sys/class/thermal/thermal_zone0/temp` (`66.65 C`). The pre-run dmesg
+filter showed only the two boot-time storage-bus voltage-switch messages, not
+undervoltage or throttle evidence.
+
+The Pi loaded the custom NCNN model from:
+
+```text
+/home/imt-aqua-drone/yolo_tests/custom_20260625_static/best_ncnn_model
+```
+
+Both static images ran at `imgsz=640` on CPU. The positive validation image
+`oblique_20260624_144553_0006.jpg` returned `0` boxes on all three runs, with
+wall times `508.2 ms`, `257.4 ms`, and `287.1 ms`; NCNN inference times were
+`194.7 ms`, `234.7 ms`, and `268.1 ms`. The clean negative image
+`neg_20260624_150606_0004.jpg` also returned `0` boxes on all three runs, with
+wall times `234.4 ms`, `180.0 ms`, and `183.4 ms`; NCNN inference times were
+`213.8 ms`, `158.4 ms`, and `163.7 ms`.
+
+Post-run temperature was `69950` (`69.95 C`). The post-run dmesg filter again
+showed only the same two boot-time storage-bus voltage-switch messages, with no
+new undervoltage or throttle evidence. This proves the custom exported NCNN
+model directory can be copied to the Pi, loaded by the Pi YOLO environment, and
+run on static images. The zero detections are informational only and do not
+prove detector quality. No RealSense stream, live inference, ROS/dashboard
+integration, MAVROS, QGC, Herelink, or real-FCU path was run.
 
 ## Wrap
 
@@ -276,15 +323,13 @@ rg -n "\[[[:space:]]\]" working_diary/2026-06-25_thursday_yolo_training_gate.md
 
 Run the standard public-repo visibility sweep from the terminal before any commit. Eyeball the one-line conventional commit subject before committing.
 
-**Wrap outcome:** workstation-only pipeline validation passed through
-dataset lint, CUDA/env gate, 50-epoch tiny training, validation, and NCNN export.
-The current evidence is capture -> label -> split -> train -> validate ->
-export. It is still not detector-quality evidence and does not prove Pi
-custom-model validation, live RealSense inference, ROS/dashboard integration,
-MAVROS, QGC, Herelink, or a real-FCU path.
+**Wrap outcome:** the tiny pilot chain has now passed capture -> label ->
+split -> train -> validate -> export -> Pi static-image load/run. It is still
+not detector-quality evidence. Live RealSense inference, ROS/dashboard
+integration, MAVROS, QGC, Herelink, and real-FCU paths remain unproven.
 
-**Next steps:** The next explicit approval point is a Pi static-image validation
-of the custom NCNN export at
-`/home/ghostzero/datasets/uvautoboat_yolo_2026-06/runs/baseline_yolo26n/weights/best_ncnn_model`.
-Keep live RealSense inference, ROS/dashboard integration, MAVROS, QGC,
-Herelink, and real-FCU paths deferred.
+**Next steps:** keep live RealSense inference separate from this static check.
+The next approval gate should be a camera-off dataset-quality decision: either
+collect a larger, more diverse detector-seed dataset before further model work,
+or explicitly approve a separate live RealSense inference planning block. Keep
+ROS/dashboard integration, MAVROS, QGC, Herelink, and real-FCU paths deferred.
