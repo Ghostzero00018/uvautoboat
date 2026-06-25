@@ -13,11 +13,14 @@ quality guide, not a ROS node, dashboard adapter, or real-FCU command path.
 | RealSense source | The Pi 5 RealSense D435i has published `/camera/camera/color/image_raw`; the workstation dashboard displayed the feed on 18/06/2026 through DDS, loopback-only rosbridge, and `web_video_server`. This remains camera-display evidence only. |
 | Workstation training | 23/06/2026 workstation smoke test passed with `Ultralytics 8.4.75`, `torch-2.12.1+cu130`, and CUDA on `NVIDIA RTX A3000 Laptop GPU`. One-epoch `coco8.yaml` training wrote `runs/smoke/weights/best.pt`, then NCNN export wrote `runs/smoke/weights/best_ncnn_model`. |
 | Project scope | Pi 5 is the capture and deployment-validation target. Custom training runs on the Linux workstation GPU. |
-| First pilot split | 24/06/2026 camera-only RealSense RGB capture at `424x240x15` produced a tiny pipeline-validation pilot outside the repo. After review/dedup, X-AnyLabeling YOLO-Hbb export, and lint, 7 `person` images plus 4 clean negatives were copied into a 9/2 train/val split. This proves capture -> label -> split mechanics only; it is not detector-quality data and no custom model has been trained yet. |
+| First pilot split and training gate | 24/06/2026 camera-only RealSense RGB capture at `424x240x15` produced a tiny pipeline-validation pilot outside the repo. After review/dedup, X-AnyLabeling YOLO-Hbb export, and lint, 7 `person` images plus 4 clean negatives were copied into a 9/2 train/val split. On 25/06/2026, that split trained on the workstation with `yolo26n.pt` for 50 epochs into `runs/baseline_yolo26n/weights/best.pt`, validated informationally into `runs/val_baseline_yolo26n`, and exported NCNN to `runs/baseline_yolo26n/weights/best_ncnn_model` with `model.ncnn.param` and `model.ncnn.bin`. This proves capture -> label -> split -> train -> validate -> export mechanics only; it is not detector-quality data, and Pi custom-model loading, live RealSense inference, ROS/dashboard integration, MAVROS, QGC, Herelink, and real-FCU paths remain unproven. |
 
 The `coco8.yaml` smoke-test metrics are not project quality evidence. They only
-prove the local train-to-export toolchain; the sample dataset is a tiny COCO
-subset and the model starts from COCO-pretrained weights.
+prove the stock-sample local train-to-export toolchain; the sample dataset is a
+tiny COCO subset and the model starts from COCO-pretrained weights. The
+25/06/2026 pilot metrics are also not detector-quality evidence: they prove the
+custom tiny split can train, validate, and export to NCNN, but the validation
+split has only 2 images and 2 boxes.
 
 ## Non-Goals
 
