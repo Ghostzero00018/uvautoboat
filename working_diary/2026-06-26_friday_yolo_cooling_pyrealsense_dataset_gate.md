@@ -400,6 +400,22 @@ headless live test to find the thermal plateau and confirm it stays under
 `80.0 C`. Detector-quality work remains the separate Block G dataset/model
 track.
 
+**Late quick MAVProxy / MAVROS check:** before the afternoon YOLO / RealSense
+tests, the box had been shut down and then relaunched. The usual startup
+music/sound from the box was not heard, so the user suspected a cable or wiring
+issue and requested a camera-off telemetry sanity check. Precheck showed no
+RealSense / YOLO process, `/dev/ttyAMA0` present, no existing MAVLink UDP
+listener on `14550`, `14551`, `14540`, or `5760`, `mavproxy.py` available at
+`/home/imt-aqua-drone/.local/bin/mavproxy.py`, and `mavros` installed under
+`/opt/ros/jazzy`. MAVProxy could open `/dev/ttyAMA0` at `57600` and start the
+UDP fanout to `127.0.0.1:14550` and `127.0.0.1:14551`, but it stayed at
+`Waiting for heartbeat from /dev/ttyAMA0` and then reported `link 1 down`.
+MAVROS was not launched because the MAVProxy heartbeat gate failed. This points
+to the flight-controller / peripheral side not talking to the Pi UART in this
+box state, with a loose cable or missing peripheral/FC power as the leading
+physical hypothesis. Follow up on Tuesday 30/06/2026 with a physical power and
+wiring inspection, then rerun MAVProxy before launching MAVROS.
+
 Before any commit:
 
 ```bash
