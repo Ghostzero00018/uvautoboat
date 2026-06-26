@@ -28,8 +28,8 @@ does not fix detector quality and it does not fix the Pi cooling baseline.
 
 Expected repo state:
 
-- `main` clean/synced at `c963d06` or later.
-- Latest landed commit: `docs: record RealSense NCNN procedure status`.
+- `main` clean/synced at `900d47f` or later.
+- Latest landed commit: `docs(diary): scaffold YOLO cooling gate`.
 
 25/06 EOD quick sweep found no additional live-doc update needed. Current live
 rows in `Board.md`, `wiki/Roadmap.md`, and `wiki/YOLO_Dataset_Plan.md` already
@@ -91,6 +91,15 @@ Read first:
 - `Board.md` YOLO / RealSense rows
 - `wiki/Roadmap.md` YOLO / RealSense rows
 
+**Outcome:** repo guard passed on 26/06/2026 before any branch decision or
+diary edit. `git fetch --prune` completed, latest commit was `900d47f`
+(`docs(diary): scaffold YOLO cooling gate`), `git status --short --branch`
+showed clean `## main...origin/main`, and `git rev-parse HEAD origin/main`
+returned the same SHA `900d47f150192058688ab07d4aa94b98aa26d5a0` for both
+refs. The 26/06 and 25/06 diaries, `wiki/YOLO_Dataset_Plan.md`, and the
+YOLO / RealSense rows in `Board.md` and `wiki/Roadmap.md` were read before the
+branch decision.
+
 ## Block B - Pick Today's Branch
 
 Choose one branch based on real resources today:
@@ -102,6 +111,13 @@ Choose one branch based on real resources today:
 
 Do not lead with `pyrealsense2` unless the Pi can be cooled or the task is
 explicitly limited to install exploration only.
+
+**Outcome:** Block B selected the cooling branch because the user reported the
+control box was available with cooling in place. The workstation complete
+simulation launcher was not used as Pi thermal load; it is a Gazebo /
+workstation stack and does not heat the Pi. The only relevant future Pi load
+remains the bounded RealSense camera node plus the NCNN subscriber, and that
+load stayed gated behind Block C.
 
 ## Block C - Pi Cooling Baseline
 
@@ -133,6 +149,45 @@ Decision:
 - If idle remains near the 25/06 `72.7-73.8 C` baseline, do not run live
   inference. Cooling is not fixed.
 - If idle is clearly lower and stable, continue to Block D or Block E.
+
+**Outcome:** Block C ran from the Pi and was saved in:
+
+```text
+/home/ghostzero/Desktop/test_logs_folder/testlogs_26_06_2026_cooling_BlockC.txt
+```
+
+The Pi identified as `imtaquadrone-desktop` at `10.120.2.249`. Initial
+temperature was `71600` millicelsius (`71.6 C`). The 10 idle samples over about
+90 seconds were:
+
+```text
+71600
+69400
+69400
+70500
+71050
+71050
+71600
+71050
+71600
+71050
+```
+
+That gives an idle-sample range of `69.4-71.6 C` and a mean of about
+`70.8 C`; including the initial read gives about `70.9 C`. The before and
+after dmesg voltage/throttle tails were unchanged and showed only the same
+boot-time storage-bus voltage-switch messages:
+
+```text
+[    0.869607] mmc0: cannot verify signal voltage switch
+[    0.933670] mmc1: cannot verify signal voltage switch
+```
+
+No fresh undervoltage or throttle evidence appeared during the idle baseline.
+The fan improved the 25/06 hot idle floor slightly, but the result remained in
+the marginal `65-72 C` band rather than the conservative `<=60 C` go band.
+Decision: do not run the camera + NCNN loaded retest. Cooling/headroom remains
+the live blocker.
 
 ## Block D - Optional Pyrealsense Explore
 
@@ -175,6 +230,11 @@ PY
 Only add Ultralytics / NCNN packages to this separate venv if the import gate is
 clean and a direct-SDK retest is still useful after the cooling baseline.
 
+**Outcome:** skipped. Block C did not produce a clearly cooler baseline, so
+`pyrealsense2` was not re-probed or installed on 26/06. Direct SDK work remains
+optional and separate; it is not a fix for the current thermal headroom problem
+or for default-confidence `0` detections.
+
 ## Block E - Direct-SDK Retest Gate
 
 Run only if both are true:
@@ -205,6 +265,9 @@ Abort rules:
 Expected detections are still informational only. `0` boxes does not mean the
 camera path failed; the current model is not detector-quality.
 
+**Outcome:** skipped. The required cooler Block C gate did not pass, and no
+separate `pyrealsense2` environment was proven. No direct-SDK retest was run.
+
 ## Block F - If Live Camera Detection Is The Question
 
 The current live camera path already reached frames -> custom NCNN inference on
@@ -220,6 +283,11 @@ Valid next checks:
 
 Do not treat `pyrealsense2` as the detection fix. It is only a lower-overhead
 capture route.
+
+**Outcome:** no live detection retest was run. The 25/06 ROS camera-topic ->
+custom NCNN path remains the latest live-path evidence. The 26/06 result only
+adds that the small fan did not lower idle enough to justify another loaded
+thermal spike.
 
 ## Block G - Dataset/Model Branch
 
@@ -243,6 +311,9 @@ Minimum planning outputs:
 - Whether labels will be useful for the real deployment task.
 - Whether retraining would be meaningful from the new data.
 
+**Outcome:** not started. Block G remains the next available productive branch
+only if explicitly approved after the cooling no-go decision.
+
 ## Block H - Wrap
 
 Update this diary with:
@@ -255,6 +326,23 @@ Update this diary with:
 - Dataset/model decision if Block G ran.
 - Explicit skipped blocks and why.
 - Bounded next steps.
+
+**Wrap outcome:** 26/06 selected the cooling branch and ran the Block C idle
+baseline only. With the small fan active, the Pi idled at `69.4-71.6 C`
+(`70.8 C` mean over the 10 idle samples), which is stable but still too warm
+for a responsible camera + NCNN loaded retest. Power/throttle evidence stayed
+clean in the recorded dmesg tails. Blocks D and E were skipped because direct
+`pyrealsense2` is not a cooling fix and the cooler baseline gate did not pass.
+Block F was skipped because `0` boxes should not be chased through camera code,
+and the known live blocker is thermal headroom. Block G was not started without
+explicit approval.
+
+**Next steps:** inspect the physical cooling mount before any more live
+inference attempts: verify a real heatsink or active cooler is seated on the
+SoC with usable thermal-pad contact, keep dedicated power, and rerun Block C
+before any load test. If hardware cooling cannot be improved today, move to the
+workstation-only Block G dataset/model planning branch only after explicit
+approval.
 
 Before any commit:
 
