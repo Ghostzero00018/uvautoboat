@@ -416,6 +416,44 @@ box state, with a loose cable or missing peripheral/FC power as the leading
 physical hypothesis. Follow up on Tuesday 30/06/2026 with a physical power and
 wiring inspection, then rerun MAVProxy before launching MAVROS.
 
+**End-of-day direct SDK comparison (post `0d83614`):** the final 26/06 check
+kept the ROS camera node stopped; the direct RealSense SDK had exclusive camera
+access. `pyrealsense2` remained isolated in `~/venvs/yolo-pi5-rs`, while the
+direct NCNN helper bridged that package into the proven `~/venvs/yolo-pi5`
+runtime through `PYTHONPATH`. The import gate passed with `pyrealsense2 2.58.2`,
+`ultralytics 8.4.62`, `ncnn`, and D435I serial `213622070342`.
+
+The direct SDK + NCNN `imgsz=640` short run completed: `150` frames in `23.1 s`,
+`mean_fps=6.51`, `mean_inf_ms=151.9`, and `0` boxes. Temperature went from
+`57.3 C` before inference to `68.85 C` at the helper's final read; the immediate
+post-run sysfs read was `66.65 C`. No `80.0 C` abort occurred, and dmesg again
+showed only the usual boot-time `mmc*` signal-voltage lines. This proves a short
+direct-SDK camera -> custom NCNN path. At `imgsz=640`, however, the direct SDK
+result (`6.51 fps`, `151.9 ms`) falls inside the ROS path's run-to-run spread
+(`6.16-7.98 fps`, `123.8-160.6 ms`), so it shows no meaningful capture-overhead
+advantage; the workload is inference-bound. It also does not overturn the
+sustained thermal result: the earlier multi-run headless ROS + NCNN test still
+climbed through the abort threshold (`80.4-82.05 C` aborts), so sustained
+inference is not proven viable at the current `imgsz=640` profile.
+
+The optional `--imgsz 320` direct SDK run was not usable as a comparison: it
+segfaulted after model load, before any frame-count, FPS, inference-time, or
+detection summary was printed. The same helper had just run cleanly at
+`imgsz=640`, so the likely issue is the NCNN model path rather than the helper:
+the model was exported for the `640` input profile, and a `320` frame can
+mismatch the fixed blob shape inside NCNN. A real `imgsz=320` test should use a
+separate workstation export at `imgsz=320` and copy that NCNN model to the Pi,
+not start with a helper rewrite.
+
+Final 26/06 state: short headless ROS-camera -> NCNN and short direct-SDK ->
+NCNN paths are proven; direct camera-only `pyrealsense2` capture is proven; all
+live detections remain `0` boxes; sustained inference under the current NCNN
+profile failed the thermal gate; pyrealsense2 is not a thermal fix. Block G
+dataset/model work was deliberately deferred today. Next bounded steps are:
+physical power/wiring inspection plus MAVProxy heartbeat retry on Tuesday
+30/06/2026, and a separate model/thermal profile decision before any further
+sustained live-inference claim.
+
 Before any commit:
 
 ```bash
