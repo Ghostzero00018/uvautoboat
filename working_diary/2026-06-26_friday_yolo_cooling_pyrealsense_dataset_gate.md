@@ -356,6 +356,50 @@ measure the absolute floor, then headless camera-on with no NCNN subscriber as
 the real pre-inference gate. If headless camera-on remains near `70 C`, inspect
 the physical cooler before any live inference retest.
 
+**Headless retest result (post `47376f6`):** the full SSH/headless pipeline ran
+on `imtaquadrone-desktop` (`10.120.2.249`) and passed the short-run gate under
+the corrected operating condition. With the Remmina / desktop screen session
+closed, the floors were far below the earlier desktop reading:
+
+- No-camera floor: `51.25-54.00 C`, mean `52.19 C`.
+- Camera-on / no-NCNN floor: `50.70-52.35 C`, mean `51.03 C`.
+- Camera topic rate: stable mean `14.989 Hz` over `118` samples.
+
+This confirms the active remote desktop session, not the cooler, was the
+dominant confound: it had inflated the camera-on floor from about `51 C` to the
+`70.9 C` recorded in `baseline_20260626_103348.txt`.
+
+A bounded live `gate2_ros_live_infer.py` retest then completed cleanly through
+the ROS camera topic into the custom `best_ncnn_model`: `150` frames in
+`18.8 s`, `mean_fps=7.98`, and `mean_inf_ms=123.8`. Temperature went from
+`54.55 C` before live inference to `67.75 C` at the helper's final read
+(`65.55 C` at the last mid-loop print), then the immediate follow-up sysfs read
+was `55.65 C`. No `80.0 C` abort occurred. dmesg stayed clean apart from the
+usual boot-time `mmc*` signal-voltage lines. Inference ran about `2.75x` faster
+than the 25/06 run (`123.8 ms` versus `340.9 ms`), consistent with the 25/06
+spike having run near the thermal limit rather than at full clock.
+
+All snapshot and live inference detections remained `0` boxes. That remains a
+data/model/threshold issue, not a camera-path failure. `pyrealsense2` remained
+absent from both `~/venvs/yolo-pi5` and `/usr/bin/python3`, and
+`python3-pyrealsense2` had no apt candidate; no install was performed. The
+installed RealSense C library packages were `librealsense2` `2.58.2`, while the
+ROS camera stack remained `ros-jazzy-realsense2-camera` `4.58.1` with
+`ros-jazzy-librealsense2` `2.58.1`.
+
+Proven: a short, thermally clean, headless ROS-camera -> custom NCNN live run.
+Not proven: detector quality, long-duration sustained inference, dashboard
+integration, MAVROS, QGC, Herelink, or real-FCU integration. The `18.8 s` live
+run had not reached a thermal plateau, so a multi-minute headless live run is
+required before claiming sustained thermal viability.
+
+**Next steps update:** treat the headless camera-on configuration as the
+deployment-representative baseline. Cooler-mount inspection is no longer the
+blocking step. Before any sustained-inference claim, run a multi-minute
+headless live test to find the thermal plateau and confirm it stays under
+`80.0 C`. Detector-quality work remains the separate Block G dataset/model
+track.
+
 Before any commit:
 
 ```bash
