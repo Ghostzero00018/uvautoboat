@@ -344,6 +344,18 @@ before any load test. If hardware cooling cannot be improved today, move to the
 workstation-only Block G dataset/model planning branch only after explicit
 approval.
 
+**Post-push correction:** after commit `694bf79`, the user clarified that the
+RealSense camera node was already running during the 26/06 Block C baseline.
+Therefore the recorded `69.4-71.6 C` band must not be treated as a true idle
+floor. It is a camera-node plus desktop/remote-session baseline, with no NCNN
+subscriber load. The no-go decision for camera + NCNN remains conservative and
+unchanged, because the Pi still had only limited headroom below the `80.0 C`
+abort threshold. The next cooling check should use plain SSH with the
+desktop/remote screen session closed and record both floors: first no-camera to
+measure the absolute floor, then headless camera-on with no NCNN subscriber as
+the real pre-inference gate. If headless camera-on remains near `70 C`, inspect
+the physical cooler before any live inference retest.
+
 Before any commit:
 
 ```bash
