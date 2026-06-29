@@ -98,6 +98,17 @@ Read first:
 
 Record the exact starting SHA and whether a pull was needed.
 
+**Outcome:** repo guard passed on 29/06/2026 before any branch decision or
+edit. `git fetch --prune` completed, `git log --oneline -5` showed
+`389b659 docs(diary): scaffold 29/06 workstation prep` at HEAD, and
+`git status --short --branch` showed clean `## main...origin/main`.
+`git rev-parse HEAD origin/main` returned the same SHA for both refs:
+`389b659cf2fb1b688748f467135b51f33629434e`. No pull was needed.
+
+Files inspected before work: this diary, the 26/06 and 25/06 YOLO diaries,
+`Board.md`, `wiki/Roadmap.md`, `wiki/YOLO_Dataset_Plan.md`, `README.md`,
+`USER_MANUAL.md`, `wiki/Home.md`, and `working_diary/README.md`.
+
 ## Block B - Monday Scope Decision
 
 Default route:
@@ -112,6 +123,11 @@ Default route:
 Do not convert Monday into a live hardware day by drift. The MAVProxy physical
 power/wiring follow-up is already bounded to Tuesday 30/06/2026 unless the user
 explicitly reschedules it.
+
+**Outcome:** default workstation route selected: quick docs/status hygiene
+sweep first, then the `imgsz=320` NCNN export, then dataset/model planning.
+No live Pi, RealSense, MAVProxy, MAVROS, QGC, Herelink, dashboard, or real-FCU
+test was started.
 
 ## Block C - Quick Current-State Docs Sweep
 
@@ -147,6 +163,22 @@ Expected correct current state:
 
 If no stale current-facing docs are found, record a negative docs result and do
 not stretch the sweep.
+
+**Outcome:** the three scaffolded `rg` sweeps were run across the requested
+current-facing docs. Classification:
+
+- Current-facing stale claim to fix now: `Board.md` top and footer metadata
+  still said `25/06/2026` even though the 26/06 YOLO / RealSense and MAVProxy
+  rows were already present. Fixed narrowly by updating `Last Updated` to
+  `26/06/2026` and `Document Version` to `9.35`.
+- Historical rows or diary notes to leave unchanged: dated 09/06, 25/06, and
+  26/06 Board/Roadmap rows, including the earlier stock `imgsz=320` COCO
+  feasibility result and the 26/06 `link 1 down` caveat.
+- Generic guide needing a short caveat: none found in `README.md`,
+  `USER_MANUAL.md`, `wiki/Home.md`, or `working_diary/README.md`.
+- Optional refresh deferred: stale-looking generic `Last updated` stamps in
+  non-status index/manual files were not YOLO status claims and were left
+  unchanged.
 
 ## Block D - Workstation `imgsz=320` NCNN Export Prep
 
@@ -186,6 +218,41 @@ Expected artifact shape:
 If the export command writes to a different path, record the exact path and do
 not guess. If it fails, paste the error and stop before any Pi work.
 
+**Outcome:** workstation export prep passed. The precheck used:
+
+```bash
+cd /home/ghostzero/datasets/uvautoboat_yolo_2026-06
+source ~/venvs/yolo-ws/bin/activate
+python -c "import ultralytics, torch, ncnn; print('ultralytics', ultralytics.__version__); print('torch', torch.__version__, 'cuda', torch.cuda.is_available()); print('ncnn ok')"
+test -f runs/baseline_yolo26n/weights/best.pt
+```
+
+It reported `ultralytics 8.4.75`, `torch 2.12.1+cu130`, `cuda False`, and
+`ncnn ok`; `runs/baseline_yolo26n/weights/best.pt` existed. CUDA was not
+needed for export, so the difference from the 25/06 `cuda True` training gate
+was recorded but not investigated.
+
+The isolated export source was created at:
+
+```text
+/home/ghostzero/datasets/uvautoboat_yolo_2026-06/runs/export_imgsz320/best_imgsz320.pt
+```
+
+`yolo export model=runs/export_imgsz320/best_imgsz320.pt format=ncnn imgsz=320`
+completed with input shape `(1, 3, 320, 320)` and output shape `(1, 9, 2100)`.
+Export output:
+
+```text
+/home/ghostzero/datasets/uvautoboat_yolo_2026-06/runs/export_imgsz320/best_imgsz320_ncnn_model
+```
+
+Required files are present:
+
+- `model.ncnn.param` (`26K`)
+- `model.ncnn.bin` (`9.1M`)
+- `metadata.yaml` (`401` bytes)
+- `model_ncnn.py`
+
 ## Block E - Optional Workstation Static Smoke
 
 Run only if Block D exports cleanly and time remains.
@@ -212,6 +279,36 @@ Record:
 Do not copy to the Pi on Monday unless the user explicitly approves a separate
 handoff step.
 
+**Outcome:** optional workstation static smoke passed as a load/import check.
+A first command used a mistyped venv path and produced no output. A later
+relative-`project` smoke run loaded the model but saved under
+`/home/ghostzero/runs/detect/...`; that stray `static_smoke` output was
+removed while the older parent tree was left untouched, and the check was
+rerun with an absolute dataset-local project path:
+
+```bash
+cd /home/ghostzero/datasets/uvautoboat_yolo_2026-06
+source ~/venvs/yolo-ws/bin/activate
+yolo predict task=detect model=runs/export_imgsz320/best_imgsz320_ncnn_model source=images/val imgsz=320 conf=0.25 project=/home/ghostzero/datasets/uvautoboat_yolo_2026-06/runs/predict_imgsz320 name=static_smoke exist_ok=True
+```
+
+NCNN loaded from the new `imgsz=320` export. Source images were:
+
+- `/home/ghostzero/datasets/uvautoboat_yolo_2026-06/images/val/neg_20260624_150606_0004.jpg`
+- `/home/ghostzero/datasets/uvautoboat_yolo_2026-06/images/val/oblique_20260624_144553_0006.jpg`
+
+Both images returned no detections at `conf=0.25`. The negative image was
+correctly empty, but `oblique_20260624_144553_0006.jpg` has `2` labeled
+persons, so the smoke result is a `0/2` recall miss on the positive validation
+image. This is a weak detector-quality warning consistent with the prior
+`imgsz=640` custom-model `0`-box results; it does not invalidate the NCNN
+load/export check. Smoke timing was about `12.3 ms` inference per image at
+shape `(1, 3, 320, 320)`. Output directory:
+
+```text
+/home/ghostzero/datasets/uvautoboat_yolo_2026-06/runs/predict_imgsz320/static_smoke
+```
+
 ## Block F - Block G Dataset/Model Planning
 
 Run after the export path is handled, or sooner if export is blocked.
@@ -233,6 +330,17 @@ negatives, `9` total class-4 boxes, and `2` validation images.
 If no useful buoys, vessels, docks, obstacles, or realistic proxy scenes are
 available, park dataset work and record that result.
 
+**Outcome:** detector-quality dataset/model work is parked. Dataset inventory
+still shows only the 24/06 indoor RealSense pilot: `9` train images/labels,
+`2` val images/labels, `9` total boxes, all class `4` (`person`), plus
+`17` rejected same-scene raw images. `data.yaml` declares `buoy`, `vessel`,
+`dock`, `obstacle`, and `person`, but only `person` is populated.
+
+No available buoy, vessel, dock, obstacle, water-level scene, or realistic
+proxy set was found under the dataset tree. Adding more easy person frames
+would only inflate the already-proven pipeline-validation class, not improve
+the real deployment detector.
+
 ## Block G - Tuesday Hardware Handoff Note
 
 Use only after the workstation work is recorded.
@@ -252,6 +360,20 @@ Tuesday 30/06/2026 candidate order:
 
 No dashboard, QGC upload, Herelink, or real-FCU command path is needed for that
 quick MAVProxy retry.
+
+**Outcome / Tuesday note:** Tuesday 30/06/2026 remains Pi-side and
+hardware-first. Candidate order:
+
+1. Inspect physical power and wiring after the missing startup music/sound.
+2. Confirm the flight-controller/peripheral side is powered.
+3. Check the `/dev/ttyAMA0` cable path and seating.
+4. Rerun MAVProxy heartbeat on `/dev/ttyAMA0:57600`.
+5. Launch MAVROS only after MAVProxy receives heartbeat again.
+6. Only after that gate is no longer blocking, and only if explicitly
+   approved, copy the new `imgsz=320` NCNN export to the Pi and run a short
+   bounded thermal comparison.
+
+Monday skipped all live Pi / hardware blocks by design.
 
 ## Block H - Wrap
 
@@ -280,8 +402,25 @@ rg -n "\[[[:space:]]\]" working_diary/2026-06-29_monday_workstation_prep.md
 Run the standard public-repo visibility sweep before committing. End with
 bounded next steps and no stale completed action.
 
-Suggested commit subject if this scaffold is the only change:
+**Wrap outcome:** Monday completed the intended workstation path. Repo guard
+started clean/synced at
+`389b659cf2fb1b688748f467135b51f33629434e`; docs/status hygiene found only
+stale `Board.md` metadata, fixed narrowly; the custom model has a separate
+workstation `imgsz=320` NCNN export at
+`/home/ghostzero/datasets/uvautoboat_yolo_2026-06/runs/export_imgsz320/best_imgsz320_ncnn_model`;
+the dataset-local static smoke loaded that export and produced no detections on
+the two validation images, including a `0/2` miss on the labeled positive
+image; Block G detector-quality work is parked until useful operational or
+realistic proxy data is available.
+
+**Next steps:** Tuesday 30/06/2026 should start with the physical
+power/wiring inspection and MAVProxy heartbeat retry. Do not launch MAVROS
+until MAVProxy receives heartbeat again. Do not copy or test the new 320 NCNN
+export on the Pi until the heartbeat gate is no longer blocking and that
+thermal comparison is explicitly approved.
+
+Suggested commit subject for this wrap:
 
 ```text
-docs(diary): scaffold 29/06 workstation prep
+docs: record 29/06 workstation export prep
 ```

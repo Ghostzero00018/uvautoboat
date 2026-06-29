@@ -8,7 +8,7 @@
 |---|---|
 | **Project** | AutoBoat Navigation System |
 | **Repository** | [Ghostzero00018/uvautoboat](https://github.com/Ghostzero00018/uvautoboat) |
-| **Last Updated** | 25/06/2026 |
+| **Last Updated** | 26/06/2026 |
 | **Status** | 🟢 Simulation ready (A\* path planning + one-click launcher + wiki docs + dashboard config system + MP/QGC install). First wet test completed 07/05/2026: boat survived float/manual-control bring-up, Herelink manual control works, QGC/MP MAVLink arm/disarm works. Herelink video A/B campus side verified 11/05/2026 — Linux QGC video works via the `Source = Herelink Hotspot` preset and `ffplay rtsp://<herelink-ip>:8554/fpv_stream` independently confirms the underlying LIVE555 H.264 stream; Linux MP video + arm/disarm also working after a host-local SkiaSharp 2.88.8 NuGet swap + `~/MissionPlanner/libdl.so` → `libdl.so.2` symlink (11/05/2026 late-day fix, reversible — see `wiki/Common_Issues.md` MP-Linux entry); GDAL/OGR/OSR Mono gaps from 24/04 remain (terrain / advanced geo-ref still degraded) but no longer block the video panel. Second-site (lake) retest deferred to next field session. **22/06/2026 update:** workstation on `IMT-Aquatic-drone` again reached the Herelink RTSP endpoint (`rtsp://192.168.43.1:8554/fpv_stream`, LIVE555 H.264 1920×1080@30); TCP was clean while UDP showed packet loss, but the current video source was a Pi desktop / `rqt_image_view` screen capture after starting the Pi camera node, not a direct camera feed. Treat this as transport reachability plus a current source-regression finding, not dashboard-camera integration evidence. Pi 5 MAVLink telemetry path proven 04/06/2026 (`/mavros/state connected: true` via MAVProxy → MAVROS on the reconfigured ArduPilot endpoint; GPS fix / EKF config still open). Pi 5 RealSense camera display in the workstation dashboard was proven 18/06/2026 over `IoT IMT Nord Europe` using a camera-only `424x240x15` profile; this is camera display only, not command/write validation. Local dashboard/planner → QGC visual mission bridge accepted 10-11/06/2026 (`tools/qgc_live_mission_bridge.py` over `127.0.0.1:14550`) and observed under a Herelink-hotspot mixed-topology setup 17/06/2026; visual-only — real-FCU upload, bidirectional sync, and command/write validation remain open. |
 
 ---
@@ -403,7 +403,7 @@ Current position ──────>│  (in Planner)       │
 
 ## 📜 Acknowledgments
 
-**Document Version**: 9.34 | **Last Updated**: 25/06/2026
+**Document Version**: 9.35 | **Last Updated**: 26/06/2026
 
 **Maintained By**: AutoBoat Development Team
 
