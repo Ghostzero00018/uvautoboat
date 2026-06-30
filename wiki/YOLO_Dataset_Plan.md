@@ -243,3 +243,4 @@ Pi 5 gate:
 - [Home](Home)
 - [Roadmap](Roadmap)
 - [RealSense Dashboard Testing](RealSense_Dashboard_Testing)
+- [Hailo HAT Workstream Memo](Hailo_HAT_Workstream)
