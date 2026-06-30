@@ -87,6 +87,17 @@ Read first:
 
 Record the exact starting SHA and whether a pull was needed.
 
+**Outcome:** repo guard passed on 30/06/2026 before any Pi-side hardware
+pipeline. `git fetch --prune` completed, `git log --oneline -5` showed
+`907cffb docs(diary): scaffold 30/06 MAVProxy wiring gate` at HEAD, and
+`git status --short --branch` showed clean `## main...origin/main`.
+`git rev-parse HEAD origin/main` returned the same SHA for both refs:
+`907cffbaf51a1d7d7e1afd504b49d2c0a50f471c`. No pull was needed.
+
+Files inspected before the Pi-side gate: this diary, the 29/06/2026
+workstation-prep diary, the 26/06/2026 YOLO / RealSense / MAVProxy diary,
+`Board.md`, and `wiki/Roadmap.md`.
+
 ## Block B - Live Pipeline Header
 
 Use this header before running the hardware pipeline.
@@ -285,6 +296,28 @@ rg -n "\[[[:space:]]\]" working_diary/2026-06-30_tuesday_pi_mavproxy_wiring.md
 
 Run the standard public-repo visibility sweep before committing. End with
 bounded next steps and no stale completed action.
+
+**EOD outcome:** the full pasted Block C / D / F transcript was not captured in
+this session, but the user reported a very quick morning telemetry sanity check:
+heartbeat was visible again and other sensor feedback data was also visible. This
+is enough to retire the strict 26/06/2026 "no heartbeat heard" symptom as the
+only current observation, but it is not a substitute for a saved command log.
+
+MAVProxy heartbeat status for today: user-reported pass. Exact MAVProxy lines
+such as `Detected vehicle 1:1` / `online system 1` were not pasted into this
+diary. MAVROS launch and `/mavros/state connected: true` were not recorded here
+as pasted evidence, so treat the ROS-side telemetry gate as likely healthy but
+not freshly documented in this diary.
+
+320 NCNN copy/test stayed skipped. The Hailo HAT memo work was deliberately
+kept as a separate wiki branch and did not change the active telemetry scope.
+
+**Next steps:** when bench time is available again, capture the clean telemetry
+evidence in logs: run the Block C preflight, confirm physical power / wiring
+state, run the bounded MAVProxy heartbeat probe, then keep MAVProxy foregrounded
+and capture `/mavros/state` plus a small read-only sensor-topic sample. Keep
+RealSense, YOLO, dashboard, QGC, Herelink, command/write paths, and the 320 NCNN
+thermal block closed unless explicitly started as a separate block.
 
 Suggested commit subject for this scaffold:
 
