@@ -25,6 +25,14 @@ for reusable architecture facts, not single-day observations.
   (`master`) supports Hailo-10 and Hailo-15 only, so any 5.x driver, runtime,
   Dataflow Compiler, or Model Zoo artifact is the wrong hardware line for this
   board. See the E2 Artifact Pin Sheet.
+- Path decision: the official Hailo Dataflow Compiler is the destination for the
+  custom `yolo26n` maritime detector because it gives the export, calibration,
+  model-script, and post-processing control that int8 accuracy depends on.
+  Community / no-account routes keep momentum while access and setup clear:
+  source-build + firmware + prebuilt HEFs for runtime and stock smoke, and
+  DeGirum for a fast YOLOv8 / YOLO11 HEF if that head is acceptable. Runtime-only
+  work is a convenience question, not a quality question. See "While waiting:
+  no-account routes."
 - Live state (01/07/2026): a read-only Pi probe confirmed Ubuntu 24.04.4 /
   kernel `6.8.0-1057-raspi` / Python 3.12.3, HAT healthy on PCIe (`1e60:2864`,
   gen-3 x1) but no Hailo driver/runtime and no `hailo-all` candidate. The
