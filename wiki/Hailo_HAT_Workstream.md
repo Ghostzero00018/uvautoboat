@@ -28,11 +28,10 @@ for reusable architecture facts, not single-day observations.
 - Path decision: the official Hailo Dataflow Compiler is the destination for the
   custom `yolo26n` maritime detector because it gives the export, calibration,
   model-script, and post-processing control that int8 accuracy depends on.
-  Community / no-account routes keep momentum while access and setup clear:
-  source-build + firmware + prebuilt HEFs for runtime and stock smoke, and
-  DeGirum for a fast YOLOv8 / YOLO11 HEF if that head is acceptable. Runtime-only
-  work is a convenience question, not a quality question. See "While waiting:
-  no-account routes."
+  Community / no-account routes remain useful fallbacks: source-build +
+  firmware + prebuilt HEFs for runtime and stock smoke, and DeGirum for a fast
+  YOLOv8 / YOLO11 HEF if that head is acceptable. Runtime-only work is a
+  convenience question, not a quality question. See "No-account routes."
 - Live state (01/07/2026): a read-only Pi probe confirmed Ubuntu 24.04.4 /
   kernel `6.8.0-1057-raspi` / Python 3.12.3, HAT healthy on PCIe (`1e60:2864`,
   gen-3 x1) but no Hailo driver/runtime and no `hailo-all` candidate. The
@@ -109,12 +108,10 @@ Rules for the first Ubuntu attempt:
 
 ## E2 Artifact Pin Sheet
 
-All version numbers below are **as of 01/07/2026 — re-confirm on the Hailo
-Developer Zone and the `hailort` releases page before download.** Hailo ships
-roughly monthly and the wheels / compiler are login-gated, so treat this as a
-starting pin, not a timeless fact. The binding rule is the version LOCK, not the
-exact numbers: adopt one coherent release row wholesale rather than mixing
-components.
+All version numbers below are **confirmed from the Hailo download portal on
+01/07/2026**. Hailo ships roughly monthly, so treat this as the pinned row for
+this bring-up, not a timeless "newest" claim. The binding rule is the version
+LOCK: adopt one coherent release row wholesale rather than mixing components.
 
 Line rule (durable): the Hailo-8L uses the HailoRT 4.x line (`hailo8` branch).
 The 5.x line (`master`) is Hailo-10 / Hailo-15 only — never pin a 5.x artifact
@@ -123,12 +120,11 @@ for this board. Stated verbatim in the `hailort` README.
 Provenance of the pins: the public `hailort` and Model Zoo READMEs confirm the
 LINE rules above (Hailo-8L uses HailoRT 4.x / `hailo8` branch + Model Zoo 2.x +
 Dataflow Compiler 3.x; 5.x / `master` is Hailo-10 / 15), and the `hailort`
-releases page confirms 4.24.0 as the newest 4.x. The compile-side patch numbers
-below (Model Zoo 2.19.0, DFC 3.34.0 — DFC is closed-source with no public tags)
-come from a login-gated Developer Zone source and are NOT reproducible from
-public changelogs (the public 2.x changelog is visible only through v2.15).
-Treat those as candidate pins to re-confirm in the Developer Zone before
-download, not as established fact.
+releases page confirms 4.24.0 as the newest public 4.x release. The concrete
+downloaded filenames below confirm the login-gated compile-side patch numbers:
+Model Zoo 2.19.0 and DFC 3.34.0. The public 2.x changelog still does not expose
+that full row, so the downloaded portal artifacts are the evidence for those
+patch numbers.
 
 ### Pi runtime stack (aarch64, hand-assembled — no `hailo-all` on Ubuntu)
 
@@ -136,52 +132,64 @@ Pin all four to the SAME 4.x version, or the runtime refuses to start
 (`Driver version (X) is different from library version (Y)`,
 `HAILO_UNSUPPORTED_FW_VERSION`):
 
-| Component | Pin (as of 01/07/2026) | Source | Note |
+| Component | Confirmed artifact (01/07/2026) | Source | Note |
 | --- | --- | --- | --- |
-| PCIe driver `hailo_pci` | 4.24.0 | `hailort-drivers` `hailo8` branch, built from source | `sudo apt install build-essential linux-headers-$(uname -r)`, then `make all && sudo make install` (out-of-tree) or `make install_dkms`. Builds and creates `/dev/hailo0` on the `6.8.0-*-raspi` kernel; driver floor is >= 4.19. |
-| HailoRT runtime `hailort_<ver>_arm64.deb` | 4.24.0 | Developer Zone (free account) | provides `hailortcli` |
-| Python binding `pyhailort` wheel | `hailort-4.24.0-cp312-cp312-linux_aarch64.whl` | Developer Zone | cp312 for the system Python 3.12; verify the cp312 aarch64 wheel exists for the chosen version (running confirmed for 4.23.0). Fallback: a Python 3.11 venv with the cp311 wheel, or build the binding from source. |
-| Firmware `hailo8_fw.<ver>.bin` | 4.24.0 | ships with the runtime; lands at `/lib/firmware/hailo/hailo8_fw.bin` | must equal the driver / library version |
+| PCIe driver `hailo_pci` | `hailort-pcie-driver_4.24.0_all.deb` | Developer Zone | DKMS driver package; install after matching `linux-headers-$(uname -r)` and `build-essential`. Driver floor for the Pi `6.8-raspi` kernel remains >= 4.19. |
+| HailoRT runtime | `hailort_4.24.0_arm64.deb` | Developer Zone | provides `hailortcli` on the Pi |
+| Python binding `pyhailort` wheel | `hailort-4.24.0-cp312-cp312-linux_aarch64.whl` | Developer Zone | cp312 exists for the Pi's Ubuntu 24.04 Python 3.12, so no Python 3.11 venv is needed for this pinned row. Keep the venv/source-build route only as a fallback if the row changes later. |
+| Firmware `hailo8_fw.<ver>.bin` | bundled with the 4.24.0 driver/runtime packages | Developer Zone packages | verify `/lib/firmware/hailo/hailo8_fw.bin` after Pi install; fetch a standalone firmware file only if the package install does not provide it |
 
 ### x86_64 compile toolchain (the Pi never compiles)
 
 Pin all three to the SAME Model Zoo release row; a HEF is locked to both the
 runtime line and the device arch:
 
-| Component | Pin (as of 01/07/2026) | Note |
+| Component | Confirmed artifact (01/07/2026) | Note |
 | --- | --- | --- |
-| Hailo Dataflow Compiler | 3.34.0 (3.x line; candidate — re-confirm) | `hailo_dataflow_compiler-3.34.0-py3-none-linux_x86_64.whl`; x86_64 Ubuntu 20.04 / 22.04, Python 3.10-3.12, 16+ GB RAM (32 GB recommended), optional NVIDIA GPU (CUDA 11.8 / cuDNN 8.9) for faster optimization. Never DFC 5.x (Hailo-10 / 15). |
-| Hailo Model Zoo | 2.19.0 (2.x line; candidate — re-confirm) | `hailomz` CLI; wraps parse / optimize / compile |
-| HailoRT (x86) | 4.24.0 | HEF validation; keeps the line matched |
+| Hailo AI Software Suite Docker | `hailo8_ai_sw_suite_2026-07_docker.zip` | Recommended first compile route. Archive integrity passed; it contains `hailo8_ai_sw_suite_2026-07.tar.gz` and `hailo_ai_sw_suite_docker_run.sh`. Verify bundled versions inside the container before compiling. |
+| Hailo Dataflow Compiler | `hailo_dataflow_compiler-3.34.0-py3-none-linux_x86_64.whl` | Bare-metal fallback to Docker. x86_64 Ubuntu 20.04 / 22.04, Python 3.10-3.12, 16+ GB RAM (32 GB recommended), AVX CPU, optional NVIDIA GPU (CUDA 11.8 / cuDNN 8.9) for faster optimization. Never DFC 5.x (Hailo-10 / 15). |
+| Hailo Model Zoo | `hailo_model_zoo-2.19.0-py3-none-any.whl` | Bare-metal fallback to Docker; `hailomz` CLI wraps parse / optimize / compile |
+| HailoRT (x86) | `hailort_4.24.0_amd64.deb` | HEF validation; keeps the line matched |
+| Python binding `pyhailort` wheel (x86) | `hailort-4.24.0-cp312-cp312-linux_x86_64.whl` | Optional workstation Python API tests; not required for HEF compilation |
 | Compile target arch | `--hw-arch hailo8l` | a `hailo8` (26 TOPS) HEF will not load on this 13 TOPS board |
 
-Most robust alternative to hand-pinning: pull the Hailo AI Software Suite
-(x86_64 Docker) for the matching quarter, which bundles a mutually compatible
-Dataflow Compiler + HailoRT + Model Zoo + TAPPAS. Conservative fallback row if
-the 4.24.0 cp312 wheel is not published: Model Zoo 2.18 / DFC 3.33.x / HailoRT
-4.23.0 (cp312-on-Ubuntu-24.04 confirmed for 4.23.0).
+Use the Docker suite for the first `yolo26n.pt` compile because it bundles a
+mutually compatible Dataflow Compiler + HailoRT + Model Zoo + TAPPAS row and
+avoids bare-metal TensorFlow/CUDA dependency friction. Keep the bare-metal
+wheels and `.deb` files as the fallback/scriptable route. Do not mix commands
+between the Docker row and a different bare-metal row without first verifying
+the versions match.
+
+Checksums already captured for the two last-added workstation artifacts:
+
+```text
+5e9a21f56217b131e49afdcacaebf3e200fd03a4d205d61bcb07ceda9c4542f6  hailo8_ai_sw_suite_2026-07_docker.zip
+7818ee8fe70a7f8a90f2485aaf488d0572fe2078d16728ae0716a42905e3d573  hailort-4.24.0-cp312-cp312-linux_x86_64.whl
+```
 
 ### Ubuntu 24.04 footguns
 
 - No `hailo-all` and no Raspberry Pi apt source on this image. Do not apt-pin
   `archive.raspberrypi.com` onto Ubuntu: those packages target Debian Trixie
   (newer glibc / Python 3.13) and ABI-mismatch Ubuntu Noble.
-- Python 3.12 is the main wheel trap: older binding wheels were cp38-cp311, so
-  confirm a cp312 aarch64 wheel or use a Python 3.11 venv kept off the ROS
-  interpreter.
+- Python 3.12 was the main wheel trap, but the pinned row includes both
+  `cp312-cp312-linux_aarch64` and `cp312-cp312-linux_x86_64` pyHailoRT wheels.
+  A Python 3.11 venv is only a fallback if a later row drops cp312 support.
 - The PCIe driver loads out-of-tree on the `6.8-raspi` kernel (no in-tree
   `hailo_pci`, no blacklist needed). Read driver logs with `sudo dmesg` because
   Ubuntu sets `kernel.dmesg_restrict=1`.
 - Secure Boot / MOK signing is an x86-host concern only; the Pi 5 boots its own
   bootloader with no UEFI Secure Boot.
 
-### While waiting: no-account routes
+### No-account routes
 
-Scope: this is a stopgap for when Developer Zone access is pending — it does not
-replace the pin sheet above. The point is that only the custom-model compiler is
-truly gated, so a pending account is not a total blocker. Everything called
-"public" below can be fetched without Hailo Developer Zone access; verify the
-exact URL and version before use.
+Scope: this is a fallback record from the pre-download stage. Developer Zone
+access is no longer the blocker for the 4.24.0 / 3.34.0 / 2.19.0 row above, so
+the official artifacts are now the primary path. The routes below remain useful
+only if a future download row is unavailable, a package is missing, or a fast
+stock smoke test is needed. Everything called "public" below can be fetched
+without Hailo Developer Zone access; verify the exact URL and version before
+use.
 
 Public / account-free (enough to build the runtime and run a stock smoke test):
 
@@ -192,7 +200,7 @@ Public / account-free (enough to build the runtime and run a stock smoke test):
 - Prebuilt `hailo8l` HEFs (e.g. yolov8n / yolo11n) from the public Model Zoo S3 —
   enough to prove the runtime / inference path before a custom model.
 
-Still gated (needs the pending Hailo account):
+Still gated without Hailo account access:
 
 - The Dataflow Compiler, for compiling the custom `yolo26n.pt` -> `hailo8l` HEF.
   No public GitHub, not on PyPI; Developer-Zone-only (free, but registration-gated).
