@@ -54,8 +54,9 @@ inference failed the thermal gate on 26/06/2026. The 29/06/2026 workstation run
 created a separate `imgsz=320` NCNN export as the next CPU-side thermal lever,
 but that export is still gated behind a clean MAVProxy / MAVROS telemetry pass.
 
-Hailo is a separate future accelerator branch. It should be evaluated as a way
-to move inference off the Pi CPU, not as a replacement for the telemetry gate.
+Hailo is the active accelerator branch from 01/07/2026 onward. It is being
+evaluated as a way to move inference off the Pi CPU, not as a replacement for
+the telemetry gate.
 
 ## Compatibility Notes
 
@@ -260,8 +261,8 @@ work — that quantization result, not the driver install, is the make-or-break.
 
 ## Pi Bring-Up Order
 
-Run this only after the telemetry gate is no longer active and the professor or
-bench time is available.
+Run this when the professor or bench time is available and the offline E2
+artifact path has been prepared.
 
 1. Mount hardware and keep the Raspberry Pi Active Cooler fitted.
 2. Resolve the PCIe lane decision: AI HAT+ versus NVMe storage on the Pi 5's
