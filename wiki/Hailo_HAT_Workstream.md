@@ -1,8 +1,9 @@
 # Hailo HAT Workstream Memo
 
-This memo parks the future Hailo accelerator branch separately from the active
-MAVProxy / MAVROS telemetry gate. Do not mix Hailo work into the telemetry diary
-or use it to widen a MAVProxy heartbeat session.
+This memo is the planning home for the Hailo accelerator branch: the durable
+version constraints, OS / runtime gate, artifact pin sheet, and bring-up order.
+Day-by-day evidence lives in the dated `working_diary/` entries; keep this memo
+for reusable architecture facts, not single-day observations.
 
 ## Decision Summary
 
@@ -19,6 +20,16 @@ or use it to widen a MAVProxy heartbeat session.
 - Keep ROS 2 Jazzy as the boat spine unless the whole Phase 5 architecture is
   deliberately revisited. Treat Hailo on Ubuntu as a version-pinned,
   self-supported accelerator branch.
+- The runtime line is fixed by the hardware, not by "newest": the Hailo-8L is
+  served only by the HailoRT 4.x line (the `hailo8` branch). The 5.x line
+  (`master`) supports Hailo-10 and Hailo-15 only, so any 5.x driver, runtime,
+  Dataflow Compiler, or Model Zoo artifact is the wrong hardware line for this
+  board. See the E2 Artifact Pin Sheet.
+- Live state (01/07/2026): a read-only Pi probe confirmed Ubuntu 24.04.4 /
+  kernel `6.8.0-1057-raspi` / Python 3.12.3, HAT healthy on PCIe (`1e60:2864`,
+  gen-3 x1) but no Hailo driver/runtime and no `hailo-all` candidate. The
+  Raspberry Pi package path is closed for this image; the Ubuntu manual path is
+  the branch. Evidence: `working_diary/2026-07-01_wednesday_hailo_hat_bringup.md`.
 - Do not reuse the current NCNN export for Hailo. Hailo deployment needs a HEF
   artifact compiled from an ONNX/TFLite-style path with Hailo tooling.
 
@@ -79,12 +90,81 @@ Rules for the first Ubuntu attempt:
   driver.
 - Pin the Hailo driver, HailoRT runtime, Python binding, and HEF toolchain
   version together.
-- Keep this 13 TOPS Hailo-8L board on the HailoRT 4.x vision stack unless a
-  future vendor note explicitly says otherwise.
+- Keep this 13 TOPS Hailo-8L board on the HailoRT 4.x line (`hailo8` branch);
+  the 5.x `master` line is Hailo-10 / Hailo-15 only. This is a hardware
+  constraint, not a preference. See the E2 Artifact Pin Sheet.
 - Do not mix the AI HAT+ 2 package path with this board. Raspberry Pi documents
   `hailo-all` for AI HAT+ and a separate `hailo-h10-all` path for AI HAT+ 2.
 - Check Python compatibility explicitly because ROS 2 Jazzy on Ubuntu 24.04 uses
   Python 3.12.
+
+## E2 Artifact Pin Sheet
+
+All version numbers below are **as of 01/07/2026 — re-confirm on the Hailo
+Developer Zone and the `hailort` releases page before download.** Hailo ships
+roughly monthly and the wheels / compiler are login-gated, so treat this as a
+starting pin, not a timeless fact. The binding rule is the version LOCK, not the
+exact numbers: adopt one coherent release row wholesale rather than mixing
+components.
+
+Line rule (durable): the Hailo-8L uses the HailoRT 4.x line (`hailo8` branch).
+The 5.x line (`master`) is Hailo-10 / Hailo-15 only — never pin a 5.x artifact
+for this board. Stated verbatim in the `hailort` README.
+
+Provenance of the pins: the public `hailort` and Model Zoo READMEs confirm the
+LINE rules above (Hailo-8L uses HailoRT 4.x / `hailo8` branch + Model Zoo 2.x +
+Dataflow Compiler 3.x; 5.x / `master` is Hailo-10 / 15), and the `hailort`
+releases page confirms 4.24.0 as the newest 4.x. The compile-side patch numbers
+below (Model Zoo 2.19.0, DFC 3.34.0 — DFC is closed-source with no public tags)
+come from a login-gated Developer Zone source and are NOT reproducible from
+public changelogs (the public 2.x changelog is visible only through v2.15).
+Treat those as candidate pins to re-confirm in the Developer Zone before
+download, not as established fact.
+
+### Pi runtime stack (aarch64, hand-assembled — no `hailo-all` on Ubuntu)
+
+Pin all four to the SAME 4.x version, or the runtime refuses to start
+(`Driver version (X) is different from library version (Y)`,
+`HAILO_UNSUPPORTED_FW_VERSION`):
+
+| Component | Pin (as of 01/07/2026) | Source | Note |
+| --- | --- | --- | --- |
+| PCIe driver `hailo_pci` | 4.24.0 | `hailort-drivers` `hailo8` branch, built from source | `sudo apt install build-essential linux-headers-$(uname -r)`, then `make all && sudo make install` (out-of-tree) or `make install_dkms`. Builds and creates `/dev/hailo0` on the `6.8.0-*-raspi` kernel; driver floor is >= 4.19. |
+| HailoRT runtime `hailort_<ver>_arm64.deb` | 4.24.0 | Developer Zone (free account) | provides `hailortcli` |
+| Python binding `pyhailort` wheel | `hailort-4.24.0-cp312-cp312-linux_aarch64.whl` | Developer Zone | cp312 for the system Python 3.12; verify the cp312 aarch64 wheel exists for the chosen version (running confirmed for 4.23.0). Fallback: a Python 3.11 venv with the cp311 wheel, or build the binding from source. |
+| Firmware `hailo8_fw.<ver>.bin` | 4.24.0 | ships with the runtime; lands at `/lib/firmware/hailo/hailo8_fw.bin` | must equal the driver / library version |
+
+### x86_64 compile toolchain (the Pi never compiles)
+
+Pin all three to the SAME Model Zoo release row; a HEF is locked to both the
+runtime line and the device arch:
+
+| Component | Pin (as of 01/07/2026) | Note |
+| --- | --- | --- |
+| Hailo Dataflow Compiler | 3.34.0 (3.x line; candidate — re-confirm) | `hailo_dataflow_compiler-3.34.0-py3-none-linux_x86_64.whl`; x86_64 Ubuntu 20.04 / 22.04, Python 3.10-3.12, 16+ GB RAM (32 GB recommended), optional NVIDIA GPU (CUDA 11.8 / cuDNN 8.9) for faster optimization. Never DFC 5.x (Hailo-10 / 15). |
+| Hailo Model Zoo | 2.19.0 (2.x line; candidate — re-confirm) | `hailomz` CLI; wraps parse / optimize / compile |
+| HailoRT (x86) | 4.24.0 | HEF validation; keeps the line matched |
+| Compile target arch | `--hw-arch hailo8l` | a `hailo8` (26 TOPS) HEF will not load on this 13 TOPS board |
+
+Most robust alternative to hand-pinning: pull the Hailo AI Software Suite
+(x86_64 Docker) for the matching quarter, which bundles a mutually compatible
+Dataflow Compiler + HailoRT + Model Zoo + TAPPAS. Conservative fallback row if
+the 4.24.0 cp312 wheel is not published: Model Zoo 2.18 / DFC 3.33.x / HailoRT
+4.23.0 (cp312-on-Ubuntu-24.04 confirmed for 4.23.0).
+
+### Ubuntu 24.04 footguns
+
+- No `hailo-all` and no Raspberry Pi apt source on this image. Do not apt-pin
+  `archive.raspberrypi.com` onto Ubuntu: those packages target Debian Trixie
+  (newer glibc / Python 3.13) and ABI-mismatch Ubuntu Noble.
+- Python 3.12 is the main wheel trap: older binding wheels were cp38-cp311, so
+  confirm a cp312 aarch64 wheel or use a Python 3.11 venv kept off the ROS
+  interpreter.
+- The PCIe driver loads out-of-tree on the `6.8-raspi` kernel (no in-tree
+  `hailo_pci`, no blacklist needed). Read driver logs with `sudo dmesg` because
+  Ubuntu sets `kernel.dmesg_restrict=1`.
+- Secure Boot / MOK signing is an x86-host concern only; the Pi 5 boots its own
+  bootloader with no UEFI Secure Boot.
 
 ## Workstation-First Risk Retirement
 
@@ -108,15 +188,28 @@ Important constraints:
   script, NMS config, and `imgsz` must match.
 - Use deployment-domain calibration images. Start with at least 64, but target a
   much larger maritime calibration set before treating accuracy as meaningful.
-- Re-check model-family support before spending effort. Current Ultralytics
-  Hailo guidance lists YOLOv8, YOLO11, and YOLO26, but the documented example
-  path uses a traditional NMS post-processing flow. YOLO26 is NMS-free, so it
-  needs a dedicated post-processing path rather than a direct copy of the YOLO11
-  example.
+- Model-family support (as of 01/07/2026, re-check before effort): a public
+  working `yolo26n` -> Hailo-8L pipeline exists (`DanielDubinsky/yolo26_hailo`),
+  and Ultralytics documents YOLO26 as Hailo-compilable. Whether the Model Zoo
+  2.x branch ships a turnkey `yolo26` config is a login-gated claim, unconfirmed
+  from public sources — but the routes below do not need one. The real catch is
+  the default NMS-free one-to-one head, whose `TopK` / `GatherElements` ops are
+  unsupported on the Hailo-8L NPU, so the stock YOLOv8 / YOLO11 NMS example does
+  not transfer unchanged.
 
-If the current custom checkpoint stays on `yolo26n.pt`, the first Hailo test
-should be treated as a compatibility experiment, not a planned deployment. A
-traditional detection-head family may be needed for the accelerator branch.
+For `yolo26n.pt`, three routes, easiest first:
+
+1. Route A (try first): export with `end2end=False` to get the one-to-many
+   (YOLOv8-style) head, then compile with the documented `meta_arch=yolov8`
+   end-nodes and host-CPU NMS. This sidesteps the unsupported ops entirely.
+2. Route B (native NMS-free): cut the ONNX before the head and decode host-side;
+   a working Hailo-8L reference is `DanielDubinsky/yolo26_hailo` (read its
+   `requirements.txt` for exact pins).
+3. Fallback: retrain or convert to `YOLOv8n` / `YOLO11n`, the fully turnkey
+   Model Zoo detection families.
+
+Measure int8 mAP retention against the FP32 / NCNN baseline before any Pi driver
+work — that quantization result, not the driver install, is the make-or-break.
 
 ## Pi Bring-Up Order
 
