@@ -166,6 +166,45 @@ the 4.24.0 cp312 wheel is not published: Model Zoo 2.18 / DFC 3.33.x / HailoRT
 - Secure Boot / MOK signing is an x86-host concern only; the Pi 5 boots its own
   bootloader with no UEFI Secure Boot.
 
+### While waiting: no-account routes
+
+Scope: this is a stopgap for when Developer Zone access is pending — it does not
+replace the pin sheet above. The point is that only the custom-model compiler is
+truly gated, so a pending account is not a total blocker. Everything called
+"public" below can be fetched without Hailo Developer Zone access; verify the
+exact URL and version before use.
+
+Public / account-free (enough to build the runtime and run a stock smoke test):
+
+- PCIe driver source (`hailort-drivers`, GitHub) — build from source.
+- Device firmware (`hailo8_fw.bin`) — public S3, no login.
+- HailoRT + `pyhailort` via the source-build path (`hailort` GitHub, `hailo8`
+  branch); the account only buys the convenience `.deb` / wheel, not the code.
+- Prebuilt `hailo8l` HEFs (e.g. yolov8n / yolo11n) from the public Model Zoo S3 —
+  enough to prove the runtime / inference path before a custom model.
+
+Still gated (needs the pending Hailo account):
+
+- The Dataflow Compiler, for compiling the custom `yolo26n.pt` -> `hailo8l` HEF.
+  No public GitHub, not on PyPI; Developer-Zone-only (free, but registration-gated).
+- The convenience version-matched Developer Zone packages (HailoRT `.deb`, cp312
+  `pyhailort` wheel, matching firmware) — otherwise obtainable only by building
+  from source.
+
+DeGirum path (third-party):
+
+- A legitimate fallback that compiles a custom model to a `hailo8l` HEF in the
+  cloud (runs the Hailo Dataflow Compiler server-side) — but currently for
+  YOLOv8 / YOLO11, not the current `yolo26n` path.
+- Early-access, external service, separate DeGirum account; may change or become
+  paid.
+- Does not replace the Hailo 4.x runtime requirement on the Pi — HailoRT +
+  driver + firmware must still be installed for any HEF to run.
+
+The Ubuntu-24.04 caveat from the pin sheet still applies: the easy public
+`hailo-all` apt route is Raspberry Pi OS (Bookworm / Python 3.11) only, so on
+this Ubuntu 24.04 image the account-free runtime means building from source.
+
 ## Workstation-First Risk Retirement
 
 The make-or-break model risk can be tested before touching the Pi hardware. Do
