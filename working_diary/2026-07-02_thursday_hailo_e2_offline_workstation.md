@@ -3,23 +3,23 @@
 ## Day Overview
 
 Tomorrow's Hailo task stays offline and workstation-side. Do not run Pi-side
-commands. The goal is to reduce the E2 Ubuntu/manual risk before the next bench
-session by either:
+commands. The official E2 artifact row is now in hand and pinned, so the goal is
+to prepare the workstation toolchain and retire the custom-model compile risk:
 
-1. confirming the official 4.x Hailo artifact row and preparing the workstation
-   compile path; or
-2. if the official download/access path still has no usable update, using the
-   community / no-account route only as a bridge.
+1. move the downloaded official artifacts into the external ledger and record
+   checksums;
+2. use the Hailo AI Software Suite Docker as the first compile route; and
+3. attempt the `yolo26n.pt` -> `hailo8l` HEF path with disciplined stop points.
 
 The official Hailo Dataflow Compiler remains the destination for the custom
-`yolo26n` maritime detector. Community routes are useful for runtime staging,
-stock smoke-test HEFs, and a possible YOLOv8 / YOLO11 fallback, but they do not
-retire the custom `yolo26n.pt` compile risk by themselves.
+`yolo26n` maritime detector. Community / no-account routes are fallback-only
+now: useful for stock smoke-test HEFs or a possible YOLOv8 / YOLO11 fallback,
+but not the primary path for this session.
 
 ## Starting Context
 
-- 01/07/2026 ended clean and pushed at:
-  `c7e2aea docs(wiki): record Hailo DFC path decision`.
+- 01/07/2026 ended clean and pushed at `ce23aa3` or later; the key landed
+  state is `ce23aa3 docs(wiki): confirm Hailo E2 artifact row`.
 - `wiki/Hailo_HAT_Workstream.md` is the durable planning surface.
 - `working_diary/2026-07-01_wednesday_hailo_hat_bringup.md` is the live
   evidence log.
@@ -31,6 +31,11 @@ retire the custom `yolo26n.pt` compile risk by themselves.
   no Raspberry Pi apt source after `sudo apt update`.
 - Branch decision from 01/07/2026: close E1 for this live Ubuntu image. The
   active path is E2 Ubuntu/manual.
+- Official Hailo access landed on 01/07/2026. The full 4.24.0 runtime row,
+  DFC 3.34.0, Model Zoo 2.19.0, both cp312 pyHailoRT wheels, and the
+  `hailo8_ai_sw_suite_2026-07_docker.zip` image were downloaded and inspected.
+- `wiki/Hailo_HAT_Workstream.md` now records these pins as confirmed and
+  recommends the Docker suite as the first compile route.
 
 ## Boundaries
 
@@ -62,7 +67,7 @@ git rev-parse HEAD origin/main
 Expected starting point:
 
 ```text
-c7e2aea docs(wiki): record Hailo DFC path decision
+ce23aa3 docs(wiki): confirm Hailo E2 artifact row, or later
 ```
 
 Read first:
@@ -79,31 +84,46 @@ Guard:
 - If ahead, diverged, or dirty, stop and report before starting artifact work.
 - Record the exact starting SHA and whether a pull was needed.
 
-## Block B - Official Access Gate
+## Block B - Official Artifact Presence Gate
 
-Purpose: determine whether the official path is usable today.
+Purpose: confirm the downloaded official set is still present and complete
+before installing or loading anything.
 
-Manual check in the Hailo download portal and account/email state:
+Inspect the local downloads first:
 
-- Is the account approved and able to download software?
-- What is the newest HailoRT 4.x row available for Hailo-8 / Hailo-8L?
-- Is there an aarch64 Ubuntu-compatible `pyhailort` wheel for Python 3.12
-  (`cp312`)?
-- What are the matching PCIe driver, runtime, firmware, Dataflow Compiler, and
-  Model Zoo versions?
-- Are the compile-side pins still the candidate row recorded in the wiki, or has
-  a newer coherent 4.x / 3.x / 2.x row landed?
+```bash
+cd /home/ghostzero/Downloads
 
-Record exact filenames and checksums when files are downloaded. Do not install
+ls -lh \
+  hailort-pcie-driver_4.24.0_all.deb \
+  hailort_4.24.0_arm64.deb \
+  hailort-4.24.0-cp312-cp312-linux_aarch64.whl \
+  hailort_4.24.0_amd64.deb \
+  hailort-4.24.0-cp312-cp312-linux_x86_64.whl \
+  hailo_dataflow_compiler-3.34.0-py3-none-linux_x86_64.whl \
+  hailo_model_zoo-2.19.0-py3-none-any.whl \
+  hailo8_ai_sw_suite_2026-07_docker.zip
+```
+
+Also check the Hailo portal only for drift:
+
+- Is the pinned 4.24.0 / 3.34.0 / 2.19.0 row still the intended row for
+  Hailo-8L?
+- Has a newer coherent 4.x / 3.x / 2.x row landed since the files were
+  downloaded?
+- If a newer row exists, decide deliberately whether to stay pinned for this
+  bring-up or replace the whole row. Do not mix.
+
+Record exact filenames and checksums in the external ledger. Do not install
 anything on the Pi.
 
 Use this decision:
 
-- If the official downloads are available, follow Block D first.
-- If there is still no official access or no usable official download update,
-  do not wait idle. Follow Block E as the community / no-account bridge.
-- If official package versions are visible but not downloadable yet, record the
-  filenames/versions as evidence and still use Block E for bridge work.
+- If the official downloads are present, follow Block D and then Block F.
+- If one file is missing, recover the same exact row from the portal before
+  compiling.
+- If the Docker suite cannot load or DFC cannot run, use Block E only as a
+  fallback record, not as the main path.
 
 ## Block C - Workstation Host And Dataset Check
 
@@ -162,10 +182,10 @@ Interpretation:
   accuracy as requiring a larger deployment-domain maritime set.
 - Do not copy artifacts into the repo.
 
-## Block D - Official Route, If Downloads Are Available
+## Block D - Official Docker-First Route
 
-Purpose: lock one coherent official row and prepare the custom-model compile
-path.
+Purpose: ledger the confirmed official row, load the Docker suite if host checks
+pass, and prepare the custom-model compile path.
 
 Create an external artifact ledger outside the repo:
 
@@ -174,10 +194,12 @@ mkdir -p /home/ghostzero/hailo_artifacts/2026-07-02/{official,logs}
 cd /home/ghostzero/hailo_artifacts/2026-07-02
 
 echo "Hailo E2 official artifact ledger - 02/07/2026" > logs/ledger.txt
-echo "source: Hailo download portal, checked manually" >> logs/ledger.txt
+echo "source: Hailo download portal, checked manually on 01/07/2026" >> logs/ledger.txt
 ```
 
-For every downloaded official artifact, record:
+Move or copy the downloaded official artifacts into `official/`, keeping them
+outside the repo. Delete the duplicate `(1)` driver copy if it is byte-identical.
+For every official artifact, record:
 
 - filename;
 - version;
@@ -200,18 +222,29 @@ Minimum official row to confirm:
 | --- | --- | --- |
 | Pi runtime | PCIe driver | HailoRT 4.x / `hailo8`; driver floor >= 4.19 for the Pi's `6.8-raspi` kernel |
 | Pi runtime | HailoRT arm64 runtime | same 4.x version as driver and firmware |
-| Pi runtime | `pyhailort` aarch64 wheel | prefer `cp312` for Ubuntu 24.04 Python 3.12; otherwise plan a Python 3.11 venv |
+| Pi runtime | `pyhailort` aarch64 wheel | `cp312` is confirmed for Ubuntu 24.04 Python 3.12 in the pinned row |
 | Pi runtime | firmware | same 4.x version as driver/runtime |
 | Workstation compile | Dataflow Compiler 3.x | x86_64 only; use the row matched to Model Zoo 2.x |
 | Workstation compile | Model Zoo 2.x | same row as DFC |
 | Workstation validation | HailoRT x86 | same runtime line as the target HEF |
 
-After the row is confirmed, update `wiki/Hailo_HAT_Workstream.md` only if the
-candidate pins can be changed to verified filenames/versions with evidence.
+Primary workstation path:
 
-## Block E - Community / No-Account Bridge, If Official Path Is Still Blocked
+1. Load the Hailo AI Software Suite Docker image from
+   `hailo8_ai_sw_suite_2026-07_docker.zip`.
+2. Start the container with the bundled run script.
+3. Inside the container, verify the bundled versions before compiling:
+   `hailo --version`, `hailomz --version`, and any HailoRT version command
+   available.
+4. Use this same container for the first `yolo26n.pt` compile attempt.
 
-Use this only if Block B has no usable official download/access result.
+Bare-metal wheels remain fallback/scriptable artifacts. Do not mix Docker and
+bare-metal commands unless the versions match.
+
+## Block E - Fallback Routes, Only If Official Compile Path Blocks
+
+Use this only if Block D cannot load the Docker image, the DFC cannot run, or a
+needed official artifact is missing and cannot be recovered quickly.
 
 Purpose: keep progress moving without pretending the custom `yolo26n` risk is
 solved.
@@ -240,7 +273,7 @@ mkdir -p /home/ghostzero/hailo_artifacts/2026-07-02/{community,logs}
 cd /home/ghostzero/hailo_artifacts/2026-07-02
 
 echo "Hailo E2 community bridge ledger - 02/07/2026" > logs/community_ledger.txt
-echo "scope: no-account bridge only; official DFC remains primary for yolo26n" >> logs/community_ledger.txt
+echo "scope: fallback bridge only; official Docker/DFC remains primary for yolo26n" >> logs/community_ledger.txt
 ```
 
 If a public stock HEF is downloaded, record:
@@ -263,8 +296,9 @@ If DeGirum is used, record:
 
 ## Block F - Route A Custom HEF Experiment, Only If DFC Runs
 
-Start this block only if the official DFC / Model Zoo path is installed and
-`hailomz` or the equivalent compiler entrypoint runs on the workstation.
+Start this block only if the official Docker container is running, or the
+bare-metal DFC / Model Zoo fallback is installed and `hailomz` or the equivalent
+compiler entrypoint runs on the workstation.
 
 First inspect tool versions:
 
@@ -320,8 +354,8 @@ Success definition:
 Update this diary with:
 
 - repo guard result and starting SHA;
-- official access status and exact evidence;
-- whether the official row was confirmed, still blocked, or partially visible;
+- official artifact presence and exact evidence;
+- whether the Docker suite loaded and which bundled versions it reports;
 - downloaded filenames and SHA256 checksums, if any;
 - workstation host suitability for DFC or Docker;
 - dataset/checkpoint/calibration status;
@@ -332,10 +366,10 @@ Update this diary with:
 
 End-state rules:
 
-- If official downloads are available, update the wiki pins from candidate to
-  confirmed only with exact filenames/versions.
-- If official downloads are still unavailable, record community bridge progress
-  but keep the official DFC path as the custom `yolo26n` destination.
+- The wiki pins are already confirmed. Update the wiki again only if tomorrow's
+  actual Docker/tool versions differ from the recorded row.
+- If the official Docker route fails, record fallback progress but keep the
+  official DFC path as the custom `yolo26n` destination.
 - No Pi runtime install until the artifact row and HEF path are understood.
 
 Before any commit:
@@ -355,5 +389,5 @@ bounded next steps and no stale completed action.
 Suggested commit subject:
 
 ```text
-docs(diary): scaffold 02/07 Hailo E2 offline workstation
+docs(diary): reframe 02/07 Hailo E2 Docker path
 ```
