@@ -37,6 +37,122 @@ but not the primary path for this session.
 - `wiki/Hailo_HAT_Workstream.md` now records these pins as confirmed and
   recommends the Docker suite as the first compile route.
 
+## Session Evidence - 02/07/2026
+
+Repo guard passed at the start of the session:
+
+- `main` matched `origin/main` at
+  `f090158e59b7042809b1eb4b84c66334f72cdaaa`.
+- No pull was needed.
+- `git status --short --branch` returned `## main...origin/main`.
+
+The official artifact row was present, then staged outside the repo under:
+
+```text
+/home/ghostzero/hailo_artifacts/2026-07-02/
+```
+
+The Docker zip was moved into `official/` to avoid a duplicate 8.5G copy.
+The smaller `.deb` and `.whl` files were copied into the same directory. The
+external ledger is:
+
+```text
+/home/ghostzero/hailo_artifacts/2026-07-02/logs/ledger.txt
+/home/ghostzero/hailo_artifacts/2026-07-02/logs/sha256sums_official.txt
+```
+
+The byte-identical duplicate
+`hailort-pcie-driver_4.24.0_all(1).deb` was deleted from `Downloads` after
+`cmp` passed and both files matched SHA256
+`3d13d833cfafe1231f42ead9b02f1c08348fa640fd282119e57baa848b31618b`.
+
+Official checksums:
+
+```text
+5e9a21f56217b131e49afdcacaebf3e200fd03a4d205d61bcb07ceda9c4542f6  hailo8_ai_sw_suite_2026-07_docker.zip
+f539ebb5997149ec68ca443a547196a03d28c624fbb072fdcd22a7d37fad9fb1  hailo_dataflow_compiler-3.34.0-py3-none-linux_x86_64.whl
+3f574626abf8fae103812bb8136431974a89ea693b098866d2455a2c7b7103c7  hailo_model_zoo-2.19.0-py3-none-any.whl
+72b6becf9334466b055d5f90a69a1cd609c84abd6929bd6a37a730243a2fb21d  hailort-4.24.0-cp312-cp312-linux_aarch64.whl
+7818ee8fe70a7f8a90f2485aaf488d0572fe2078d16728ae0716a42905e3d573  hailort-4.24.0-cp312-cp312-linux_x86_64.whl
+3d13d833cfafe1231f42ead9b02f1c08348fa640fd282119e57baa848b31618b  hailort-pcie-driver_4.24.0_all.deb
+1df39dfe1ce2c5beaa70c8d8a7ce807ff8ff81fa18a4b06d3ca06247d0203c47  hailort_4.24.0_amd64.deb
+9ac1a633cf8adb3e036544ddc2ac9568acacc31bef41a518da7e14343b4e5cc6  hailort_4.24.0_arm64.deb
+```
+
+Firmware note: no standalone firmware file was staged today. The pinned row
+treats `hailo8_fw.bin` as bundled with the 4.24.0 driver/runtime packages;
+verify `/lib/firmware/hailo/hailo8_fw.bin` only during a later Pi install.
+
+Same-batch TAPPAS 5.3.1 downloads were deliberately excluded from the official
+4.24.0 / 3.34.0 / 2.19.0 ledger and left in `Downloads`:
+
+```text
+d67b3df147e70f6ee89d115237827cd3d82fcd050818340f7cb224886851cbac  hailo-tappas-core_5.3.1_amd64.deb
+9db31ee78ee0eade7f6e350abc3426d6c35e792a6dc18112f8fa908c80667e90  hailo-tappas-core_5.3.1_arm64.deb
+8c1151b135b782d9e3e44c193ba2883b50ae57a00acfb47d71a3292b123e84b1  hailo_tappas_core_python_binding-5.3.1-py3-none-any.whl
+```
+
+Workstation host check:
+
+- Host: `vrx-Precision-7560`.
+- OS/kernel: Ubuntu 24.04.4 LTS, kernel `6.17.0-35-generic`.
+- Architecture: `x86_64`.
+- Python: `3.12.3`.
+- CPU: 16 logical processors, AVX and AVX2 present.
+- Memory: 14Gi physical RAM, 4.0Gi swap, 10Gi available.
+- Disk: `/home` and `/tmp` have 50G available.
+- GPU: a follow-up host-terminal `nvidia-smi` check reported driver
+  `580.159.03`, CUDA `13.0`, and `NVIDIA RTX A3000 Laptop GPU` with 6GiB VRAM.
+  This is a positive optional acceleration signal for DFC optimization; it does
+  not remove the Docker gate or the physical-RAM warning.
+- Container tooling: `docker`, `podman`, and `nerdctl` were not in `PATH`.
+- Bare-metal Hailo compile tooling: `hailomz` and `hailo` were not in `PATH`.
+
+Dataset/checkpoint check:
+
+- Checkpoint exists:
+  `/home/ghostzero/datasets/uvautoboat_yolo_2026-06/runs/baseline_yolo26n/weights/best.pt`
+  at 5.2M.
+- Current curated split has 11 images and 11 label files.
+- This is enough to prove file plumbing only. It is below the 64-frame
+  mechanics target for a first calibration run and far below the 500-1024
+  maritime-frame range needed for meaningful int8 accuracy.
+
+Docker archive inspection:
+
+- `hailo8_ai_sw_suite_2026-07_docker.zip` contains exactly:
+  `hailo8_ai_sw_suite_2026-07.tar.gz` and
+  `hailo_ai_sw_suite_docker_run.sh`.
+- The archive was inspected but not extracted, loaded, or executed.
+- The run script is Docker-first: it checks Docker installation/user access,
+  validates DFC system requirements, then calls `docker load -i` on the bundled
+  tarball.
+- The immediate blocker is workstation/container readiness: no Docker command
+  exists on this host. The host also has only 14Gi physical RAM versus the DFC
+  16GB documented floor; the bundled script's shell check appears to count swap
+  in its total-memory line, so Docker absence is the hard stop on this host.
+
+Compile status:
+
+- Route A did not start.
+- No container versions were available for `hailo --version`,
+  `hailomz --version`, or HailoRT inspection.
+- No ONNX export, Hailo parse, optimize/quantize, or HEF compile was attempted.
+- No `hailo8l` HEF was produced.
+- Block E remains fallback-only; no community HEF or DeGirum path was used.
+
+Next gate before any Pi command:
+
+1. Use a workstation with Docker installed and accessible to the user, or fix
+   Docker/user-group access on this workstation.
+2. Prefer a host that meets the DFC floor with at least 16GB physical RAM; 32GB
+   remains the recommended target.
+3. Re-check disk before extraction because the zip expands to a 9.1G tarball.
+4. Extract the Docker tar/run-script pair together, run the official script,
+   then verify container versions before Route A.
+5. Only after a valid `hailo8l` HEF or a precise compile blocker exists should
+   any Pi runtime install be considered.
+
 ## Boundaries
 
 - Markdown docs may be edited. Do not edit Python, YAML, launch files,
@@ -389,5 +505,5 @@ bounded next steps and no stale completed action.
 Suggested commit subject:
 
 ```text
-docs(diary): reframe 02/07 Hailo E2 Docker path
+docs(diary): record 02/07 Hailo E2 host blocker
 ```
