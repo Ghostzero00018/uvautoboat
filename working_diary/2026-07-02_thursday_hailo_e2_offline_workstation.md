@@ -698,3 +698,50 @@ Suggested commit subject:
 ```text
 docs(diary): record 02/07 Hailo Route A HEF
 ```
+
+## Post-Close Notes - 02/07/2026
+
+After the Route A diary commit landed, one durable wiki correction was also
+committed and pushed:
+
+```text
+b6fe508 docs(wiki): update Hailo Pi HEF smoke gate
+```
+
+That wiki update records the important stock-HEF caveat for the next Pi session:
+the Hailo software-suite HEFs inspected on 02/07/2026 were compiled for
+`hailo8`, not `hailo8l`, so they must not be used as AI HAT+ 13 TOPS /
+Hailo-8L smoke tests. No offline stock `hailo8l` HEF was staged tonight. The
+custom `yolo26n_route_a_six_heads.hef` is therefore the available Pi runtime
+smoke-test HEF, but it remains a raw six-output mechanics artifact, not a decode
+or accuracy proof.
+
+Pi-bound payload was staged outside the repo at:
+
+```text
+/home/ghostzero/hailo_artifacts/2026-07-02/pi_payload_2026-07-02/
+/home/ghostzero/hailo_artifacts/2026-07-02/pi_payload_2026-07-02.tar.gz
+```
+
+The payload contains:
+
+- `hailort-pcie-driver_4.24.0_all.deb`;
+- `hailort_4.24.0_arm64.deb`;
+- `hailort-4.24.0-cp312-cp312-linux_aarch64.whl`;
+- `yolo26n_route_a_six_heads.hef`;
+- `INSTALL_ORDER.txt`;
+- `SHA256SUMS.txt`.
+
+`sha256sum -c SHA256SUMS.txt` passed for all five payload entries, including
+`INSTALL_ORDER.txt`. The known key checksums remain:
+
+```text
+3d13d833cfafe1231f42ead9b02f1c08348fa640fd282119e57baa848b31618b  hailort-pcie-driver_4.24.0_all.deb
+9ac1a633cf8adb3e036544ddc2ac9568acacc31bef41a518da7e14343b4e5cc6  hailort_4.24.0_arm64.deb
+72b6becf9334466b055d5f90a69a1cd609c84abd6929bd6a37a730243a2fb21d  hailort-4.24.0-cp312-cp312-linux_aarch64.whl
+edc03c3ca099167970ea0b851af7eea892c76b81aceabfb5a54e9ec46afb932d  yolo26n_route_a_six_heads.hef
+```
+
+Next session starts from the Pi payload and the kernel/header/DKMS preflight.
+The old suggested commit subject above was used by the first diary evidence
+commit and must not be reused for follow-up docs.
