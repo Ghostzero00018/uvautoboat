@@ -287,9 +287,18 @@ artifact path has been prepared.
    dmesg | grep -i hailo | tail -50
    ```
 
-6. Run a stock Hailo detection HEF before using the project model.
-7. Feed saved RealSense RGB frames into HailoRT.
-8. Only then wire live ROS 2 image input and publish detection messages.
+6. Run a known-good `hailo8l` HEF before any decode work. Preferred: a stock
+   `hailo8l` HEF such as `resnet_v1_18` or a public Model Zoo detector compiled
+   with `--hw-arch hailo8l`. Current offline caveat: the software-suite bundled
+   HEFs inspected on 02/07/2026 were `hailo8`, not `hailo8l`, and must not be
+   used as AI HAT+ 13 TOPS / Hailo-8L smoke tests. If no stock `hailo8l` HEF is
+   staged, use the compiled project HEF only as a runtime smoke test, not as a
+   decode or accuracy proof.
+7. For the current project HEF, first prove static HailoRT execution with
+   `yolo26n_route_a_six_heads.hef`; it is raw six-output and requires host-side
+   decode / NMS.
+8. Feed saved RealSense RGB frames into HailoRT.
+9. Only then wire live ROS 2 image input and publish detection messages.
 
 ## Non-Goals For The Memo Stage
 
