@@ -123,35 +123,226 @@ Docker archive inspection:
 - `hailo8_ai_sw_suite_2026-07_docker.zip` contains exactly:
   `hailo8_ai_sw_suite_2026-07.tar.gz` and
   `hailo_ai_sw_suite_docker_run.sh`.
-- The archive was inspected but not extracted, loaded, or executed.
 - The run script is Docker-first: it checks Docker installation/user access,
   validates DFC system requirements, then calls `docker load -i` on the bundled
   tarball.
-- The immediate blocker is workstation/container readiness: no Docker command
-  exists on this host. The host also has only 14Gi physical RAM versus the DFC
-  16GB documented floor; the bundled script's shell check appears to count swap
-  in its total-memory line, so Docker absence is the hard stop on this host.
+- Initial blocker: no Docker command existed on this host. The host also has
+  only 14Gi physical RAM versus the DFC 16GB documented floor; the bundled
+  script's shell check counts swap in its total-memory line, so swap-on allowed
+  the requirement check to pass after Docker was installed.
 
-Compile status:
+Docker host remediation and suite load:
 
-- Route A did not start.
-- No container versions were available for `hailo --version`,
-  `hailomz --version`, or HailoRT inspection.
-- No ONNX export, Hailo parse, optimize/quantize, or HEF compile was attempted.
-- No `hailo8l` HEF was produced.
+- Docker Engine was installed from the official apt repo. `hello-world` passed
+  and `docker --version` reported `Docker version 29.6.1, build 8900f1d`.
+- NVIDIA Container Toolkit `1.19.1-1` was installed before the first Hailo suite
+  run. `/etc/docker/daemon.json` gained the `nvidia` runtime, Docker was
+  restarted, and `sudo docker run --rm --runtime=nvidia --gpus all ubuntu
+  nvidia-smi` showed driver `580.159.03`, CUDA `13.0`, and the RTX A3000 Laptop
+  GPU inside the container.
+- `sudo usermod -aG docker $USER` plus `newgrp docker` enabled non-root Docker
+  access in the active shell. `docker info` showed runtime `nvidia`, default
+  runtime `runc`, 16 CPUs, total memory `14.83GiB`, and Docker root
+  `/var/lib/docker`.
+- The suite was extracted into
+  `/home/ghostzero/hailo_artifacts/2026-07-02/suite_run/`, leaving the official
+  archive byte-stable in `official/`. Free space before suite load was 41G.
+- `./hailo_ai_sw_suite_docker_run.sh` passed the vendor system requirement
+  check with the expected below-32GB RAM warning, loaded image
+  `hailo8_ai_sw_suite_2026-07:latest`, and started
+  `hailo8_ai_sw_suite_2026-07_container` with `--gpus all`.
+- Inside the container, `hailo --version` reported HailoRT `4.24.0` and Hailo
+  Dataflow Compiler `3.34.0`; `hailomz --version` reported Hailo Model Zoo
+  `2.19.0`.
+- The container reported `No Hailo PCIe device was found`, which is expected on
+  the workstation.
+- After image load was verified, the extracted
+  `hailo8_ai_sw_suite_2026-07.tar.gz` was deleted. `docker images` showed
+  `hailo8_ai_sw_suite_2026-07:latest` with image ID `962aeda88f61`, disk usage
+  34.7GB, and content size 17.2GB. `df -h /home` then showed 18G free.
+
+Compile status after Docker gate close:
+
+- Route A preflight staged
+  `/home/ghostzero/hailo_artifacts/2026-07-02/suite_run/shared_with_docker/yolo26n_route_a/`.
+- `weights/yolo26n_best.pt` was copied from the dataset run checkpoint.
+- `calib_raw_28/` contains 28 RealSense RGB frames copied from the raw capture
+  tree: 11 top-level curated frames plus 17 frames from
+  `rejected_2026-06-24/`. The rejected frames are usable as unlabeled
+  deployment-domain pixels for calibration mechanics only; this remains below
+  the minimum 64-frame mechanics target and far below quality calibration scale.
+- First container write test failed because the container user is
+  `hailo:ht` (`uid=10642`, `gid=10600`) while the host-created subdirectories
+  were owned by host UID `1002`. After removing the root-owned test file and
+  running `chmod -R a+rwX shared_with_docker/yolo26n_route_a`, the container
+  write test passed with `WRITE_OK`.
+- Hailo container Python has `torch 2.9.1+cu128`, `onnx 1.16.0`, and
+  `onnxsim 0.4.36`, but no `ultralytics` module and no `yolo` CLI.
+- Host YOLO environment `/home/ghostzero/venvs/yolo-ws` has Ultralytics
+  `8.4.75`; `yolo cfg` includes `end2end`, `nms`, `dynamic`, `simplify`,
+  `opset`, and `imgsz` export settings.
+- First host-side ONNX export succeeded after Ultralytics auto-installed missing
+  ONNX export dependencies into `/home/ghostzero/venvs/yolo-ws`: `onnx 1.22.0`,
+  `onnxruntime 1.27.0`, and `onnxslim 0.1.94`.
+- Export command used `imgsz=640`, `dynamic=False`, `simplify=True`,
+  `opset=13`, `nms=False`, `end2end=False`, and `device=cpu`.
+- Output ONNX:
+  `exports/yolo26n_best_imgsz640_end2end_false_opset13.onnx`, size 9.4M,
+  SHA256 `6a6fca85b9f78fed48b792a953f131f3c2c9f316e3bb6b388f2d57dee0287616`.
+- Local ONNX inspection showed IR version 7, opset 13, input `images`
+  `[1, 3, 640, 640]`, output `output0` `[1, 9, 8400]`, 368 nodes, and no
+  `TopK` or `GatherElements` operators in the exported graph.
+- Container ONNX inspection confirmed the same graph summary.
+- First Hailo parse attempt used `hailomz parse yolo26n --ckpt <onnx>
+  --hw-arch hailo8l`. It failed with `PARSE_STATUS=1` because the Model Zoo
+  `yolo26n` config looked for one-to-one head end nodes
+  `/model.23/one2one_cv*`, which are absent from the Route A `end2end=False`
+  one-to-many export.
+- Follow-up ONNX graph inspection found the actual output producer node is
+  `/model.23/Concat_3`, producing `output0` from `/model.23/Mul_2_output_0`
+  and `/model.23/Sigmoid_output_0`.
+- Raw DFC parser attempt succeeded with `RAW_PARSE_STATUS=0` using
+  `hailo parser onnx ... --hw-arch hailo8l --end-node-names /model.23/Concat_3`.
+  The parser detected a YOLOv6-equivalent NMS structure, recommended the six
+  detection-head Conv end nodes, reran translation with those mapped end nodes,
+  and added an NMS postprocess command to the model script.
+- Raw parser outputs:
+  `exports/yolo26n_route_a_raw_parser.har` (9.7M, SHA256
+  `02987e05d6733ab871123451fe58c21525aabbf2c4227fad8e1db692a7fd5ab3`),
+  `exports/yolo26n_route_a_augmented.onnx` (9.4M), and
+  `logs/hailo_parser_onnx_yolo26n_route_a_report.html` (474K).
+- `hailo har info exports/yolo26n_route_a_raw_parser.har` reports model name
+  `yolo26n_route_a`, state `Hailo Model`, NMS meta architecture `Yolov6`,
+  NMS target device `Nn_Core`, SDK version `3.34.0`, hardware architecture
+  `hailo8l`, and HAR files including `.hn`, `.alls`, `.nms.json`, `.npz`,
+  `.postprocess.onnx`, and `.metadata.json`.
+- `hailo optimize --help` requires either `--calib-set-path` to a preprocessed
+  calibration `.npy` shaped `(calib_size, h, w, c)` or
+  `--use-random-calib-set`; `hailo compiler --help` accepts a HAR plus
+  `--hw-arch hailo8l` and an output directory / output HAR path.
+- A mechanics-only calibration file was created at
+  `calib_npys/calib_raw_28_letterbox_640_uint8_nhwc.npy`: 28 images,
+  shape `(28, 640, 640, 3)`, dtype `uint8`, min/max `0/255`, size 33M.
+- First optimize attempt used the raw-parser HAR, `--hw-arch hailo8l`, that
+  calibration `.npy`, and output path
+  `exports/yolo26n_route_a_optimized_calib28.har`. It failed with
+  `OPTIMIZE_STATUS=1`; no optimized HAR was produced.
+- Optimizer failure is localized to the auto-added NMS postprocess. The HAR's
+  `yolo26n_route_a.alls` contains only `nms_postprocess(meta_arch=yolov6)`, and
+  `yolo26n_route_a.nms.json` has three bbox decoders with empty `reg_layer` and
+  `cls_layer` values. The traceback ends with
+  `HailoNNException: The layer named  doesn't exist in the HN`.
+- The HN output layer order is unambiguous:
+  `conv61/conv64` at 80x80, `conv77/conv80` at 40x40, and `conv91/conv94` at
+  20x20. The reg layers have 4 channels and the class layers have 5 channels.
+- Follow-up syntax discovery wrote
+  `logs/nms_postprocess_examples_head.txt` and `logs/yolo_config_paths.txt`.
+  The shipped examples consistently use `nms_postprocess("<json>",
+  meta_arch=..., engine=...)` for YOLO-style models, including `yolo26n.alls`,
+  `yolov8n.alls`, `yolov6n.alls`, and `yolov6n_0.2.1_nms_core.alls`.
+  Available reference configs include `cfg/postprocess_config/yolov8n_nms_config.json`,
+  `cfg/postprocess_config/nms_config_yolov6n.json`, and
+  `cfg/postprocess_config/yolov6n_0_2_1_nms_config.json`.
+- Schema inspection wrote `logs/nms_reference_schema.txt`. The shipped
+  `yolo26n.alls` uses the same head layer names already found in this HAR
+  (`conv61`, `conv77`, `conv91`, `conv64`, `conv80`, `conv94`) but does not
+  add NMS. The `yolov8n_nms_config.json` schema matches a two-layer
+  anchorless decoder with `reg_layer` and `cls_layer`, while
+  `yolov6n_0_2_1_nms_config.json` keeps blank decoder layers for the
+  NMS-core fused-decoder path and is the wrong pattern for the current
+  optimizer failure.
+- Explicit six-head parse used the six parser-recommended Conv endpoints and
+  answered `n` to the NMS postprocess prompt. It succeeded with
+  `SIX_HEAD_PARSE_STATUS=0` and wrote
+  `exports/yolo26n_route_a_six_heads_no_nms.har`.
+- The six-head HAR still contains `yolo26n_route_a_six_heads.nms.json`,
+  `yolo26n_route_a_six_heads.postprocess.onnx`, and metadata marking
+  `nms_meta_arch` as `yolov6` and `nms_engine` as `nn_core`. It does not
+  contain a `.alls` file. The retained NMS JSON still has `classes: 4` and
+  blank `reg_layer` / `cls_layer` fields.
+- HN inspection confirms the six output layers are present in order:
+  `conv61`, `conv64`, `conv77`, `conv80`, `conv91`, `conv94`, with
+  `output_layer1` through `output_layer6`.
+- The compile precheck was run before the six-head optimize block produced an
+  optimized HAR. `hailo compiler --help` confirmed `--hw-arch`, `--output-dir`,
+  `--output-har-path`, and `--model-script` are accepted by DFC `3.34.0`, but
+  `hailo har info exports/yolo26n_route_a_six_heads_optimized_calib28_no_nms.har`
+  failed with `FileNotFoundError`. Host-side inspection confirmed there is no
+  six-head optimized HAR and no six-head optimize log yet. This is an ordering
+  miss, not a compile or graph failure.
+- Six-head optimize then succeeded with `SIX_HEAD_OPTIMIZE_STATUS=0` using the
+  mechanics-only no-NMS model script, 28-image calibration set, `--hw-arch
+  hailo8l`, and output path
+  `exports/yolo26n_route_a_six_heads_optimized_calib28_no_nms.har`.
+- The optimize log confirms no `nms_postprocess` command was applied. It used
+  28 calibration entries, ran optimization level 0, skipped finetune,
+  bias correction, Adaround, quantization-aware fine-tuning, and layer-noise
+  analysis, and saved the optimized HAR.
+- Optimized HAR:
+  `exports/yolo26n_route_a_six_heads_optimized_calib28_no_nms.har`, size 55M,
+  SHA256 `1f81fbff5a7446b03f2ca43991bb0670673bee5f2c87b65ae6eb8adca8b47c38`.
+- `hailo har info` on the optimized HAR reports model name
+  `yolo26n_route_a_six_heads`, state `Quantized Model`, SDK version `3.34.0`,
+  and hardware architecture `hailo8l`.
+- The optimized HAR's `.alls` contains normalization, calibration config,
+  optimization level 0, and quantization params for `dw1`, `dw6`, `dw7`,
+  `dw8`, the six head convs, and `output_layer1` through `output_layer6`; it
+  does not contain `nms_postprocess`.
+- Six-head compile succeeded with `SIX_HEAD_COMPILE_STATUS=0`. The compiler
+  reported successful mapping, built the HEF, and saved:
+  `exports/yolo26n_route_a_six_heads.hef` and
+  `exports/yolo26n_route_a_six_heads_compiled.har`.
+- Compile artifacts:
+  `exports/yolo26n_route_a_six_heads.hef`, size 11M, SHA256
+  `edc03c3ca099167970ea0b851af7eea892c76b81aceabfb5a54e9ec46afb932d`;
+  `exports/yolo26n_route_a_six_heads_compiled.har`, size 66M, SHA256
+  `6e20ebbf2dec853e941b09deada71998f06fd32edd4dad3e096592298478f7d3`.
+- `hailortcli parse-hef exports/yolo26n_route_a_six_heads.hef` confirms
+  architecture `HAILO8L`, network group `yolo26n_route_a_six_heads`,
+  multi-context with 6 contexts, input `input_layer1` as `UINT8`
+  `NHWC(640x640x3)`, and six raw output vstreams:
+  `conv61` `UINT16` `NHWC(80x80x4)`, `conv64` `UINT16` `FCR(80x80x5)`,
+  `conv77` `UINT16` `NHWC(40x40x4)`, `conv80` `UINT16` `FCR(40x40x5)`,
+  `conv91` `UINT16` `FCR(20x20x4)`, and `conv94` `UINT16` `FCR(20x20x5)`.
+- The HEF is a raw six-output artifact with no embedded HailoRT NMS /
+  postprocess stage. Decode and NMS remain host-side for the future Pi runtime
+  path.
+- Dataset class mapping is five classes: `0 buoy`, `1 vessel`, `2 dock`,
+  `3 obstacle`, `4 person`, matching the HEF's 5-channel class outputs. The
+  earlier auto-generated NMS JSON's `classes: 4` value was wrong for this
+  checkpoint and is another reason not to use the auto-NMS path.
+- Decode handoff details for the future runtime session:
+  the box heads are 4-channel outputs (`conv61`, `conv77`, `conv91`), not
+  64-channel YOLOv8 DFL tensors. The ONNX export's `output0` shape
+  `[1, 9, 8400]` resolves this as 4 box channels plus 5 class channels over
+  80x80 + 40x40 + 20x20 positions, so the future decoder should use direct
+  4-channel box regression with anchor-center / stride handling, not a
+  64-channel DFL softmax / projection decoder. The class heads (`conv64`,
+  `conv80`, `conv94`) are raw logits in this artifact; host-side decode should
+  apply sigmoid. The output formats are mixed (`NHWC` and `FCR`), so the
+  runtime reader must handle layout conversion before decode / NMS.
 - Block E remains fallback-only; no community HEF or DeGirum path was used.
 
 Next gate before any Pi command:
 
-1. Use a workstation with Docker installed and accessible to the user, or fix
-   Docker/user-group access on this workstation.
-2. Prefer a host that meets the DFC floor with at least 16GB physical RAM; 32GB
-   remains the recommended target.
-3. Re-check disk before extraction because the zip expands to a 9.1G tarball.
-4. Extract the Docker tar/run-script pair together, run the official script,
-   then verify container versions before Route A.
-5. Only after a valid `hailo8l` HEF or a precise compile blocker exists should
-   any Pi runtime install be considered.
+1. Keep using the `newgrp docker` shell, or sign out/in later before opening new
+   terminals that need non-root Docker.
+2. Treat Route A workstation compile as closed: valid `hailo8l` HEF exists at
+   `exports/yolo26n_route_a_six_heads.hef`, but it is mechanics-only because
+   calibration used 28 mixed curated/rejected frames and optimization level 0.
+3. Before any Pi-side runtime work, plan the deployment contract for this raw
+   six-output HEF: preprocessing, output tensor order / format handling, decode,
+   direct 4-channel box regression with anchor-center / stride handling, class
+   sigmoid, NMS, class mapping, and artifact copy path.
+4. If manual NMS is attempted later, prefer the `yolov8n_nms_config.json`
+   two-layer schema with explicit HN layer names; avoid the blank-layer
+   NMS-core fused-decoder schema for this route.
+5. Keep the current 28-frame calibration set classified as mechanics-only; it is
+   not an accuracy-quality int8 calibration set.
+6. Treat free disk as tight at 17G. Monitor `df -h /home` during Route A and do
+   not create large duplicate exports outside `shared_with_docker`.
+7. Only after an explicit new session starts for Pi runtime should Pi-side
+   install, copy, or execution commands be considered.
 
 ## Boundaries
 
@@ -505,5 +696,5 @@ bounded next steps and no stale completed action.
 Suggested commit subject:
 
 ```text
-docs(diary): record 02/07 Hailo E2 host blocker
+docs(diary): record 02/07 Hailo Route A HEF
 ```
