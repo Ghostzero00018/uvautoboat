@@ -1,9 +1,10 @@
 # Hailo HAT Workstream Memo
 
 This memo is the planning home for the Hailo accelerator branch: the durable
-version constraints, OS / runtime gate, artifact pin sheet, and bring-up order.
-Day-by-day evidence lives in the dated `working_diary/` entries; keep this memo
-for reusable architecture facts, not single-day observations.
+version constraints, OS / runtime gate, artifact pin sheet, runtime baseline,
+and next integration gates. Day-by-day evidence lives in the dated
+`working_diary/` entries; keep this memo for reusable architecture facts, not
+single-day observations.
 
 ## Decision Summary
 
