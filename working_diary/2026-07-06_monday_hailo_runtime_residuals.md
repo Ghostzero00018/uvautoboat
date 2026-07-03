@@ -87,8 +87,12 @@ without reinstalling anything.
 - **Host + terminal:** Pi `imtaquadrone-desktop`, user-run real Pi terminal,
   one-shot read-only inventory.
 - **cwd + env:** `cd ~/pi_payload_2026-07-02`; do not source ROS.
-- **Prereqs:** Pi has booted normally; clock is close enough for logs and apt
-  metadata reads; no install commands in this block.
+- **Prereqs:** Pi has actually been power-cycled or rebooted since the
+  03/07/2026 session. If it has been running continuously, perform one normal
+  reboot before Block B so this is a real cold-boot survival check. This is a
+  same-stack reboot, not a kernel-chase; do not run `apt upgrade` or install a
+  new kernel. Clock is close enough for logs and apt metadata reads; no install
+  commands in this block.
 - **Run + stop:** collect time, kernel, packages, DKMS, apt policy, service, and
   hold-state evidence. Stop if kernel drifted away from the installed DKMS
   target or mixed Hailo packages appear.
