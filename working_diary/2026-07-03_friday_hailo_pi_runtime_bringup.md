@@ -150,7 +150,7 @@ Then on the Pi:
 cd ~
 tar -xzf pi_payload_2026-07-02.tar.gz
 cd pi_payload_2026-07-02
-sha256sum -c SHA256SUMS.txt
+sha256sum -c SHA256SUMS.txt || { echo "GATE-FAIL: payload checksum mismatch"; exit 1; }
 cat INSTALL_ORDER.txt
 ls -lh
 ```
@@ -161,14 +161,60 @@ ls -lh
   One-shot inspection only.
 - **cwd + env:** `cd ~/pi_payload_2026-07-02`; do not source ROS.
 - **Prereqs:** payload checksum passed; internet available if apt needs headers
-  or build tools; no Hailo packages installed from a different line.
+  or build tools; Pi clock close enough for DNS/TLS/apt; no Hailo packages
+  installed from a different line.
 - **Run + stop:** inspect kernel, headers, disk, HAT PCIe, existing runtime, and
   package candidates. Stop before installing the driver if matching
   `linux-headers-$(uname -r)` is unavailable.
-- **After:** paste full output, especially kernel/header/DKMS lines.
+- **After:** paste full output, especially clock/NTP and kernel/header/DKMS
+  lines.
+
+Note: `vcgencmd` may be absent on Ubuntu. That is not a blocker by itself; the
+command-not-found line is useful context, and the `dmesg` filter below remains
+the power/throttle evidence source.
+
+If the Pi boots with a stale clock, fix time before any apt-dependent step.
+Record whether NTP repaired it or whether a one-time manual `timedatectl
+set-time` was needed.
+
+Clock repair fallback, only if the preflight shows stale time and NTP has not
+settled yet. Stock Ubuntu 24.04 Desktop normally uses `systemd-timesyncd`; if
+the preflight shows a different NTP client, stop and report that line instead of
+guessing service commands.
+
+```bash
+timedatectl status --no-pager
+sudo timedatectl set-ntp true
+sudo systemctl restart systemd-timesyncd
+sleep 10
+timedatectl status --no-pager
+```
+
+If the Pi still cannot sync and internet access depends on correcting the
+clock, use a one-time manual local-time set before re-enabling NTP:
+
+```bash
+sudo timedatectl set-ntp false
+sudo timedatectl set-timezone Europe/Paris
+sudo timedatectl set-time '2026-07-03 HH:MM:00'
+sudo timedatectl set-ntp true
+sudo systemctl restart systemd-timesyncd
+timedatectl status --no-pager
+```
+
+Replace the date and `HH:MM` with the current local time before running the
+manual command.
 
 ```bash
 cd ~/pi_payload_2026-07-02
+
+echo "=== time/network preflight ==="
+date '+%Y-%m-%d %H:%M:%S %Z'
+timedatectl status --no-pager
+timedatectl show -p NTPSynchronized -p NTP -p Timezone
+systemctl is-active systemd-timesyncd || true
+timedatectl timesync-status || true
+getent hosts ntp.ubuntu.com ports.ubuntu.com archive.ubuntu.com || true
 
 echo "=== host/os/kernel ==="
 hostname
@@ -201,6 +247,9 @@ Gate:
 
 - If `linux-headers-$(uname -r)` has no installed version and no candidate,
   stop. Do not install the driver.
+- If clock/NTP is wrong enough to break `apt-cache` / `apt update`, stop and
+  repair time first; do not treat header absence as real until apt metadata can
+  be queried with a valid clock.
 - If Hailo packages from a different version are already installed, stop and
   report before mixing.
 - If disk is unexpectedly tight, stop before DKMS.
@@ -213,7 +262,8 @@ Only start if Block D proves matching headers/build tools are available.
   One-shot installs with reboot gates.
 - **cwd + env:** `cd ~/pi_payload_2026-07-02`; do not source ROS.
 - **Prereqs:** payload checksum passed, matching kernel headers present or apt
-  candidate available, stable power, no mixed Hailo version already installed.
+  candidate available, Pi clock valid for apt, stable power, no mixed Hailo
+  version already installed.
 - **Run + stop:** install prerequisites, install the PCIe driver `.deb`, reboot,
   then verify `/dev/hailo*` before installing runtime and the wheel. Stop on any
   DKMS/build error.
@@ -291,13 +341,13 @@ Only start if Block E proves `hailortcli fw-control identify` works.
 cd ~/pi_payload_2026-07-02
 HEF=yolo26n_route_a_six_heads.hef
 
-sha256sum -c SHA256SUMS.txt
+sha256sum -c SHA256SUMS.txt || { echo "GATE-FAIL: payload checksum mismatch"; exit 1; }
 hailortcli parse-hef "$HEF"
 hailortcli --help | sed -n '1,120p'
 
-if hailortcli --help | grep -q ' run'; then
+if hailortcli --help | grep -Eq '(^|[[:space:]])run([[:space:]]|$)'; then
   timeout 60s hailortcli run "$HEF"
-elif hailortcli --help | grep -q ' benchmark'; then
+elif hailortcli --help | grep -Eq '(^|[[:space:]])benchmark([[:space:]]|$)'; then
   timeout 60s hailortcli benchmark "$HEF"
 else
   echo "No run/benchmark subcommand shown; stop after parse-hef and identify."
@@ -327,6 +377,195 @@ Output: conv94 UINT16 FCR(20x20x5)
 This proves runtime mechanics only. It does not prove detector quality or
 decode correctness.
 
+## Session Evidence - 03/07/2026
+
+Repo guard passed at the start of the session:
+
+- `git fetch --prune` completed successfully.
+- `main` matched `origin/main` at
+  `05459e671e499863c1d609267642000d4d73d260`.
+- `git status --short --branch` returned `## main...origin/main`.
+- No pull was needed.
+
+Block B workstation payload verification passed at 13:39 CEST:
+
+- `/home/ghostzero/hailo_artifacts/2026-07-02/pi_payload_2026-07-02`
+  passed `sha256sum -c SHA256SUMS.txt` for all five entries:
+  `hailort_4.24.0_arm64.deb`,
+  `hailort-4.24.0-cp312-cp312-linux_aarch64.whl`,
+  `hailort-pcie-driver_4.24.0_all.deb`,
+  `yolo26n_route_a_six_heads.hef`, and `INSTALL_ORDER.txt`.
+- Payload directory size was `26M`.
+- `pi_payload_2026-07-02.tar.gz` existed at `21M`.
+- Tarball contents were exactly the payload directory plus:
+  `INSTALL_ORDER.txt`, `SHA256SUMS.txt`,
+  `hailort-4.24.0-cp312-cp312-linux_aarch64.whl`,
+  `hailort-pcie-driver_4.24.0_all.deb`,
+  `hailort_4.24.0_arm64.deb`, and
+  `yolo26n_route_a_six_heads.hef`.
+
+Block C transfer and Pi payload verification passed:
+
+- Workstation transfer used
+  `scp ... imt-aqua-drone@10.100.249.131:~/` and copied the `21M` payload
+  successfully.
+- On the Pi, `sha256sum -c SHA256SUMS.txt` passed for all five payload entries.
+- `INSTALL_ORDER.txt` confirmed the intended install order:
+  driver `.deb` -> runtime `.deb` -> cp312 aarch64 wheel, then firmware and
+  `hailortcli` verification with `yolo26n_route_a_six_heads.hef`.
+- Payload directory on the Pi was `26M` and contained only the expected three
+  runtime artifacts, HEF, install-order file, and checksum file.
+
+Block D Pi preflight passed the install gate:
+
+- Hostname: `imtaquadrone-desktop`.
+- Clock/network: local time was `03/07/2026 14:51 CEST`; timezone was
+  `Europe/Paris`; NTP was enabled and `systemd-timesyncd` was active, but
+  `NTPSynchronized=no` and packet count was `0`. DNS resolved
+  `ntp.ubuntu.com`, `ports.ubuntu.com`, and `archive.ubuntu.com`, and
+  `apt-cache policy` returned valid package metadata. The wall clock was
+  already correct enough for apt, so the clock repair fallback was not needed
+  before the install gate. If `sudo apt update` later fails on clock validity,
+  repair time first rather than changing kernels.
+- OS/kernel/Python: Ubuntu `24.04.4 LTS`, kernel `6.8.0-1060-raspi`,
+  Python `3.12.3`. This is a drift from the historical 01/07 probe kernel
+  `6.8.0-1057-raspi`; it is acceptable because the matching header candidate
+  for the currently running `6.8.0-1060-raspi` kernel is available. Post-reboot
+  proof must still confirm `uname -r` remains `6.8.0-1060-raspi`.
+- Disk/memory: `/` had `36G` free on a `58G` filesystem; memory had `14Gi`
+  available with `1.0Gi` swap unused.
+- Thermal/power: CPU temperature was `58950` milli-C (`58.95 C`).
+  `vcgencmd get_throttled` could not open `/dev/vcio`, which is not a blocker
+  on this Ubuntu image. The filtered `dmesg` showed PCIe link-up and only the
+  known boot-time MMC voltage-switch messages, not an undervoltage/throttle
+  report.
+- PCIe/HAT: `lspci` showed
+  `Hailo Technologies Ltd. Hailo-8 AI Processor [1e60:2864] (rev 01)`;
+  `dmesg` showed gen-3 x1 link-up at `8.0 GT/s` with `7.876 Gb/s` available
+  bandwidth.
+- Existing Hailo state: no `/dev/hailo*`, no loaded Hailo module, no
+  `modinfo hailo_pci`, no `hailortcli`, and no installed `hailo` / `dkms`
+  packages were reported. This preserves the clean manual-install starting
+  point.
+- Header/DKMS gate: `linux-headers-6.8.0-1060-raspi` was not installed, but
+  candidate `6.8.0-1060.64` was available from
+  `http://ports.ubuntu.com/ubuntu-ports noble-updates/main arm64 Packages`.
+  `dkms` candidate `3.0.11-1ubuntu13` was available; `build-essential`
+  `12.10ubuntu1` and `python3-venv` `3.12.3-0ubuntu2.1` were already installed.
+
+At this point, Block E was allowed to start from the prerequisite install step.
+The running kernel was not changed before installing the matching
+`linux-headers-6.8.0-1060-raspi` candidate.
+
+Block E1 prerequisite install passed:
+
+- `sudo apt update` succeeded with `APT_UPDATE_RC=0`. It reached
+  `ports.ubuntu.com`, the RealSense apt source, and the ROS 2 apt source. Apt
+  reported one unrelated package upgradable; no upgrade was run.
+- `sudo apt install -y dkms build-essential linux-headers-$(uname -r)
+  python3-venv` succeeded with `PREREQS_INSTALL_RC=0`.
+- Installed new packages: `dkms` `3.0.11-1ubuntu13`,
+  `linux-raspi-headers-6.8.0-1060` `6.8.0-1060.64`, and
+  `linux-headers-6.8.0-1060-raspi` `6.8.0-1060.64`.
+- Already present: `build-essential` `12.10ubuntu1` and `python3-venv`
+  `3.12.3-0ubuntu2.1`.
+- `uname -r` remained `6.8.0-1060-raspi` after the prerequisite install.
+- `dkms status` was empty, as expected before installing the Hailo PCIe driver.
+
+Block E2 driver install then proceeded from this prerequisite pass.
+
+Block E2 driver install passed before reboot:
+
+- `sudo apt install -y ./hailort-pcie-driver_4.24.0_all.deb` succeeded with
+  `DRIVER_INSTALL_RC=0`.
+- The installed package was `hailort-pcie-driver` `4.24.0`.
+- The installer printed `Please reboot your computer for the installation to
+  take effect.`
+- Pre-reboot `uname -r` remained `6.8.0-1060-raspi`.
+- Pre-reboot `dkms status` reported
+  `hailo_pci/4.24.0, 6.8.0-1060-raspi, aarch64: installed`.
+- Pre-reboot package list showed `dkms` `3.0.11-1ubuntu13`,
+  `hailort-pcie-driver` `4.24.0`, and
+  `linux-headers-6.8.0-1060-raspi` `6.8.0-1060.64`.
+
+Block E3 post-reboot driver proof passed:
+
+- Post-reboot time: `03/07/2026 16:20 CEST`.
+- `uname -r` remained `6.8.0-1060-raspi`.
+- `lspci` still showed
+  `Hailo Technologies Ltd. Hailo-8 AI Processor [1e60:2864] (rev 01)`.
+- `/dev/hailo0` existed as `crw-rw-rw-`, major/minor `234, 0`.
+- `lsmod` showed `hailo_pci`.
+- `modinfo hailo_pci` reported driver version `4.24.0`, module path
+  `/lib/modules/6.8.0-1060-raspi/updates/dkms/hailo_pci.ko.zst`, and matching
+  `vermagic` for `6.8.0-1060-raspi`.
+- `dkms status` still reported
+  `hailo_pci/4.24.0, 6.8.0-1060-raspi, aarch64: installed`.
+- `dmesg` showed the expected out-of-tree / unsigned-module taint warnings,
+  then clean probe/bind evidence on `0000:01:00.0`: driver version `4.24.0`,
+  device enabled, BARs mapped, 64-bit DMA enabled, `hailo/hailo8_fw.bin`,
+  `hailo/hailo8_board_cfg.bin`, and `hailo/hailo8_fw_cfg.bin` written
+  successfully, `NNC Firmware loaded successfully`, and
+  `Added board 1e60-2864, /dev/hailo0`.
+
+The pinned PCIe driver and firmware path are proven at the device-node level.
+Block E4 runtime and Python binding proof passed:
+
+- `sudo apt install -y ./hailort_4.24.0_arm64.deb` succeeded with
+  `RUNTIME_INSTALL_RC=0`.
+- The installed runtime package was `hailort` `4.24.0`; it created the
+  `hailort.service` systemd symlink.
+- `command -v hailortcli` returned `/usr/bin/hailortcli`.
+- `hailortcli --version` returned `HailoRT-CLI version 4.24.0`.
+- `/lib/firmware/hailo/hailo8_fw.bin` existed as a symlink to
+  `/lib/firmware/hailo/hailo8_fw.4.24.0.bin`.
+- `/dev/hailo0` and the loaded `hailo_pci` module were still present.
+- `hailortcli fw-control identify` succeeded with `FW_IDENTIFY_RC=0` and
+  reported device `0000:01:00.0`, control protocol version `2`, firmware
+  version `4.24.0`, and device architecture `HAILO8L`.
+- Python venv `~/venvs/hailo-rt-4.24.0` was created, `pip` upgraded to
+  `26.1.2`, and the cp312 aarch64 wheel installed `hailort-4.24.0` plus
+  dependencies including `numpy`, `netaddr`, `netifaces`, `future`,
+  `contextlib2`, and `argcomplete`.
+- Python binding proof passed: the wheel install log ended with
+  `Successfully installed ... hailort-4.24.0`, then
+  `from hailo_platform import HEF` loaded `yolo26n_route_a_six_heads.hef`,
+  printed `HEF_NAME_OK`, and returned `PYTHON_HEF_IMPORT_RC=0`. The echoed
+  `PYHAILORT_INSTALL_RC=0` is not used as primary evidence because the pasted
+  block did not refresh `rc` immediately after the wheel install.
+
+The pinned runtime stack is installed and the device is proven through
+`fw-control identify`.
+
+Block F custom HEF static runtime smoke passed:
+
+- Payload checksum was rechecked and all five entries still returned `OK`.
+- `hailortcli parse-hef yolo26n_route_a_six_heads.hef` returned
+  `PARSE_HEF_RC=0`.
+- `parse-hef` confirmed architecture `HAILO8L`, network group
+  `yolo26n_route_a_six_heads`, multi-context with `6` contexts, one input
+  `UINT8` `NHWC(640x640x3)`, and six raw output vstreams:
+  `conv61` `UINT16` `NHWC(80x80x4)`, `conv64` `UINT16` `FCR(80x80x5)`,
+  `conv77` `UINT16` `NHWC(40x40x4)`, `conv80` `UINT16` `FCR(40x40x5)`,
+  `conv91` `UINT16` `FCR(20x20x4)`, and `conv94` `UINT16` `FCR(20x20x5)`.
+- The `HAILO8L` grep gate returned `PARSE_HEF_HAILO8L_GREP_RC=0`.
+- `hailortcli --help` showed both `run` and `benchmark`; the bounded smoke used
+  `hailortcli run`.
+- Runtime smoke completed with `RUNTIME_SMOKE_CMD=run` and
+  `RUNTIME_SMOKE_RC=0`. It ran streaming inference on the HEF with autogenerated
+  quantized input, processed `293` frames, and reported `FPS: 58.22`,
+  send rate `572.30 Mbit/s`, and receive rate `95.38 Mbit/s`.
+- The Block F pasted output contained no HailoRT error / critical / assert
+  lines. Post-smoke `dmesg` still showed the same clean probe / firmware-load
+  tail from boot, with no new Hailo DMA or firmware fault in the pasted tail.
+
+Success condition reached: the pinned runtime stack installed, `/dev/hailo0`
+was proven, `fw-control identify` reported `HAILO8L`, and the custom
+`yolo26n_route_a_six_heads.hef` ran as a bounded static smoke test on the
+Hailo-8L device. This remains runtime mechanics only; it is not decode,
+RealSense, ROS, dashboard, MAVROS, QGC, Herelink, mission, arming, mode-change,
+parameter-write, thruster, actuator, or detector-quality evidence.
+
 ## Block G - Wrap
 
 Update this diary with:
@@ -340,7 +579,7 @@ Update this diary with:
 - `/dev/hailo*`, firmware, `hailortcli`, and Python binding status;
 - `fw-control identify` result;
 - HEF `parse-hef` result;
-- runtime smoke output, if reached;
+- runtime smoke output;
 - exact blocker if stopped.
 
 Before a diary commit, run:
@@ -355,5 +594,5 @@ rg -n "\[[[:space:]]\]" working_diary/2026-07-03_friday_hailo_pi_runtime_bringup
 Suggested commit subject:
 
 ```text
-docs: add 03/07 Hailo runtime handoff
+docs(diary): record 03/07 Hailo-8L Pi runtime install and HEF smoke
 ```

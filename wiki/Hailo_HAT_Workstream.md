@@ -32,11 +32,15 @@ for reusable architecture facts, not single-day observations.
   firmware + prebuilt HEFs for runtime and stock smoke, and DeGirum for a fast
   YOLOv8 / YOLO11 HEF if that head is acceptable. Runtime-only work is a
   convenience question, not a quality question. See "No-account routes."
-- Live state (01/07/2026): a read-only Pi probe confirmed Ubuntu 24.04.4 /
-  kernel `6.8.0-1057-raspi` / Python 3.12.3, HAT healthy on PCIe (`1e60:2864`,
-  gen-3 x1) but no Hailo driver/runtime and no `hailo-all` candidate. The
-  Raspberry Pi package path is closed for this image; the Ubuntu manual path is
-  the branch. Evidence: `working_diary/2026-07-01_wednesday_hailo_hat_bringup.md`.
+- Live state (03/07/2026): the 01/07 probe confirmed the HAT healthy on PCIe
+  (`1e60:2864`, gen-3 x1) and closed the Raspberry Pi `hailo-all` path for this
+  Ubuntu image. The 03/07 runtime bring-up then installed the pinned manual
+  HailoRT / driver / pyHailoRT `4.24.0` stack on Ubuntu 24.04.4 / kernel
+  `6.8.0-1060-raspi`, proved `/dev/hailo0`, `fw-control identify` returned
+  firmware `4.24.0` and architecture `HAILO8L`, and
+  `hailortcli run yolo26n_route_a_six_heads.hef` completed `293` frames at
+  `58.22 FPS`. Evidence:
+  `working_diary/2026-07-03_friday_hailo_pi_runtime_bringup.md`.
 - Do not reuse the current NCNN export for Hailo. Hailo deployment needs a HEF
   artifact compiled from an ONNX/TFLite-style path with Hailo tooling.
 
@@ -264,45 +268,48 @@ For `yolo26n.pt`, three routes, easiest first:
 3. Fallback: retrain or convert to `YOLOv8n` / `YOLO11n`, the fully turnkey
    Model Zoo detection families.
 
-Measure int8 mAP retention against the FP32 / NCNN baseline before any Pi driver
-work — that quantization result, not the driver install, is the make-or-break.
+Measure int8 mAP retention against the FP32 / NCNN baseline before any detector
+quality claim — that quantization result, not the driver install, is the
+make-or-break.
 
-## Pi Bring-Up Order
+## Pi Runtime Baseline And Next Gates
 
-Run this when the professor or bench time is available and the offline E2
-artifact path has been prepared.
+Runtime baseline completed on 03/07/2026:
 
-1. Mount hardware and keep the Raspberry Pi Active Cooler fitted.
-2. Resolve the PCIe lane decision: AI HAT+ versus NVMe storage on the Pi 5's
-   external PCIe path.
-3. Confirm power budget with a 5 V / 5 A USB-C power path. Raspberry Pi
-   documents reduced peripheral current when Pi 5 is not on a 5 A supply.
-4. Install one version-pinned Hailo driver/runtime stack.
-5. Verify hardware only:
+1. Hardware stayed mounted with the Raspberry Pi Active Cooler fitted.
+2. The Hailo-8L board remained on the Pi 5 external PCIe path; no NVMe path was
+   part of this runtime proof.
+3. The pinned HailoRT / driver / pyHailoRT `4.24.0` stack installed on Ubuntu
+   24.04.4 / kernel `6.8.0-1060-raspi` after matching kernel headers were
+   available.
+4. `/dev/hailo0`, `hailo_pci`, DKMS, firmware load, and
+   `hailortcli fw-control identify` all passed; identify reported architecture
+   `HAILO8L`.
+5. `hailortcli parse-hef yolo26n_route_a_six_heads.hef` confirmed the expected
+   `HAILO8L` six-output contract.
+6. `hailortcli run yolo26n_route_a_six_heads.hef` completed a bounded static
+   runtime smoke test: `293` frames at `58.22 FPS`.
+
+Next gates, in order:
+
+1. Keep the current project HEF classified as runtime mechanics only. It is a
+   raw six-output artifact and requires host-side decode / NMS before any saved
+   image or live camera claim.
+2. Implement and verify saved-frame preprocessing, six-output layout handling,
+   direct 4-channel box decode, class sigmoid, NMS, and class mapping.
+3. On the next runtime test, broaden the post-run fault scan beyond Hailo-only
+   lines, for example:
 
    ```bash
-   lspci | grep -i hailo
-   ls -l /dev/hailo*
-   hailortcli fw-control identify
-   dmesg | grep -i hailo | tail -50
+   sudo dmesg | grep -iE 'hailo|aer|dmar|dma|call trace|oops' | tail -120
    ```
 
-6. Run a known-good `hailo8l` HEF before any decode work. Preferred: a stock
-   `hailo8l` HEF such as `resnet_v1_18` or a public Model Zoo detector compiled
-   with `--hw-arch hailo8l`. Current offline caveat: the software-suite bundled
-   HEFs inspected on 02/07/2026 were `hailo8`, not `hailo8l`, and must not be
-   used as AI HAT+ 13 TOPS / Hailo-8L smoke tests. If no stock `hailo8l` HEF is
-   staged, use the compiled project HEF only as a runtime smoke test, not as a
-   decode or accuracy proof.
-7. For the current project HEF, first prove static HailoRT execution with
-   `yolo26n_route_a_six_heads.hef`; it is raw six-output and requires host-side
-   decode / NMS.
-8. Feed saved RealSense RGB frames into HailoRT.
-9. Only then wire live ROS 2 image input and publish detection messages.
+4. Feed saved RealSense RGB frames into HailoRT only after the decode contract is
+   proven.
+5. Only then wire live ROS 2 image input and publish detection messages.
 
-## Non-Goals For The Memo Stage
+## Still Out Of Scope After Runtime Smoke
 
-- No Pi package install.
 - No change to the active MAVProxy / MAVROS diary.
 - No copy of the 320 NCNN export to the Pi.
 - No RealSense + Hailo + MAVROS combined-load test.
