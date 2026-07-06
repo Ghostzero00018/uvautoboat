@@ -93,8 +93,9 @@ without reinstalling anything.
   same-stack reboot, not a kernel-chase; do not run `apt upgrade` or install a
   new kernel. Clock is close enough for logs and apt metadata reads; no install
   commands in this block.
-- **Run + stop:** collect time, kernel, packages, DKMS, apt policy, service, and
-  hold-state evidence. Stop if kernel drifted away from the installed DKMS
+- **Run + stop:** collect time, boot timestamp, kernel, packages, DKMS, apt
+  policy, service, and hold-state evidence. Stop if the boot timestamp predates
+  the 03/07/2026 session, kernel drifted away from the installed DKMS
   target or mixed Hailo packages appear.
 - **After:** paste the full output.
 
@@ -105,6 +106,8 @@ mkdir -p ~/hailo_runtime_logs_20260706
 {
   echo "=== time/kernel/python ==="
   date '+%Y-%m-%d %H:%M:%S %Z'
+  uptime -s
+  uptime -p
   timedatectl status --no-pager
   uname -a
   uname -r
@@ -130,6 +133,8 @@ Gate:
 
 - If `uname -r` is no longer `6.8.0-1060-raspi`, stop and report before trying
   any repair.
+- If `uptime -s` predates the 03/07/2026 session, stop before treating this as
+  cold-boot survival evidence.
 - If `dkms status` later shows no module for the running kernel, stop and
   diagnose from the package/kernel evidence.
 - If any Hailo package is not `4.24.0`, stop and report the mixed-version state.
