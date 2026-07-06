@@ -257,21 +257,91 @@ sudo dmesg | grep -iE 'hailo|aer|dmar|dma|call trace|oops' | tail -160 \
   | tee ~/hailo_runtime_logs_20260706/block_e_post_smoke_fault_scan.log
 ```
 
+## Session Evidence - 06/07/2026
+
+Repo guard and repo-side hygiene:
+
+- Initial workstation guard passed: `git fetch --prune` completed, `main`
+  matched `origin/main` at
+  `c5144a5ebe96f316eab5e33d986553f748d93e1c`, and
+  `git status --short --branch` returned `## main...origin/main`.
+- Before Pi Block B, the cold-boot timestamp gate was committed and pushed as
+  `7a7e29f docs(diary): add Hailo cold-boot timestamp gate`. A follow-up guard
+  rechecked `main == origin/main` at
+  `7a7e29f9a0ca80ca7c723f0f1df4d83d5e9698ac`, with a clean worktree.
+- The repo-wide visibility sweep was run from the terminal and returned zero
+  matches. No `2026 residue removed`, `pre-2026 residue left untouched`, or
+  `false positive` classification rows were needed.
+
+Block B cold-boot install inventory passed:
+
+- Pi log time was `06/07/2026 13:59:57 CEST`.
+- Cold-boot authority is the monotonic uptime and this-boot kernel log, not the
+  stale service wall-clock timestamp. `uptime -p` reported `up 10 minutes`, and
+  the Block C kernel log later showed the Hailo driver and firmware re-initialized
+  during this boot at monotonic timestamps `[4.669818]` through `[4.876857]`.
+- `uptime -s` printed `2026-07-06 13:49:28`, but the Pi also reported
+  `System clock synchronized: no` and `NTP service: inactive`, so wall-clock
+  stamps are treated as useful context rather than primary boot proof.
+- The stale `hailort.service` status line reported active since
+  `03/07/2026 17:14:44 CEST`; that is consistent with the unsynced boot clock and
+  is not treated as continuous-service evidence.
+- Kernel remained `6.8.0-1060-raspi`; Python remained `3.12.3`.
+- Installed packages included `hailort` `4.24.0`,
+  `hailort-pcie-driver` `4.24.0`, `dkms` `3.0.11-1ubuntu13`,
+  `linux-headers-6.8.0-1060-raspi` `6.8.0-1060.64`,
+  `build-essential` `12.10ubuntu1`, and `python3-venv`
+  `3.12.3-0ubuntu2.1`.
+- Apt policy showed `hailort` and `hailort-pcie-driver` installed and candidate
+  versions both at `4.24.0`; the matching kernel headers remained installed with
+  candidate `6.8.0-1060.64`.
+- `apt-mark showhold` returned no Hailo, Linux, or DKMS holds. This is a flag-only
+  residual hygiene note: the current stack is coherent, but a later upgrade could
+  still move the kernel or runtime row unless a hold policy is explicitly chosen
+  in a separate maintenance block.
+- `hailort.service` was present, enabled, and active.
+
+Block C device, module, firmware, and fault scan passed:
+
+- `lspci -nn` still showed the Hailo PCIe device at `0000:01:00.0`,
+  `1e60:2864`.
+- `/dev/hailo0` existed as character device major/minor `234, 0`.
+- `lsmod` showed `hailo_pci`.
+- `modinfo hailo_pci` reported version `4.24.0`, module path
+  `/lib/modules/6.8.0-1060-raspi/updates/dkms/hailo_pci.ko.zst`, and matching
+  `vermagic` for `6.8.0-1060-raspi`.
+- `dkms status` reported
+  `hailo_pci/4.24.0, 6.8.0-1060-raspi, aarch64: installed`.
+- Firmware evidence showed `/lib/firmware/hailo/hailo8_fw.4.24.0.bin` and the
+  `hailo8_fw.bin` symlink pointing to it.
+- The broad kernel fault scan showed normal DMA pool / IOMMU / ADMA init, PCIe
+  AER enablement, the expected out-of-tree unsigned-module taint lines, and clean
+  Hailo probe / firmware-load / `/dev/hailo0` creation. No relevant PCIe AER
+  error, DMA failure, firmware assert, call trace, or oops line appeared in the
+  pasted tail.
+
+Block D runtime CLI and Python binding recheck passed:
+
+- `command -v hailortcli` returned `/usr/bin/hailortcli`.
+- `hailortcli --version` returned `HailoRT-CLI version 4.24.0`.
+- `hailortcli fw-control identify` succeeded with `FW_IDENTIFY_RC=0`; it executed
+  on device `0000:01:00.0`, reported control protocol version `2`, firmware
+  version `4.24.0`, and device architecture `HAILO8L`.
+- In venv `~/venvs/hailo-rt-4.24.0`, Python imported `HEF`, loaded
+  `yolo26n_route_a_six_heads.hef`, printed `HEF_NAME_OK`, and returned
+  `PYTHON_HEF_IMPORT_RC=0`.
+
+Block E optional repeat smoke was not run. Success condition reached: the pinned
+Hailo runtime stack survived a fresh boot and the package, DKMS, firmware, CLI,
+and Python-binding inventory was captured cleanly. This remains residual runtime
+installation proof only; it is not decode, saved-frame inference, live RealSense,
+ROS image input, dashboard integration, MAVROS, QGC, Herelink, mission upload,
+arming, mode-change, parameter-write, thruster, actuator, or detector-quality
+evidence.
+
 ## Block F - Wrap
 
-Update this diary with:
-
-- repo guard and starting SHA;
-- whether the repo was clean/synced after the 03/07 milestone push;
-- Pi time/kernel/Python state;
-- package inventory and apt-policy observations;
-- DKMS/module/firmware/device-node status;
-- `hailort.service` status, if present;
-- broad kernel fault-scan result;
-- `fw-control identify` result;
-- Python `HEF` import result;
-- optional repeat-smoke result, if explicitly run;
-- exact blocker if stopped.
+Completed in `Session Evidence - 06/07/2026`.
 
 Before a diary commit, run:
 
@@ -286,5 +356,5 @@ rg -n "\[[[:space:]]\]" working_diary/2026-07-06_monday_hailo_runtime_residuals.
 Suggested commit subject:
 
 ```text
-docs(diary): scaffold 06/07 Hailo runtime residual checks
+docs(diary): record Hailo cold-boot residual pass
 ```
