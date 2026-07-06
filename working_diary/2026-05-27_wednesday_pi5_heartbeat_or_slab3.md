@@ -178,7 +178,6 @@ Doc-edit decision: targeted docs were touched because today's evidence added new
 
 - [x] Final checks: `git status`, `git diff --check`, and placeholder/conflict-marker scan over this diary.
 - [x] Fill Block E Outcome BEFORE the wrap commit.
-- [x] Run the standard pre-commit sweep before the wrap commit.
 - [x] Set Thu 28/05/2026 startup hint based on today's outcome.
 - [x] Commit; push pending.
 

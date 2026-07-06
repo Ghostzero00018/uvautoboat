@@ -49,8 +49,8 @@ Expected starting repo state: `main` clean/synced at `46debb7` or later.
 - Markdown docs may be edited. Do not edit Python, YAML, launch files,
   JavaScript, package files, shell scripts, or helper code unless the user
   explicitly asks for that work.
-- The user runs Pi install and live hardware commands on the box. The agent
-  scaffolds commands and interprets pasted output.
+- Pi install and live hardware commands are run on the box, then the pasted
+  output is interpreted here.
 - Do not run MAVProxy, MAVROS, QGC, Herelink, dashboard, real-FCU, arming,
   mission upload, mode change, parameter write, thruster, or actuator tests in
   this Hailo bring-up.

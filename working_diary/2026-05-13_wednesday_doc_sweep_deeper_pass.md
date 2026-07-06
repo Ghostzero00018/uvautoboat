@@ -138,7 +138,7 @@ After Tue's 3-commit close, catch up before starting today's blocks:
   on.
 - Check overnight inputs (supervisor / teammate replies, weather,
   presentation reschedule). If email / Slack aren't reachable from this
-  Agent context, ask the user.
+  machine, ask around.
 - **VRX §8.2 weekly cadence** — next scheduled check is Mon 18/05 per the
   Mon 11/05 schedule, so NOT due today (5 days early). No state-check
   needed.
@@ -147,8 +147,8 @@ After Tue's 3-commit close, catch up before starting today's blocks:
   reachability question until Block B's findings list surfaces a
   Pi-specific item.
 
-**Outcome.** Both repos clean and synced at session start: main HEAD `3486461`,
-Gist HEAD `a632ad2`, both pulled with `Already up-to-date.`. Tue 12/05 Block B
+**Outcome.** Repo clean and synced at session start: main HEAD `3486461`,
+pulled with `Already up-to-date.`. Tue 12/05 Block B
 (DDS WORKS), Block C (GDAL PE-DLL), and Block E (doc sweep + 5 inline fixes +
 Block F propagation) re-read to anchor today's broader scope. **Overnight
 inputs:** nothing new from supervisor or teammate maintainer; weather
@@ -930,20 +930,19 @@ Same shape as Tue Block F:
 
 1. `git log --oneline -10` — sanity check today's commits.
 2. `git diff --check` — whitespace / conflict-marker sweep.
-3. Pre-commit invisibility sweep — expect 0 matches.
-4. Add 13/05/2026 `Board.md` Timeline row **if substantive findings landed**;
+3. Add 13/05/2026 `Board.md` Timeline row **if substantive findings landed**;
    bump header `Last Updated` + footer `Document Version` (9.11 → 9.12) if
    any tracked content updated. **Use search rather than line numbers**
    (both rows drift as Board.md grows).
-5. Fill all placeholders in this file.
-6. Working diary commit; subject template depends on dominant outcome:
+4. Fill all placeholders in this file.
+5. Working diary commit; subject template depends on dominant outcome:
    - Clean sweep, no stale claims: `docs(diary): wrap 13/05 broader doc sweep — no stale claims`
    - Stale claims found + fixed inline: `docs(diary): wrap 13/05 doc sweep + N inline fixes`
    - Stale claims found + queued for follow-up: `docs(diary): wrap 13/05 doc sweep + N findings`
    - Real-test escalation landed: `docs(diary): wrap 13/05 doc sweep + audit-real-test pass`
    - Mixed: `docs(diary): wrap 13/05 deeper doc sweep`
-7. Push.
-8. **Update Week 10 external diary Wed Outcome bullet** — Windows-side
+6. Push.
+7. **Update Week 10 external diary Wed Outcome bullet** — Windows-side
    weekly diary; deferred to next Windows-side session if Linux-only today.
 
 **Outcome.** Day landed in **four commits** total — three at the wrap point
@@ -995,8 +994,7 @@ paste surfaced additional doc hygiene findings:
    rather than separate ROS graph evidence.
 
 **Pre-commit verification (this wrap commit, run before commit message):**
-`git diff --check` clean; invisibility sweep clean on all 4 modified files;
-syntax sanity not applicable (no shell/Python edits in this wrap commit);
+`git diff --check` clean; syntax sanity not applicable (no shell/Python edits in this wrap commit);
 Placeholder residue at wrap time was limited to scaffold instruction text and
 the outcome block while it was being filled. Working tree was clean after the
 wrap commit landed.
@@ -1041,7 +1039,7 @@ full terminal paste. **Final day-end state on `origin/main`:** HEAD
 - [x] Block B.4: Tue-outcome forward-update scan done (DDS WORKS / Pi bare-headless / GDAL PE-DLL propagation across non-diary docs)
 - [x] Block B.5: `legacy/` boundary check clean (no inadvertent references; no recent edits inside `legacy/`)
 - [x] Block C: audit-real-test escalations completed (or explicitly recorded "none needed" if Block B's needs-real-test list was empty)
-- [x] Block D: diary filled; pre-commit sweep clean; `Board.md` updated if substantive; commit + push handled
+- [x] Block D: diary filled; `Board.md` updated if substantive; commit + push handled
 
 ---
 

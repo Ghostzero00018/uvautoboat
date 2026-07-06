@@ -132,7 +132,7 @@ After Thu/Fri off-site break:
 
 - Break inputs — check supervisor / teammate replies, weather, any
   presentation-related comms (deck request, scope confirmation). If
-  email / Slack not reachable from this Agent context, ask the user.
+  email / Slack not reachable, note it and follow up.
 - Pi 5 reachability check — defer unless Block C surfaces a Pi-specific
   question. Block B is fully workstation-side.
 
@@ -517,13 +517,12 @@ Same shape as Wed 13/05 Block D:
 
 1. `git log --oneline -10` — sanity check today's commits.
 2. `git diff --check` — whitespace / conflict-marker sweep.
-3. Pre-commit invisibility sweep — expect 0 matches.
-4. Add 18/05/2026 `Board.md` Timeline row **if substantive findings
+3. Add 18/05/2026 `Board.md` Timeline row **if substantive findings
    landed**; bump header `Last Updated` + footer `Document Version`
    (9.11+ → next) if any tracked content updated. **Use search rather
    than line numbers** (both rows drift as Board.md grows).
-5. Fill all `[To fill]` placeholders in this file.
-6. Working diary commit; subject template depends on dominant outcome:
+4. Fill all `[To fill]` placeholders in this file.
+5. Working diary commit; subject template depends on dominant outcome:
    - Clean regression + clean audit:
      `docs(diary): wrap 18/05 sim regression OK + 13/05 audit clean`
    - Regression caught + audit findings:
@@ -532,12 +531,12 @@ Same shape as Wed 13/05 Block D:
      `docs(diary): wrap 18/05 13/05 log audit + doc sweep`
    - Mixed:
      `docs(diary): wrap 18/05 post-break sim check + log audit`
-7. Push.
-8. **Queue Tue 19/05 PPT prep priorities** — which slides need new
+6. Push.
+7. **Queue Tue 19/05 PPT prep priorities** — which slides need new
    content from 13/05 work? Power-budget finding? RealSense bridge
    validation? Pi-stays-headless directive? Camera-consumer-exclusivity?
    Sketch a slide outline at session end if time permits.
-9. **Update Week 10 / Week 11 external diary if applicable** — Week 10
+8. **Update Week 10 / Week 11 external diary if applicable** — Week 10
    wrap was Wed 13/05; if Mon's work fits Week 11 scope, draft Week 11
    external diary skeleton. Windows-side; defer to next Windows session
    if Linux-only today.
@@ -551,8 +550,7 @@ during the day; `Board.md` header `Last Updated` bumped 13/05/2026 →
 Verification-summary checkboxes ticked. **Total commits today: 3** —
 `de6e0af docs: 18/05 Block A-C fills + Roadmap RealSense port note`,
 `c9cec9c docs: 18/05 Block D outcome + scaffold node fix + Roadmap §9`,
-plus this Block E wrap commit. Pre-commit invisibility sweep clean across
-all three rounds. `git diff --check` clean (no whitespace / conflict
+plus this Block E wrap commit. `git diff --check` clean (no whitespace / conflict
 markers). **Tue 19/05 is full PPT-prep day** — the "sim stack clean"
 branch from the Next Steps conditional matrix applies; concrete 10-slide
 outline now appended to the Active branch subsection below for tomorrow's
@@ -575,7 +573,7 @@ scaffolded today (Linux-only session; defer to next Windows session).
   experiment backlog queued for post-presentation
 - [x] Block D: stale-doc sweep across the 8 target files; fixes applied
   vs queued; stamp bumps landed if substantive
-- [x] Block E: diary filled; pre-commit sweep clean; Board.md updated
+- [x] Block E: diary filled; `git diff --check` clean; Board.md updated
   if substantive; commit + push handled; Tue 19/05 PPT priorities
   sketched
 

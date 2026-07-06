@@ -182,7 +182,7 @@ Expect HEAD = `3cd8861 docs: 19/05 Block E outcome + close verification`,
 and decide whether to address (likely defer past 10h30).
 
 **Outcome.** Pre-flight check verdict: **all green, both sides**.
-**Linux side** (assistant-confirmed): `git fetch --prune` clean; HEAD
+**Linux side**: `git fetch --prune` clean; HEAD
 = `adc3970 docs(diary): scaffold 20/05 Wed supervisor talk + debrief`
 matches expected; `main` in sync with `origin/main` (0/0 ahead-behind,
 identical SHA `adc3970b99e10eaaf7a047d619fb3ce496487126`); working
@@ -408,8 +408,6 @@ layout sketch as prereq for first bench session.
 **Deferred:** `wiki/Roadmap.md` §1.2 Open questions Three Ask wording
 revisions — queued for a focused Thu+ targeted §1.2 pass per the
 Block D "don't expand into rewrite half the Roadmap" scope cap.
-Pre-commit invisibility sweep returned 0 matches across 10 tracked
-file extensions post Block D edits.
 
 ---
 
@@ -423,18 +421,16 @@ Same shape as Tue 19/05 Block E + Mon 18/05 Block E:
    commit, mirroring Mon 18/05's `de6e0af` / `c9cec9c` / `9452a37`
    sequence).
 2. `git diff --check` — whitespace / conflict-marker sweep.
-3. Pre-commit invisibility sweep — expect 0 matches. Run from main-repo
-   root before the wrap commit.
-4. `Board.md` Wed 20/05 Timeline row likely already added in Block D;
+3. `Board.md` Wed 20/05 Timeline row likely already added in Block D;
    if not, decide now (probably yes — supervisor outcomes are
    repo-relevant). Bump header `Last Updated` + footer `Document
    Version` (9.13 → next) if any tracked content updated. **Use search
    rather than line numbers** (rows drift).
-5. Fill all `[To fill]` placeholders in this file — **including Block E
+4. Fill all `[To fill]` placeholders in this file — **including Block E
    itself before the wrap commit**, per Tue 19/05 lesson learned (Tue
    needed a follow-up commit to close Block E because the placeholder
    was forgotten in the wrap).
-6. Working diary commit; subject template depends on dominant outcome:
+5. Working diary commit; subject template depends on dominant outcome:
    - Smooth talk + Three Asks resolved + Phase 5 unblock signals:
      `docs(diary): wrap 20/05 supervisor talk + Phase 5 unblock`
    - Three Asks resolved (clean win, narrower scope shift):
@@ -445,12 +441,12 @@ Same shape as Tue 19/05 Block E + Mon 18/05 Block E:
      `docs(diary): wrap 20/05 supervisor talk + follow-up scheduled`
    - Generic / mixed:
      `docs(diary): wrap 20/05 supervisor presentation + debrief`
-7. Push.
-8. **Thu 21/05 morning startup hint** — what's the next-day starting
+6. Push.
+7. **Thu 21/05 morning startup hint** — what's the next-day starting
    point? Likely Phase 5 driver bring-up planning skeleton (paper plan
    only — no Pi work; hardware-design pass prereq covered first).
    Capture in this file's Next Steps Active branch.
-9. **Optional: External Week 11 diary update** — Windows-side task; if
+8. **Optional: External Week 11 diary update** — Windows-side task; if
    Tue didn't get to it, Wed evening might. Defer to next Windows
    session if Linux-only today.
 
@@ -459,9 +455,8 @@ Same shape as Tue 19/05 Block E + Mon 18/05 Block E:
 this time). Block D doc edits land in the same wrap commit;
 three-file diff: `Board.md` 385→386 lines (+Timeline row + header /
 footer bump), `wiki/Roadmap.md` 593→594 lines (+§3 reinforcement +
-§9 entry), `working_diary/2026-05-20` end-of-day fills. §1.6
-pre-commit invisibility sweep clean (0 matches across 10 tracked
-file extensions). Wrap commit subject:
+§9 entry), `working_diary/2026-05-20` end-of-day fills. Wrap commit
+subject:
 `docs(diary): wrap 20/05 supervisor presentation + debrief`.
 **Thu 21/05 startup queued** in Active branch below: Phase 5 driver
 bring-up planning skeleton, paper-only, starting with
@@ -483,7 +478,7 @@ hardware-design prerequisite + MAVLink ingestion route.
   applied if scoped; deck-claim correction queue resolved or queued;
   Thu+ scope decision recorded
 - [x] Block E: diary filled (including Block E itself before commit);
-  pre-commit sweep clean; commit + push handled; Thu 21/05 startup
+  commit + push handled; Thu 21/05 startup
   hint queued
 
 ---

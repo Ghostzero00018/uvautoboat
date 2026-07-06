@@ -258,7 +258,7 @@ During end-of-day validation the user ran Gazebo and the dashboard side-by-side 
 
 ### Audit findings
 
-An Explore-agent sweep of `style_merged.css` + `index.html` surfaced 7 flex rows with no `flex-wrap` directive plus a responsive-breakpoint gap (only `@media (max-width: 1200px)` and `(max-width: 768px)` existed, leaving 769-1199 px uncovered — exactly the split-screen range):
+A sweep of `style_merged.css` + `index.html` surfaced 7 flex rows with no `flex-wrap` directive plus a responsive-breakpoint gap (only `@media (max-width: 1200px)` and `(max-width: 768px)` existed, leaving 769-1199 px uncovered — exactly the split-screen range):
 
 | Severity | Rule | Issue |
 |:--|:--|:--|

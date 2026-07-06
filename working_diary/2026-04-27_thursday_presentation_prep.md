@@ -94,11 +94,10 @@ Real-hardware photos (Pi 5 in the CCU enclosure, real WAM-V running the stack on
 ## Block D — Wrap + diary fill-in
 
 1. `git log --oneline -5` — sanity check the day's commits landed cleanly.
-2. Pre-commit scan one more time — expected: zero matches.
-3. Fill the `[To fill]` placeholders throughout this file with concrete outcomes.
-4. Add 27/04 milestone row to `Board.md` only if the changelog compile + visual-capture output rises to the level of a tracked artefact (likely: one low-ceremony row noting "Thursday-meeting prep: changelog + demo rehearsal + N visual assets").
-5. On the Windows laptop, create + seed `Research_intern_IMT_NE/working_diary/Week8_27_04-01_05.md` (Week 8 opens today).
-6. Commit diary (and Board if updated):
+2. Fill the `[To fill]` placeholders throughout this file with concrete outcomes.
+3. Add 27/04 milestone row to `Board.md` only if the changelog compile + visual-capture output rises to the level of a tracked artefact (likely: one low-ceremony row noting "Thursday-meeting prep: changelog + demo rehearsal + N visual assets").
+4. On the Windows laptop, create + seed `Research_intern_IMT_NE/working_diary/Week8_27_04-01_05.md` (Week 8 opens today).
+5. Commit diary (and Board if updated):
 
    ```bash
    git add working_diary/2026-04-27_thursday_presentation_prep.md Board.md

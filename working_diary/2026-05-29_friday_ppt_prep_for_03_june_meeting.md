@@ -153,11 +153,10 @@ Design constraints for the actual Windows deck:
   rg -n "$pattern" working_diary/2026-05-29_friday_ppt_prep_for_03_june_meeting.md
   ```
 
-- [x] Run the standard pre-commit sweep if committing.
 - [x] Set next startup hint for the next active day.
 - [x] Commit + push if the diary is closed.
 
-**Outcome:** Block E opened after user direction to skip Block D. No durable status docs need updates from today's PPT planning because no project state changed; this is a presentation-prep snapshot only. Final checks passed after correcting the placeholder-scan regex to avoid self-matching the command block: `git diff --check` is clean, conflict-marker / placeholder scan is clean after this outcome fill, and the standard visibility sweep is clean. The close commit later landed and synced as `7516666 docs(diary): record 29/05 PPT prep story`.
+**Outcome:** Block E opened after user direction to skip Block D. No durable status docs need updates from today's PPT planning because no project state changed; this is a presentation-prep snapshot only. Final checks passed after correcting the placeholder-scan regex to avoid self-matching the command block: `git diff --check` is clean, and the conflict-marker / placeholder scan is clean after this outcome fill. The close commit later landed and synced as `7516666 docs(diary): record 29/05 PPT prep story`.
 
 Commit subject used for the close commit:
 

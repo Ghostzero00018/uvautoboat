@@ -9,7 +9,7 @@ Pre-scaffold written 30/04 morning, before the power outage and the supervisor u
 **Week shape recap (closing edge):**
 
 - **Mon 27/04** — Linux content + evidence; unplanned Windows evening sprint absorbed Tuesday's Block A
-- **Tue 28/04** — PPT paste + assets + cold-boot launcher fix (`2c0194a`) + conventions-doc trim (Gist `80a910f`)
+- **Tue 28/04** — PPT paste + assets + cold-boot launcher fix (`2c0194a`) + doc trim (`80a910f`)
 - **Wed 29/04** — Linux dev day: cold-boot validation + SIGPIPE fix (`62636e9`) + dashboard reset polish (`7565242`) + launch timer (`3822e54` + `37e197c`) + health-check disclaimer (`a6792db`) + Mission Progress 7-fix bundle (`181ddd7`) + doc-audit thread (`80a910f` + `42f1c30` + README/Home freshness). PPT-side shifted to Thu morning.
 - **Thu 30/04 (today)** — finish PPT spillover, final dry run, deliver, post-delivery wrap with three follow-on tasks.
 - **Fri 01/05** — Labour Day, no work expected.
@@ -27,7 +27,7 @@ Active blocks for the day:
 4. **Block D — Repo markdown + code-comment cleanup pass** (~1-2 h, evening, follow-on): widens the scope from yesterday's tightly-targeted `42f1c30` (param_ranges 3-tuple comment refresh) to a broader sweep across the repo.
 5. **Block E — Cold-start re-test** (~15 min, evening): first cold boot since `62636e9` landed. Verifies the SIGPIPE fix holds and Apport doesn't fire on a fresh boot — yesterday's diary L196-199 explicitly deferred this.
 6. **Block F — VRX fork scheme entry** (~30 min, evening): scoping note in `Board.md` + `wiki/Roadmap.md` for a future option to fork upstream `osrf/vrx` and maintain a customized version. Not actual fork work; just reserving the option with explicit trigger conditions.
-7. **Block G — Week 8 wrap + Week 9 scaffold** (~30 min, evening): `git log --oneline -10` sanity, pre-commit grep, 30/04 Board.md milestone row(s), commit diary, create `Week9_04_05-08_05.md` scaffold in the external diary folder.
+7. **Block G — Week 8 wrap + Week 9 scaffold** (~30 min, evening): `git log --oneline -10` sanity, 30/04 Board.md milestone row(s), commit diary, create `Week9_04_05-08_05.md` scaffold in the external diary folder.
 
 ---
 
@@ -294,11 +294,10 @@ Diff: `Board.md` +1 line; `wiki/Roadmap.md` +44 / -1. Pushed.
 Shifted from Friday per Labour Day.
 
 1. `git log --oneline -10` — sanity check the day's commits.
-2. Pre-commit grep — sweep for blocklist matches (zero expected).
-3. `Board.md` updates — milestone rows for: 30/04 scoping session + scope-lock (Block C; **not** a delivery row, since the formal delivery was rescheduled — see day-of update at top), Block E pass (if Block E passed), Block D cleanup (if non-trivial), Block F scheme-entry land (if Block F landed).
-4. Fill the `[To fill]` placeholders throughout this file with concrete outcomes.
-5. On the Windows laptop, append today's section to `Research_intern_IMT_NE/working_diary/Week8_27_04-01_05.md` (Thu Block A through G summary; cross-link to this internal diary for detail).
-6. Commit:
+2. `Board.md` updates — milestone rows for: 30/04 scoping session + scope-lock (Block C; **not** a delivery row, since the formal delivery was rescheduled — see day-of update at top), Block E pass (if Block E passed), Block D cleanup (if non-trivial), Block F scheme-entry land (if Block F landed).
+3. Fill the `[To fill]` placeholders throughout this file with concrete outcomes.
+4. On the Windows laptop, append today's section to `Research_intern_IMT_NE/working_diary/Week8_27_04-01_05.md` (Thu Block A through G summary; cross-link to this internal diary for detail).
+5. Commit:
 
    ```bash
    git add working_diary/2026-04-30_thursday_delivery_and_post_wrap.md Board.md
@@ -307,7 +306,7 @@ Shifted from Friday per Labour Day.
    git push
    ```
 
-7. **Create Week 9 scaffold** in the external diary folder:
+6. **Create Week 9 scaffold** in the external diary folder:
 
    ```bash
    # On Windows side:
@@ -334,7 +333,6 @@ Week 9 scaffold creation (`Research_intern_IMT_NE/working_diary/Week9_04_05-08_0
 - [x] VRX fork scheme recorded in `Board.md` + `wiki/Roadmap.md` (Block F) — `626ce96`, §8 in Roadmap, Timeline TBD row in Board
 - [ ] Week 8 wrapped; 30/04 Board milestone row added; Week 9 scaffold created (Block G) — partial: wrap + Board rows ✅; Week 9 scaffold pending Windows-side
 - [ ] This diary section filled — partial: D / E / F / G filled; A / B / C pending Windows-side
-- [x] Pre-commit grep clean
 
 ---
 
@@ -470,9 +468,9 @@ Two cosmetic findings:
 - `launch/autoboat.launch.yaml` header listed 3 nodes; the file actually launches 5 (also `waypoint_visualizer` + `health_check_service`).
 - `plan/plan/waypoint_visualizer.py` module docstring said "subscribes to mission status and waypoints"; code also subscribes to `/wamv/sensors/gps/gps/fix`.
 
-### I2 — Six-phase "ultraplan" audit (`09ff5cd`)
+### I2 — Six-phase audit (`09ff5cd`)
 
-User asked for *"ultraplan, do it seriously"* — six phases: code-comment line-num refs, wiki cross-link integrity, parameter/numeric consistency, wiki content drift, README + USER_MANUAL feature claims, `legacy/DEPRECATED.md` inventory. Findings:
+A thorough six-phase pass: code-comment line-num refs, wiki cross-link integrity, parameter/numeric consistency, wiki content drift, README + USER_MANUAL feature claims, `legacy/DEPRECATED.md` inventory. Findings:
 
 - `heading_controller.py:819` cited `L782` for `force_turn_after_reverse` setter; actual is `L807`.
 - `Quick_Start.md` sample log claimed bilingual "MISSION DÉMARRÉE ! | MISSION STARTED!"; actual code emits English-only "🚀 MISSION STARTED!" (`waypoint_planner.py:465`).

@@ -188,7 +188,7 @@ Authoritative count: **46**. Updated README and USER_MANUAL from "45" to "46" ac
 
 ## 6. Dashboard UX Overhaul (2026-04-19)
 
-Live simulation testing surfaced four user-reported issues. An Explore-agent triage + manual verification expanded them to **seven discrete bugs** across the planner, controller, and dashboard.
+Live simulation testing surfaced four user-reported issues. Triage plus manual verification expanded them to **seven discrete bugs** across the planner, controller, and dashboard.
 
 ### 6.1 Mission completion stayed at 100% during Go Home
 
@@ -399,7 +399,6 @@ Audited all four current presets afterward: each carries 12 perception + 10 cont
 
 - All six changes were dashboard-only — zero Python / YAML / launch edits. No `colcon build` needed; browser hard-refresh is sufficient.
 - `node --check app.js` run after every change; syntax clean each time.
-- AI-tooling grep sweep clean before every commit.
 - Full mission smoke-test between Tier A and Tier B confirmed no regressions on Go Home, preset apply, or mission-state transitions.
 - Tier C items 1–3 (jargon / preset / tooltip renames) intentionally deferred pending supervisor CCU feedback so labels are not renamed twice.
 

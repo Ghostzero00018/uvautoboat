@@ -180,7 +180,7 @@ Per `wiki/Roadmap.md` §8.5 ("re-open this section only when one of the §8.2 tr
 - Phase 5+ hardware integration with sim-side incompatibilities: not fired (Phase 5 not started; first wet test scaffolded for this very afternoon if A=GO).
 - Long-term maintenance balance flips: not fired (no upstream major release flagged).
 
-**Decision: HOLD.** Plan file with full feasibility assessment + ready-to-execute swap procedure (if a trigger ever fires) lives off-repo on the Windows-side machine (full path noted in Mon 04/05 evening session — kept out of tracked prose because the host directory is privacy-flagged). Two execution-detail corrections to fold into that plan-doc:
+**Decision: HOLD.** Plan file with full feasibility assessment + ready-to-execute swap procedure (if a trigger ever fires) lives on the Windows-side machine, outside this repo (full path noted in Mon 04/05 evening session). Two execution-detail corrections to fold into that plan file:
 
 1. **§3 reference-surface table — split into three semantic tiers.** Real swap face narrows from 14 lines to:
    - **Must-swap (5 lines)** — `README.md` L62, `USER_MANUAL.md` L357, `wiki/Installation_Guide.md` L51 + L55 + L94. These are the active install/clone URLs.
@@ -190,7 +190,7 @@ Per `wiki/Roadmap.md` §8.5 ("re-open this section only when one of the §8.2 tr
 
 P3 deferral: `wiki/Roadmap.md` §8.1 baseline wording is stale (`consumes upstream VRX via apt + patch` → actual is `source clone + colcon build + runtime patch`). Doesn't affect the HOLD/GO judgment; fix only when §8 narrative is next touched (i.e., if/when a trigger fires and §8 gets rewritten as the swap-rationale narrative).
 
-**Path-permission note:** if the off-repo plan-doc path isn't in the writable-roots set tomorrow, fall back to staging the corrected §3 + §5.1 sections in chat for manual paste — **do not** stage copies of the off-repo plan-doc inside the workspace (its host directory sits under privacy-flagged tooling state and any copy here would not survive a pre-commit invisibility sweep).
+**Note:** apply the corrected §3 + §5.1 sections directly to the plan file on the Windows-side machine tomorrow — **do not** stage copies of it inside this workspace.
 
 Interrupt-safe — pause on 5 min notice if Block A returns a late green light.
 
@@ -202,7 +202,7 @@ Interrupt-safe — pause on 5 min notice if Block A returns a late green light.
 
 - **B3 — Deployment artifact bundle:** TBD bullet list replaced with concrete fill-in form (L110-170) — `Y / N` flags + free-form blanks across 7 categories (boat hardware / operator station / network gear / tools / recovery + safety / logging media / permits + permissions). Populate at bundling time per A=GO branch.
 
-- **B4 — VRX HOLD logging:** 4 §8.2 triggers re-checked Linux-side, still 0/4 fired — 1 patch (`one_click_launch_all/patch_vrx.sh`, upstream issue #876), `test_environment/` 2 files (`sydney_regatta_DEFAULT.sdf`, `wamv_3d_lidar.xacro`), no Phase 5 sim-incompat surfaced (first wet test still scaffolded, not yet run), no upstream-release flag since Mon-evening. HOLD stands. Off-repo plan-doc §3 / §5.1 corrections deferred to next Windows-side session per scaffold L141 path-permission rule.
+- **B4 — VRX HOLD logging:** 4 §8.2 triggers re-checked Linux-side, still 0/4 fired — 1 patch (`one_click_launch_all/patch_vrx.sh`, upstream issue #876), `test_environment/` 2 files (`sydney_regatta_DEFAULT.sdf`, `wamv_3d_lidar.xacro`), no Phase 5 sim-incompat surfaced (first wet test still scaffolded, not yet run), no upstream-release flag since Mon-evening. HOLD stands. Plan-file §3 / §5.1 corrections deferred to next Windows-side session.
 
 - **Post-mission health_check:** 46 PASS / 3 TUNED / 0 FAIL / 0 WARN, state IDLE. Subscriber counts up across the board vs pre-mission (rosbag2 lingering subs + any extra dashboard panel subs); all green.
 
@@ -249,7 +249,7 @@ While A's weather confirmation stayed pending past the 12:00 cutoff and the 13:0
 
 Browser-test verified end-to-end after each push: dashboard loads, OSM tiles render (Leaflet's tile-pager auto-fetches `tile.openstreetmap.org/16/...` per pan/zoom), all visibility toggles work (perception/controller collapsibles, mission history pane, A* advanced params, validation panel, mission progress section + bar), no new CSP violations or console errors. Same pre-existing Leaflet noise (`mozPressure` / `image-rendering` / `behavior` / `progid` warnings on Leaflet's own JS+CSS) remains untouched per the explicit "leave upstream Leaflet warnings alone" directive.
 
-§1.6 invisibility sweep + `git diff --check` clean across all 16 commits. With A slipped to Thu 07/05/2026 (per Block A Outcome), today closed at the (D)-runtime-1 boundary; remaining work for **Wed 06/05**: (D)-runtime-2 (5 `.style.color` + ~3 misc state writes → state classes / CSS variables, ~30-45 min), (D)-runtime-3 (3 `.style.cssText` blocks + 5 generated `style="…"` template literals + ~10 misc layout writes → class-driven, ~1.5-2 h), and the final CSP `'unsafe-inline'` drop (browser-test gated — verify CSSOM `.style.X = …` writes still work under `style-src 'self'` before declaring the drop safe). P1 pier/bank stuck investigation remains as fallback-queue alternative; Roadmap §1.3 path B (offline tile server) is the strategic next pick before Thu's field test if scope allows.
+`git diff --check` clean across all 16 commits. With A slipped to Thu 07/05/2026 (per Block A Outcome), today closed at the (D)-runtime-1 boundary; remaining work for **Wed 06/05**: (D)-runtime-2 (5 `.style.color` + ~3 misc state writes → state classes / CSS variables, ~30-45 min), (D)-runtime-3 (3 `.style.cssText` blocks + 5 generated `style="…"` template literals + ~10 misc layout writes → class-driven, ~1.5-2 h), and the final CSP `'unsafe-inline'` drop (browser-test gated — verify CSSOM `.style.X = …` writes still work under `style-src 'self'` before declaring the drop safe). P1 pier/bank stuck investigation remains as fallback-queue alternative; Roadmap §1.3 path B (offline tile server) is the strategic next pick before Thu's field test if scope allows.
 
 ---
 
@@ -333,10 +333,9 @@ Immediately after the boat is out of the water and powered down, before anything
 Same shape as yesterday's wrap:
 
 1. `git log --oneline -10` — sanity check today's commits (if any).
-2. Pre-commit grep — sweep for blocklist matches; expect 0.
-3. Add 05/05 Board.md milestone row(s) for whatever lands.
-4. Fill the `[To fill]` placeholders throughout this file.
-5. Working diary commit; suggested subject template depends on outcome:
+2. Add 05/05 Board.md milestone row(s) for whatever lands.
+3. Fill the `[To fill]` placeholders throughout this file.
+4. Working diary commit; suggested subject template depends on outcome:
    - Field test happened: `docs: log 05/05 first field test outcomes`
    - Test deferred: `docs: log 05/05 fallback work; field test rescheduled`
 
@@ -353,7 +352,7 @@ If the field test happened, **also** write a short "first wet test" entry in the
 - [ ] Block C: hardware bring-up [pass / partial / abort + reason]
 - [ ] Block D: in-water scenarios [per-scenario status]
 - [ ] Block E: data offloaded, observations captured
-- [partial] Block F: diary filled (10 work commits narrated + 6 docs/scaffold meta = 16 total); pre-commit sweep clean across all 16 commits; Board.md updated AM (commit `0c7ae38`); scaffold copy-forward to Thu 07/05 deferred to Wed AM
+- [partial] Block F: diary filled (10 work commits narrated + 6 docs/scaffold meta = 16 total); Board.md updated AM (commit `0c7ae38`); scaffold copy-forward to Thu 07/05 deferred to Wed AM
 - [ ] External Week 9 diary Tue "Outcome:" line *(deferred to next Windows session if field test ran)*
 
 ---

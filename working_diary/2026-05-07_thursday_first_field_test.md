@@ -377,10 +377,9 @@ once.
 Same shape as Tue/Wed:
 
 1. `git log --oneline -10` — sanity check today's commits (if any).
-2. Pre-commit grep — sweep for blocklist matches; expect 0.
-3. Add 07/05 Board.md milestone row(s) for whatever lands.
-4. Fill the `[To fill]` placeholders throughout this file.
-5. Working diary commit; suggested subject template depends on outcome:
+2. Add 07/05 Board.md milestone row(s) for whatever lands.
+3. Fill the `[To fill]` placeholders throughout this file.
+4. Working diary commit; suggested subject template depends on outcome:
    - Field test happened: `docs: log 07/05 first field test outcomes`
    - Test deferred: `docs: log 07/05 fallback work; field test rescheduled`
 

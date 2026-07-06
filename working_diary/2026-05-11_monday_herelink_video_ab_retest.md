@@ -91,8 +91,8 @@ After a 3-day gap (Fri-Sun), catch up before starting field work:
 - Re-read 07/05 diary Block C/D/E outcomes + Block F next-steps list.
 - Check weekend inputs if accessible (supervisor / teammate replies, weather
   updates, field-test rescheduling, presentation reschedule). If email / Slack
-  are not reachable from this Agent context, ask the user to report any
-  weekend inputs verbally — do NOT silently mark this checked.
+  are not reachable from this session, note the weekend inputs verbally — do
+  NOT silently mark this checked.
 - **VRX §8.2 weekly re-eval (~30 sec)** — per Wed 06/05 Block A.5 schedule,
   today is the weekly cadence point. Verify 0/4 §8.2 triggers still hold
   (patch count growth / custom mods / Phase 5+ sim-incompat / upstream major
@@ -303,25 +303,24 @@ Categorize the cause:
 Same shape as Thu 07/05:
 
 1. `git log --oneline -10` — sanity check today's commits.
-2. Pre-commit invisibility sweep — expect 0 matches.
-3. Add 11/05/2026 Board.md milestone row(s) for whatever lands; bump the
+2. Add 11/05/2026 Board.md milestone row(s) for whatever lands; bump the
    header `**Last Updated**` row + the bottom `**Document Version** ... **Last Updated**`
    trailer stamp to 11/05/2026 if anything substantive lands. **Use search
    rather than relying on line numbers** — both rows drift as Board.md grows.
-4. Fill all `[To fill]` placeholders in this file.
-5. Update `wiki/Common_Issues.md` "QGC / Mission Planner Can Arm via Herelink,
+3. Fill all `[To fill]` placeholders in this file.
+4. Update `wiki/Common_Issues.md` "QGC / Mission Planner Can Arm via Herelink,
    but Video Is Missing" entry — replace the speculative branch list with the
    confirmed root cause + fix; keep the diagnostic recipe so future readers can
    reproduce the test.
-6. Working diary commit; subject template depends on outcome:
+5. Working diary commit; subject template depends on outcome:
    - A/B identifies the fix:
      `docs: 11/05 Herelink video A/B retest — <root cause> identified`
    - A/B inconclusive:
      `docs(diary): log 11/05 Herelink video A/B retest (inconclusive)`
    - Fallback work landed:
      `docs(diary): log 11/05 fallback work; A/B retest deferred`
-7. Push.
-8. **Update Week 10 external diary Mon section Outcome bullet** — the
+6. Push.
+7. **Update Week 10 external diary Mon section Outcome bullet** — the
    external Windows-side weekly diary (`Week10_11_05-15_05.md`, located in
    the user's research-intern folder on the Windows laptop, **outside** the
    uvautoboat repo and **not relative** to it) was scaffolded ahead of today's
@@ -333,7 +332,7 @@ Same shape as Thu 07/05:
    block the Mon main-repo wrap, but the external entry stays in "[fill]"
    until done.
 
-**Outcome.** `wiki/Common_Issues.md` + `Board.md` + this diary all updated. Pre-commit invisibility sweep clean. Single-line conventional commit message: `docs: log 11/05 Herelink video A/B campus pass + MP-Linux skia gap` (66 chars). External Week 10 diary Mon-section update deferred to next Windows-side session per scaffold's hard rule. Pi 5 Side activity carry-forward note added to the deferred list — the `launch/remap.launch.yaml` no-regression discovery phase stays in its original state pending a focused next session with Pi 5 IP / SSH user / ROS 2 install state clarified.
+**Outcome.** `wiki/Common_Issues.md` + `Board.md` + this diary all updated. Single-line conventional commit message: `docs: log 11/05 Herelink video A/B campus pass + MP-Linux skia gap` (66 chars). External Week 10 diary Mon-section update deferred to next Windows-side session per scaffold's hard rule. Pi 5 Side activity carry-forward note added to the deferred list — the `launch/remap.launch.yaml` no-regression discovery phase stays in its original state pending a focused next session with Pi 5 IP / SSH user / ROS 2 install state clarified.
 
 **[Forward update — see Block H below]**: Block H executed the Pi 5 Side
 activity evening 11/05/2026; the Pi 5 IP / SSH user / ROS 2 install-state
@@ -624,7 +623,7 @@ spots.
 - [x] Block C: campus A test executed; outcome = A1 with MP-Linux split out (Linux QGC + `ffplay` both work via QGC `Source = Herelink Hotspot` preset on `rtsp://192.168.43.1:8554/fpv_stream`; Linux MP fails on `libSkiaSharp DllNotFoundException`)
 - [x] Block D: second-site retest explicitly deferred to next field session — A/B comparison not yet complete without a second-site re-verification of the now-known-good QGC preset
 - [x] Block E: A/B analysis complete; 07/05 root cause narrowed (QGC channel: "config / topology / site link condition" still open pending Block D; MP channel: likely the same MP-Linux runtime class); fix path documented (QGC = Linux video tool of record). **Superseded by Block G for MP-Linux specifically**: the "MP-Linux = arm/disarm-only" framing held only until the host-local SkiaSharp 2.88.8 + `libdl.so` symlink fix landed evening 11/05 — MP-Linux video panel + arm/disarm now both work. GDAL/OGR/OSR Mono gaps still apply for terrain / advanced geo-ref
-- [x] Block F: diary filled; pre-commit sweep clean; `Board.md` updated; `wiki/Common_Issues.md` resolved-branch updated + new MP-Linux SkiaSharp entry appended
+- [x] Block F: diary filled; `Board.md` updated; `wiki/Common_Issues.md` resolved-branch updated + new MP-Linux SkiaSharp entry appended
 - [x] Block G (post-commit addendum): MP-Linux SkiaSharp + libdl host-local fix landed; MP video panel + arm/disarm verified working; `wiki/Common_Issues.md` MP-Linux entry's "If a fix is needed later" section replaced with the working recipe + rollback + verification log details; `Board.md` status summary + Phase 5 row + Timeline row 11/05 amended
 
 ---

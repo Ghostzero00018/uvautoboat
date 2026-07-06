@@ -300,12 +300,11 @@ Adjacent UX decision recorded: **do not add routine "command-sent" toasts to eve
 ## Block E — Wrap + diary fill-in
 
 1. `git log --oneline -5` — sanity check the day's commits landed cleanly.
-2. Pre-commit scan one more time — run the standing repo-wide sweep (expected: zero matches).
-3. **Post-change doc audit** — scan `wiki/*`, `README.md`, `USER_MANUAL.md`, dashboard README, `Common_Issues.md`, `Design_Rationale.md`, `SASS.md` for stale claims touching today's changes (especially if P1 SASS behaviour is altered or rate_probe lands a new tool).
-4. Fill the `[To fill]` placeholders throughout this file with concrete outcomes.
-5. Add 24/04 milestone rows to Board.md's Timeline table.
-6. Fill the Friday block's `[fill]` / `[待填]` Outcome placeholders in the external `Research_intern_IMT_NE/working_diary/Week7_20_04-24_04.md` (scaffold already in place from 22/04 evening restructure; today's work just replaces placeholders with real outcomes).
-7. Commit the diary / Board updates:
+2. **Post-change doc audit** — scan `wiki/*`, `README.md`, `USER_MANUAL.md`, dashboard README, `Common_Issues.md`, `Design_Rationale.md`, `SASS.md` for stale claims touching today's changes (especially if P1 SASS behaviour is altered or rate_probe lands a new tool).
+3. Fill the `[To fill]` placeholders throughout this file with concrete outcomes.
+4. Add 24/04 milestone rows to Board.md's Timeline table.
+5. Fill the Friday block's `[fill]` / `[待填]` Outcome placeholders in the external `Research_intern_IMT_NE/working_diary/Week7_20_04-24_04.md` (scaffold already in place from 22/04 evening restructure; today's work just replaces placeholders with real outcomes).
+6. Commit the diary / Board updates:
 
    ```bash
    git add working_diary/2026-04-24_pier_bank_stuck_and_rate_probe.md Board.md

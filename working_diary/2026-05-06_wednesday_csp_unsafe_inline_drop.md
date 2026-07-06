@@ -57,9 +57,9 @@ cp working_diary/2026-05-05_tuesday_first_field_test.md \
 # - Update the "Active branch" subsection in Next Steps (Thu IS the active day; not "slipped to Thu")
 ```
 
-**Pass criteria:** Thu diary file exists, has `[To fill]` placeholders re-blanked, dates updated, no Tue-specific narrative (Fallback queue progress + post-A-slip subsections removed), pre-commit grep clean.
+**Pass criteria:** Thu diary file exists, has `[To fill]` placeholders re-blanked, dates updated, no Tue-specific narrative (Fallback queue progress + post-A-slip subsections removed).
 
-**Outcome.** Thu scaffold ready at `working_diary/2026-05-07_thursday_first_field_test.md` (349 lines, vs 423 for Tue source). Stripped: entire `## Fallback queue progress` section (Tue PM commit-history narrative, including the post-A-slip subsection). Preserved with re-blanked placeholders: Block A-F Outcomes, Verification summary checkboxes, "Field-test confirmation timing" entry in Known unknowns. Updated: header date `2026-05-05` → `2026-05-07`, weekday Tuesday → Thursday, week-shape recap (Mon/Tue/Wed all history; Thu = today; Fri = V-E Day holiday); Block A re-cast as "AM confirmation re-check"; Block B "B4 — VRX HOLD periodic re-eval" condensed to a 2-line "weekly cadence covered by Wed Block A.5; skip unless trigger event fires today" note; Block F commit-message templates updated to 07/05; Verification summary date updated to 07/05; Next steps section restructured for Thu's POV (Active branch = today; Fri 08/05 = V-E Day; conditional on today's Block D outcome). Pre-commit `§1.6` grep clean. Followup correction surfaced by review pass: Thu L12 commit-count claim "ten commits total" was incorrect (Tue had 16 commits per `git log --since='2026-05-05 00:00' --until='2026-05-06 00:00'`); fixed to "16 commits total (10 work commits narrated below + 6 docs/scaffold meta-commits)".
+**Outcome.** Thu scaffold ready at `working_diary/2026-05-07_thursday_first_field_test.md` (349 lines, vs 423 for Tue source). Stripped: entire `## Fallback queue progress` section (Tue PM commit-history narrative, including the post-A-slip subsection). Preserved with re-blanked placeholders: Block A-F Outcomes, Verification summary checkboxes, "Field-test confirmation timing" entry in Known unknowns. Updated: header date `2026-05-05` → `2026-05-07`, weekday Tuesday → Thursday, week-shape recap (Mon/Tue/Wed all history; Thu = today; Fri = V-E Day holiday); Block A re-cast as "AM confirmation re-check"; Block B "B4 — VRX HOLD periodic re-eval" condensed to a 2-line "weekly cadence covered by Wed Block A.5; skip unless trigger event fires today" note; Block F commit-message templates updated to 07/05; Verification summary date updated to 07/05; Next steps section restructured for Thu's POV (Active branch = today; Fri 08/05 = V-E Day; conditional on today's Block D outcome). Followup correction surfaced by review pass: Thu L12 commit-count claim "ten commits total" was incorrect (Tue had 16 commits per `git log --since='2026-05-05 00:00' --until='2026-05-06 00:00'`); fixed to "16 commits total (10 work commits narrated below + 6 docs/scaffold meta-commits)".
 
 ---
 
@@ -221,14 +221,13 @@ If health check passes + time remains, pick from fallback queue:
 ## Block F — Day wrap + Thu pre-deployment readiness (~30 min, evening)
 
 1. `git log --oneline -10` — sanity check today's commits.
-2. Pre-commit grep — sweep for blocklist matches; expect 0.
-3. Diary fill — populate all `[To fill]` placeholders in Block A-E Outcomes + Verification summary.
-4. Working diary commit; subject template:
+2. Diary fill — populate all `[To fill]` placeholders in Block A-E Outcomes + Verification summary.
+3. Working diary commit; subject template:
    - All CSP work landed cleanly: `refactor(dashboard): drop CSP 'unsafe-inline' (script-src + style-src)` — final commit name; or stage as series. (`refactor` matches the runtime-1/2/3 staging style; switch to `chore(security)` only if you want the tightening framed as a user-visible security feature.)
    - Partial CSP work (e.g., runtime-3 partial): `refactor(dashboard): runtime-3 partial; CSP drop deferred`
    - Diary close-out: `docs(diary): close 06/05 — CSP drop + Thu scaffold ready`
-5. Confirm `working_diary/2026-05-07_thursday_first_field_test.md` exists with re-blanked placeholders + correct dates.
-6. Sim left alive for Thu AM re-verification (no need to tear down).
+4. Confirm `working_diary/2026-05-07_thursday_first_field_test.md` exists with re-blanked placeholders + correct dates.
+5. Sim left alive for Thu AM re-verification (no need to tear down).
 
 **Outcome.** Final commit stack today (06/05), **20 substantive commits in three phases + N follow-up cleanup commits** (the day grew well beyond Block F closure with three successive scope expansions — Option B reverse-proxy doc polish, the late-afternoon VRX fork migration, and an evening newcomer/teammate onboarding-hardening pass; the follow-up cleanups are this Block F update itself plus markdownlint or count-framing passes that landed after, which would otherwise force a recursive "diary count of count" update). User sequencing of the 20 substantive commits in three phases:
 
@@ -245,8 +244,8 @@ If health check passes + time remains, pick from fallback queue:
 **Phase 2 — Post-close scope expansions (commits 8-13):**
 
 1. `docs(diary): note Wed per-request Host CSP in Thu scaffold` — small follow-up to the Thu scaffold (Wed-reference accuracy at L13/L25/L58/L62)
-2. `refactor(diary): update mission progress bar dynamic width to use CSS variables` — your inline diary edit (1-line wording fix, intentional per system reminder)
-3. `docs(security): polish Option B reverse-proxy + A→B triggers` — wiki/Dashboard_Security.md row L214 expanded from 1-line stub to depth-matched cell + L142/L143 cross-references + new A→B triggers paragraph (drafted via /ultraplan, applied locally after the remote session timed out)
+2. `refactor(diary): update mission progress bar dynamic width to use CSS variables` — inline diary edit (1-line wording fix, intentional)
+3. `docs(security): polish Option B reverse-proxy + A→B triggers` — wiki/Dashboard_Security.md row L214 expanded from 1-line stub to depth-matched cell + L142/L143 cross-references + new A→B triggers paragraph
 4. `docs(vrx): swap install/clone URLs to Ghostzero00018/vrx fork` — VRX fork landed (`Ghostzero00018/vrx` with bake-in commit `e384cd65` on the fork's `jazzy` branch); 5 install/clone URLs swapped + 1 dual-link entry rewritten with both arrows
 5. `docs(roadmap): VRX §8 rewrite (executed) + Board.md flip → ✅` — §8 narrative rewritten as executed-plan + new §8.6 Migration log + §8.7 Sync workflow; Board TBD `🔜` → ✅
 6. `docs(roadmap): two-branch fork model (jazzy + autoboat/main)` — added `autoboat/main` branch on the fork as the workspace-consumed branch; §8.6/§8.7 + Board updated for the two-branch sync workflow
@@ -263,7 +262,7 @@ If health check passes + time remains, pick from fallback queue:
 
 **Plus a process artefact (no commit):** drafted teammate-facing migration email in formal register, pointing at `wiki/VRX_Fork_Migration` page + `git pull origin main` for uvautoboat. Sent to the two team members still using upstream `osrf/vrx` per the fork-migration thread.
 
-§1.6 invisibility sweep clean across all 20 substantive commits and the follow-up cleanups that followed. Sim NOT left alive (wasn't launched from this session); Thu AM Block B1 needs fresh sim launch — the launcher will see the same effective sim source (fork's `autoboat/main` HEAD = old `jazzy` HEAD = upstream `7609d1bd` + bake-in `e384cd65`), just sourced from the fork instead of `osrf/vrx` upstream.
+Sim NOT left alive (wasn't launched from this session); Thu AM Block B1 needs fresh sim launch — the launcher will see the same effective sim source (fork's `autoboat/main` HEAD = old `jazzy` HEAD = upstream `7609d1bd` + bake-in `e384cd65`), just sourced from the fork instead of `osrf/vrx` upstream.
 
 ---
 
@@ -292,7 +291,7 @@ A review pass run between Block C completion and Block D's CSP drop surfaced 4 f
 - [x] Block C: (D)-runtime-3 landed; `\.style\.X\s*=` writes in `app.js` = 0 except 2 justified CSSOM `setProperty('--bar-width', ...)` paths; cssText + generated `style="..."` strings = 0
 - [x] Block D: CSP `'unsafe-inline'` drop PASS; final CSP `script-src 'self'` + `style-src 'self'` + per-request `<host>` derivation in `img-src` / `connect-src`
 - [skip] Block E: pre-Thu health_check + fallback queue deferred to Thu AM Block B1 (sim wasn't launched from this session)
-- [x] Block F: diary filled; pre-commit sweep clean; Thu scaffold confirmed ready; mid-session audit pass folded in (4 fixes + 1 follow-up)
+- [x] Block F: diary filled; Thu scaffold confirmed ready; mid-session audit pass folded in (4 fixes + 1 follow-up)
 
 ---
 

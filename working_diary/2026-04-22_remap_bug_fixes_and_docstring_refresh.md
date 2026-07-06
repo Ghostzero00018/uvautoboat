@@ -238,12 +238,10 @@ Block D landed on the same 3 files as Block A. Used `git add -p` hunk-split to s
 ## Block E — Wrap + diary fill-in
 
 1. `git log --oneline -5` — sanity check the day's commits landed cleanly.
-2. Pre-commit scan one more time — run the standing repo-wide sweep (the pattern is codified in the local editor-settings hook; expected output: zero matches over active source + doc files).
-
-3. Fill the `[To fill]` placeholders throughout this file with concrete outcomes.
-4. Add 22/04 milestone row at the bottom of Board.md's Timeline table.
-5. Update the external `Research_intern_IMT_NE/working_diary/Week7_20_04-24_04.md` Wednesday block (scaffold already written) — replace `[Block 结束后填写]` placeholders with real results.
-6. Commit the diary / Board updates:
+2. Fill the `[To fill]` placeholders throughout this file with concrete outcomes.
+3. Add 22/04 milestone row at the bottom of Board.md's Timeline table.
+4. Update the external `Research_intern_IMT_NE/working_diary/Week7_20_04-24_04.md` Wednesday block (scaffold already written) — replace `[Block 结束后填写]` placeholders with real results.
+5. Commit the diary / Board updates:
 
    ```bash
    git add working_diary/2026-04-22_remap_bug_fixes_and_docstring_refresh.md Board.md

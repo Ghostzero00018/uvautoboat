@@ -252,13 +252,12 @@ Doc-edit decision: touched durable status docs because 28/05 added two durable f
 
 - [x] Final checks: `git status`, `git diff --check`, and placeholder/conflict-marker scan over this diary.
 - [x] Fill Block E Outcome BEFORE the wrap commit.
-- [x] Run the standard pre-commit sweep before the wrap commit.
 - [x] Set next startup hint based on today's outcome.
 - [ ] Commit + push (pending user-run commit).
 
 **Outcome:** Day wrap ready. Final state captured: Block A endpoint gate still selects the paper branch; Slab 3 MAVROS autostart remains a placeholder design until `fcu_url` and device ordering are known; Pi-local color-only RealSense viewing is verified through both `rqt_image_view` and RViz2; combined color/depth/IMU remains a separate power / USB-stability retest. Durable docs touched: `Board.md`, `wiki/Roadmap.md`, and this diary only.
 
-Verification before commit: `git status --short --branch` shows three modified Markdown files; `git diff --check` is clean; placeholder / conflict-marker scan is clean after this outcome fill; standard pre-commit sweep is clean. Commit subject:
+Verification before commit: `git status --short --branch` shows three modified Markdown files; `git diff --check` is clean; placeholder / conflict-marker scan is clean after this outcome fill. Commit subject:
 
 `docs: wrap 28/05 Pi endpoint gate + RealSense viewers`
 

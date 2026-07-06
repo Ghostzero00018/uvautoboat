@@ -290,17 +290,16 @@ Files deliberately not touched:
 - `Board.md` 12/05 / 13/05 Timeline rows — frozen as historical record; new 21/05 row carries the reversal.
 - Code / YAML / shell — paper-only day; no `.py` / `.yaml` / `.sh` edits anywhere.
 
-**Outcome:** D.1 + D.2 paper artifacts captured (`mavros2` install-path matrix with Route 1 / 2 / 3 + decision tree; topic-name scheme alignment between current Layer A relays and `mavros2` outputs, with Layer B bridge shape). D.3 doc-sweep landed: 2 Pi-OS-posture claims revised (`wiki/Roadmap.md` §1.1 L23 + `wiki/Pi5_Bringup_Smoke_Test.md` §2 prerequisites L34), `wiki/Roadmap.md` §9 + `Board.md` header / footer / Timeline updated, 4 non-Pi-OS-posture `headless` mentions confirmed unrelated and left alone. No code / YAML changes. Pre-commit grep sweep clean (run before the wrap commit).
+**Outcome:** D.1 + D.2 paper artifacts captured (`mavros2` install-path matrix with Route 1 / 2 / 3 + decision tree; topic-name scheme alignment between current Layer A relays and `mavros2` outputs, with Layer B bridge shape). D.3 doc-sweep landed: 2 Pi-OS-posture claims revised (`wiki/Roadmap.md` §1.1 L23 + `wiki/Pi5_Bringup_Smoke_Test.md` §2 prerequisites L34), `wiki/Roadmap.md` §9 + `Board.md` header / footer / Timeline updated, 4 non-Pi-OS-posture `headless` mentions confirmed unrelated and left alone. No code / YAML changes.
 
 ## Block E — Day wrap (≈ 10 min)
 
 - [ ] Final checks: `git status`, `git diff --check`, `rg -n '\[To fill'` over this diary.
 - [ ] Fill Block E Outcome BEFORE the wrap commit (19/05/2026 lesson learned: a placeholder slipped into `faa9ba1` and needed a follow-up `3cd8861` correction).
-- [ ] Run the standard pre-commit sweep before the wrap commit.
 - [ ] Set Fri 22/05/2026 startup hint based on today's outcome.
 - [ ] Commit + push (commit subject provided in the wrap; run from repo root after Block E Outcome is filled).
 
-**Outcome.** Day closed paper-only (Pi 5 unavailable at the prof's office for a full-DE re-flash). Block A pre-flight blocked → paper pivot per Day pivot note; Blocks B + C marked N/A — no live Pi. Block D landed paper artifacts (`mavros2` install-path matrix in §D.1; `mavros2` ↔ `launch/remap.launch.yaml` topic-name scheme alignment in §D.2) plus the headless-directive-reversal doc sweep (§D.3): `wiki/Roadmap.md` §1.1 + §9 + `wiki/Pi5_Bringup_Smoke_Test.md` §2 prerequisites + `Board.md` (Last Updated 20/05 → 21/05 + Document Version 9.14 → 9.15 + 21/05 Timeline row) all touched. Past `working_diary/` entries (13/05 / 18/05 / 19/05 / 20/05) left frozen per the append-only rule. Pre-commit grep sweep clean (0 matches across tracked files). No code / YAML / shell changes — paper-only.
+**Outcome.** Day closed paper-only (Pi 5 unavailable at the prof's office for a full-DE re-flash). Block A pre-flight blocked → paper pivot per Day pivot note; Blocks B + C marked N/A — no live Pi. Block D landed paper artifacts (`mavros2` install-path matrix in §D.1; `mavros2` ↔ `launch/remap.launch.yaml` topic-name scheme alignment in §D.2) plus the headless-directive-reversal doc sweep (§D.3): `wiki/Roadmap.md` §1.1 + §9 + `wiki/Pi5_Bringup_Smoke_Test.md` §2 prerequisites + `Board.md` (Last Updated 20/05 → 21/05 + Document Version 9.14 → 9.15 + 21/05 Timeline row) all touched. Past `working_diary/` entries (13/05 / 18/05 / 19/05 / 20/05) left frozen per the append-only rule. No code / YAML / shell changes — paper-only.
 
 Wrap commit subject (candidate, user picks final):
 

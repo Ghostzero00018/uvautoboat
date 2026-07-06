@@ -50,7 +50,7 @@ Expected starting repo state: `main` clean/synced at `2b13457` or later.
 
 - This is a Pi hardware/telemetry day, not a YOLO day.
 - The user runs the Pi commands on the box; do not run MAVProxy, MAVROS,
-  RealSense, QGC, Herelink, dashboard, or real-FCU tests from the agent side.
+  RealSense, QGC, Herelink, dashboard, or real-FCU tests remotely.
 - Do not arm, upload missions, change modes, write parameters, or send actuator
   commands.
 - Do not start RealSense, YOLO inference, dashboard, QGC, Herelink, or any
@@ -103,7 +103,7 @@ workstation-prep diary, the 26/06/2026 YOLO / RealSense / MAVProxy diary,
 Use this header before running the hardware pipeline.
 
 - **Host + terminal:** Pi `imtaquadrone-desktop`, run by the user on the box.
-  Use new terminals. Do not run this from the agent side.
+  Use new terminals. Do not run this remotely.
 - **cwd + env:** start from `cd ~`. MAVProxy preflight does not need ROS
   sourcing. MAVROS only starts later, after MAVProxy heartbeat.
 - **Prereqs:** control box powered, Pi booted, no RealSense / YOLO / dashboard

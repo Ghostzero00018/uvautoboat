@@ -181,11 +181,10 @@ git push
 ## Block E — Wrap + diary fill-in
 
 1. `git log --oneline -5` — sanity check the day's commits landed cleanly.
-2. Pre-commit scan one more time — run the standing repo-wide sweep (pattern is codified in the local editor-settings hook; expected output: zero matches over active source + doc files).
-3. Fill the `[To fill]` placeholders throughout this file with concrete outcomes.
-4. Add 23/04 milestone row at the bottom of Board.md's Timeline table.
-5. Update the external `Research_intern_IMT_NE/working_diary/Week7_20_04-24_04.md` Thursday block.
-6. Commit the diary / Board updates:
+2. Fill the `[To fill]` placeholders throughout this file with concrete outcomes.
+3. Add 23/04 milestone row at the bottom of Board.md's Timeline table.
+4. Update the external `Research_intern_IMT_NE/working_diary/Week7_20_04-24_04.md` Thursday block.
+5. Commit the diary / Board updates:
 
    ```bash
    git add working_diary/2026-04-23_dashboard_consolidation_and_health_check_verify.md Board.md

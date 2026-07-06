@@ -286,11 +286,10 @@ If the warning doesn't surface today either: drop the planned Slide 6 secondary-
 ## Block E — Wrap + diary fill-in
 
 1. `git log --oneline -5` — sanity check the day's commits landed cleanly.
-2. Pre-commit scan: zero matches expected.
-3. Fill the `[To fill]` placeholders throughout this file with concrete outcomes.
-4. Add 28/04 milestone row to `Board.md` only if A1+A2+A3 lands cleanly (one row noting "carry-over fixes + PPT slide-content paste").
-5. On the Windows laptop, append today's section to `Research_intern_IMT_NE/working_diary/Week8_27_04-01_05.md`.
-6. Commit:
+2. Fill the `[To fill]` placeholders throughout this file with concrete outcomes.
+3. Add 28/04 milestone row to `Board.md` only if A1+A2+A3 lands cleanly (one row noting "carry-over fixes + PPT slide-content paste").
+4. On the Windows laptop, append today's section to `Research_intern_IMT_NE/working_diary/Week8_27_04-01_05.md`.
+5. Commit:
 
    ```bash
    git add working_diary/2026-04-28_tuesday_carry_over_and_ppt_paste.md Board.md

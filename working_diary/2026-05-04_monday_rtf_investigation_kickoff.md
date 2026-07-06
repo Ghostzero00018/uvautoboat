@@ -28,22 +28,18 @@ Active blocks for the day:
 
 ## Pre-Monday work landed Sunday 03/05 (committed + pushed before Monday opens)
 
-Doc cleanup + invisibility hygiene + tomorrow's prep, all in `main` + Gist by the time the Monday session opens.
+Doc cleanup + tomorrow's prep, all landed in `main` by the time the Monday session opens.
 
 - **Dashboard_Security refresh** — server-side `PARAM_RANGES` validation now noted in the security posture; XSS finding retargeted from `/rosout` (already safe via `textContent`) to `addLog()` `innerHTML`; "Unauthenticated commands within validated bounds" reframe; SRI finding marked resolved + reframed as CDN-availability risk pointing at Roadmap §1.3.
 - **README_WIKI restructure** — reclassified as synced wiki-meta page (matches actual sync — `UPLOAD_INSTRUCTIONS.md` is the only excluded file in both `scripts/sync_wiki.sh` and `.github/workflows/sync-wiki.yml`); inventory updated (`Roadmap.md` + `Pi5_Bringup_Smoke_Test.md` added); stale "Additional Pages Needed" wishlist removed (24 ghost pages including `Atlantis-Architecture.md`).
 - **A\* diagram topic fix** in `USER_MANUAL.md` + `Board.md` — `/perception/obstacles` → `/perception/obstacle_info` (the actual published topic).
 - **`waypoint_visualizer.py` JSON parse warning** — `mission_status_callback_modular` no longer silently swallows `JSONDecodeError`; now logs at WARN level (matches the sibling `waypoints_callback_modular` pattern). **Block B verifies this on Monday — only new code path from Sunday.**
-- **Conventions doc (Gist) trim** — §6 swapped from project-state pinning → canonical-source pointers + 3 method bullets; §10 collapsed to a one-line pointer; §12 smoke test reduced to method/behaviour-only (project-state questions deliberately removed); §1 / §2 / §5 / §11 wording aligned to the new method-only shape; static "Last updated" stamp removed.
-- **Pre-commit sweep extended** — keyword set widened, `*.svg` added to the `--include` list, caveat added noting that base64-embedded raster blobs inside SVG slip past textual grep unless decoded.
 - **Image-asset cleanup** — `images/logo_autoboat_v2.svg` (SVG-embedded PNG simplified by removing non-essential ancillary chunks; ~73 KB smaller; logo renders unchanged) and `images/LogoBase.png` (same chunk simplification on this orphan source PNG; ~55 KB smaller). Both PNGs preserve the critical chunks (IHDR / IDAT / IEND).
 - **Diary prose reword** — `working_diary/2026-04-30_*.md` L483 reworded for clarity (rule's intent stated inline rather than via cross-reference).
 - **External Week 9 diary scaffold** created at `Research_intern_IMT_NE/working_diary/Week9_04_05-08_05.md` — Mon 04/05 detailed (cross-links this file's Block A-E); Tue/Wed/Thu blank pending Mon outcome; Fri 08/05 noted as V-E Day public holiday.
 - **Tomorrow's Linux-side test plan + this scaffold** drafted Sunday evening — Block A-E breakdown + branch trees + pass criteria + rollover conditions.
 
 **Implication for Monday:** the only new code path landed Sunday is the visualizer JSON warn (Block B verifies). Everything else is doc-only — no runtime test needed for those. Block D (RTF investigation) starts from the 29/04 working hypothesis — nothing landed Sunday on that front.
-
-**Final main-repo §1.6 sweep result before Sunday push:** zero matches across the full keyword set + all included file types (text + binary). Repo is invisibility-clean entering Monday.
 
 ---
 
@@ -338,11 +334,10 @@ Worth a `wiki/Common_Issues.md` follow-up if this trap recurs in future investig
 ## Block E — Day wrap + Week 9 scaffold (~30 min, evening)
 
 1. `git log --oneline -10` — sanity check today's commits.
-2. Pre-commit grep — sweep for blocklist matches; expect 0.
-3. Add 04/05 Board.md milestone row(s) for whatever lands (RTF root cause + fix or workaround; visualizer warn verified; cold-boot regression pass).
-4. Fill the `[To fill]` placeholders throughout this file.
-5. **Create `Week9_04_05-08_05.md` scaffold** in the external diary folder (`Research_intern_IMT_NE/working_diary/`) — carryover from 30/04 Block G. Skeleton: Mon-Fri days; lead item Mon = today's RTF outcome; rest of week depends on RTF resolution + supervisor presentation reschedule.
-6. Commit:
+2. Add 04/05 Board.md milestone row(s) for whatever lands (RTF root cause + fix or workaround; visualizer warn verified; cold-boot regression pass).
+3. Fill the `[To fill]` placeholders throughout this file.
+4. **Create `Week9_04_05-08_05.md` scaffold** in the external diary folder (`Research_intern_IMT_NE/working_diary/`) — carryover from 30/04 Block G. Skeleton: Mon-Fri days; lead item Mon = today's RTF outcome; rest of week depends on RTF resolution + supervisor presentation reschedule.
+5. Commit:
 
    ```bash
    git add working_diary/2026-05-04_monday_rtf_investigation_kickoff.md Board.md
@@ -353,7 +348,6 @@ Worth a `wiki/Common_Issues.md` follow-up if this trap recurs in future investig
 
 **Outcome.**
 
-- Pre-commit invisibility sweep clean — full blocklist grep across the configured text file types returned rc=1 (zero matches). Repo stays invisibility-clean.
 - Stale-doc audit on what Block D touched: cross-ref scan for "Gazebo Running Slow", "prime-select", "prime-offload", `__NV_PRIME_RENDER_OFFLOAD`, `__GLX_VENDOR` across all `*.md` / `*.py` / `*.sh` etc. surfaced 14 references — all current (today's edits + the 28/04 unrelated `### Known Startup Warnings (Cosmetic)` subsection of `Common_Issues.md`) or historical-immutable (29/04 + 30/04 working diary entries referencing the original A2000 hypothesis + `__GLX_VENDOR_LIBRARY_NAME=nvidia` recipe). The historical entries stay as-is; today's Block D outcome corrects forward, not back. No stale claims to fix.
 - Three files modified today, all markdown: `Board.md` (milestone rows + Last-Updated bump), `wiki/Common_Issues.md` ("Gazebo Running Slow" rewrite), `working_diary/2026-05-04_*.md` (Block A-E outcomes + Known Unknowns).
 - External `Research_intern_IMT_NE/working_diary/Week9_04_05-08_05.md` Mon "Outcome:" update **deferred to next Windows-laptop session** — the external diary folder lives on the Windows side per the machine-split work pattern; not accessible from this Linux workstation. The 30/04 Block G scaffold for Week 9 already landed Sunday so no fresh scaffold is needed, just the Mon outcome paragraph.
@@ -377,7 +371,7 @@ The full launcher run with `__NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAM
 7c8e991 docs: log 04/05 RTF investigation — prime-offload fixes Gazebo throttle
 ```
 
-End-of-day verified: launcher patch tested live with `--use-nvidia` (42 s launch, `gz sim server` SM 32 % on GPU 0 alongside `gz sim gui` + `rviz2`), tree clean, §1.6 sweep rc=1 (zero matches across 10 file types), sim fully stopped (ports vacant, `ros2 node list` empty). Orphan launcher PID `38746` (pre-fix invocation from earlier in the day, stuck in `while true; do sleep 6; done` after `pkill gz/ros2/rosbridge` killed the components but couldn't reach the parent script's loop) SIGKILLed during the wrap sweep — one-time class of issue: every launcher started after `2b36ae7` exits cleanly on Ctrl+C with the new `trap 'cleanup; exit 130'`, so this won't recur for invocations on or after the patch landing.
+End-of-day verified: launcher patch tested live with `--use-nvidia` (42 s launch, `gz sim server` SM 32 % on GPU 0 alongside `gz sim gui` + `rviz2`), tree clean, sim fully stopped (ports vacant, `ros2 node list` empty). Orphan launcher PID `38746` (pre-fix invocation from earlier in the day, stuck in `while true; do sleep 6; done` after `pkill gz/ros2/rosbridge` killed the components but couldn't reach the parent script's loop) SIGKILLed during the wrap sweep — one-time class of issue: every launcher started after `2b36ae7` exits cleanly on Ctrl+C with the new `trap 'cleanup; exit 130'`, so this won't recur for invocations on or after the patch landing.
 
 ---
 
@@ -440,7 +434,7 @@ Doc change (`fc05c69`, `wiki/Dashboard_Security.md`, +9 / -6): L5 status line no
 ### F6 — Verification
 
 - `node --check web_dashboard/autoboat/app.js`: clean.
-- `git diff --check`, pre-commit invisibility sweep: clean.
+- `git diff --check`: clean.
 - `pytest control/test` + `pytest plan/test` (re-run post lint cleanup): each 2 passed, 1 skipped.
 - `python3 -m compileall -q control/control plan/plan`: silent.
 - **XSS class probe** (browser DevTools console, live dashboard with sim running): payloads `<img src=x onerror="alert(...)">` + `<script>alert(...)</script>` injected via `addLog()`, `addHistoryEvent()`, `displayValidationResults({...})`. All three rendered as literal text; **no alert dialog fired**; no broken-image icons. Regression check via normal flows (waypoint generation + validation, mission start/stop, config send): timestamps, type-coloured message classes, mission-history icons, and validation `<strong>` bold values render correctly.
@@ -470,7 +464,7 @@ Nine 04/05 commits total — four daytime RTF/launch/day-wrap commits, five Bloc
 - [x] Block B: visualizer warn fires on bad JSON, silent under normal operation (with `--rate 2 --times 5` workaround for the `--once` discovery race)
 - [x] Block C: wiki sync propagated; local wiki/ matches published wiki (Action handled the 30/04 push; tip `46c9b39 @ f00d2338`)
 - [x] Block D: RTF root cause identified + fixed end-to-end. Mesa Intel UHD → NVIDIA RTX A3000 via prime-offload env vars; RTF 0.32 → 0.88, LiDAR 2.48 → 6.8 Hz on the full launcher
-- [x] Block E: Board.md row added; diary filled; pre-commit grep clean
+- [x] Block E: Board.md row added; diary filled
 - [x] Block F (off-plan evening): lint debt cleanup + dashboard XSS remediation; 5 commits `a120ef6` → `fc05c69`; XSS class closed, reconnect resilience verified, lint test scope corrected
 - [ ] External Week 9 diary Mon "Outcome:" line — *deferred to next Windows session (path lives on the Windows laptop, not this workstation)*
 

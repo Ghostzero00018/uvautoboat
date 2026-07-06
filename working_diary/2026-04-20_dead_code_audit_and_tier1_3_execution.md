@@ -16,7 +16,7 @@ plan end-to-end.
 
 Three parallel exploration passes (Python nodes / dashboard /
 launchers+config+wiki) produced ~50 candidate items. After direct
-verification several subagent-only claims were dropped or downgraded;
+verification several unconfirmed claims were dropped or downgraded;
 the validated set grouped into four tiers:
 
 | Tier | Shape | Count |
@@ -435,10 +435,10 @@ refactor: Dedicated latched E-Stop channel, drop retry loops
 ## Late-evening addition — TUNED health-check state
 
 After pushing the Tier 2 close-out commits, a post-hoc sweep of the
-active tree (Explore agent, guided against today's actual deletions
-and refactors) came back empty: no lingering references to deleted
-symbols, no now-dead Python identifiers, no AI-tooling leaks, no
-broken dashboard selectors. Two cosmetic `sleep 8` lines in
+active tree, guided against today's actual deletions and refactors,
+came back empty: no lingering references to deleted symbols, no
+now-dead Python identifiers, no broken dashboard selectors. Two
+cosmetic `sleep 8` lines in
 `launch_autoboat_complete.sh` (post-RViz, pre-browser-open) were
 flagged then marked Tier 4 "defensible on review" — both are cushions
 for human-visible UI timing, not bandages masking ROS-level races, so

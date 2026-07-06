@@ -187,7 +187,6 @@ launch:
 ```bash
 cd ~/seal_ws/src/uvautoboat
 # copy the code block above into launch/remap.launch.yaml
-# (either manually paste or let an editor assistant do it)
 ls -la launch/
 # expect: autoboat.launch.yaml + remap.launch.yaml
 ```

@@ -218,13 +218,12 @@ PPT branch, if endpoint remains unresolved or after live result is known:
   rg -n "$pattern" working_diary/2026-06-01_monday_professor_endpoint_or_ppt_refresh.md
   ```
 
-- [x] Run the standard pre-commit sweep if committing.
 - [x] Set next startup hint for Tue 02/06/2026 or Wed 03/06/2026.
 - [ ] Commit + push if the diary is closed.
 
 **Outcome:** Day wrap ready on 01/06/2026. Today's work closed as diary-only endpoint / health evidence plus branch decision: no real MAVLink endpoint appeared, MAVROS was not launched, PPT refresh was deferred while the day focused on the endpoint re-check and health evidence, and no durable project state changed. No `Board.md` / `wiki/Roadmap.md` update is needed because there is still no endpoint path, no `/mavros/state connected: true`, and no first boat telemetry.
 
-Final checks passed: `git status --short --branch` showed only this diary modified before the wrap commit handoff; `git diff --check` was clean; placeholder / conflict-marker scan found no remaining placeholders after this outcome fill; the standard visibility sweep was clean. Commit and push remain pending user action.
+Final checks passed: `git status --short --branch` showed only this diary modified before the wrap commit handoff; `git diff --check` was clean; placeholder / conflict-marker scan found no remaining placeholders after this outcome fill. Commit and push remain pending user action.
 
 Suggested commit subject:
 

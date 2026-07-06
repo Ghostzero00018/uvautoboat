@@ -75,11 +75,10 @@ Doc-edit decision: defer. Today's outcome validates Route 1 install end-to-end o
 
 - [x] Final checks: `git status`, `git diff --check`, and placeholder/conflict-marker scan over this diary.
 - [x] Fill Block E Outcome BEFORE the wrap commit (19/05/2026 lesson learned: a placeholder slipped into `faa9ba1` and needed a follow-up `3cd8861` correction).
-- [x] Run the standard pre-commit sweep before the wrap commit.
 - [x] Set Sat 23/05 no-Pi-work note + Tue 26/05/2026 startup hint based on today's outcome.
 - [ ] Commit + push (commit subject in the wrap; run from repo root after Block E Outcome is filled).
 
-**Outcome:** Day closed live-branch — Pi 5 returned and reflashed with full-DE image; Route 1 (apt `ros-jazzy-mavros`) drove Block A → B install chain end-to-end on the new Ubuntu Desktop 24.04 Noble + `linux-raspi` + aarch64 baseline. Block A green across Steps 1-4; Block B install-only green (21 MAVROS packages + 3 default GeographicLib models, `dialout` activated, `openssh-server` installed and enabled mid-Block A); Block C N/A (no autopilot, heartbeat deferred to physical bring-up); Block D debrief captured lessons and autopilot-arrival follow-ups; doc edits deferred to Block C completion. Pre-wrap checks clean: `git diff --check` clean; focused placeholder / conflict-marker scan clean; focused §1.6 AI-tooling sweep clean on the modified diary. Proposed wrap commit subject: `docs(diary): wrap 22/05 MAVROS apt install + datasets on Pi 5`.
+**Outcome:** Day closed live-branch — Pi 5 returned and reflashed with full-DE image; Route 1 (apt `ros-jazzy-mavros`) drove Block A → B install chain end-to-end on the new Ubuntu Desktop 24.04 Noble + `linux-raspi` + aarch64 baseline. Block A green across Steps 1-4; Block B install-only green (21 MAVROS packages + 3 default GeographicLib models, `dialout` activated, `openssh-server` installed and enabled mid-Block A); Block C N/A (no autopilot, heartbeat deferred to physical bring-up); Block D debrief captured lessons and autopilot-arrival follow-ups; doc edits deferred to Block C completion. Pre-wrap checks clean: `git diff --check` clean; focused placeholder / conflict-marker scan clean. Proposed wrap commit subject: `docs(diary): wrap 22/05 MAVROS apt install + datasets on Pi 5`.
 
 ## Three Asks status carry-forward
 

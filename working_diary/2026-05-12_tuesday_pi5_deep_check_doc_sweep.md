@@ -131,7 +131,7 @@ After Mon's heavy 6-commit session, catch up before starting today's blocks:
   is the forward-update pointer.
 - Check overnight inputs (supervisor / teammate replies, weather,
   presentation reschedule). If email / Slack aren't reachable from this
-  Agent context, ask the user.
+  workstation session, check them separately.
 - **VRX §8.2 weekly cadence** — next scheduled check is Mon 18/05 per the
   Mon 11/05 schedule, so NOT due today. Just verify nothing has changed
   unexpectedly:
@@ -243,7 +243,7 @@ close Terminal A entirely. Don't leave it running indefinitely.
 
 **Order of operations:** start with PRIMARY system-desktop access; only after at least one PRIMARY path is attempted (or skipped per the pre-req check below), proceed to SECONDARY Paths A/B/C.
 
-**Pre-req check (Pi-side desktop / remote-access tooling state):**
+**Pre-req check (Pi-side desktop / remote-access state):**
 
 ```bash
 ssh aqpi-01@10.120.2.50 \
@@ -668,22 +668,21 @@ Then read each hit in context. Cross-check against today's known state.
 Same shape as Mon 11/05's Block F:
 
 1. `git log --oneline -10` — sanity check today's commits.
-2. Pre-commit invisibility sweep — expect 0 matches.
-3. Add 12/05/2026 `Board.md` milestone row(s) for whatever lands; bump
+2. Add 12/05/2026 `Board.md` milestone row(s) for whatever lands; bump
    header `**Last Updated**` row + bottom `**Document Version** ... **Last
    Updated**` trailer stamp to 12/05/2026 if anything substantive lands.
    **Use search rather than relying on line numbers** — both rows drift as
    Board.md grows.
-4. Fill all outcome placeholders in this file.
-5. Working diary commit; subject template depends on dominant outcome:
+3. Fill all outcome placeholders in this file.
+4. Working diary commit; subject template depends on dominant outcome:
    - DDS works + viz path identified:
      `docs: 12/05 Pi 5 DDS cross-machine verified + viz path X`
    - DDS blocked:
      `docs(diary): 12/05 Pi 5 DDS multicast blocked; Discovery Server next`
    - Mixed outcomes:
      `docs(diary): 12/05 Pi 5 deep check + doc sweep findings`
-6. Push.
-7. **Update Week 10 external diary Tue Outcome bullet** — Mon Outcome was
+5. Push.
+6. **Update Week 10 external diary Tue Outcome bullet** — Mon Outcome was
    filled during the Mon evening Windows-side update; Tue Outcome is
    today's fill. External Windows-side weekly diary; deferred to next
    Windows-side session if not Linux-reachable.
@@ -695,7 +694,7 @@ Same shape as Mon 11/05's Block F:
 Pre-commit checks:
 
 - `git diff --check` — clean.
-- Invisibility sweep across the touched Markdown files — clean (0 matches for NBSP / zero-width / BOM characters).
+- Whitespace-character scan across the touched Markdown files — clean (0 matches for NBSP / zero-width / BOM characters).
 
 Durable references updated:
 
@@ -716,7 +715,7 @@ This commit is the working diary / doc-sweep wrap for Tuesday 12/05. External We
 - [x] Block C: attempted (local recon only, no swap applied, no rollback needed); recipe-mismatch — bundled native GDAL/OGR/OSR wraps are Windows PE DLLs (PE32 / PE32+) not Linux `.so`, so musl→glibc swap doesn't apply; `wiki/Common_Issues.md` MP-Linux Residual section item 1 rewritten inline with the actual PE-DLL diagnosis
 - [x] Block D: QGC stable AppImage version check done via GitHub Releases (v5.0.8 Stable `published_at 2025-10-09T00:20:14Z`); local mtime `2025-10-09 01:42:56 +0200` strongly matches that release window; SKIP update — local appears current (CloudFront `Last-Modified` not confirmed; no evidence of newer stable artifact)
 - [x] Block E: doc stale-claim sweep complete across 10 target files; E.6 stamp bumps landed in `wiki/Home.md` + `wiki/README_WIKI.md` + `working_diary/README.md`; `wiki/Common_Issues.md` GDAL section rewritten inline (Block C diagnosis); Board/Roadmap follow-through landed in Block F
-- [x] Block F: diary filled; pre-commit sweep clean; `Board.md` + `wiki/Roadmap.md` updated; commit + push handled by this wrap
+- [x] Block F: diary filled; `Board.md` + `wiki/Roadmap.md` updated; commit + push handled by this wrap
 
 ---
 

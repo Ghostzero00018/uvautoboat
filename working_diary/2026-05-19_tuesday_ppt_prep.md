@@ -384,14 +384,13 @@ Same shape as Mon 18/05 Block E:
 1. `git log --oneline -10` — Mon's commits + today's diary commit
    (this scaffold + outcome fills).
 2. `git diff --check` — whitespace / conflict-marker sweep.
-3. Pre-commit invisibility sweep — expect 0 matches.
-4. `Board.md` Tue 19/05 Timeline row **only if substantive findings
+3. `Board.md` Tue 19/05 Timeline row **only if substantive findings
    landed** (likely shorter than Mon — Tue is execution, not discovery).
    Bump header `Last Updated` + footer `Document Version` (9.13+ → next)
    only if Board.md actually gets a row. **Use search rather than line
    numbers** (rows drift).
-5. Fill all `[To fill]` placeholders in this file.
-6. Working diary commit; subject template depends on dominant outcome:
+4. Fill all `[To fill]` placeholders in this file.
+5. Working diary commit; subject template depends on dominant outcome:
    - Clean deck shipped + rehearsal under budget:
      `docs(diary): wrap 19/05 PPT deck draft + rehearsal under 20min`
    - Deck shipped but trimmed from outline:
@@ -400,8 +399,8 @@ Same shape as Mon 18/05 Block E:
      `docs(diary): wrap 19/05 PPT live deck OK + ref-notes deferred`
    - Other:
      `docs(diary): wrap 19/05 PPT prep + rehearsal pass`
-7. Push.
-8. **Wed 20/05 morning checklist** — final pre-presentation items to
+6. Push.
+7. **Wed 20/05 morning checklist** — final pre-presentation items to
    double-check Wed morning before 10h:
    - Laptop charged or charger in bag
    - Windows env + PPT file accessible (test open from laptop EOD Tue)
@@ -425,9 +424,7 @@ polish-not-drafting day shape; no Roadmap / Board.md inline edits
 needed (Mon 18/05's 3-commit pattern doesn't apply since today's
 substantive output is the deck itself, which lives outside the repo).
 `git log --oneline -10` sanity check passed; `git diff --check` clean
-pre-wrap; **§1.6 pre-commit invisibility sweep returned 0 matches**
-across all 10 tracked file extensions before the wrap. **No
-`Board.md` Timeline row added for 19/05** — Tue was execution-only
+pre-wrap. **No `Board.md` Timeline row added for 19/05** — Tue was execution-only
 (Windows-side deck polish + rehearsal); zero non-diary repo edits
 means no `Last Updated` / `Document Version` bump warranted. All
 Block A-D `[To fill]` placeholders resolved in the wrap commit; this
@@ -453,7 +450,7 @@ fact-check item from the polish).
   passed; rough timing estimate captured
 - [x] Block D: speaker notes added (or partial count noted); rehearsal
   timing under 20 min total; trims applied if needed
-- [x] Block E: diary filled; pre-commit sweep clean; commit + push
+- [x] Block E: diary filled; commit + push
   handled; Wed morning checklist captured
 
 ---

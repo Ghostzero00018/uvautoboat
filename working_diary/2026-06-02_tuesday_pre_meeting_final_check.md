@@ -265,13 +265,12 @@ Carry-forward note: validation methodology remains pending external confirmation
   rg -n "$pattern" working_diary/2026-06-02_tuesday_pre_meeting_final_check.md
   ```
 
-- [x] Run the standard pre-commit sweep if committing.
 - [x] Set next startup hint for Wed 03/06/2026 meeting day.
 - [ ] Commit + push if the diary is closed.
 
 **Outcome:** Day wrap ready on 02/06/2026. Tuesday closed as diary-only pre-meeting / endpoint-proof work. The professor-window tests did not produce `/mavros/state connected: true`, first boat telemetry, or a durable endpoint path, so no `Board.md` / `wiki/Roadmap.md` update is needed from this wrap. Current evidence is sharper than the morning state: MAVROS, MAVProxy, and direct `pymavlink` all open `/dev/ttyAMA10` but receive no heartbeat; raw byte checks show the line is silent; `ModemManager` is no longer the current explanation after uninstall and reboot; Pi 5 UART mapping is now suspect because `uart0-pi5` is required for GPIOs 14-15 and no `/dev/ttyAMA0` / `/dev/serial*` appeared. A late user report says MAVProxy still returned `link 1 down` after a `config.txt` edit and reboot, but the exact post-reboot device list and tested target port still need to be captured.
 
-Final checks passed before commit handoff: `git diff --check` was clean; placeholder / conflict-marker scan found no remaining placeholders after this outcome fill; the standard visibility sweep was clean. Commit and push remain pending user action.
+Final checks passed before commit handoff: `git diff --check` was clean; placeholder / conflict-marker scan found no remaining placeholders after this outcome fill. Commit and push remain pending user action.
 
 Suggested commit subject:
 

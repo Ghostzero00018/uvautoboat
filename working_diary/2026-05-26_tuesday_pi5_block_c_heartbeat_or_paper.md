@@ -130,11 +130,10 @@ Doc-edit decision: defer broader docs for now. `Board.md`, `wiki/Roadmap.md`, an
 
 - [x] Final checks: `git status`, `git diff --check`, and placeholder/conflict-marker scan over this diary.
 - [x] Fill Block E Outcome BEFORE the wrap commit.
-- [x] Run the standard pre-commit sweep before the wrap commit.
 - [x] Set Wed 27/05/2026 startup hint based on today's outcome.
 - [ ] Commit + push (user-run).
 
-**Outcome:** Day wrap ready. Tue outcome: live heartbeat path blocked because no CubePilot / Pixhawk / USB-UART / GPIO UART / UDP MAVLink endpoint is visible to the Pi 5; expanded endpoint audit and HDMI sink check are captured in Block A. Paper fallback executed through slab 4: current-status-only hardware power/layout sketch plus Block C cross-check against the Layer A/B topic plan. Broader doc edits deferred because the milestone state did not change: MAVROS install side remains green, physical MAVLink endpoint remains the gate. Pre-wrap checks clean: `git diff --check` clean; placeholder / conflict-marker scan clean after this outcome fill; standard tracked-file sweep clean. Proposed wrap commit subject: `docs(diary): wrap 26/05 Pi 5 no-endpoint audit + Slab 4`. Commit / push pending user-run.
+**Outcome:** Day wrap ready. Tue outcome: live heartbeat path blocked because no CubePilot / Pixhawk / USB-UART / GPIO UART / UDP MAVLink endpoint is visible to the Pi 5; expanded endpoint audit and HDMI sink check are captured in Block A. Paper fallback executed through slab 4: current-status-only hardware power/layout sketch plus Block C cross-check against the Layer A/B topic plan. Broader doc edits deferred because the milestone state did not change: MAVROS install side remains green, physical MAVLink endpoint remains the gate. Pre-wrap checks clean: `git diff --check` clean; placeholder / conflict-marker scan clean after this outcome fill. Proposed wrap commit subject: `docs(diary): wrap 26/05 Pi 5 no-endpoint audit + Slab 4`. Commit / push pending user-run.
 
 ## Three Asks status carry-forward
 

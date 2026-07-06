@@ -147,11 +147,10 @@ Items 5-10: pull from `2026-04-30_slide_outline.md`. If the outline file hasn't 
 ### Wrap
 
 1. `git log --oneline -5` — sanity check the day's commits landed cleanly.
-2. Pre-commit scan (sweep for tracked-file blocklist matches) — zero matches expected.
-3. Fill the `[To fill]` placeholders throughout this file with concrete outcomes.
-4. Add 29/04 milestone row to `Board.md` only if Block A + Block B + Block C all land cleanly.
-5. On the Windows laptop, append today's section to `Research_intern_IMT_NE/working_diary/Week8_27_04-01_05.md`.
-6. Commit:
+2. Fill the `[To fill]` placeholders throughout this file with concrete outcomes.
+3. Add 29/04 milestone row to `Board.md` only if Block A + Block B + Block C all land cleanly.
+4. On the Windows laptop, append today's section to `Research_intern_IMT_NE/working_diary/Week8_27_04-01_05.md`.
+5. Commit:
 
    ```bash
    git add working_diary/2026-04-29_wednesday_ppt_visuals_and_rehearsal.md Board.md

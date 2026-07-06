@@ -76,18 +76,16 @@ perception). WARN was zero — no accidental drift.
 ## Post-Tier-2 audit — confirmation pass
 
 After the previous evening's Tier 2 commits went in, ran a repo-wide
-sweep to catch any newly-stale references. Delegated to an Explore
-agent guided against today's actual deletions and refactors; verified
-the agent's specific findings against the live files before trusting
-them.
+sweep to catch any newly-stale references, guided against today's
+actual deletions and refactors; verified each specific finding against
+the live files before trusting them.
 
-Result: **clean tree.** Three findings the agent surfaced turned out
+Result: **clean tree.** Three findings the sweep surfaced turned out
 to be false positives on closer reading (comments I had intentionally
 written to document the *new* design, not stale references to deleted
 code). No lingering mentions of `moving_obstacles`, `SENSOR_TIMEOUT`,
 `escape_start_time`, `in_hazard_zone`, `waiting-sync`, or the
-`apply-waiting-label` span. No AI-tooling leaks (pre-commit grep
-returned zero). No now-dead Python identifiers in the active tree.
+`apply-waiting-label` span. No now-dead Python identifiers in the active tree.
 
 Two `sleep 8` survivors in `launch_autoboat_complete.sh` (post-RViz
 PID status spacing, pre-browser-open padding) were flagged then
@@ -321,7 +319,7 @@ planner section, bumping total from 46 → 49 checks.
 
 ## Audit round 2 — fire-and-hope tail + orphan handlers
 
-Spawned Ultraplan for a follow-up sweep: fire-and-hope patterns remaining
+Ran a follow-up sweep: fire-and-hope patterns remaining
 after 20/04, CLI drift, teleop audit. Findings fell into five classes and
 landed as 9155cdf:
 
