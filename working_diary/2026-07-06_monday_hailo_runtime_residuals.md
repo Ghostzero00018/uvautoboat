@@ -358,3 +358,38 @@ Suggested commit subject:
 ```text
 docs(diary): record Hailo cold-boot residual pass
 ```
+
+## Late Block E Addendum - 06/07/2026
+
+After the initial wrap, the optional Block E repeat smoke was run from
+`~/pi_payload_2026-07-02` on the Pi.
+
+This was a separate-boot repeat smoke, not part of the earlier Block B-D boot:
+the post-smoke kernel log showed a different early-boot Hailo init sequence
+than Block C, including `hailo_pci` load at `[4.304100]` instead of
+`[4.669818]`, firmware load time `163 ms` instead of `174 ms`, different PCIe
+AER IRQ details, and different BAR mapping values.
+
+Block E passed:
+
+- `sha256sum -c SHA256SUMS.txt` returned OK for the HailoRT `.deb`, Python
+  wheel, PCIe-driver `.deb`, `yolo26n_route_a_six_heads.hef`, and
+  `INSTALL_ORDER.txt`.
+- `hailortcli parse-hef yolo26n_route_a_six_heads.hef` returned
+  `PARSE_HEF_RC=0`, confirmed `HAILO8L`, and reprinted the same six-vstream
+  contract: input `UINT8 NHWC(640x640x3)`, plus `conv61`, `conv64`, `conv77`,
+  `conv80`, `conv91`, and `conv94` outputs.
+- `hailortcli run yolo26n_route_a_six_heads.hef` returned
+  `RUNTIME_SMOKE_RC=0`, completed `287` frames, and reported `57.29 FPS`.
+- The post-smoke kernel fault scan showed normal DMA pool / IOMMU / ADMA init,
+  PCIe AER enablement, expected out-of-tree unsigned-module taint lines, clean
+  firmware load, and `/dev/hailo0` creation. No relevant PCIe AER error, DMA
+  failure, firmware assert, call trace, or oops line appeared in the pasted
+  tail.
+
+This strengthens the runtime residual result as a second independent boot where
+the installed Hailo stack reached bounded inference cleanly. It remains runtime
+mechanics evidence only; it is not decode, saved-frame inference, live RealSense,
+ROS image input, dashboard integration, MAVROS, QGC, Herelink, mission upload,
+arming, mode-change, parameter-write, thruster, actuator, or detector-quality
+evidence.
