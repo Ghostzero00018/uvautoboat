@@ -139,6 +139,9 @@ docker image inspect --format '{{.Id}} {{.Size}}' hailo8_ai_sw_suite_2026-07:lat
 df -h /home
 ```
 
+If `docker` fails with a permission error, run `newgrp docker` or sign out/in
+first; Docker group membership may not refresh just by opening a new terminal.
+
 Start the container with the bundled script, then inside the container:
 
 ```bash
