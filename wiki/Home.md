@@ -16,6 +16,7 @@ Welcome to the **AutoBoat Wiki**! This documentation provides comprehensive guid
 
 - **[Installation Guide](Installation_Guide)** — Set up ROS 2, Gazebo, and AutoBoat
 - **[Quick Start](Quick_Start)** — Get your first mission running in 5 minutes
+- **[VRX Fork Migration](VRX_Fork_Migration)** — Repoint a pre-06/05/2026 VRX checkout to the project fork and branch
 - **[User Manual](https://github.com/Ghostzero00018/uvautoboat/blob/main/USER_MANUAL.md)** — Full operator reference (topics, services, parameters, troubleshooting)
 
 ### 🏗️ Architecture

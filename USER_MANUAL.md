@@ -171,12 +171,16 @@ uvautoboat/
 | [Quick Start](wiki/Quick_Start.md) | 5-minute quick start guide |
 | [System Overview](wiki/System_Overview.md) | Architecture and design philosophy |
 | [Design Rationale](wiki/Design_Rationale.md) | Why these architecture, algorithm, and parameter choices were made |
+| [Digital Twin Architecture](wiki/Digital_Twin_Architecture.md) | Standards positioning for the project's digital-twin framing |
 | [Glossary](wiki/Glossary.md) | Plain-language definitions of every technical term |
 | [Roadmap](wiki/Roadmap.md) | Phase 5 hardware deployment + research-extensions scope |
 | [Simple Anti-Stuck](wiki/SASS.md) | Simple anti-stuck recovery system |
 | [3D LIDAR Processing](wiki/3D_LIDAR_Processing.md) | LiDAR perception system details |
 | [RealSense Dashboard Testing](wiki/RealSense_Dashboard_Testing.md) | Camera-only procedure for showing the Pi 5 RealSense feed in the workstation dashboard |
 | [YOLO Dataset Plan](wiki/YOLO_Dataset_Plan.md) | Object-detection dataset plan for Pi 5 RealSense frames, workstation training, NCNN export, and Pi validation |
+| [Pi 5 Bring-up Smoke Test](wiki/Pi5_Bringup_Smoke_Test.md) | Manual Pi 5 serial/MAVProxy smoke-test procedure before MAVROS integration |
+| [Hailo HAT Workstream Memo](wiki/Hailo_HAT_Workstream.md) | Hailo AI HAT+ / Hailo-8L accelerator branch notes and next gates |
+| [MP + QGC Update Procedures](wiki/MP_QGC_Update_Procedures.md) | Host-local Mission Planner and QGroundControl update procedure |
 | [Dashboard Security](wiki/Dashboard_Security.md) | Security posture, known vulnerabilities, mitigations |
 | [Node Naming Refactor Plan](wiki/Node_Naming_Refactor_Plan.md) | Record of the functional-naming rename |
 | [Common Issues](wiki/Common_Issues.md) | Comprehensive troubleshooting guide |
@@ -1740,7 +1744,7 @@ Open an issue on [GitHub](https://github.com/Ghostzero00018/uvautoboat/issues) w
 
 Project finished by IMT NORD EUROPE DNM DMI-2026
 
-Last updated at 18/06/2026
+Last updated at 07/07/2026
 
 ---
 
