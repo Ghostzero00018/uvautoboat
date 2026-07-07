@@ -72,7 +72,7 @@ See [Board.md](https://github.com/Ghostzero00018/uvautoboat/blob/main/Board.md) 
 **Institution**: [IMT Nord Europe](https://imt-nord-europe.fr/) — Industry 4.0 Students & Faculty
 **License**: Apache 2.0
 
-**Last Updated**: 02/07/2026
+**Last Updated**: 07/07/2026
 
 ---
 
