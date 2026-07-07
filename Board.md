@@ -332,6 +332,7 @@ The whole repo is expected to run on the Pi 5. Long-term (Phase 5.2+): QGC and t
 | 26/06/2026 | YOLO / RealSense cooling and direct-SDK closeout: headless SSH retesting showed the Remmina / desktop session was the thermal confound (`51.03 C` mean camera-on / no-NCNN floor), short ROS-camera -> custom NCNN inference passed (`150` frames, `18.8 s`, `mean_fps=7.98`, no abort), but the sustained ROS + NCNN loop climbed through `80.4-82.05 C` aborts, so the current `imgsz=640` profile failed the sustained thermal gate. `pyrealsense2 2.58.2` was installed only in `~/venvs/yolo-pi5-rs`; direct camera-only SDK capture passed (`900` frames / `60.0 s` / `14.99 fps`), and direct-SDK -> custom NCNN short inference passed (`150` frames / `23.1 s` / `mean_fps=6.51` / `mean_inf_ms=151.9`) with no meaningful overhead advantage over ROS. The optional direct `imgsz=320` run segfaulted after model load, so the next software thermal lever is a separate workstation NCNN export at `imgsz=320`, not a helper rewrite. Late camera-off MAVProxy opened `/dev/ttyAMA0:57600` after a box relaunch with missing startup sound, but no heartbeat arrived and it reported `link 1 down`; inspect physical power/wiring on Tuesday 30/06/2026 before rerunning MAVProxy/MAVROS. | 🟡 |
 | 02/07/2026 | Hailo E2 workstation gate closed: official artifacts pinned at HailoRT / driver / pyHailoRT `4.24.0`, DFC `3.34.0`, Model Zoo `2.19.0`; Docker suite loaded on the workstation; custom `yolo26n` exported through ONNX, parsed as six raw heads, optimized with a mechanics-only 28-frame calibration set, and compiled to `yolo26n_route_a_six_heads.hef` for `HAILO8L`. Pi payload staged externally with the runtime packages and HEF. At the 02/07 close, the remaining gate was Pi runtime install plus static HEF execution, not decode or live RealSense. | ✅ |
 | 03/07/2026 | Hailo Pi runtime gate closed on `imtaquadrone-desktop`: payload checksums passed, stale-clock / header preflight passed, matching `linux-headers-6.8.0-1060-raspi` and DKMS installed, `hailort-pcie-driver` / `hailort` / pyHailoRT all pinned at `4.24.0`, `/dev/hailo0` appeared after reboot, `fw-control identify` reported firmware `4.24.0` and architecture `HAILO8L`, Python `HEF` import passed, `parse-hef` confirmed the six-output `HAILO8L` contract, and `hailortcli run yolo26n_route_a_six_heads.hef` completed `293` frames at `58.22 FPS`. This is runtime-smoke evidence only: decode, saved-frame input, live RealSense, ROS/dashboard integration, MAVROS/QGC/Herelink co-loads, and detector quality remain open. | ✅ |
+| 07/07/2026 | Hailo six-output host-side decode contract proven on the workstation, outside the repo (`fb308f9`). An independent same-engine isolation declared the six final head convs (`/model.23/cv2.{0,1,2}` box, `/model.23/cv3.{0,1,2}` class) as extra ONNX outputs and decoded them back to the graph `output0`: box max abs `0.0 px`, class max abs `1.178e-7`, so six-output layout handling, direct 4-channel box decode, class sigmoid, and the `data.yaml` class map are settled. The earlier full-precision residual (box max relative `0.025359`, max abs `3.7708 px`, median abs `0.01257 px`) was a Hailo DFC emulation vs ONNX Runtime cross-engine numeric difference amplified by stride, not a decode error, and is now a diagnostic only. Saved-frame decode-contract evidence only: no NMS / end-to-end match, Pi run, live RealSense, ROS/dashboard, MAVROS/QGC/Herelink, or detector-quality claim. Next Hailo gate is a positive-bearing saved-frame Tier 3 (quantized path → host decode + NMS + un-letterbox vs Ultralytics), but current reconnaissance found the tiny `best.pt` fires on none of the available saved pools at `conf=0.25`, including its own train images. That makes a functional detector / larger labeled dataset the upstream precondition before Tier 3 or accuracy-grade calibration can be meaningful. | ✅ |
 | TBD | Real-hardware deployment (Pi 5 as confirmed target, visual-verified 23/04/2026; MAVLink autopilot as working hypothesis; low-level CCU architecture TBD) | 🔜 |
 | TBD | Coverage Planning | ⏸️ |
 
@@ -339,9 +340,17 @@ The whole repo is expected to run on the Pi 5. Long-term (Phase 5.2+): QGC and t
 
 ## 🎯 Next Priorities
 
-1. **Hailo post-smoke integration gate**: keep the `4.24.0` runtime stack pinned
-   and move next to saved-frame preprocessing, six-output decode / NMS, and
-   class mapping before any live RealSense or ROS wiring.
+1. **Hailo post-smoke integration gate**: the six-output host-side decode
+   contract is proven on saved frames (07/07/2026, `fb308f9`) — same-engine
+   raw-head ONNX isolation reproduces `output0` to float precision, so layout,
+   direct 4-channel box decode, class sigmoid, and class mapping are settled.
+   Keep the `4.24.0` runtime stack pinned. The next Hailo gate is a
+   positive-bearing saved-frame Tier 3 (quantized path → host decode + NMS +
+   un-letterbox versus Ultralytics detections), but the current tiny `best.pt`
+   does not fire on the available saved pools at `conf=0.25`, so the immediate
+   upstream work is a functional detector: collect and label more data, retrain,
+   and prove sane-confidence detections before Tier 3, accuracy-grade
+   calibration, live RealSense, or ROS wiring.
 2. **Phase 5 prep tasks** (see above): supervisor conversation on CCU
    architecture, topic-remap dry run, LiDAR profiling, bridge-node stub,
    `/wamv/*` inventory.

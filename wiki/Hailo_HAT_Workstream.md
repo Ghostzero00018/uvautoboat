@@ -293,21 +293,39 @@ Runtime baseline completed on 03/07/2026:
 
 Next gates, in order:
 
-1. Keep the current project HEF classified as runtime mechanics only. It is a
-   raw six-output artifact and requires host-side decode / NMS before any saved
-   image or live camera claim.
-2. Implement and verify saved-frame preprocessing, six-output layout handling,
-   direct 4-channel box decode, class sigmoid, NMS, and class mapping.
-3. On the next runtime test, broaden the post-run fault scan beyond Hailo-only
+1. The six-output host-side decode contract is **proven** on saved frames
+   (07/07/2026, `fb308f9`). A same-engine raw-head ONNX isolation declared the
+   six final head convs as extra outputs and decoded them back to the graph
+   `output0` to float precision (box max abs `0.0 px`, class max abs
+   `1.178e-7`), confirming six-output layout handling, direct 4-channel box
+   decode, class sigmoid, and the `data.yaml` class map. The earlier
+   full-precision box residual was a Hailo DFC emulation versus ONNX Runtime
+   cross-engine numeric difference amplified by stride, not a decode error, so
+   it stays a diagnostic and not a gate.
+2. Next gate is a **positive-bearing saved-frame Tier 3**: pick saved frames
+   where the reference detector actually fires, run the quantized HEF path
+   (`SDK_QUANTIZED`) through host decode + NMS + un-letterbox, and match against
+   Ultralytics detections in original-image coordinates. This is the first gate
+   that exercises NMS and coordinate mapping end to end. Keep it workstation-only
+   and outside the repo. Current reconnaissance found that the tiny
+   `best.pt` checkpoint fires on none of the available saved pools at
+   `conf=0.25`, including its own train images; do not lower the threshold into
+   noise to force this gate. A functional detector with sane-confidence saved
+   detections is the upstream precondition.
+3. Then move to accuracy-grade calibration. The current HEF is a mechanics-only
+   artifact (28 mixed calibration frames, optimization level 0) and is expected
+   to lose detection confidence under quantization, so a Tier 3 confidence miss
+   is a calibration problem, not a decode one.
+4. On the next runtime test, broaden the post-run fault scan beyond Hailo-only
    lines, for example:
 
    ```bash
    sudo dmesg | grep -iE 'hailo|aer|dmar|dma|call trace|oops' | tail -120
    ```
 
-4. Feed saved RealSense RGB frames into HailoRT only after the decode contract is
-   proven.
-5. Only then wire live ROS 2 image input and publish detection messages.
+5. Feed saved RealSense RGB frames into HailoRT, then wire live ROS 2 image
+   input and publish detection messages, only after Tier 3 passes on saved
+   frames.
 
 ## Still Out Of Scope After Runtime Smoke
 
