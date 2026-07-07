@@ -467,15 +467,91 @@ Comparison metadata and decoded tensor artifacts:
 - `outputs/decoded_tier1_prequant_sdk_native_float32_nhwc_div255_output0_like.npy`.
 - `outputs/decoded_tier2_optimized_sdk_quantized_uint8_nhwc_output0_like.npy`.
 
-Blocker:
+Initial stop reason:
 
-The host decode order and formula are identified, and class channels match the
-ONNX tensor oracle tightly, but Tier 1 misses the strict box max-relative
-tolerance. Per the gate, Tier 2 and Tier 3 are diagnostic only until this
-full-precision box residual is explained or a revised tolerance is explicitly
-accepted. The session stopped on the workstation with no Pi fall-forward.
+The host decode order and formula were identified, and class channels matched the
+ONNX tensor oracle tightly, but the first wrap stopped because Tier 1 missed the
+strict box max-relative tolerance against the ONNX Runtime `output0` oracle. That
+comparison used Hailo DFC emulation for the raw heads and ONNX Runtime for
+`output0`, so the residual mixed decode correctness with cross-engine
+full-precision numeric differences.
 
 This remains decode-contract evidence only. It is not Pi saved-frame inference,
 live RealSense, ROS image input, dashboard, MAVROS, QGC, Herelink,
 command/write, detector-quality, mission-upload, arming, mode-change,
+parameter-write, thruster, or actuator evidence.
+
+## Follow-Up Isolation Check - 07/07/2026
+
+A same-engine ONNX isolation check was run against the existing augmented
+six-head graph:
+
+```text
+exports/yolo26n_route_a_six_heads_augmented.onnx
+```
+
+The file declares only `output0` as a graph output, so a scratch copy was written
+outside the repo with the six final Conv tensors also declared as outputs:
+
+```text
+/home/ghostzero/hailo_artifacts/2026-07-07/decode_contract/oracle/yolo26n_route_a_six_heads_augmented_with_raw_outputs.onnx
+```
+
+The isolation run used the same exact pinned input:
+
+```text
+/home/ghostzero/hailo_artifacts/2026-07-07/decode_contract/inputs/pinned_20260707_rows_00_06_12_18_22_exact_uint8_float32_nchw_div255.npy
+```
+
+Raw head mapping:
+
+| Hailo name | ONNX tensor | Shape |
+| --- | --- | --- |
+| `conv61` | `/model.23/cv2.0/cv2.0.2/Conv_output_0` | `1x4x80x80` |
+| `conv64` | `/model.23/cv3.0/cv3.0.2/Conv_output_0` | `1x5x80x80` |
+| `conv77` | `/model.23/cv2.1/cv2.1.2/Conv_output_0` | `1x4x40x40` |
+| `conv80` | `/model.23/cv3.1/cv3.1.2/Conv_output_0` | `1x5x40x40` |
+| `conv91` | `/model.23/cv2.2/cv2.2.2/Conv_output_0` | `1x4x20x20` |
+| `conv94` | `/model.23/cv3.2/cv3.2.2/Conv_output_0` | `1x5x20x20` |
+
+The same host decode was applied to those ONNX raw heads and compared to the
+same ONNX graph's `output0`:
+
+| Channel group | Max abs | Median abs | P99 abs | Max relative |
+| --- | ---: | ---: | ---: | ---: |
+| Boxes | `0.0 px` | `0.0 px` | `0.0 px` | `0.0` |
+| Classes | `1.178e-7` | `2.008e-8` | `7.440e-8` | `0.000785` |
+
+Artifacts:
+
+- `logs/onnx_raw_head_isolation_20260707.json`.
+- `outputs/onnx_augmented_raw_heads_pinned_20260707.npz`.
+- `outputs/decoded_onnx_augmented_raw_heads_output0_like.npy`.
+- `oracle/onnx_augmented_output0_pinned_20260707.npy`.
+
+Corrected assessment:
+
+- Tier 1 decode math is **PASS** when measured as raw-head decode correctness
+  inside one ONNX Runtime graph.
+- The earlier DFC-emulation-vs-ONNXRuntime comparison remains useful as a
+  cross-engine numeric diagnostic, not as the decode-contract gate. Its selected
+  full-precision comparison showed box median abs `0.01257 px`, p99 abs
+  `0.24448 px`, max abs `3.7708 px`, and max relative `0.025359`.
+- The class-channel match is not the strongest proof because this mechanics-only
+  frame set drives very negative logits and no detections. The load-bearing
+  proof is the same-engine raw-head isolation, plus the box convention
+  separation.
+- Tier 2 quantized output should be treated as a calibration / quantization
+  diagnostic, not a decode blocker. On this mechanics-only artifact, its median
+  box-channel residual was `4.0665 px`; the median class-prob residual was
+  `1.61e-6`.
+- Tier 3 cannot be meaningfully evaluated on this pinned subset because
+  `best.pt` returned zero reference detections at `conf=0.25`, `iou=0.70`, and
+  the quantized decode had max class probability `0.002682`.
+
+The decode contract is therefore proven for saved-frame host decoding. The next
+real gate is a positive-bearing saved-frame set for end-to-end detection
+comparison, plus later accuracy-grade calibration. This still is not Pi
+saved-frame inference, live RealSense, ROS image input, dashboard, MAVROS, QGC,
+Herelink, command/write, detector-quality, mission-upload, arming, mode-change,
 parameter-write, thruster, or actuator evidence.
