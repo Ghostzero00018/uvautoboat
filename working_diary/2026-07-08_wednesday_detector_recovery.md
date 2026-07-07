@@ -1,4 +1,4 @@
-# Wednesday 08/07/2026 - Detector Recovery Block (Workstation + Capture Planning)
+# Wednesday 08/07/2026 - Detector Recovery Block (Workstation + Acquisition Planning)
 
 ## Day Overview
 
@@ -6,21 +6,22 @@ The Hailo saved-frame decode contract is proven (07/07/2026, `fb308f9`), so the
 Hailo branch is intentionally paused. The real blocker is upstream: the current
 `best.pt` is non-functional and fires on nothing, because the dataset only ever
 contained one class. This block rebuilds the detector in order: baseline
-inventory, capture manifest, data-source decision, collect/label to the sizing
-target, retrain, and prove the new model fires on a held-out set. Hailo
-accuracy-grade calibration and Tier 3 only reopen after that.
+inventory, data-source decision, source-specific acquisition manifest,
+collect/label to the sizing target, retrain, and prove the new model fires on a
+held-out set. Hailo accuracy-grade calibration and Tier 3 only reopen after
+that.
 
 ## Success Definition
 
 Success is one of:
 
-1. a capture manifest plus a materially larger multi-class labeled dataset that
-   meets the sizing target, a retrained `best.pt` that fires on held-out
-   `tier3_eval` at sane confidence, and a recorded held-out confidence
-   distribution with per-class coverage; or
+1. a source-specific acquisition manifest plus a materially larger multi-class
+   labeled dataset that meets the sizing target, a retrained `best.pt` that
+   fires on held-out `tier3_eval` at sane confidence, and a recorded held-out
+   confidence distribution with per-class coverage; or
 2. a precise, evidence-backed blocker (for example no maritime capture access
-   this week) with the manifest and data-source decision recorded so the
-   collection can proceed as soon as the blocker clears.
+   this week) with the data-source decision and acquisition manifest recorded so
+   the collection can proceed as soon as the blocker clears.
 
 Non-goals: any Hailo compile / calibration / Tier 3, Pi inference, detector
 deployment, or live integration work.
@@ -55,8 +56,8 @@ deployment, or live integration work.
   in scope, because it is the point of the block. It is a separate
   hardware / logistics task, may be gated by capture-location access, and runs
   no inference stack during capture.
-- All dataset artifacts (raw frames, labels, weights, runs, manifests) stay
-  outside the public repo.
+- All dataset artifacts (raw frames, labels, weights, runs,
+  manifests / inventories) stay outside the public repo.
 - No Python / YAML edits without explicit permission. Training commands run on
   the workstation GPU and are user-run.
 
@@ -72,43 +73,56 @@ inventory as baseline evidence only, no changes:
 Confirm the baseline: five declared classes, one class with data, model fires on
 nothing.
 
-## Block B - Capture Manifest Before Collection
-
-Build a manifest outside the repo **before** any capture. One row per planned
-scene:
-
-| scene_id | date/time | location + conditions | target classes | intended split | est. frames |
-| --- | --- | --- | --- | --- | --- |
-| example | 08/07 14:00 | dock, bright, mid distance | vessel, dock | train | 40 |
-
-Rules: assign the intended split at manifest time; keep scene-level
-disjointness across all four splits per the `c09b090` contract; `tier3_eval`
-scenes are held out from `train`, `val`, and `calib_hailo`. Conditions should
-vary (lighting, distance, background, sea state) so the splits are not trivially
-correlated.
-
-## Block C - Data Source And Location Decision
+## Block B - Data Source And Acquisition Decision
 
 Decide where the multi-class maritime frames come from, since four of five
-classes currently have zero data and need real examples. Weigh and record:
+classes currently have zero data and need source coverage. Weigh and record:
 
 - on-water / dockside RealSense capture (needs water access);
 - supplementary public maritime detection datasets (licence and class-map
   alignment checked);
-- VRX-rendered frames (domain-gap caveat versus real RealSense input).
+- VRX-rendered frames (strong bootstrap candidate for buoy / vessel / dock
+  coverage, with a domain-gap caveat versus real RealSense input);
+- a documented mix.
 
 Record the chosen source(s) and why. This decision gates whether the sizing
-target is reachable in the available time; if maritime access is not available,
-that is the documented blocker under Success Definition 2.
+target is reachable in the available time. If maritime access is not available
+this week, VRX-primary bootstrap plus real RealSense `person` data may be the
+best first-pass recovery route, but it validates detector-recovery plumbing and
+later Tier 3 mechanics only; real-world detector quality still needs real
+maritime frames.
+
+## Block C - Source-Specific Acquisition Manifest
+
+Build a manifest / inventory outside the repo **before** any capture,
+download, or render. Its shape depends on Block B:
+
+- RealSense capture: one row per planned physical scene:
+
+  | scene_id | date/time | location + conditions | target classes | intended split | est. frames |
+  | --- | --- | --- | --- | --- | --- |
+  | example | 08/07 14:00 | dock, bright, mid distance | vessel, dock | train | 40 |
+
+- Public dataset: one row per source / subset, including licence, class-map
+  alignment, planned class use, intended split, and reject criteria.
+- VRX render: one row per rendered scenario, including world / asset setup,
+  target classes, environmental variation, intended split, and frame count.
+
+Rules: assign the intended split at manifest time; keep scene / source /
+scenario-level disjointness across all four splits per the `c09b090` contract;
+`tier3_eval` scenes are held out from `train`, `val`, and `calib_hailo`.
+Conditions should vary (lighting, distance, background, sea state / simulated
+state) so the splits are not trivially correlated.
 
 ## Block D - Collect And Label To The Sizing Target
 
-Capture per manifest; review / dedup; label with the first-pass class rules in
-`wiki/YOLO_Dataset_Plan.md`; keep scene-level split separation; rejected frames
-stay out of all four splits. Target hundreds of instances per active class, a
-few hundred `calib_hailo` frames, and enough `tier3_eval` positives plus
-negatives for a meaningful held-out distribution. This is likely a multi-day
-effort, not a single day; size the campaign accordingly.
+Capture, acquire, or render per manifest; review / dedup; label with the
+first-pass class rules in `wiki/YOLO_Dataset_Plan.md`; keep scene / source /
+scenario-level split separation; rejected frames stay out of all four splits.
+Target hundreds of instances per active class, a few hundred `calib_hailo`
+frames, and enough `tier3_eval` positives plus negatives for a meaningful
+held-out distribution. This is likely a multi-day effort, not a single day; size
+the campaign accordingly.
 
 ## Block E - Retrain
 
@@ -137,11 +151,11 @@ versus Ultralytics on `tier3_eval`. Not this block.
 
 ## Wrap
 
-Update this diary with the baseline inventory, the manifest, the data-source
-decision, collection and label counts per class per split, the retrain config,
-the held-out confidence distribution with per-class coverage, and the
-reopen-Hailo gate result or the exact blocker. Close with a clean tree and a
-`**Next steps:**` hint.
+Update this diary with the baseline inventory, the data-source decision, the
+source-specific manifest / inventory, collection / acquisition / render and
+label counts per class per split, the retrain config, the held-out confidence
+distribution with per-class coverage, and the reopen-Hailo gate result or the
+exact blocker. Close with a clean tree and a `**Next steps:**` hint.
 
 This block is detector-recovery evidence only. It is not Hailo calibration /
 Tier 3, Pi saved-frame inference, live RealSense inference, ROS image input,
