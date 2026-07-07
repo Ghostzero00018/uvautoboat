@@ -324,12 +324,158 @@ rg -n "^(<{7}|={7}|>{7})" working_diary/2026-07-07_tuesday_hailo_saved_frame_dec
 rg -n "\[[[:space:]]\]" working_diary/2026-07-07_tuesday_hailo_saved_frame_decode.md
 ```
 
-Run the standard repo visibility sweep from the terminal before committing; do not
-paste the sweep pattern into any tracked file. Grep the staged diff for artifact
-paths, checksums, or local-only notes that should not be public.
-
 Suggested commit subject:
 
 ```text
-docs(diary): scaffold Hailo six-output decode contract
+docs(diary): record Hailo decode contract blocker
 ```
+
+## Session Evidence - 07/07/2026
+
+Repo guard passed before artifact work:
+
+- `git fetch --prune` completed.
+- `main` matched `origin/main` at
+  `2973e9a275c57752d5c0a473ce66cdbe5ef7242d`.
+- `git status --short --branch` returned `## main...origin/main`.
+- No pull was needed.
+
+Block B passed after refreshing Docker group membership:
+
+- The initial shell could run the Docker client but could not connect to the
+  daemon because the process group list did not include `docker`.
+- `newgrp docker` in the host shell changed the active group to `docker`.
+- `docker version` then reported Docker Engine `29.6.1`.
+- `hailo8_ai_sw_suite_2026-07:latest` was present with image ID prefix
+  `962aeda88f61` and size `17173558507` bytes.
+- `/home` had `18G` free at the start of the decode work.
+- The old named suite container could not resume because its stale
+  `/tmp/hailo_docker.xauth` bind no longer matched the expected file type. The
+  container was not overridden or deleted; short-lived suite containers were used
+  with the same image and shared artifact mount.
+- In the suite container, `hailo --version` reported HailoRT `4.24.0` and
+  Dataflow Compiler `3.34.0`; `hailomz --version` reported Model Zoo `2.19.0`.
+- `hailo_sdk_client.ClientRunner` imported successfully.
+- The container reported no Hailo PCIe device, expected for this workstation.
+
+Block C artifact and input checks passed:
+
+- Optimized HAR:
+  `exports/yolo26n_route_a_six_heads_optimized_calib28_no_nms.har`, state
+  `Quantized Model`, SDK `3.34.0`, hardware `hailo8l`.
+- Parsed pre-quantization HAR:
+  `exports/yolo26n_route_a_six_heads_no_nms.har`.
+- ONNX oracle:
+  `exports/yolo26n_best_imgsz640_end2end_false_opset13.onnx`.
+- Source calibration npy:
+  `calib_npys/calib_raw_28_letterbox_640_uint8_nhwc.npy`, shape
+  `(28, 640, 640, 3)`, dtype `uint8`, min/max `0/255`.
+- `hailortcli parse-hef exports/yolo26n_route_a_six_heads.hef` re-confirmed:
+  input `UINT8 NHWC(640x640x3)` and outputs `conv61`, `conv64`, `conv77`,
+  `conv80`, `conv91`, `conv94` with the expected `80/40/20` grid shapes.
+
+Pinned saved-frame subset:
+
+| Row | Filename |
+| ---: | --- |
+| 0 | `far_20260624_144508_0001.jpg` |
+| 6 | `mid_20260624_144445_0001.jpg` |
+| 12 | `near_20260624_142112_0001.jpg` |
+| 18 | `neg_20260624_150606_0001.jpg` |
+| 22 | `oblique_20260624_144553_0001.jpg` |
+
+Selection note: `best.pt` returned zero detections on all 28 calibration frames at
+`conf=0.25`, `iou=0.70`, so no positive reference frame existed at the fixed
+oracle threshold. The subset covers far, mid, near, negative, and oblique saved
+frames. Row order follows sorted `calib_raw_28/` filenames. Rebuilding the
+letterbox from source JPEGs matched the source calibration npy within `max_abs=1`
+for every selected row.
+
+Preprocess artifacts stayed outside the public repo under
+`/home/ghostzero/hailo_artifacts/2026-07-07/decode_contract/`:
+
+- Hailo quantized input:
+  `inputs/pinned_20260707_rows_00_06_12_18_22_uint8_nhwc.npy`,
+  `(5, 640, 640, 3)`, `uint8`, values `0-255`.
+- Full-precision native-HAR input:
+  `inputs/pinned_20260707_rows_00_06_12_18_22_float32_nhwc_div255.npy`,
+  `(5, 640, 640, 3)`, `float32`, values `0-1`.
+- ONNX tensor-oracle input:
+  `inputs/pinned_20260707_rows_00_06_12_18_22_exact_uint8_float32_nchw_div255.npy`,
+  `(5, 3, 640, 640)`, `float32`, values `0-1`.
+- Metadata:
+  `inputs/pinned_20260707_rows_00_06_12_18_22_metadata.json`.
+
+Block D tensor export:
+
+- `ClientRunner.infer_context` in DFC `3.34.0` exposes `SDK_NATIVE`,
+  `SDK_QUANTIZED`, `SDK_FP_OPTIMIZED`, `SDK_BIT_EXACT`, and `SDK_HAILO_HW`.
+- `ClientRunner.infer(ctx, dataset, data_count, batch_size)` returned lists of
+  six tensors in HN output order.
+- `SDK_NATIVE` on the optimized HAR works, but the correct native input for this
+  comparison is float NHWC `/255`; feeding uint8 into that native context
+  produced a rejected diagnostic with class probabilities far from ONNX.
+- The selected Tier 1 source is the full-precision native path:
+  `tier1_prequant_sdk_native_float32_nhwc_div255.npz`. The optimized HAR native
+  float diagnostic produced the same tensor ranges.
+- Tier 2 source is:
+  `tier2_optimized_sdk_quantized_uint8_nhwc.npz`.
+- Both selected exports returned six `float32` tensors with exact expected
+  shapes: `conv61 (5,80,80,4)`, `conv64 (5,80,80,5)`,
+  `conv77 (5,40,40,4)`, `conv80 (5,40,40,5)`,
+  `conv91 (5,20,20,4)`, and `conv94 (5,20,20,5)`.
+- `ClientRunner.infer` returned tensors only; no dequantization scale or
+  zero-point object was returned alongside the arrays.
+- Export metadata:
+  `logs/hailo_emulation_export_20260707.json` and
+  `logs/hailo_prequant_native_export_20260707.json`.
+
+Block E oracle:
+
+- Host YOLO environment: Ultralytics `8.4.75`.
+- Detection oracle: `best.pt`, `imgsz=640`, `conf=0.25`, `iou=0.70`; all 28
+  calibration frames had `0` detections.
+- Tensor oracle: `onnxruntime 1.27.0`, CPU provider, ONNX input `images`
+  `[1,3,640,640]`, output `output0 [1,9,8400]`.
+- Final tensor oracle used the exact pinned uint8 rows transposed to NCHW and
+  divided by `255`, avoiding any re-letterbox approximation:
+  `oracle/onnx_output0_pinned_20260707_rows_00_06_12_18_22_exact_uint8.npy`,
+  shape `(5, 9, 8400)`, dtype `float32`.
+
+Block F decode and comparison:
+
+- Decode form confirmed: direct `l,t,r,b` distances from grid-center anchors
+  `(x + 0.5, y + 0.5)`, multiplied by stride and converted to pixel `xywh`.
+- Class form confirmed: sigmoid over the five class logits.
+- Scale order confirmed: stride `8` then `16` then `32`.
+- The DFC emulation API returned logical NHWC-shaped arrays for all six outputs;
+  no extra FCR memory reordering was needed before flattening.
+- Class map confirmed from `data.yaml`: `0 buoy`, `1 vessel`, `2 dock`,
+  `3 obstacle`, `4 person`.
+
+Tier results:
+
+| Tier | Result | Key evidence |
+| --- | --- | --- |
+| 1 decode math | FAIL | Box max relative error `0.025359` > `<1e-3`; box max abs `3.7708 px`, median abs `0.01257 px`, p99 abs `0.24448 px`. Class max relative error `0.000912` passed `<1e-3`. |
+| 2 quantization | Not gated | Tier 1 failed first. Diagnostic only: median box-channel abs `4.0665 px` and median class-prob abs `1.61e-6`. |
+| 3 end to end | Not gated | Tier 1 failed, and the detection oracle had zero positive detections at `conf=0.25`; quantized decode had zero candidates above `0.25`, max class probability `0.002682`. |
+
+Comparison metadata and decoded tensor artifacts:
+
+- `logs/decode_compare_20260707.json`.
+- `outputs/decoded_tier1_prequant_sdk_native_float32_nhwc_div255_output0_like.npy`.
+- `outputs/decoded_tier2_optimized_sdk_quantized_uint8_nhwc_output0_like.npy`.
+
+Blocker:
+
+The host decode order and formula are identified, and class channels match the
+ONNX tensor oracle tightly, but Tier 1 misses the strict box max-relative
+tolerance. Per the gate, Tier 2 and Tier 3 are diagnostic only until this
+full-precision box residual is explained or a revised tolerance is explicitly
+accepted. The session stopped on the workstation with no Pi fall-forward.
+
+This remains decode-contract evidence only. It is not Pi saved-frame inference,
+live RealSense, ROS image input, dashboard, MAVROS, QGC, Herelink,
+command/write, detector-quality, mission-upload, arming, mode-change,
+parameter-write, thruster, or actuator evidence.
