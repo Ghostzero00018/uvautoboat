@@ -315,7 +315,9 @@ Next gates, in order:
 3. Then move to accuracy-grade calibration. The current HEF is a mechanics-only
    artifact (28 mixed calibration frames, optimization level 0) and is expected
    to lose detection confidence under quantization, so a Tier 3 confidence miss
-   is a calibration problem, not a decode one.
+   is a calibration problem, not a decode one. The calibration set (`calib_hailo`)
+   must stay disjoint from the Tier 3 eval set (`tier3_eval`) at the
+   capture-scene level; see the four-way split contract in the dataset plan.
 4. On the next runtime test, broaden the post-run fault scan beyond Hailo-only
    lines, for example:
 

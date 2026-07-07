@@ -136,6 +136,40 @@ Validation should include at least one example of each class that appears in the
 training set, plus negative frames. If a class has too few examples for both
 splits, collect more data before treating metrics as meaningful.
 
+## Four-Way Split Contract For The Hailo Path
+
+The Hailo accelerator path needs two extra splits beyond `train` / `val`:
+
+- `calib_hailo` — frames used only to calibrate the INT8 HEF.
+- `tier3_eval` — held-out reference frames for the Hailo saved-frame detection
+  gate (host decode + NMS + un-letterbox versus the reference detector).
+
+Rules, decided at capture / review time, not after the fact:
+
+- `calib_hailo` and `tier3_eval` must be **disjoint**, and `tier3_eval` must
+  also be held out from `train` and `val`. Otherwise the detection gate grades
+  the model on data it was fit or calibrated against.
+- Disjoint at the **capture-condition / scene level**, not just by frame stem —
+  the same "near-duplicate frames from one clip stay together" rule above
+  applies across all four splits, because two frames a fraction of a second
+  apart are effectively the same image.
+- Tag each frame's intended split at review time. Rejected frames stay out of
+  all four.
+- `tier3_eval` must contain at least one clear example of every class so the
+  class-map decode is actually exercised end to end, plus negative frames.
+
+Collection sizing target before the next full campaign:
+
+- Aim for hundreds of labeled object instances per active class before treating
+  the detector as functional. Do not repeat the 9-box pilot and expect a stable
+  maritime detector.
+- Reserve a few hundred representative `calib_hailo` frames for the
+  accuracy-grade HEF. The earlier 28-frame set was a mechanics-only calibration
+  proof, not an accuracy baseline.
+- Keep enough `tier3_eval` positives per class, plus negatives, to record a
+  meaningful held-out confidence distribution before comparing the quantized
+  path.
+
 ## Training Environment
 
 Use a clean terminal that does not inherit ROS Python paths:
