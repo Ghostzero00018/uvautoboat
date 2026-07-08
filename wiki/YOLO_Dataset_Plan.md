@@ -15,6 +15,8 @@ quality guide, not a ROS node, dashboard adapter, or real-FCU command path.
 | Project scope | Pi 5 is the capture and deployment-validation target. Custom training runs on the Linux workstation GPU. |
 | First pilot split and training gate | 24/06/2026 camera-only RealSense RGB capture at `424x240x15` produced a tiny pipeline-validation pilot outside the repo. After review/dedup, X-AnyLabeling YOLO-Hbb export, and lint, 7 `person` images plus 4 clean negatives were copied into a 9/2 train/val split. On 25/06/2026, that split trained on the workstation with `yolo26n.pt` for 50 epochs into `runs/baseline_yolo26n/weights/best.pt`, validated informationally into `runs/val_baseline_yolo26n`, and exported NCNN to `runs/baseline_yolo26n/weights/best_ncnn_model` with `model.ncnn.param` and `model.ncnn.bin`. Later the same day, that custom NCNN export loaded and ran on the Pi as a static-image CPU check in `~/venvs/yolo-pi5`; both saved validation images returned `0` boxes at the default confidence threshold. A bounded ROS-camera-node fallback then fed RealSense RGB frames into the custom NCNN model: F1 saved 5 snapshots and ran inference, and F2 processed 30 live frames in `10.4 s` at `mean_fps=2.90` and `mean_inf_ms=340.9` before the intended `80.0 C` safety abort fired at `80.95 C` from a roughly `72.7-73.8 C` baseline. This proves capture -> label -> split -> train -> validate -> export -> Pi static load/run plus bounded ROS camera-topic -> custom NCNN procedure/safety-abort mechanics only; it is not detector-quality data or sustained thermally clean live-inference evidence. Dashboard integration, MAVROS, QGC, Herelink, and real-FCU paths remain unproven. |
 | 26/06/2026 thermal and direct-SDK follow-up | Headless SSH retesting showed the active remote-desktop session, not the cooler, was the dominant thermal confound: the camera-on / no-NCNN floor dropped to `50.70-52.35 C` (mean `51.03 C`). A short ROS-camera -> custom NCNN run passed (`150` frames in `18.8 s`, `mean_fps=7.98`, `mean_inf_ms=123.8`, no abort), but a sustained ROS + NCNN loop climbed through repeated `80.4-82.05 C` aborts, so sustained inference at the current `imgsz=640` profile is tested and not viable yet. `pyrealsense2 2.58.2` is proven only in the separate `~/venvs/yolo-pi5-rs`; direct camera-only capture passed (`900` frames / `60.0 s` / `14.99 fps`), and direct-SDK -> custom NCNN short inference passed (`150` frames / `23.1 s` / `mean_fps=6.51` / `mean_inf_ms=151.9`), but it showed no meaningful overhead advantage over ROS. The optional direct `imgsz=320` run segfaulted after model load; a real low-resolution thermal test needs a separate workstation NCNN export at `imgsz=320`. |
+| 08/07/2026 detector-recovery planning | Blocks A-C closed as planning evidence only. Inventory confirmed the maritime dataset still has `9` labeled instances, all class `person`, with zero `buoy`, `vessel`, `dock`, or `obstacle` examples. The current `best.pt` still returns no detections at `conf=0.25` and stays near the old `~0.003` confidence floor. The external acquisition manifest assigns splits at source time: VRX can bootstrap `buoy` / `dock`, `vessel` needs explicit spawning, and `obstacle` / `person` need RealSense, admitted public data, or explicit world / asset authoring. The live visual target is YOLO-style colored boxes with class / confidence labels, not masks or polygons. |
+| 09/07/2026 unicolor proxy scaffold | The next scaffold is an isolated real-image smoke using simple unicolor objects before maritime capture. It is designed to validate RealSense capture -> YOLO-Hbb box labels -> split -> workstation retrain -> held-out firing on easy targets. Proxy data uses temporary classes such as `red_object`, `blue_object`, and `green_object`; it must stay outside this maritime dataset and outside the public repo. |
 
 The `coco8.yaml` smoke-test metrics are not project quality evidence. They only
 prove the stock-sample local train-to-export toolchain; the sample dataset is a
@@ -48,14 +50,23 @@ public repo:
   images/
     train/
     val/
+    calib_hailo/     # planned; create when accuracy-grade campaign starts
+    tier3_eval/      # planned; held out from train/val/calib_hailo
   labels/
     train/
     val/
+    calib_hailo/     # planned; paired labels or empty files for negatives
+    tier3_eval/      # planned; held-out labels or empty files for negatives
   runs/
 ```
 
 Use `project=/home/ghostzero/datasets/uvautoboat_yolo_2026-06/runs` for
 Ultralytics commands so `runs/` does not appear under the repository root.
+
+As of 08/07/2026, only the `train` / `val` split exists physically in the
+maritime dataset root. `calib_hailo` and `tier3_eval` are planned split names
+from the four-way contract below and should be created only when frames are
+assigned to those splits.
 
 X-AnyLabeling may write native `.json` sidecars beside raw images and export
 YOLO `.txt` files into `raw/labels/`. Copy only reviewed active stems into
@@ -86,6 +97,8 @@ Possible later splits:
 ## Labeling Rules
 
 - Use object detection boxes, not whole-image classification.
+- Keep labels as YOLO-Hbb boxes. Do not switch this dataset to masks or polygon
+  labels unless a separate model path is explicitly opened.
 - Draw boxes around the visible object extent, not the guessed hidden extent.
 - Label partially occluded objects only when the class remains clear.
 - Skip objects too small or blurred for a human labeler to classify repeatably.
