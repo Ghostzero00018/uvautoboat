@@ -161,3 +161,124 @@ This block is detector-recovery evidence only. It is not Hailo calibration /
 Tier 3, Pi saved-frame inference, live RealSense inference, ROS image input,
 dashboard, MAVROS, QGC, Herelink, command / write, mission-upload, arming,
 mode-change, parameter-write, thruster, or actuator evidence.
+
+## Session Evidence - 08/07/2026
+
+Repo guard passed before detector-recovery planning:
+
+- `git fetch --prune` completed.
+- `main` matched `origin/main` at
+  `69f7ad5a3e5ae46a60ac9ccac800be731121b5d4`.
+- `git status --short --branch` returned `## main...origin/main`.
+- No pull was needed.
+
+Block A baseline inventory:
+
+- Dataset root:
+  `/home/ghostzero/datasets/uvautoboat_yolo_2026-06/`.
+- Existing YOLO split directories:
+  `images/train`, `images/val`, `labels/train`, `labels/val`; no populated
+  `images/calib_hailo`, `images/tier3_eval`, `labels/calib_hailo`, or
+  `labels/tier3_eval` split exists in the dataset root yet.
+- Current split counts:
+
+  | Split | Images | Label files | Labeled instances | Empty labels |
+  | --- | ---: | ---: | ---: | ---: |
+  | `train` | 9 | 9 | 7 | 3 |
+  | `val` | 2 | 2 | 2 | 1 |
+  | `calib_hailo` | 0 | 0 | 0 | 0 |
+  | `tier3_eval` | 0 | 0 | 0 | 0 |
+
+- Per-class labeled instances across `train` + `val`:
+
+  | Class ID | Class | Instances |
+  | ---: | --- | ---: |
+  | 0 | `buoy` | 0 |
+  | 1 | `vessel` | 0 |
+  | 2 | `dock` | 0 |
+  | 3 | `obstacle` | 0 |
+  | 4 | `person` | 9 |
+
+- `data.yaml` class order is still:
+  `0 buoy`, `1 vessel`, `2 dock`, `3 obstacle`, `4 person`.
+- The reviewed raw pool still has 11 active raw images under
+  `raw/2026-06-24_pi_realsense_rgb/` plus 17 rejected frames. The
+  mechanics-only Hailo calibration source remains separate:
+  `calib_raw_28` has 28 frames under the Hailo artifact workspace, but it is not
+  a scene-disjoint four-way dataset split.
+- Current checkpoint:
+  `/home/ghostzero/datasets/uvautoboat_yolo_2026-06/runs/baseline_yolo26n/weights/best.pt`
+  exists. The training run metadata records `model: yolo26n.pt`, `epochs: 50`,
+  `imgsz: 640`, `batch: 16`, `device: '0'`, `data: data.yaml`, and
+  `project: /home/ghostzero/datasets/uvautoboat_yolo_2026-06/runs`.
+- The 07/07 "before" state stands: the current `best.pt` returned zero
+  detections at `conf=0.25`, including on the 28 saved calibration frames used
+  during the decode work; the broader reconnaissance recorded in this scaffold
+  found no detections across the 50 available frames, with confidence below
+  `0.01` and a ceiling near `0.003`.
+
+Block B data-source decision:
+
+- Use a documented mix, with VRX-rendered frames as the first bootstrap source
+  only for the classes that the current local worlds can represent cleanly:
+  `buoy` and `dock`.
+- Treat VRX `vessel` as spawn-required: `roboboat01` and `roboboat02` exist as
+  local models, but they are not spawned in the current VRX worlds.
+- Treat VRX `obstacle` and `person` as unsupported without an explicit
+  class/source decision. The current VRX `obstacle_course` is round buoys only,
+  and the current VRX asset set has no human source.
+- Keep RealSense dockside / on-water capture as the required real-domain source
+  before detector-quality claims, and as the required source for real `vessel`,
+  `obstacle`, and `person` positives unless another approved source is added.
+- Do not admit public maritime datasets into this first manifest. A future
+  public-source row needs an explicit licence check, class-map alignment, split
+  assignment, and reject criteria before any download or conversion.
+- VRX is a training-framework and plumbing bootstrap only: it can validate the
+  split contract, labeling workflow, retraining path, and later saved-frame
+  comparison mechanics, but it is not real-world detector-quality evidence.
+
+Block C manifest:
+
+- Manifest path:
+  `/home/ghostzero/datasets/uvautoboat_yolo_2026-06/manifests/2026-07-08_detector_recovery_manifest.md`.
+- Manifest summary:
+  8 VRX-render rows and 6 RealSense capture rows, each with intended split
+  assigned at manifest time. The revised VRX plan covers `train`, `val`,
+  `calib_hailo`, and `tier3_eval` for `buoy` / `dock` bootstrap evidence with
+  scenario-level disjointness, marks `vessel` as spawn-required, and marks
+  `obstacle` / `person` as unsupported by the current VRX asset set. The
+  RealSense plan keeps train, validation, calibration, and held-out real-domain
+  scenes separate until water / dock access is available.
+- No capture, download, render, labeling, retraining, Hailo calibration, or
+  Tier 3 execution was run in this session.
+
+Exact blocker:
+
+- The blocker is still missing materially larger multi-class labeled data.
+  Today built the training framework: baseline inventory, source decision, and
+  split-aware acquisition manifest. Detector retraining is blocked until the
+  manifest is executed and the labeled data is materially larger than the 9-box
+  pilot.
+- A VRX-only execution of Block D can at most prove first-pass firing for
+  `buoy` and `dock`; `vessel`, `obstacle`, and `person` held-out positives
+  require RealSense capture, public data admitted through the checklist, or
+  explicit VRX world / asset authoring.
+
+Bounded non-claims:
+
+- Hailo decode remains proven and closed at `fb308f9`; Hailo is paused on
+  detector quality, not on a Hailo defect.
+- The next Hailo gate remains positive-bearing saved-frame Tier 3, but it must
+  not reopen until a retrained detector fires on held-out positives at sane
+  confidence.
+- This session did not produce new dataset images, labels, weights, runs,
+  detections, calibration frames, live inference, ROS image input, dashboard,
+  MAVROS, QGC, Herelink, mission-upload, arming, mode-change,
+  parameter-write, thruster, or actuator evidence.
+- VRX-majority `calib_hailo` is not an accuracy-grade calibration source for the
+  real RealSense deployment distribution. Accuracy-grade Hailo work still needs
+  representative real calibration frames after detector recovery.
+
+**Next steps:** Start Block D only after explicit approval: execute the external
+manifest outside the repo, beginning with the VRX bootstrap if real maritime
+access is unavailable this week, then label and split before any retraining.
