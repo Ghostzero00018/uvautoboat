@@ -271,7 +271,7 @@ Bounded non-claims:
 - The next Hailo gate remains positive-bearing saved-frame Tier 3, but it must
   not reopen until a retrained detector fires on held-out positives at sane
   confidence.
-- This session did not produce new dataset images, labels, weights, runs,
+- Blocks A-C did not produce new dataset images, labels, weights, runs,
   detections, calibration frames, live inference, ROS image input, dashboard,
   MAVROS, QGC, Herelink, mission-upload, arming, mode-change,
   parameter-write, thruster, or actuator evidence.
@@ -282,3 +282,134 @@ Bounded non-claims:
 **Next steps:** Start Block D only after explicit approval: execute the external
 manifest outside the repo, beginning with the VRX bootstrap if real maritime
 access is unavailable this week, then label and split before any retraining.
+
+## EOD Note - 08/07/2026
+
+The day closes at Blocks A-C. Block D was discussed but not started.
+
+Next practical step, only after an explicit Block D start signal: run a minimal
+VRX smoke rather than the full synthetic campaign if real dock / water access is
+not confirmed. Scope it to the supported VRX classes only (`buoy`, `dock`) and
+keep the five-class `data.yaml`; record `vessel`, `obstacle`, and `person` as
+untrained / unsupported for this smoke.
+
+Smoke pass condition is mechanics, not detector quality:
+
+- render / capture staging, label export, split creation, and label lint run
+  end to end outside the repo;
+- split proof shows genuinely disjoint held-out positives, including the
+  displaced `dock_2022` pose at `-540 210 0` and distinct buoy viewpoints;
+- retrain uses one frozen config with no hyperparameter tuning;
+- the eval harness emits a per-class confidence distribution on held-out frames;
+- `tier3_eval` has at least about five held-out positives each for `buoy` and
+  `dock`, and any firing is clearly above the old `~0.003` noise ceiling.
+
+Non-claims stay unchanged: a VRX-only smoke validates the data / label / split /
+retrain / eval harness. It does not validate real RealSense detector quality, it
+does not train `vessel`, `obstacle`, or `person`, and it does not reopen Hailo.
+
+## Pre-EOD Hailo Loop Readiness Check - 08/07/2026
+
+A quick workstation-side readiness check was run for the requested
+Pi-capture -> workstation-train -> Pi-return -> live-detect loop. Result:
+the loop is not ready to claim as a quick Hailo test today.
+
+Confirmed pieces:
+
+- `nvidia-smi` saw the workstation `NVIDIA RTX A3000 Laptop GPU`.
+- Dataset root, `data.yaml`, the current `best.pt`, and the 08/07 external
+  acquisition manifest exist under
+  `/home/ghostzero/datasets/uvautoboat_yolo_2026-06/`.
+- The current Hailo HEF artifact exists at
+  `/home/ghostzero/hailo_artifacts/2026-07-02/pi_payload_2026-07-02/yolo26n_route_a_six_heads.hef`.
+- Repo search found no existing Pi-side shell launcher or Python runner that
+  starts the RealSense camera and performs Hailo live detection from the custom
+  HEF.
+
+Blocking facts:
+
+- The current selected workstation YOLO environment reported
+  `torch.cuda.is_available() == False` in this shell, despite the GPU being
+  visible to `nvidia-smi`; rerun from a normal workstation terminal or fix the
+  environment before any retrain.
+- The four-way `calib_hailo` and `tier3_eval` dataset directories still do not
+  exist in the dataset root.
+- The only available custom `best.pt` is still the 9-box pilot checkpoint, and
+  the current HEF was compiled from that non-functional detector. Copying it to
+  the Pi for live detection would only prove launch mechanics, not detector
+  recovery.
+
+Correct next shape:
+
+1. Capture or render frames per the manifest, keeping split assignment at source
+   time.
+2. Label and lint, then create scene-disjoint `train`, `val`, `calib_hailo`,
+   and `tier3_eval` splits outside the repo.
+3. Retrain on the workstation from a CUDA-visible YOLO environment.
+4. Prove the new `best.pt` fires on held-out `tier3_eval` positives above the
+   old `~0.003` noise floor.
+5. Only then compile a new Hailo HEF, copy it to the Pi, run saved-frame Hailo
+   validation, and add a Pi shell launcher for camera + Hailo live detection.
+
+No Pi camera launch, Hailo compile, Hailo calibration, Pi inference, live
+RealSense inference, ROS image integration, dashboard integration, MAVROS, QGC,
+Herelink, mission upload, arming, mode change, parameter write, thruster, or
+actuator path was run in this check.
+
+## Pi Hailo Runtime Smoke - 08/07/2026
+
+After the readiness check, a bounded Pi-side runtime smoke was run from an
+external artifact directory, not from repo code:
+`~/hailo_live_smoke_2026-07-08/`.
+
+Check stage passed:
+
+- single interpreter imports passed for HailoRT, RealSense, NumPy, and OpenCV;
+- HEF parsed with one `640x640x3` input and six YOLO output tensors:
+  `80x80x4`, `80x80x5`, `40x40x4`, `40x40x5`, `20x20x4`, and `20x20x5`;
+- RealSense enumerated one `Intel RealSense D435I`, serial `213622070342`,
+  firmware `5.14.0`.
+
+Runtime stage passed as a launch-mechanics proof:
+
+- camera opened at `424x240@15`;
+- Hailo inference loop processed `30` frames and exited cleanly;
+- output tensors arrived as dequantized `float32`;
+- per-frame inference time was about `15-27 ms`;
+- summary reported `processed=30`, `elapsed_s=3.49`, `fps=8.61`;
+- maximum class probability stayed around `0.00262-0.00265`, with
+  `score_cells_ge_conf=0` on every frame.
+
+Bounded interpretation: this proves the Pi can run the single-process
+RealSense -> Hailo -> decode-summary loop against the current HEF. It does not
+prove detector recovery, target detection, RealSense-domain model quality,
+workstation retraining, HEF recompilation, Hailo calibration, saved-frame Tier
+3, ROS image input, dashboard integration, MAVROS, QGC, Herelink, mission
+upload, arming, mode change, parameter write, thruster, or actuator behavior.
+Zero detections remain the expected result for the current non-functional pilot
+detector.
+
+## Visual Target Decision - 08/07/2026
+
+The live visual-feedback target for the detector is a YOLO-style detection
+overlay: per-class colored bounding boxes with class and confidence text labels
+(the standard detection-demo look), not instance-segmentation masks or
+shape-hugging contours. This was confirmed against a standard YOLO
+object-detection reference, which predicts bounding boxes filtered by
+non-maximum suppression, not pixel masks.
+
+Consequences pinned before Block D labeling starts:
+
+- Training labels stay YOLO-Hbb boxes (class plus normalized `xywh`); labeling
+  continues in box mode, not polygons.
+- No segmentation model, polygon/mask labels, or separate compile path is in
+  scope for this target.
+- The overlay is a later runner-owned step (annotated MJPEG or saved frames
+  first, dashboard integration afterward), gated on a retrained detector that
+  fires on held-out positives. Not started today; the current HEF draws nothing,
+  so there is no overlay to build yet.
+
+**Next steps:** Start Block D only on explicit approval: run the minimal VRX
+`buoy` / `dock` smoke if real water access is still unavailable, keep labels as
+YOLO-Hbb boxes, then retrain only after materially larger held-out positives
+exist.
