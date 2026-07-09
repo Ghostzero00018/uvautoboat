@@ -2369,7 +2369,7 @@ function initMissionControl() {
     document.getElementById('btn-joystick-disable').addEventListener('click', () => {
         debounceCommand(() => {
             sendMissionCommand('joystick_disable');
-            setTimeout(() => alert('🤖 Autonomous Mode Restored\n\nJoystick override disabled.\n\n🤖 Mode Autonome Restauré\n\nJoystick désactivé.'), 100);
+            setTimeout(() => alert('Autonomous Mode Restored\n\nJoystick override disabled.\n\nMode Autonome Restauré\n\nJoystick désactivé.'), 100);
         });
     });
 
