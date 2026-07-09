@@ -318,7 +318,234 @@ Bounded non-claims:
   upload, arming, mode change, parameter write, thruster, or actuator work was
   run.
 
-**Next steps:** Start Block C only after explicit approval: confirm the D435I
-capture route and the exact red / blue / green physical objects, then capture
-still RGB frames into the external dataset root with split assignment at scene
-time.
+Block C capture and copy-back:
+
+- Capture route used the Pi 5 direct RealSense RGB still-frame path, then copied
+  artifacts back to the workstation external dataset root.
+- Pi preflight confirmed `imt-aqua-drone@imtaquadrone-desktop` on
+  `10.120.2.249`, RealSense D435I serial `213622070342`, firmware `5.14.0`,
+  and a working `640x480@15` color stream.
+- Active proxy class map was revised before capture after available objects were
+  confirmed:
+
+  | Class ID | Class | Object identity |
+  | ---: | --- | --- |
+  | 0 | `black_object` | black nuka cola bottle |
+  | 1 | `green_object` | green nuka cola bottle |
+
+- Captured raw frame counts after copy-back:
+
+  | Split | Positive frames | Negative frames | Total frames |
+  | --- | ---: | ---: | ---: |
+  | `train` | 24 | 6 | 30 |
+  | `val` | 6 | 2 | 8 |
+  | `tier3_eval` | 12 | 6 | 18 |
+  | Total | 42 | 14 | 56 |
+
+- Per-scene raw counts matched the manifest exactly:
+  `S01_train_table_close` 12, `S01_train_table_close_neg` 3,
+  `S02_train_floor_mid` 12, `S02_train_floor_mid_neg` 3,
+  `S03_val_table_alt` 6, `S03_val_table_alt_neg` 2,
+  `S04_tier3_eval_far_oblique` 6,
+  `S04_tier3_eval_far_oblique_neg` 3,
+  `S05_tier3_eval_clutter` 6, and `S05_tier3_eval_clutter_neg` 3.
+- Rejected frame count is `0`.
+- All accepted raw images are `640x480` JPEGs.
+- The capture log has 62 rows because `S04_tier3_eval_far_oblique` was
+  re-shot once after discarding the first take. The on-disk 56 raw JPGs are the
+  authoritative Block D source set.
+
+Block D split materialization and current lint state:
+
+- `data.yaml` created outside the repo at:
+  `/home/ghostzero/datasets/uvautoboat_unicolor_smoke_2026-07-09/data.yaml`.
+- Active split copies created outside the repo:
+  `images/train`, `images/val`, and `images/tier3_eval`.
+  `calib_hailo` remains empty.
+- Empty label files were created only for the 14 planned negative frames.
+- Reusable lint helper installed outside the repo at:
+  `/home/ghostzero/datasets/uvautoboat_unicolor_smoke_2026-07-09/logs/lint_unicolor_yolo_hbb_20260709.py`.
+- Negative-label restore helper installed outside the repo at:
+  `/home/ghostzero/datasets/uvautoboat_unicolor_smoke_2026-07-09/logs/restore_unicolor_negative_labels_20260709.py`.
+- Final Block D lint state after positive YOLO-Hbb labels were added directly
+  into `labels/{train,val,tier3_eval}`:
+
+  | Check | Result |
+  | --- | --- |
+  | Active images | 56 |
+  | Label files present | 56 |
+  | Missing labels | 0 |
+  | Empty positive labels | 0 |
+  | Empty negative labels | 14 |
+  | Non-empty negative labels | 0 |
+  | Class counts | `0 black_object`: 42; `1 green_object`: 42 |
+  | Positive label box histogram | 42 files with 2 boxes each |
+  | Scene leakage | none found |
+  | Unknown scenes | none found |
+  | Lint errors | 0 |
+
+- Overlay spot-checks on the first and last positive frames for `S01` through
+  `S05` confirmed the class-object correspondence: class `0` labels the black
+  bottle and class `1` labels the green bottle.
+
+Bounded non-claims:
+
+- The proxy `tier3_eval` split shares the same room and the same two physical
+  bottles as `train`; it varies distance, pose, and clutter only. A later firing
+  pass can prove the real-image training loop for easy proxy objects, but it
+  cannot prove background generalization, new-object generalization, maritime
+  detector recovery, Hailo accuracy, Pi deployment, dashboard integration,
+  MAVROS, QGC, Herelink, mission upload, arming, mode change, parameter write,
+  thruster, or actuator behavior.
+- The labels are sufficient for this loop smoke but are not a human-grade
+  maritime annotation benchmark. The train / validation positives are much
+  larger than the `tier3_eval` positives, so a later validation fire with weak
+  `tier3_eval` firing should be interpreted first as a scale gap.
+
+Block E workstation CUDA gate:
+
+- `git fetch --prune` completed before Block E, and `main` matched
+  `origin/main` at `3686263a44d14e9566d9d0f136cb1186e06ba3d9`.
+- `git status --short --branch` showed the intentional diary-only working tree
+  change.
+- Dataset lint was green before the training gate:
+  56 images, 56 labels, 42 `black_object` boxes, 42 `green_object` boxes, and
+  0 lint errors.
+- The first shell probe saw the workstation GPU through `nvidia-smi`:
+  `NVIDIA RTX A3000 Laptop GPU`, 6144 MiB, driver `580.159.03`.
+- That first YOLO environment probe returned a false CUDA gate:
+
+  ```text
+  torch.cuda.is_available(): False
+  device: NO_CUDA
+  torch: 2.12.1+cu130
+  ultralytics: 8.4.75
+  ```
+
+- Narrow diagnostics from the same environment showed `torch.version.cuda`
+  `13.0`, CUDA built into PyTorch, `device_count` 0, and
+  `RuntimeError: No CUDA GPUs are available` from `torch.cuda.init()`.
+- `PYTHONPATH` and `CUDA_VISIBLE_DEVICES` were unset. Removing
+  `LD_LIBRARY_PATH` did not make PyTorch see CUDA, and also made `nvidia-smi`
+  unable to communicate with the driver in that probe.
+- A later fresh workstation training terminal cleared the CUDA gate in the same
+  `~/venvs/yolo-ws` environment after unsetting both `PYTHONPATH` and
+  `CUDA_VISIBLE_DEVICES`:
+
+  ```text
+  torch.cuda.is_available(): True
+  device: NVIDIA RTX A3000 Laptop GPU
+  GPU matmul OK: True
+  VRAM: 6086 MB
+  torch: 2.12.1+cu130
+  ```
+
+- A driver probe in that terminal also reported `cuInit` success,
+  `cuDeviceGetCount = 1`, and CUDA driver support for CUDA `13.0`, matching the
+  PyTorch `cu130` build.
+
+Training status:
+
+- Block E environment gate was green for the host-context training shell.
+- Frozen config was recorded outside the repo at:
+  `/home/ghostzero/datasets/uvautoboat_unicolor_smoke_2026-07-09/logs/train_config_unicolor_smoke_20260709.yaml`.
+- Seed checkpoint `yolo26n.pt` was downloaded into the external dataset root.
+  Checksum:
+  `9b09cc8bf347f0fc8a5f7657480587f25db09b34bf33b0652110fb03a8ad4fef`.
+- Training command used the single frozen config:
+  `model=yolo26n.pt`, `data=data.yaml`, `epochs=100`, `imgsz=640`,
+  `batch=16`, `device=0`, `seed=0`, `project=runs`,
+  `name=unicolor_smoke_20260709`, `exist_ok=False`.
+- Training completed 100 epochs on CUDA in `0.018` hours with peak GPU memory
+  around `2.41G`.
+- Training log:
+  `/home/ghostzero/datasets/uvautoboat_unicolor_smoke_2026-07-09/logs/train_unicolor_20260709.log`.
+- Ultralytics wrote the original run under:
+  `/home/ghostzero/runs/detect/runs/unicolor_smoke_20260709`.
+- The completed run was mirrored back into the external dataset root at:
+  `/home/ghostzero/datasets/uvautoboat_unicolor_smoke_2026-07-09/runs/unicolor_smoke_20260709`.
+- Mirrored checkpoint hashes match the original run outputs:
+  `best.pt`
+  `5c52354672a60cc19f4eabb238431dfc402e1f117e1d79040d4eae3bc8b85bd0`;
+  `last.pt`
+  `d0aab4d3801667fd33307ab57d9c1c4708bc2742b08345793ad8805b92ad9907`.
+- The run's final epoch row in `results.csv` recorded the normal validation
+  metric line:
+  precision `0.96389`, recall `1`, mAP50 `0.995`, and mAP50-95 `0.5122` on
+  the validation split.
+- The final standalone `best.pt` validation pass selected the best checkpoint
+  and printed mAP50 `0.995` and mAP50-95 `0.698` overall and for both classes:
+
+  | Class | Images | Instances | Recall | mAP50 | mAP50-95 |
+  | --- | ---: | ---: | ---: | ---: | ---: |
+  | all | 8 | 12 | 1 | 0.995 | 0.698 |
+  | `black_object` | 6 | 6 | 1 | 0.995 | 0.698 |
+  | `green_object` | 6 | 6 | 1 | 0.995 | 0.698 |
+
+- The same standalone validation printout also showed very low precision values
+  at Ultralytics' low validation confidence setting. Those values are not the
+  fixed-threshold firing behavior and should not be read as a broken model.
+  Block F will use explicit confidence thresholds and saved predictions for the
+  firing readout.
+
+Block F status:
+
+- Block F held-out evaluation is complete.
+- Verification summary was recorded outside the repo at:
+  `/home/ghostzero/datasets/uvautoboat_unicolor_smoke_2026-07-09/logs/block_f_eval_summary_20260709.txt`.
+- Original Ultralytics evaluation / prediction artifacts were under
+  `/home/ghostzero/runs/detect/runs/` and were mirrored into the external
+  dataset root as:
+  `/home/ghostzero/datasets/uvautoboat_unicolor_smoke_2026-07-09/runs/tier3eval`,
+  `/home/ghostzero/datasets/uvautoboat_unicolor_smoke_2026-07-09/runs/tier3pred`,
+  and
+  `/home/ghostzero/datasets/uvautoboat_unicolor_smoke_2026-07-09/runs/tier3pred_1280`.
+- Validation split summary:
+
+  | Split | Objects | mAP50 | Fixed-threshold firing |
+  | --- | --- | ---: | --- |
+  | `val` (`S03`) | large, new placement | 0.995 | no boxes at `conf=0.25` or `conf=0.05`; boxes appear on positives at `conf=0.01`, with no boxes on negatives |
+  | `tier3_eval` (`S04` / `S05`) | tiny / far | 0.0 | no boxes at `conf=0.25`, `conf=0.05`, or `conf=0.01` |
+
+- The explicit fixed-threshold readout at `imgsz=640` was:
+
+  | Split | Confidence | Total boxes | Positive boxes | Negative boxes | Max confidence |
+  | --- | ---: | ---: | ---: | ---: | ---: |
+  | `val` | 0.25 | 0 | 0 | 0 | 0 |
+  | `val` | 0.05 | 0 | 0 | 0 | 0 |
+  | `val` | 0.01 | 80 | 80 | 0 | 0.01627 |
+  | `tier3_eval` | 0.25 | 0 | 0 | 0 | 0 |
+  | `tier3_eval` | 0.05 | 0 | 0 | 0 | 0 |
+  | `tier3_eval` | 0.01 | 0 | 0 | 0 | 0 |
+
+- Lowering `tier3_eval` to `conf=0.005` produced flooded low-confidence boxes
+  on positives and negatives, with peak confidence only about `0.00765`.
+  Increasing inference resolution did not recover held-out firing:
+
+  | Image size | Tier3 max confidence | Tier3 positive max confidence |
+  | ---: | ---: | ---: |
+  | 640 | 0.00765 | 0.00765 |
+  | 1280 | 0.00828 | 0.00791 |
+  | 1920 | 0.00801 | 0.00776 |
+
+Interpretation:
+
+- The real-image capture -> label -> split -> workstation train loop is
+  mechanically valid: the run trains, validates, writes checkpoints, and reaches
+  high validation mAP on the easy proxy validation split.
+- Fixed-threshold firing is weak even on `val`: the model does not emit boxes at
+  `conf=0.05` or `conf=0.25`, and only appears around `conf=0.01`.
+- The held-out `tier3_eval` split does not fire at `conf=0.01` or higher and
+  scores mAP50 `0.0`. This is consistent with the planned scale / context gap:
+  the training positives are large close objects, while `tier3_eval` contains
+  tiny far objects.
+- This is not maritime detector recovery and not Hailo evidence. It is a proxy
+  training-loop proof with a concrete data lesson: the real maritime collection
+  must cover the deployment distance / object-scale range.
+- No retune was attempted after the frozen run. Block G export was not run
+  because the proxy model does not fire on the designated held-out tier3 split.
+
+**Next steps:** Commit the markdown-only diary update when ready. For any future
+proxy iteration, collect train / val examples across the same near-to-far scale
+range expected in `tier3_eval` before interpreting held-out firing as model
+quality.
