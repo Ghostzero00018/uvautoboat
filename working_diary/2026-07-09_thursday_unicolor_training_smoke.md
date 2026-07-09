@@ -253,3 +253,72 @@ Update this diary with:
 
 Close with `git status --short --branch`, `git diff --check`, and a clear
 `**Next steps:**` hint. If commit-ready, keep the commit markdown-only.
+
+## Session Evidence - 09/07/2026
+
+Block A repo guard and source read:
+
+- `git fetch --prune` completed.
+- `main` matched `origin/main` at
+  `14c1a406a1e65523db76a6d8883d3a68b0b9611e`.
+- `git status --short --branch` returned `## main...origin/main`.
+- Recent history confirmed the pre-diary scaffold landed at `1f6f4ec`, then the
+  durable-doc propagation landed at `14c1a40`.
+- The durable-doc propagation gap recorded in the pre-start note is now
+  superseded. `Board.md`, `wiki/Roadmap.md`,
+  `wiki/YOLO_Dataset_Plan.md`, and `wiki/Hailo_HAT_Workstream.md` carry the
+  08/07-09/07 detector / proxy-smoke status. `wiki/Home.md`,
+  `wiki/README_WIKI.md`, and `USER_MANUAL.md` carry the 09/07 footer date; their
+  existing navigation continues to point at those status-bearing pages.
+- Repo artifact check found no proxy dataset root, labels, weights, ONNX, HEF,
+  `data.yaml`, run, or log artifact under the public repo. The image-extension
+  files found under the repo were existing documentation / dashboard static
+  assets, not training-smoke dataset artifacts.
+
+Block B proxy dataset design:
+
+- Proxy dataset root:
+  `/home/ghostzero/datasets/uvautoboat_unicolor_smoke_2026-07-09/`.
+- Manifest path:
+  `/home/ghostzero/datasets/uvautoboat_unicolor_smoke_2026-07-09/manifests/2026-07-09_unicolor_training_smoke_manifest.md`.
+- Directory scaffold created outside the repo for `raw/`, `images/`, `labels/`,
+  `logs/`, `runs/`, and `manifests/`.
+- Temporary class list:
+
+  | Class ID | Class |
+  | ---: | --- |
+  | 0 | `red_object` |
+  | 1 | `blue_object` |
+  | 2 | `green_object` |
+
+- Planned splits are assigned at scene time in the manifest:
+  `train`, `val`, `tier3_eval`, plus an empty `calib_hailo` placeholder only.
+  The planned minimum accepted positives are 16 per active class in `train`, 4
+  per active class in `val`, and 10 per active class in `tier3_eval`, plus
+  negatives in each active split.
+- Capture counts: `0` images. Block C has not started.
+- Label lint counts: not run; no labels exist yet.
+- Training config / run path: not created; no retraining run exists yet.
+- Held-out confidence summary: not run; no `tier3_eval` detections exist yet.
+
+Exact blocker:
+
+- Block C is waiting for explicit capture approval, one camera owner, a confirmed
+  workstation-USB or Pi fallback route, and exact red / blue / green physical
+  object descriptions recorded before the first accepted frame.
+
+Bounded non-claims:
+
+- No maritime detector recovery was attempted or proven.
+- The current maritime detector remains non-functional and the maritime dataset
+  remains at 9 labeled instances, all `person`, with zero `buoy`, `vessel`,
+  `dock`, or `obstacle` examples.
+- No Hailo compile, Hailo calibration, Hailo Tier 3, production HEF replacement,
+  detector deployment, dashboard integration, MAVROS, QGC, Herelink, mission
+  upload, arming, mode change, parameter write, thruster, or actuator work was
+  run.
+
+**Next steps:** Start Block C only after explicit approval: confirm the D435I
+capture route and the exact red / blue / green physical objects, then capture
+still RGB frames into the external dataset root with split assignment at scene
+time.
