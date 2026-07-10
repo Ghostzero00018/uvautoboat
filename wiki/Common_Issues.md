@@ -828,7 +828,13 @@ ps aux | grep web_video_server | grep -v grep
 curl -I --max-time 3 http://localhost:8080/
 ```
 
-If CPU is pegged or `curl` times out, the server is deadlocked.
+If CPU is pegged or `curl` times out, the server is deadlocked — apply the
+fix below. If instead the server looks healthy (one row, low CPU, `curl`
+returns 200) but a single panel is still stuck, the browser is likely
+holding a stale MJPEG socket rather than the code being wrong: open the raw
+stream URL (`http://localhost:8080/stream?topic=<image_topic>`) in a fresh
+tab. If that streams cleanly, hard-refresh the stuck panel's tab instead of
+editing code.
 
 **Fix**:
 
@@ -891,6 +897,31 @@ In practice the deadlock window has narrowed significantly since 23/04/2026 — 
 
 ---
 
+### Dashboard JavaScript Throws `<value>.toFixed is not a function`
+
+**Symptoms**: A dashboard update path fails with `<value>.toFixed is not a
+function`, even though no variable with that name appears to have been
+declared.
+
+**Root cause**: Browser named access exposes every HTML element with a
+non-empty `id` as a property on `window`. Because a bare JavaScript
+identifier cannot contain a hyphen, an undeclared identifier can only ever
+collide with a hyphen-less `id` — and then resolves to that DOM element
+instead of raising `ReferenceError`.
+
+**Fix**:
+
+1. Search both `index.html` and `app.js` for the identifier.
+2. Declare the intended value explicitly in scope, or access it through an
+   explicit object such as `data.<name>`.
+3. Hard-refresh the browser after updating `app.js`.
+
+Do not rely on a bare identifier merely because it appears to work in the
+browser; adding or renaming an HTML `id` can silently change what it resolves
+to.
+
+---
+
 ### Map Not Showing Boat Position
 
 **Symptoms**: Trajectory map empty or boat icon missing
@@ -942,6 +973,33 @@ In practice the deadlock window has narrowed significantly since 23/04/2026 — 
    ```bash
    python3 --version  # Should be 3.10+
    ```
+
+---
+
+### `colcon build` Reports a Mixed Install Layout
+
+**Symptoms**: A package-only rebuild fails with a message such as:
+
+```text
+The install directory 'install' was created with the layout 'merged'
+```
+
+**Cause**: The workspace was created with `--merge-install`, but a later
+`colcon build` omitted that flag. Colcon refuses to mix install layouts in the
+same directory.
+
+**Fix**: Keep the existing layout and rebuild from the workspace root with the
+same flag:
+
+```bash
+cd ~/seal_ws
+colcon build --merge-install --packages-select <package_name>
+```
+
+Do not delete a healthy `install/` tree merely to resolve this message. A
+clean rebuild is appropriate only when a separate diagnosed problem requires
+one; for a layout mismatch, restoring the original flag preserves the fast
+incremental build.
 
 ---
 
@@ -1246,6 +1304,40 @@ ros2 run control heading_controller --ros-args --log-level debug
 
 ---
 
+### Node Name Changes Between Direct Run and Launch
+
+**Symptoms**: A node appears under one name when started with `ros2 run` and a
+different name when started from the launch file. Parameter lookups, health
+checks, or downstream node-name references then fail only in one launch mode.
+
+**Cause**: The node name passed to the `Node` constructor (usually
+positionally, e.g. `super().__init__('foo')`) and the launch YAML `name:`
+override do not match.
+
+**Fix**:
+
+1. Compare the constructor name with the active launch entry.
+2. Choose one canonical node name and make both definitions match.
+3. Rebuild, source the workspace, and restart the affected process before
+   checking the runtime graph again.
+
+---
+
+### Command or Launch Syntax Copied From Another ROS 2 Distribution Fails
+
+**Symptoms**: A launch-YAML key or CLI flag copied from an older guide is
+rejected even though the command looks valid.
+
+**Cause**: ROS 2 launch and CLI syntax can differ between distributions. This
+workspace targets Jazzy; examples written for Humble or Foxy are not an
+authoritative syntax reference.
+
+**Fix**: Confirm the active distribution with `echo $ROS_DISTRO`, then verify
+the command or launch syntax against the installed Jazzy help and
+documentation before changing source files.
+
+---
+
 ### `ros2 node list` Empty / Health Check "Cannot Reach ROS 2 Graph"
 
 **Symptoms**:
@@ -1338,6 +1430,13 @@ python3 tools/rate_probe.py --topic /some/best_effort_topic \
 ```
 
 `tools/rate_probe.py` is a standalone rclpy script — no colcon build needed. Also accepts `--reliability reliable`, configurable `--depth` and `--duration`. Discovers the message type via rclpy introspection unless `--type pkg/msg/Name` is supplied.
+
+Publication has a separate discovery caveat: `ros2 topic pub --once` can exit
+before every mixed-QoS subscriber has completed discovery. For a repeatable
+test publish, inspect the topic QoS first and send a short bounded sequence,
+for example `--rate 2 --times 5`, then confirm receipt on the intended
+subscriber. This is a test-delivery guard, not a substitute for correcting an
+actual QoS incompatibility.
 
 ### Check Parameters
 
