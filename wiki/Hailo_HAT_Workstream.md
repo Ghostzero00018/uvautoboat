@@ -360,5 +360,6 @@ Next gates, in order:
 ## Navigation
 
 - [Home](Home)
+- [Pi Hailo COCO-Overlay Demo](Hailo_COCO_Overlay_Demo)
 - [YOLO Dataset Plan](YOLO_Dataset_Plan)
 - [Roadmap](Roadmap)
