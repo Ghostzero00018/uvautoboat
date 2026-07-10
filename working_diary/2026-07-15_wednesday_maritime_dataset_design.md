@@ -1,14 +1,15 @@
-# Friday 10/07/2026 - Maritime Dataset Collection Design
+# Wednesday 15/07/2026 - Maritime Dataset Collection Design
 
 ## Day Overview
 
 Turn the 09/07 proxy result into a concrete maritime data-collection design. The
 proxy already answered the mechanical question: the real-image loop
-capture -> label -> split -> train -> held-out firing runs end to end. It failed
-only on data. About 30 near-duplicate, single-scale images produced a detector
-that was confident nowhere at a usable threshold and blind to the held-out
-scale. This diary designs the maritime dataset so the same, already-frozen
-training loop produces usable-threshold firing on real held-out maritime frames.
+capture -> label -> split -> train -> held-out evaluation runs end to end. Its
+weak fixed-threshold result is consistent with a data-distribution problem:
+about 30 near-duplicate, single-scale images produced a detector that was
+confident nowhere at a usable threshold and blind to the held-out scale. This
+diary designs the maritime dataset so the same, already-frozen training loop can
+be tested on real held-out maritime frames.
 
 Default mode is design only. A bounded camera-only live rehearsal may run only
 after explicit approval, and only to check RealSense capture logistics and
@@ -19,11 +20,12 @@ logistics rehearsal only.
 
 ## Carry-Over From 09/07
 
-- The loop is mechanically valid; the failure was the dataset, not the pipeline.
+- The loop is mechanically valid; the leading failure hypothesis is the dataset
+  distribution, not a proven pipeline defect.
 - Even large `val` objects fired only around `0.016`; held-out `tier3_eval`
   (tiny) sat at background level around `0.007` with mAP50 `0.0`.
-- Root cause: too few distinct examples (weak confidence everywhere) plus a
-  single dominant object scale (no far/small generalization).
+- Leading hypothesis: too few distinct examples (weak confidence everywhere)
+  plus a single dominant object scale (no far/small generalization).
 - Fixes carried into this design:
   1. materially more genuinely distinct examples per class, not more frames of
      one static scene;
@@ -127,7 +129,7 @@ or the Hailo accuracy-grade / Tier 3 path reopen.
 
 ## Camera-Only Live Rehearsal Gate
 
-Use this only if a useful live test is wanted on 10/07. It is a camera logistics
+Use this only if a useful live test is wanted on 15/07. It is a camera logistics
 test, not detector recovery.
 
 Purpose:
@@ -148,7 +150,7 @@ Preconditions:
   parameter write, thruster, or actuator work;
 - any stills kept from the rehearsal go outside the repo under a new root such
   as
-  `/home/ghostzero/datasets/uvautoboat_maritime_live_rehearsal_20260710/`;
+  `/home/ghostzero/datasets/uvautoboat_maritime_live_rehearsal_20260715/`;
 - choose the snapshot resolution before the rehearsal; if the far bucket is the
   question, compare `640x480` against the intended higher collection profile
   rather than judging labelability from `640x480` alone;
