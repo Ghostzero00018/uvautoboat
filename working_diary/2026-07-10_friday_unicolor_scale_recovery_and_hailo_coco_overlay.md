@@ -82,7 +82,7 @@ Run from the repo root: `git fetch --prune`, `git log --oneline -8`,
 fetch fails, dirty, ahead, or diverged.
 
 Read first: this file; `working_diary/2026-07-09_thursday_unicolor_training_smoke.md`;
-`working_diary/2026-07-15_wednesday_maritime_dataset_design.md`;
+`working_diary/2026-07-15_wednesday_maritime_dashboard_hailo_streaming.md`;
 `wiki/YOLO_Dataset_Plan.md`. Record the starting SHA.
 
 ### Block A Evidence - 10/07/2026
