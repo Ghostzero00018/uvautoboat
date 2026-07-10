@@ -138,7 +138,9 @@ timeout -k 10s 120s "$ROOT/venv/bin/python" "$APP/object_detection.py" \
 so it is not committed as an executable — this doc holds its durable source. Copy it
 to the Pi under the external root, verify the checksum, `chmod +x`, and run it:
 
-- SHA-256: `7c9d89d2b8c74cfb36cca596e301241775444987a7b8fddf7a20ebd53167d002`
+- SHA-256: `64426ec4b9413f9e19f9ba7fa5517e08dca699273baedc9c4d6faf9ecd3c4d6c`
+  (Pi-validated 10/07 by a `20 s` HD run: `res=hd`, `RC=0`, saved AVI a true
+  `1280x720`)
 
 ```bash
 # run until Ctrl+C or the temperature abort trips
@@ -148,7 +150,8 @@ to the Pi under the external root, verify the checksum, `chmod +x`, and run it:
 ```
 
 Tunable via environment variables: `HAILO_DEMO_ROOT`, `HAILO_DEMO_CAM`,
-`HAILO_DEMO_RES` (`sd` / `hd` / `fhd`), `HAILO_DEMO_FPS`, `HAILO_DEMO_ABORT_MC`
+`HAILO_DEMO_RES` and `HAILO_DEMO_OUTRES` (both `sd` / `hd` / `fhd`; see the
+window-size note below), `HAILO_DEMO_FPS`, `HAILO_DEMO_ABORT_MC`
 (abort temperature in millidegrees, default `80000`), `HAILO_DEMO_POLL_S`,
 `HAILO_DEMO_MAX_BAD_READS`, `HAILO_DEMO_GRACE_S`. The launcher starts the detector
 so `SIGINT` (Ctrl+C) stops it gracefully and preserves `--save-output`; it stops the
@@ -156,6 +159,13 @@ detector by PID only — escalating `INT -> TERM -> KILL`, never pattern-matchin
 a temperature abort, an unreadable sensor (fail-closed after a few reads), Ctrl+C,
 or the launcher-side deadline; and it reports the peak temperature and propagates the
 detector's exit status (non-zero if the detector itself failed).
+
+**Window size.** The display and the saved AVI are sized by the output resolution.
+For a larger, faithful recording set `HAILO_DEMO_RES` (e.g. `hd` or `fhd`) so capture
+and output match — `OUTRES` follows `RES` by default. Setting `OUTRES` alone decouples
+them: the runner keeps the display aspect-correct but stretches the *saved* AVI to the
+literal `OUTRES` preset, so match the two to avoid a distorted recording. The window
+is fixed-size (not drag-resizable), so choose the size with these knobs.
 
 Canonical source (the SHA-256 above is of this file):
 
@@ -183,7 +193,8 @@ VENV="$ROOT/venv"
 APP="$ROOT/hailo-apps/hailo_apps/python/standalone_apps/object_detection"
 HEF="${HAILO_DEMO_HEF:-$ROOT/models/yolov11n-v2.19.0-hailo8l.hef}"
 CAM="${HAILO_DEMO_CAM:-/dev/video4}"        # D435I RGB (YUYV) node
-RES="${HAILO_DEMO_RES:-sd}"                 # sd=640x480 hd=1280x720 fhd=1920x1080
+RES="${HAILO_DEMO_RES:-sd}"                 # camera capture: sd=640x480 hd=1280x720 fhd=1920x1080
+OUTRES="${HAILO_DEMO_OUTRES:-$RES}"         # display/output window size: sd|hd|fhd (default = camera res)
 FPS="${HAILO_DEMO_FPS:-15}"
 ABORT_MC="${HAILO_DEMO_ABORT_MC:-80000}"    # hard abort at 80.0 C (millidegrees)
 POLL_S="${HAILO_DEMO_POLL_S:-2}"
@@ -233,6 +244,7 @@ fi
 [[ "$GRACE_S" =~ ^(0|[1-9][0-9]*)$ ]]   || die "HAILO_DEMO_GRACE_S must be a non-negative integer without leading zeros, got '$GRACE_S'"
 [[ "$FPS" =~ ^[1-9][0-9]*$ ]]           || die "HAILO_DEMO_FPS must be a positive integer, got '$FPS'"
 [[ "$RES" =~ ^(sd|hd|fhd)$ ]]           || die "HAILO_DEMO_RES must be sd|hd|fhd, got '$RES'"
+[[ "$OUTRES" =~ ^(sd|hd|fhd)$ ]]        || die "HAILO_DEMO_OUTRES must be sd|hd|fhd, got '$OUTRES'"
 
 # preflight-lite: the Gate A setup must already exist under ROOT
 [ -x "$VENV/bin/python" ]         || die "venv missing at $VENV (run Gate A setup first)"
@@ -257,11 +269,11 @@ OUTDIR="$OUTDIR/$RUN_ID"        # per-run dir so a later run cannot overwrite th
 mkdir -p "$OUTDIR" "$LOGDIR"
 LOG="$LOGDIR/hailo_demo_$RUN_ID.log"
 
-log "cam=$CAM res=$RES fps=$FPS abort=$((ABORT_MC / 1000))C start=$((t0 / 1000))C dur=${DURATION:-until Ctrl+C}"
+log "cam=$CAM res=$RES outres=$OUTRES fps=$FPS abort=$((ABORT_MC / 1000))C start=$((t0 / 1000))C dur=${DURATION:-until Ctrl+C}"
 
 # build args; add the app-side time limit only when a duration was requested
 args=(--hef-path "$HEF" --input "$CAM" --camera-resolution "$RES"
-  --frame-rate "$FPS" --save-output --output-dir "$OUTDIR" --show-fps)
+  --output-resolution "$OUTRES" --frame-rate "$FPS" --save-output --output-dir "$OUTDIR" --show-fps)
 if [ -n "$DURATION" ]; then args+=(--time-to-run "$DURATION"); fi
 
 # Launch in a subshell that resets INT/QUIT to default before exec, so the
