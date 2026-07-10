@@ -284,8 +284,9 @@ exact blocker if any.
 
 ### Overlay Gate Evidence - 10/07/2026
 
-Overlay Gates A-C passed and Gate D records the evidence below, complete except one
-bounded omission (no post-run temperature); the stock-COCO live overlay path is
+Overlay Gates A-C passed and Gate D records the evidence below; the only temperature
+gap is the earlier free-run's post-run reading (the later launcher run's is recorded
+at `57.85 C`). The stock-COCO live overlay path is
 proven on the Pi. Everything stayed under the external root
 `~/hailo_coco_overlay_2026-07-10/`.
 
@@ -323,6 +324,14 @@ proven on the Pi. Everything stayed under the external root
   temperature ran `59.5 C` at preflight, `60.6 C` at the contract phase, and about
   `65 C` peak during the free-run (post-run cool-down temperature not recorded).
   Recorded as a single-session observation, not a sustained-thermal qualification.
+- Launcher re-validation: two reproducible bounded `20 s` runs on `/dev/video4`, both
+  clean exits (`RC=0`). SD (18:25, SHA-256 `7c9d89d2...`): `300` frames at `14.96 FPS`,
+  peak `63 C`, post-run `57.85 C`, `throttled=0x0`, `640x480` output; live boxes
+  confirmed on extracted frames (`bottle`, `tv`, `laptop`, `mouse`). HD (18:56, SHA-256
+  `64426ec4...`, the `OUTRES` window-size version): `res=hd outres=hd`, `281` frames at
+  `13.99 FPS`, peak `67 C`, post-run `58.4 C`, `throttled=0x0`, saved AVI a true
+  `1280x720` with no distortion. Together these capture the per-run post-run
+  temperature the earlier free-run bullet omitted and Pi-validate the current launcher.
 - Exact blocker: none for the stock-COCO overlay. The first preflight aborted on a
   helper issue - `vcgencmd get_throttled` needs `/dev/vcio` access this user lacks
   (no `video` group) - fixed by reading the throttle flag through cached sudo and
@@ -343,7 +352,8 @@ proven on the Pi. Everything stayed under the external root
 
 Track 1 Block A is complete; Track 1 Block B remains unstarted and requires a
 separate explicit approval. Track 2 is complete: overlay Gates A-C passed and Gate D
-records the evidence (one bounded omission), proving the Pi
+records the evidence (the earlier free-run's post-run temperature is the only gap),
+proving the Pi
 `D435I -> Hailo -> HailoRT NMS -> COCO box overlay -> display / save`
 path with a stock `yolov11n` HEF at `14.97 FPS`; an added five-minute free-run held
 about `65 C` as a single-session observation, not a sustained-thermal result. This
