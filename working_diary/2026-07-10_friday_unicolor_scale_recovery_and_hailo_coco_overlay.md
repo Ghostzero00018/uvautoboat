@@ -70,7 +70,8 @@ Hailo accuracy, Pi deployment, or dashboard integration.
   arming, mode change, parameter write, thruster, or actuator paths.
 - The D435I has one owner during Track 2; no ROS camera node, dashboard camera,
   `rqt_image_view`, detector process, or other camera consumer may run.
-- No production repo Python / YAML changes; markdown diary updates only.
+- No production repo Python / YAML changes; Markdown-only repo updates (this diary
+  and the reusable wiki procedure).
 - One frozen training config; do not tune hyperparameters to chase a pass.
 - Execution blocks start only after explicit approval.
 
@@ -212,8 +213,9 @@ recorded outcome.
 
 External Pi root:
 `~/hailo_coco_overlay_2026-07-10/`. Keep the runner checkout, isolated venv,
-HEF, input image, logs, and annotated outputs there. Nothing from this track is
-added to the public repo.
+HEF, input image, logs, and annotated outputs there. Those runtime artifacts stay
+external; only this diary and the reusable Markdown procedure (which embeds the
+launcher source as documentation) are tracked in the repo.
 
 ### Overlay Gate A - Artifact And Contract Verification
 
@@ -280,6 +282,53 @@ source and profile; saved-still result; live duration / frames / FPS; before,
 peak, and after temperature; annotated output paths; error / fault tail; and the
 exact blocker if any.
 
+### Overlay Gate Evidence - 10/07/2026
+
+Overlay Gates A-C passed and Gate D records the evidence below, complete except one
+bounded omission (no post-run temperature); the stock-COCO live overlay path is
+proven on the Pi. Everything stayed under the external root
+`~/hailo_coco_overlay_2026-07-10/`.
+
+- Gate A preflight: host `imtaquadrone-desktop`, kernel `6.8.0-1060-raspi`, Python
+  `3.12.3`, `/dev/hailo0` present, no camera or Hailo consumer, `throttled=0x0`,
+  `59.5 C`, `35 GiB` free. HailoRT CLI and firmware `4.24.0`, device `HAILO8L`.
+  D435I serial `213622070342`, firmware `5.14.0`, USB `3.2`. GitHub and the
+  model-zoo S3 host resolved. Kernel tail clean: Hailo firmware loaded in
+  `177 ms`, ASPM L0s disabled, no DMA / AER / under-voltage faults.
+- Gate A runner and HEF: Hailo Apps standalone object-detection release `26.03.1`,
+  checkout `891ce701c2ebe239a5d277759eb75a30f76678a9`, in a fresh root-local venv
+  (the proven `~/venvs/hailo-rt-4.24.0` runtime was left untouched). HEF: Model
+  Zoo `v2.19.0` `hailo8l/yolov11n.hef`, `11712608` bytes, SHA-256
+  `d08e140e61befc4fe3c8e5c2d10969fec258bc411363de6813e8b1778dc7cb8e`. Contract:
+  input `640x640x3`, output `yolov8_nms_postprocess` (HAILO NMS BY CLASS, `80`
+  classes, score `0.20`, IoU `0.70`). HailoRT runs this NMS post-process on the
+  host CPU (`engine=cpu` in the model-zoo `.alls`; the `..._nms_core` build runs it
+  on the NPU core), so the runner gets final decoded boxes and no host decoder was
+  written.
+- Compatibility: the runner documents HailoRT `4.23.0` and this Pi runs `4.24.0`;
+  the gap was confirmed in practice (imports, HEF load, and live inference all
+  succeeded), not assumed.
+- Gate B saved still: the pinned runner on the bundled `bus.jpg` exited cleanly
+  and wrote `output/still/output_0.png` with correct COCO boxes and labels -
+  `bus 93.5%` and four people at `86.8 / 85.3 / 82.7 / 42.5%`.
+- Gate C live D435I: the RGB color node was mapped to `/dev/video4` (`YUYV`);
+  depth `/dev/video0` and infrared `/dev/video2` were correctly avoided. A bounded
+  `15 s` run at `640x480` processed `225` frames at `14.97 FPS`, exited cleanly,
+  and saved annotated frames to `output/live`. The live overlay was observed
+  producing boxes during this run and the free-run; the confidences are rendered in
+  the saved annotated output but were not transcribed or independently inspected, so
+  the verified per-box evidence is the Gate B still.
+- Extended free-run: an unbounded live run held over five minutes at about `65 C`
+  with no throttle and no stop, saved under `output/live_freerun`. Session
+  temperature ran `59.5 C` at preflight, `60.6 C` at the contract phase, and about
+  `65 C` peak during the free-run (post-run cool-down temperature not recorded).
+  Recorded as a single-session observation, not a sustained-thermal qualification.
+- Exact blocker: none for the stock-COCO overlay. The first preflight aborted on a
+  helper issue - `vcgencmd get_throttled` needs `/dev/vcio` access this user lacks
+  (no `video` group) - fixed by reading the throttle flag through cached sudo and
+  continuing on a clear warning when unavailable; every other step passed first
+  try.
+
 ### Track 2 - Explicit Non-Claims
 
 - No literal contour or segmentation result.
@@ -292,11 +341,18 @@ exact blocker if any.
 
 ## Daily Wrap
 
-Track 1 Block A is complete. Track 1 Block B remains unstarted and requires a
-separate explicit approval. Track 2 is approved for user-run execution today:
-Gate A verifies the exact artifact / runner contract, Gate B is the hard
-saved-still compatibility gate, and Gate C cannot start until Gate B passes.
+Track 1 Block A is complete; Track 1 Block B remains unstarted and requires a
+separate explicit approval. Track 2 is complete: overlay Gates A-C passed and Gate D
+records the evidence (one bounded omission), proving the Pi
+`D435I -> Hailo -> HailoRT NMS -> COCO box overlay -> display / save`
+path with a stock `yolov11n` HEF at `14.97 FPS`; an added five-minute free-run held
+about `65 C` as a single-session observation, not a sustained-thermal result. This
+is stock-COCO mechanics only, not maritime or custom-detector recovery, and the
+maritime and unicolor detector paths are unchanged.
 
-**Next steps:** Start Overlay Gate A now. Proceed to Gates B and C only when each
-preceding gate passes. Keep Track 1 Block B closed while the independent Pi
-overlay smoke is in progress.
+**Next steps:** The Track 2 overlay smoke is closed. A future maritime or unicolor
+detector reuses this runner as a drop-in only if its HEF is compiled with the same
+HailoRT NMS-by-class output; a raw or multi-output HEF (like the earlier custom
+six-output one) still needs a host decoder and a pipeline change. Track 1 Block B
+(external multi-scale manifest) stays gated on explicit approval, and the deferred
+15/07 maritime design remains the next planning item.
