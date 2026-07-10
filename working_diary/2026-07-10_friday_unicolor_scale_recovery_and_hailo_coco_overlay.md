@@ -366,3 +366,14 @@ HailoRT NMS-by-class output; a raw or multi-output HEF (like the earlier custom
 six-output one) still needs a host decoder and a pipeline change. Track 1 Block B
 (external multi-scale manifest) stays gated on explicit approval, and the deferred
 15/07 maritime design remains the next planning item.
+
+## EOD Schedule Correction - 10/07/2026
+
+Superseding the earlier 10/07 scheduling notes above (Day Overview, Block A evidence,
+and the Next-steps line): the 15/07 slot was reassigned from the maritime
+dataset-collection design to web-dashboard work - interaction-logic / UX bug-fix,
+real MAVLink telemetry prep, and Hailo-COCO overlay streaming - and its diary renamed
+to `working_diary/2026-07-15_wednesday_web_dashboard_mavlink_hailo.md`. The maritime
+dataset-collection design is deferred out of next week's scope and is no longer the
+immediate next planning item. The earlier notes are kept as the plan that stood
+earlier on 10/07.

@@ -1,234 +1,30 @@
-# Wednesday 15/07/2026 - Maritime Design, Dashboard Fixes, and Hailo Streaming
+# Wednesday 15/07/2026 - Web Dashboard Optimization, Live MAVLink Prep, and Hailo-COCO Streaming
 
 ## Day Overview
 
-Three independently gated tracks today, each design / plan-first, with any code
-edit, capture, training, or live run separately gated. **Track A** is the maritime
-dataset-collection design in the sections through its own Explicit Non-Claims
-below. **Track B** audits the web dashboard for real bugs and fixes the confirmed
-ones. **Track C** designs and prototypes streaming the Pi Hailo-COCO annotated
-overlay into the dashboard video panel.
+A web-dashboard day, three independently gated tracks, all design / plan-first with
+any code edit or live run separately gated. The focus is overall interaction-logic
+and user-experience optimization of the dashboard, plus the up-front preparation for
+wiring real live sources into it. The maritime dataset-collection design is
+intentionally out of scope this week.
 
-Turn the 09/07 proxy result into a concrete maritime data-collection design. The
-proxy already answered the mechanical question: the real-image loop
-capture -> label -> split -> train -> held-out evaluation runs end to end. Its
-weak fixed-threshold result is consistent with a data-distribution problem:
-about 30 near-duplicate, single-scale images produced a detector that was
-confident nowhere at a usable threshold and blind to the held-out scale. This
-diary designs the maritime dataset so the same, already-frozen training loop can
-be tested on real held-out maritime frames.
+- **Track A - web dashboard bug-fix** audits the dashboard for real, reproducible
+  interaction / robustness bugs and fixes the confirmed ones - the interaction-logic
+  and UX hardening pass.
+- **Track B - Hailo-COCO streaming** designs and prototypes streaming the Pi
+  Hailo-COCO annotated overlay into the dashboard video panel - the preparation for a
+  live camera-detection view.
+- **Track C - real MAVLink telemetry prep** maps the dashboard's simulation-first
+  topic subscriptions to the real MAVROS topic surface and plans the read-only path
+  to show real vehicle state, without a command / write path.
 
-Default mode is design only. A bounded camera-only live rehearsal may run only
-after explicit approval, and only to check RealSense capture logistics and
-near / mid / far framing. No labeling, training, detector execution, Hailo work,
-deployment, or command-path work starts from this diary without a separate gate.
-This is not another bottle-model recovery pass; the optional proxy below is a
-logistics rehearsal only.
+Tracks B and C are the up-front preparation for the same near-term goal: getting the
+dashboard ready to consume real live sources - the live MAVLink telemetry topics and
+the Hailo-COCO camera-detection overlay - so the integration work that follows lands
+on a clean, robust dashboard. No dashboard code edit, live run, or source
+integration starts from this diary without a separate gate.
 
-## Carry-Over From 09/07
-
-- The loop is mechanically valid; the leading failure hypothesis is the dataset
-  distribution, not a proven pipeline defect.
-- Even large `val` objects fired only around `0.016`; held-out `tier3_eval`
-  (tiny) sat at background level around `0.007` with mAP50 `0.0`.
-- Leading hypothesis: too few distinct examples (weak confidence everywhere)
-  plus a single dominant object scale (no far/small generalization).
-- Fixes carried into this design:
-  1. materially more genuinely distinct examples per class, not more frames of
-     one static scene;
-  2. train/val scale coverage that spans the held-out distance range;
-  3. held-out that stays scene- and placement-disjoint;
-  4. a usable-threshold firing gate, not the `~0.003` floor or the `0.01` band.
-- The frozen training config (`yolo26n.pt`, `imgsz=640`) is proven. This cycle
-  changes the data, not the model, with training `imgsz` kept as an explicit
-  small-object knob to decide (higher `imgsz` helps far/small at a batch / VRAM
-  cost on the 6 GB RTX A3000).
-
-## Target Classes And Minimum Per-Class Counts
-
-Class map and first-pass label / do-not-label rules stay as defined in
-`wiki/YOLO_Dataset_Plan.md`. Current reality: `9` labeled instances, all
-`person`; `buoy`, `vessel`, `dock`, and `obstacle` have zero examples. The
-dataset plan's sizing target is hundreds of labeled instances per active class;
-do not repeat the 9-box pilot.
-
-Fill per-bucket targets at manifest time before any capture:
-
-| ID | Class | Current | Near | Mid | Far | Per-class target | Primary source |
-| ---: | --- | ---: | ---: | ---: | ---: | --- | --- |
-| 0 | `buoy` | 0 | TBD | TBD | TBD | hundreds (see plan) | VRX bootstrap |
-| 1 | `vessel` | 0 | TBD | TBD | TBD | hundreds (see plan) | VRX, spawn-required |
-| 2 | `dock` | 0 | TBD | TBD | TBD | hundreds (see plan) | VRX bootstrap |
-| 3 | `obstacle` | 0 | TBD | TBD | TBD | hundreds (see plan) | RealSense / public / world-authoring |
-| 4 | `person` | 9 | TBD | TBD | TBD | hundreds (see plan) | RealSense / public |
-
-Distribution rule: no active bucket, and especially `far`, should fall below
-about one third of that class total. The `far` bucket was the 09/07 miss and is
-the most data-hungry.
-
-## Distance Buckets
-
-Define buckets by apparent object size so collection is measurable, not by feel:
-
-- `near` - object taller than roughly one third of the frame height;
-- `mid` - roughly one tenth to one third of frame height;
-- `far` - below roughly one tenth of frame height (small, previously-missed
-  regime).
-
-Every active class needs coverage in each deployment-relevant bucket. Record the
-measured apparent size per scene in the manifest, not just a subjective label.
-
-## Placement, Lighting, Occlusion, Background Variation
-
-Follow the capture protocol in `wiki/YOLO_Dataset_Plan.md` and prioritize
-diversity over frame count:
-
-- placement: vary position in frame, spacing, and orientation across scenes;
-- lighting: overcast, direct sun, glare, backlight, dusk; on-water reflections;
-- occlusion: partial occlusion where the class stays identifiable; skip frames
-  where a target is not labelable;
-- background: open water, shoreline, dock, vegetation, vessels, clutter;
-- negatives: empty / background-only frames at each distance bucket;
-- sampling: sparse frames on scene / distance / lighting / orientation change;
-  no dense near-duplicate bursts.
-
-## Split Rules
-
-Use the four-way split contract from `wiki/YOLO_Dataset_Plan.md`
-(`train` / `val` / `calib_hailo` / `tier3_eval`), assigned at capture / review
-time and disjoint at the scene / condition level.
-
-09/07 correction, binding for this cycle:
-
-- `train`, `val`, and `tier3_eval` must span the **same** distance-bucket range,
-  so the held-out set is not a scale-extrapolation trap.
-- They must still be **scene- and placement-disjoint**, or the held-out only
-  measures memorization.
-- `tier3_eval` holds at least a few clear positives per active class in each
-  active bucket, plus negatives, to record a meaningful held-out confidence
-  distribution.
-
-## Source Plan Per Class
-
-Carry the 08/07 acquisition-manifest decisions:
-
-- VRX can bootstrap `buoy`, `vessel` (spawn-required), and `dock`, with a
-  domain-gap caveat versus real RealSense input;
-- `obstacle` and `person` need real RealSense capture, admitted public data
-  (licence and class-map checked), or explicit world / asset authoring; VRX
-  `obstacle` / `person` remain unsupported without a separate source decision.
-
-Fill the chosen source per class per bucket in the manifest before capture. Keep
-all manifests, images, labels, weights, and runs outside the public repo.
-
-## Pass Gate
-
-This cycle passes only when a checkpoint trained on the new data fires on **real
-held-out maritime** frames at a usable threshold:
-
-- record the per-class held-out confidence distribution;
-- require firing at `conf >= 0.05`, ideally `conf >= 0.25`, on `val` and
-  `tier3_eval`;
-- the `~0.003` floor and the `0.01` band do not count as usable firing.
-
-Only after that gate passes should maritime deployment, dashboard integration,
-or the Hailo accuracy-grade / Tier 3 path reopen.
-
-## Camera-Only Live Rehearsal Gate
-
-Use this only if a useful live test is wanted on 15/07. It is a camera logistics
-test, not detector recovery.
-
-Purpose:
-
-- verify the Pi 5 direct RealSense still-capture route is still healthy;
-- check whether the fixed camera placement can produce measurable `near`, `mid`,
-  and `far` apparent-size buckets at the intended collection resolution, not
-  only at the quick health-check profile;
-- decide whether a later real maritime collection can reuse this physical
-  camera placement or needs a different mount / distance plan.
-
-Preconditions:
-
-- repo state is clean and synced before starting;
-- D435I is the only camera owner;
-- no ROS camera launch, dashboard camera panel, `rqt_image_view`, live detector,
-  Hailo path, MAVROS, QGC, Herelink, mission upload, arming, mode change,
-  parameter write, thruster, or actuator work;
-- any stills kept from the rehearsal go outside the repo under a new root such
-  as
-  `/home/ghostzero/datasets/uvautoboat_maritime_live_rehearsal_20260715/`;
-- choose the snapshot resolution before the rehearsal; if the far bucket is the
-  question, compare `640x480` against the intended higher collection profile
-  rather than judging labelability from `640x480` alone;
-- place a reference target of known approximate size in frame for the apparent
-  size check, such as the proxy bottle, a person, or a ruler / marked card;
-- do not reuse or merge into the 09/07 unicolor smoke dataset.
-
-Minimal live-test sequence:
-
-Use the proven Pi helper's preflight / snapshot flow where possible. A trimmed
-camera-only helper is acceptable if it removes object-identity requirements but
-keeps one-camera-owner start / stop behavior.
-
-1. Pi preflight only: date, host, IP, thermal readout, camera-owner process
-   check, Python import check, D435I identity, and one `640x480@15` stream
-   start / stop.
-2. One headless snapshot at the intended collection resolution to verify current
-   framing and exposure; if that profile cannot start, record the exact blocker.
-3. Optional paired-resolution snapshot: repeat the same framing at `640x480`
-   and at the intended higher profile to separate placement limits from
-   resolution limits.
-4. Optional three-distance rehearsal stills: `near`, `mid`, and `far`, with one
-   or a few sparse stills per distance after physically changing the object
-   distance / placement.
-5. Copy snapshots back to the workstation for visual review.
-6. Stop. Do not label, train, evaluate, export, or deploy.
-
-What to record if run:
-
-- Pi host, IP, uptime, temperature, and D435I serial / firmware;
-- snapshot path(s), copy-back path(s), capture profile(s), and image dimensions;
-- whether `near`, `mid`, and `far` were actually visible and labelable from the
-  fixed camera placement at the intended collection resolution;
-- whether the `far` bucket looks like a capture-resolution problem, a placement
-  problem, or both; carry that into the training `imgsz` decision;
-- exact blocker if the camera route, framing, thermal state, or copy-back fails;
-- bounded non-claim: this proves camera logistics only.
-
-## Optional Proxy Rehearsal
-
-Run only after the camera-only rehearsal shows that the fixed placement and
-intended resolution can produce labelable `near`, `mid`, and `far` frames. Keep
-it short and explicitly not a recovery pass:
-
-- 10-15 genuinely different scenes per distance bucket, not 12 static frames per
-  scene;
-- both proxy objects visible in every positive; negatives per bucket;
-- purpose is to rehearse the multi-scale capture / label / split logistics, not
-  to recover a model.
-
-Skippable. The mechanical loop is already proven, so this adds logistics
-practice only.
-
-## Track A - Explicit Non-Claims
-
-- No Hailo compile, calibration, Tier 3, or HEF work.
-- No deployment, dashboard integration, MAVROS, QGC, Herelink, mission upload,
-  arming, mode change, parameter write, thruster, or actuator path.
-- No maritime detector-recovery claim until real held-out maritime firing works
-  at a usable threshold.
-- No production repo Python / YAML changes; all data and manifests stay outside
-  the public repo.
-- Default mode is design only; the camera-only rehearsal, any capture beyond
-  snapshots, labeling, and training are gated on explicit approval.
-
-**Track A next steps:** Confirm the per-class and per-bucket targets and the source
-assignment, decide the training `imgsz` for the far bucket, then either run the
-camera-only live rehearsal, run the optional proxy logistics rehearsal, or plan
-the real maritime collection when water or VRX access is available.
-
-## Track B - Web Dashboard Bug-Fix
+## Track A - Web Dashboard Bug-Fix
 
 ### Overview
 
@@ -283,7 +79,7 @@ confirmed ones with the smallest guard.
    (`app.js:1787`) and the dual-mapped `min_safe_distance` (`app.js:3448`) are
    likely intentional.
 
-### Track B Blocks (gated - start only on explicit approval)
+### Track A Blocks (gated - start only on explicit approval)
 
 - Block A: repo guard; read `app.js`, `index.html`, the perception / planning /
   control publishers, and the two wiki references; record the guaranteed message
@@ -296,7 +92,7 @@ confirmed ones with the smallest guard.
   `web_video_server` + `serve_dashboard.py`, user-run) with a browser hard-refresh;
   confirm the fixed handlers no longer abort and untouched panels are unchanged.
 
-### Track B - Boundaries And Non-Claims
+### Track A - Boundaries And Non-Claims
 
 - JS / HTML edits require confirming the real defect first; no speculative
   refactors, no init rewrite, no param promotion without operational evidence.
@@ -305,11 +101,11 @@ confirmed ones with the smallest guard.
   flagged, not in scope for this bug-fix pass.
 - Live dashboard verification is user-run on the Linux workstation.
 
-**Track B next steps:** On approval, start Block A - read the dashboard plus the
+**Track A next steps:** On approval, start Block A - read the dashboard plus the
 publishers and record the guaranteed fields, then confirm each candidate before any
 fix.
 
-## Track C - Hailo-COCO Dashboard Streaming
+## Track B - Hailo-COCO Dashboard Streaming
 
 ### Overview
 
@@ -354,7 +150,7 @@ consumes.
   transcode hop the `<img>` panel cannot render; Option 5 (tail the saved AVI) is a
   lag-tolerant stopgap only.
 
-### Track C Blocks (gated - start only on explicit approval)
+### Track B Blocks (gated - start only on explicit approval)
 
 - Block A: repo guard; on the Pi, read the pinned runner source
   (`~/hailo_coco_overlay_2026-07-10/hailo-apps/.../object_detection.py`) to find the
@@ -371,7 +167,7 @@ consumes.
 - Block D: bounded, temperature-guarded live run; confirm the annotated overlay
   renders live in the dashboard panel; copy an evidence frame back.
 
-### Track C - Boundaries And Non-Claims
+### Track B - Boundaries And Non-Claims
 
 - Reuse the proven ROS / `web_video_server` path; keep the bridge node and all Hailo
   artifacts outside the public repo (established boundary).
@@ -384,10 +180,100 @@ consumes.
 - Stock-COCO overlay only; not maritime / custom-detector recovery, and not a
   `vision_msgs/Detection2DArray` structured-detection track.
 
-**Track C next steps:** On approval, start Block A - read the runner source for the
+**Track B next steps:** On approval, start Block A - read the runner source for the
 frame handoff, then prove the transport half (Block B) before building the tap.
 
+## Track C - Real MAVLink Telemetry Prep
+
+### Overview
+
+Prepare the dashboard to consume real vehicle telemetry from live MAVLink. This
+inherits the 05/06 Block H decision
+(`working_diary/2026-06-05_friday_dashboard_sim_real_integration_plan.md`): the real
+adapter is an external read-only relay that republishes MAVROS telemetry onto the
+dashboard's **existing `/wamv/*` consumer topics** under a real-adapter-on /
+simulation-source-off flag - not a dashboard resubscribe to `/mavros/*`, and not a new
+neutral `/sensors/*` layer (that stays later preparatory plumbing). Design /
+plan-first and strictly read-only: no `app.js` edit, no command / write path.
+
+### Starting Context
+
+- The dashboard subscribes to simulation `/wamv/*` topics over rosbridge and does
+  **not** subscribe to `/mavros/*`; the 05/06 Option B path therefore relays real
+  MAVROS -> existing `/wamv/*` topics rather than changing dashboard subscriptions.
+- Same-family mappings already worked out on 05/06 (re-confirm the live message shapes
+  before implementing):
+  - GPS: `/mavros/global_position/raw/fix` -> `/wamv/sensors/gps/gps/fix`
+    (`sensor_msgs/NavSatFix`), keeping the **no-fix guard** - `raw/fix` publishes the
+    `status: -1` no-fix state; `/global` stays out until a real fix publishes.
+  - IMU: `/mavros/imu/data` -> `/wamv/sensors/imu/imu/data` (`sensor_msgs/Imu`),
+    same message family, relay only.
+  - Thruster / command: **not mapped** - the low-level command path is unvalidated
+    (04/06 request/response timeouts); no thrust bridge.
+- Transport / domain (proven bench topology): on the Pi, MAVProxy owns
+  `/dev/ttyAMA0:57600` and fans out to `udpout:127.0.0.1:14550`; Pi-local MAVROS
+  consumes `udp://127.0.0.1:14550@`. An optional `14551` leg remains passive
+  inspection only. QGC / Herelink are not part of this dashboard track and stay
+  stopped. On the ROS side, Pi MAVROS, workstation rosbridge, `web_video_server`,
+  the external adapter, and the dashboard checks must **all share
+  `ROS_DOMAIN_ID=12`** so the MAVROS topics cross DDS to the workstation graph.
+
+### Track C Blocks (gated - start only on explicit approval)
+
+- Block A - review the existing mapping: re-read the 05/06 Option B mapping table and
+  confirm the current live message shapes for `/mavros/global_position/raw/fix`,
+  `/mavros/imu/data`, and `/mavros/state` (guaranteed fields, no-fix behavior) against
+  a live MAVROS graph; record any drift from the 05/06 mapping.
+- Block B - transport / domain: with QGC / Herelink stopped, bring up the proven
+  Pi-local path `/dev/ttyAMA0:57600 -> MAVProxy -> udpout:127.0.0.1:14550 ->
+  MAVROS`; keep Pi MAVROS, workstation rosbridge, and the dashboard on
+  `ROS_DOMAIN_ID=12`, then confirm the workstation sees the real MAVROS topics in
+  the same graph as the dashboard. No adapter yet.
+- Block C - implementation gate (explicit): with simulation `/wamv/*` publishers
+  **off**, start the external read-only adapter that relays MAVROS -> the existing
+  `/wamv/*` consumer topics (GPS with the no-fix guard, IMU relay). For this
+  dashboard-only validation, keep the simulation publishers and all non-dashboard
+  `/wamv/*` consumers (`heading_controller`, `waypoint_planner`, and
+  `waypoint_visualizer`) stopped, and verify that no FCU command / write bridge is
+  running - so only MAVROS, the external adapter, rosbridge, and the dashboard remain.
+  Publishing real telemetry onto `/wamv/*` would otherwise wake those planner /
+  controller / visualizer consumers and could emit ROS-side thrust output even with no
+  real FCU bridge. External and gated; neutral `/sensors/*` stays later plumbing.
+- Block D - dashboard display validation: user-run; **view only the telemetry panels**
+  (no-fix GPS state and IMU) with the adapter on and the sim source off. Do **not**
+  operate Start / Resume / Stop / E-stop / manual-thrust / mission controls - the
+  dashboard is itself a first-class ROS publisher (mission-command `app.js:1062`,
+  direct-thrust `app.js:2517`), so its controls can still publish command / thrust
+  messages even with no real FCU bridge to receive them. Watch
+  `/planning/mission_command`, `/wamv/thrusters/left/thrust`,
+  `/wamv/thrusters/right/thrust`, and `/planning/emergency_stop`; stop immediately if
+  any new message appears. Then restore the sim default. Record the
+  bounded claim as: telemetry rendered, no real actuator / FCU effect, and no
+  command-topic publish observed this session.
+
+### Track C - Boundaries And Non-Claims
+
+- Read-only telemetry only: no command / write / setpoint / arm / mode / parameter /
+  thruster / actuator path from this track (the command path stays unvalidated).
+- The adapter is external and gated; no `app.js` / dashboard code change - it feeds
+  the existing `/wamv/*` consumer topics, so the dashboard needs no edit to test.
+- Real-adapter-on and simulation-source-off are mutually exclusive: do not run both
+  publishers onto `/wamv/*` at once, and restore the simulation default after the test
+  (no-regression).
+- Dashboard-only isolation during the validation: no planner / controller / visualizer
+  (`heading_controller`, `waypoint_planner`, `waypoint_visualizer`) and no FCU command
+  / write bridge runs while the adapter publishes to `/wamv/*`. The dashboard itself
+  remains a ROS command / thrust publisher (mission-command / direct-thrust, per
+  `wiki/Dashboard_Security.md`), so there is no *real* actuator / FCU effect (no bridge
+  receives commands), but the operator must not touch the command controls - see
+  Block D.
+- QGC, Herelink, mission sync, and upload remain out of scope and stopped; this is
+  dashboard read-only telemetry prep only.
+
+**Track C next steps:** On approval, start Block A - re-confirm the 05/06 Option B
+mapping and the live message shapes before the transport bring-up.
+
 **Next steps:** Pick a track and get explicit approval to start its Block A -
-Track A (maritime design), Track B (dashboard bug-fix), or Track C
-(Hailo -> dashboard streaming). All three are design / plan-first and separately
+Track A (dashboard bug-fix), Track B (Hailo -> dashboard streaming), or Track C
+(real MAVLink telemetry prep). All three are design / plan-first and separately
 gated.
