@@ -330,3 +330,27 @@ is retained unchanged. Full evidence:
 The external MAVROS adapter and the Hailo bridge remain gated; only a Track B dummy
 publisher may be materialized first, and only once an exact external path is
 approved.
+
+## Implementation Status - 13/07/2026
+
+Track C item G1 (the dashboard `NavSatFix.status` guard) is implemented and
+unit-tested locally in `web_dashboard/autoboat/app.js` (with
+`web_dashboard/autoboat/test/gps_fix.test.js`, 10/10 `node:test`): `updateGPS`
+rejects a sample unless `status.status >= 0` with finite coordinates, so a no-fix
+`0, 0` no longer renders as a valid position while a real `0, 0` fix is still
+accepted. Not live-run. The matching planner-side guard is still open -
+`waypoint_planner.py` `gps_callback` (:419) treats the first no-fix sample as
+GPS-ready and anchors the origin at `0, 0` - and is the recommended next block.
+Full record:
+`working_diary/2026-07-13_to_2026-07-14_vacation_sidework_dashboard_preflight.md`.
+
+## Implementation Status - 13/07/2026 (Planner Guard Landed)
+
+The planner-side guard is now implemented and unit-tested locally too:
+`waypoint_planner.py` `gps_callback` (:419) returns early unless
+`msg.status.status >= 0` with finite coordinates, so a no-fix first sample no
+longer anchors the mission origin at `0, 0` or reports GPS-ready (7 focused tests;
+full `plan/test` 9 passed + 1 skip; not live-run). This closes the
+dashboard/planner GPS-readiness contradiction. One bounded residual stays open: the
+30 s force-ready fallback in `publish_mission_status` (:1466) can still publish a
+misleading `gps_ready` after a timeout without initializing the origin.

@@ -161,3 +161,53 @@ explicit approval. The 15/07/2026 formal dashboard day and every code / runtime
 edit remain separately gated; the superseding steps are in the 15/07 early-
 preparation addendum. C5 removal and the defensive C1/C2/C3 guards stay deferred -
 no runtime benefit now.
+
+## Implementation Note - 13/07/2026 - Dashboard GPS No-Fix Guard
+
+Following the source-only preflight above, the first Track C reality-check item
+(the dashboard `NavSatFix.status` guard) was implemented and unit-tested locally
+later on 13/07/2026. This moves that one item from design to implementation; the
+preflight sections and their documentation-only scope stand as written.
+
+- `web_dashboard/autoboat/app.js`: `updateGPS` accepts a sample only when
+  `status.status >= 0` with finite latitude/longitude (`isUsableGpsFix`);
+  coordinates are not a validity signal, so a real `0, 0` fix is still accepted.
+  Invalid samples show `No fix | Pas de position`, hold the last map position, and
+  reset the speed/distance baseline (`progressState.lastPosition = null`). The
+  obsolete `lat !== 0 && lon !== 0` origin guard in `gpsToLocal` was removed.
+- `web_dashboard/autoboat/test/gps_fix.test.js`: focused `node:test` coverage over
+  invalid/missing status, non-finite coordinates, valid `0, 0`, and outage
+  reacquisition.
+- Verified locally: 10/10 tests, `node --check` clean, `git diff --check` clean;
+  the GPS subscription (`app.js:809`) calls `updateGPS` by name, so the reassigned
+  guard wrapper runs at runtime. No ROS / browser live test was run.
+
+Open follow-on: the planner side of the same contract - `waypoint_planner.py`
+`gps_callback` (:419) stores `start_gps` from the first sample with no status
+check, anchoring the mission origin at `0, 0` on a no-fix first sample and
+reporting `gps_ready` - is the recommended next block.
+
+## Implementation Note - 13/07/2026 - Planner GPS No-Fix Guard
+
+The planner-side follow-on flagged above is now implemented and unit-tested
+locally, closing the dashboard/planner GPS-readiness contradiction.
+
+- `plan/plan/waypoint_planner.py`: `gps_callback` (:419) now returns early unless
+  `msg.status.status >= 0` with finite latitude/longitude, before touching planner
+  state - mirroring the dashboard `isUsableGpsFix` semantics. `current_gps` and
+  `start_gps` initialize only from the first usable fix; a real `0, 0` fix is
+  accepted; later no-fix samples retain the last valid `current_gps` and never
+  re-anchor `start_gps`.
+- `plan/test/test_waypoint_planner_gps.py`: focused coverage (unbound
+  `gps_callback` against a duck-typed state with real `NavSatFix` messages) -
+  unusable first fix rejected, valid `0, 0` after a no-fix accepted, current fix
+  updates without moving the origin, last valid position held during a no-fix.
+- Verified locally: focused 7 passed; full `plan/test` 9 passed + 1 existing skip;
+  `py_compile` and `git diff --check` clean. No colcon rebuild, node restart, DDS
+  graph, or live replay was run.
+
+Bounded residual (not fixed): `publish_mission_status` (:1466) keeps an independent
+30 s force-ready fallback that sets `/planning/mission_status.gps_ready` true after
+a GPS timeout even with no usable fix. It does not initialize the origin
+(`start_gps` stays `None`), so it cannot corrupt the local frame, but it can
+publish a misleading readiness value. Left as a separate, bounded follow-up.
