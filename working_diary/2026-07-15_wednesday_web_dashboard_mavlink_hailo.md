@@ -382,3 +382,16 @@ remains separately open. A low-severity post-test shutdown defect
 `rclpy.shutdown()` after an external shutdown already ran) is recorded and deferred.
 Full record:
 `working_diary/2026-07-13_to_2026-07-14_vacation_sidework_dashboard_preflight.md`.
+
+## Fix Status - 14/07/2026 (Planner Residuals Resolved)
+
+Both residuals above are now fixed and verified (unit + domain-112 live),
+superseding their open/deferred status. `publish_mission_status` derives readiness
+from `start_gps` and no longer force-sets `gps_ready` on timeout (the forced value
+had no navigation consumer; backend, CLI, QGC bridge, and dashboard all use
+`start_gps`/`/planning/config`), and `main()` catches `ExternalShutdownException`
+and uses the idempotent `rclpy.try_shutdown()`. Red-green unit tests + full
+`plan/test` 13 passed / 1 skip + rebuild + an isolated domain-112 live replay
+(readiness stays false past 30 s, true on a real fix; clean SIGINT shutdown, no
+traceback, no orphan) all pass. Full record:
+`working_diary/2026-07-13_to_2026-07-14_vacation_sidework_dashboard_preflight.md`.

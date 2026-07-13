@@ -267,3 +267,33 @@ Deferred follow-up (post-test, does not affect the GPS verdict): the planner's
 (`ExternalShutdownException`) double-shuts the context and raises
 `RCLError: rcl_shutdown already called`. Low-severity shutdown-path defect,
 recorded and deferred.
+
+## Fix Note - 14/07/2026 - Planner Residuals Resolved
+
+Both bounded residuals recorded above are now fixed and verified (unit + isolated
+domain-112 live), superseding their "deferred" / "separately open" status.
+
+- Force-ready fallback: `publish_mission_status` now derives readiness from
+  `start_gps` (the same oracle as `/planning/config`) and never forces
+  `gps_ready = true` on timeout. The one-time late-GPS warning is kept but reworded
+  truthfully ("readiness stays disabled until a real fix"). This was safe because
+  the forced value had no navigation consumer - the backend gates every GPS
+  operation on `start_gps` / `current_gps` directly (`waypoint_planner.py:456,586`),
+  and the dashboard, CLI (`autoboat_cli.py:492`), and QGC bridge
+  (`qgc_live_mission_bridge.py:110`) all read the truthful `/planning/config`.
+- Double shutdown: `main()` now catches `(KeyboardInterrupt,
+  ExternalShutdownException)` and calls the idempotent `rclpy.try_shutdown()`, so an
+  external shutdown no longer double-shuts the context.
+- Verification: red-green unit tests
+  (`plan/test/test_waypoint_planner_mission_readiness.py`,
+  `plan/test/test_waypoint_planner_shutdown.py` - two discriminator tests fail on the
+  old code, all pass after the fixes); full `plan/test` 13 passed + 1 skip;
+  `py_compile` clean; `plan` rebuilt. Isolated domain-112 live replay: past the 30 s
+  timeout with no GPS, `mission_status.gps_ready` stayed `false` and the truthful
+  one-time warning fired; a valid fix flipped both `/planning/config` and
+  `/planning/mission_status` to `true`; SIGINT to the node shut down cleanly with no
+  traceback and no orphan (child-aware teardown). Evidence:
+  `testlogs_14_07_2026.txt`, `planner_residuals_node_14_07_2026.txt`.
+
+No dependency or configuration change; scope limited to `waypoint_planner.py` and
+focused planner tests. Kept as two code commits plus this diary update.
