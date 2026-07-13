@@ -74,7 +74,7 @@ const GO_HOME_INIT_KEY = 'autoboat_go_home_initial_distance';
 
 // Data storage
 let currentState = {
-    gps: { lat: 0, lon: 0, local_x: 0, local_y: 0 },
+    gps: { lat: 0, lon: 0, local_x: 0, local_y: 0, hasFix: false },
     obstacles: { min: Infinity, front: true, left: true, right: true },
     thrusters: { left: 0, right: 0 },
     mission: { state: 'UNKNOWN', waypoint: 0, distance: 0 },
@@ -382,7 +382,7 @@ function initMap() {
                 L.DomEvent.stopPropagation(e);
                 mapFollowBoat = !mapFollowBoat;
                 updateFollowButtonState();
-                if (mapFollowBoat && currentState.gps.lat !== 0) {
+                if (mapFollowBoat && currentState.gps.hasFix) {
                     map.panTo([currentState.gps.lat, currentState.gps.lon]);
                 }
             });
@@ -1094,6 +1094,22 @@ function subscribeToTopics() {
     addTerminalLine({ level: 20, msg: 'Connected to ROS | Connecté à ROS', name: 'system' });
 }
 
+// A NavSatFix coordinate is usable only when its status explicitly reports a fix.
+// Coordinate values alone are not a validity signal: 0,0 is a valid location.
+function isUsableGpsFix(message) {
+    return Number.isFinite(message?.status?.status)
+        && message.status.status >= 0
+        && Number.isFinite(message?.latitude)
+        && Number.isFinite(message?.longitude);
+}
+
+function displayGpsNoFix() {
+    document.getElementById('latitude').textContent = 'No fix | Pas de position';
+    document.getElementById('longitude').textContent = 'No fix | Pas de position';
+    document.getElementById('local-x').textContent = 'N/A';
+    document.getElementById('local-y').textContent = 'N/A';
+}
+
 // Update GPS data (OPTIMIZED - throttled trajectory updates)
 function updateGPS(message) {
     currentState.gps.lat = message.latitude;
@@ -1483,11 +1499,7 @@ let gpsOrigin = null;
 function gpsToLocal(lat, lon) {
     // Use first GPS fix as origin, same as waypoint_planner
     if (!gpsOrigin) {
-        if (lat !== 0 && lon !== 0) {
-            gpsOrigin = { lat: lat, lon: lon };
-        } else {
-            return { x: 0, y: 0 };
-        }
+        gpsOrigin = { lat: lat, lon: lon };
     }
 
     const latDiff = (lat - gpsOrigin.lat) * 111320; // meters per degree latitude
@@ -1498,6 +1510,11 @@ function gpsToLocal(lat, lon) {
 
 // Update local coordinates display
 setInterval(() => {
+    if (!currentState.gps.hasFix) {
+        document.getElementById('local-x').textContent = 'N/A';
+        document.getElementById('local-y').textContent = 'N/A';
+        return;
+    }
     const local = gpsToLocal(currentState.gps.lat, currentState.gps.lon);
     document.getElementById('local-x').textContent = local.x.toFixed(1) + 'm';
     document.getElementById('local-y').textContent = local.y.toFixed(1) + 'm';
@@ -4036,6 +4053,17 @@ updateMissionStatus = function(data) {
 // Hook into GPS updates for speed tracking
 const originalUpdateGPS = updateGPS;
 updateGPS = function(message) {
+    if (!isUsableGpsFix(message)) {
+        currentState.gps.hasFix = false;
+        currentState.gps.speed = 0;
+        // Do not bridge a GPS outage into the next speed/distance sample.
+        // Reacquisition must establish a fresh position/time baseline first.
+        progressState.lastPosition = null;
+        displayGpsNoFix();
+        return false;
+    }
+
+    currentState.gps.hasFix = true;
     originalUpdateGPS(message);
 
     // Recompute instantaneous ground speed every tick. The previous
@@ -4066,6 +4094,8 @@ updateGPS = function(message) {
     if (missionState.state === 'DRIVING') {
         updateMissionProgress();
     }
+
+    return true;
 };
 
 // Hook into waypoint generation to trigger validation
