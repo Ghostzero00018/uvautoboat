@@ -211,3 +211,59 @@ Bounded residual (not fixed): `publish_mission_status` (:1466) keeps an independ
 a GPS timeout even with no usable fix. It does not initialize the origin
 (`start_gps` stays `None`), so it cannot corrupt the local frame, but it can
 publish a misleading readiness value. Left as a separate, bounded follow-up.
+
+## Validation Note - 13/07/2026 - Dashboard DOM Smoke
+
+The dashboard GPS no-fix guard was exercised in the browser later on 13/07/2026.
+This supersedes only the browser half of "No ROS / browser live test was run"
+above; no ROS / rosbridge / topic replay was run, so that half stays accurate.
+
+- Scope: a browser-level direct-call smoke, NOT end-to-end - rosbridge was absent
+  and `updateGPS` was called straight from the DevTools console, bypassing ROS.
+- Confirmed by the log: `typeof updateGPS` is `"function"` (the wrapper loaded
+  without rosbridge); the four calls returned `false -> true -> true -> false`
+  (no-fix rejected, valid `0, 0` accepted, valid fix accepted, later no-fix
+  rejected); the final state read `hasFix: false` with `baseline: null`.
+- Not captured (remains unit-test evidence): the rendered GPS panel text and the
+  expanded `stored` / `marker` coordinates - Firefox printed them collapsed and
+  they were deliberately not re-run to expand. The "hold last valid position"
+  values stay covered by `test/gps_fix.test.js`.
+- Expected noise only: `ws://127.0.0.1:9090` connection refusals (no rosbridge) and
+  Leaflet legacy-CSS parse warnings.
+- Source regression (Pipeline 1) re-confirmed green at HEAD `7fd0357`.
+
+Planner guard unchanged: source-tested only; live-node replay (Pipeline 3)
+deferred.
+
+## Validation Note - 13/07/2026 - Planner Live-Node Replay (Pipeline 3)
+
+This supersedes the "source-tested only; live-node replay (Pipeline 3) deferred"
+statement above: Pipeline 3 was run on 13/07/2026 (workstation only, isolated
+`ROS_DOMAIN_ID=112`, no Pi / Gazebo / MAVROS / FCU / browser / external network), and the
+planner GPS no-fix guard is now live-node validated against the installed 7fd0357
+source.
+
+- Endpoint: publisher 0, subscription 1, `waypoint_planner_node`, RELIABLE /
+  VOLATILE. History depth introspected as UNKNOWN on the subscription side, so
+  depth 10 was NOT live-proven - it is only declared in source.
+- Phase 1 - initial no-fix (`status -1`, `0, 0`): `/planning/config` stayed
+  `gps_ready: false`, `start_lat/lon: null` before and after; no acquisition logged.
+- Phase 2 - valid `0, 0` (`status 0`): `gps_ready: true`, `start 0.0 / 0.0`; exactly
+  one `Base Point` and one `GPS acquired`.
+- Phase 3 - move (`status 1`, `0.0001, 0.0002`): origin held `0.0 / 0.0`,
+  `/planning/mission_status` position `[22.24, 11.12]`.
+- Phase 4 - later no-fix (`status -1`, `51, 3`): position held at `[22.24, 11.12]`,
+  origin held `0.0 / 0.0`, acquisition counts stayed `1 / 1` - the decisive live
+  proof that a no-fix cannot move the origin or the last valid position.
+- The 30 s force-ready fallback was NOT triggered (the valid fix set `start_gps`
+  before the timeout; no warning logged) and remains a separate, open bounded
+  residual; `/planning/config.gps_ready`, used as the oracle, is independent of it.
+- Evidence: `testlogs_13_07_2026.txt` (combined) and
+  `planner_pipeline3_node_13_07_2026.txt` (node stdout).
+
+Deferred follow-up (post-test, does not affect the GPS verdict): the planner's
+`main()` (`waypoint_planner.py:1544`) catches only `KeyboardInterrupt`, and its
+`finally` calls `rclpy.shutdown()` unconditionally, so an external shutdown
+(`ExternalShutdownException`) double-shuts the context and raises
+`RCLError: rcl_shutdown already called`. Low-severity shutdown-path defect,
+recorded and deferred.

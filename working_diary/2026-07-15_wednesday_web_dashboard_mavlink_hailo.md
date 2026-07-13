@@ -354,3 +354,31 @@ full `plan/test` 9 passed + 1 skip; not live-run). This closes the
 dashboard/planner GPS-readiness contradiction. One bounded residual stays open: the
 30 s force-ready fallback in `publish_mission_status` (:1466) can still publish a
 misleading `gps_ready` after a timeout without initializing the origin.
+
+## Validation Status - 13/07/2026 (Dashboard DOM Smoke)
+
+Clarifying "Not live-run" above for the dashboard side: the GPS no-fix guard was
+browser-executed on 13/07/2026 as a direct-call DOM smoke (console `updateGPS`
+calls), but NOT ROS/topic-replayed - rosbridge was absent, so this is not
+end-to-end. The log confirms the wrapper loaded (`typeof updateGPS` is
+`"function"`), the return sequence `false -> true -> true -> false` (valid `0, 0`
+accepted, no-fix rejected), and a final `hasFix: false` / `baseline: null`. The
+rendered panel text and expanded `stored` / `marker` coordinates were not captured
+and remain unit-test evidence. Planner side unchanged: source-tested only,
+Pipeline 3 deferred. Baseline clean at HEAD `7fd0357`.
+
+## Validation Status - 13/07/2026 (Planner Live-Node Replay)
+
+Superseding "Pipeline 3 deferred" above: the planner GPS no-fix guard is now
+live-node validated (Pipeline 3, workstation-only, isolated `ROS_DOMAIN_ID=112`).
+All four phases passed against the installed 7fd0357 source - initial no-fix
+rejected (`gps_ready: false`, null origin), valid `0, 0` accepted (`start 0.0/0.0`,
+one acquisition), position updated without moving the origin, and a later no-fix
+held the last valid position `[22.24, 11.12]` with no re-acquisition. Endpoint QoS
+was RELIABLE / VOLATILE with History depth UNKNOWN on the subscription side, so
+depth 10 is not live-proven. The 30 s force-ready fallback was not triggered and
+remains separately open. A low-severity post-test shutdown defect
+(`waypoint_planner.py:1544` catches only `KeyboardInterrupt`, then `finally` calls
+`rclpy.shutdown()` after an external shutdown already ran) is recorded and deferred.
+Full record:
+`working_diary/2026-07-13_to_2026-07-14_vacation_sidework_dashboard_preflight.md`.
