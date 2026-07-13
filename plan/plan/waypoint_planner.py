@@ -1463,27 +1463,27 @@ class WaypointPlanner(Node):
         if self.mission_start_time:
             elapsed = (self.get_clock().now() - self.mission_start_time).nanoseconds / 1e9
 
-        # Check GPS ready status with timeout fallback
-        gps_ready = self.current_gps is not None
+        # GPS readiness derives solely from a usable fix - the same oracle as
+        # /planning/config (start_gps). A timeout never forces readiness true.
+        gps_ready = self.start_gps is not None
 
-        # Initialize GPS timeout tracking
-        if self.gps_init_time is None and self.current_gps is None:
+        # Track when the wait began, to emit a single late-GPS warning.
+        if self.gps_init_time is None and not gps_ready:
             self.gps_init_time = self.get_clock().now()
 
-        # GPS timeout: if no GPS after 30 seconds, assume ready anyway (fallback)
+        # One-time warning if GPS is still absent past the timeout; readiness
+        # stays false - navigation gates on start_gps / config, not this field.
         if self.gps_init_time is not None and not gps_ready:
             gps_wait_time = (self.get_clock().now() - self.gps_init_time).nanoseconds / 1e9
-            if gps_wait_time >= self.gps_timeout:
-                gps_ready = True  # Fallback: consider GPS ready after timeout
-                if not self.gps_timeout_warned:
-                    self.get_logger().warn(
-                        f"⚠️  GPS NOT RECEIVED after {self.gps_timeout}s - "
-                        "assuming GPS ready anyway (fallback mode)\n"
-                        "   Check: 'ros2 topic echo /wamv/sensors/gps/gps/fix --once'\n"
-                        "   Issue may be: wrong world file, Gazebo plugin problem, "
-                        "or VRX setup issue"
-                    )
-                    self.gps_timeout_warned = True
+            if gps_wait_time >= self.gps_timeout and not self.gps_timeout_warned:
+                self.get_logger().warn(
+                    f"⚠️  GPS NOT RECEIVED after {self.gps_timeout}s - "
+                    "readiness stays disabled until a real fix\n"
+                    "   Check: 'ros2 topic echo /wamv/sensors/gps/gps/fix --once'\n"
+                    "   Issue may be: wrong world file, Gazebo plugin problem, "
+                    "or VRX setup issue"
+                )
+                self.gps_timeout_warned = True
 
         self._publish_json(
             self.pub_mission_status,
