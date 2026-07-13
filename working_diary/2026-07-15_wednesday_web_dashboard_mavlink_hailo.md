@@ -277,3 +277,56 @@ mapping and the live message shapes before the transport bring-up.
 Track A (dashboard bug-fix), Track B (Hailo -> dashboard streaming), or Track C
 (real MAVLink telemetry prep). All three are design / plan-first and separately
 gated.
+
+## Early-Preparation Addendum - 13/07/2026
+
+A 13/07/2026 source-only preflight (no live run, no hardware access to the
+control-unit box) reviewed the dashboard and the active publishers. It supersedes
+the stale executable steps in the blocks above where noted; the original plan text
+is retained unchanged. Full evidence:
+`working_diary/2026-07-13_to_2026-07-14_vacation_sidework_dashboard_preflight.md`.
+
+- Track A: of the listed candidates, only the dead assignment `const originalInit
+  = window.onload;` (`app.js:3545`) is a real - and inert - defect; its removal and
+  any defensive `!= null` guards are deferred, with no current runtime benefit
+  under the active publisher contract. The `toFixed` crash candidates cannot fire:
+  the perception distance fields are explicitly finite by construction
+  (`lidar_perception.py:892-907`), `best_gap` is null-or-complete (`:868-878`), and
+  the anti-stuck `front_clear` is bounded away from zero by the range and hull
+  self-filter (`lidar_perception.py:461-482`) plus the clearance computation
+  (`:796-804`), independent of the runtime-tunable `min_range`. Item 6 stays open
+  as UX limitations, not crashes: MJPEG recovery is conditional on the `<img>`
+  error event, so a silent stream freeze needs a manual refresh; and the one-way
+  config sync (`app.js:1787`) shows no live controller values/controls because
+  `/planning/config` carries planner state only (`waypoint_planner.py:864-887`).
+
+- Track B: the dashboard is source-compatible with a new `/hailo/overlay/image_raw`
+  (and `/compressed`) topic with no dashboard edit - discovery filter (`app.js:766`),
+  `buildCameraUrl` (`:664-670`), and the manual-entry fallback (`:645-650`). Block
+  B's dummy-topic transport test and Block C's bridge are unrun; the dummy publisher
+  and the frame-tap bridge are drafted only, not persisted or proven. The
+  load-bearing unknown remains the runner's annotated-frame handoff, which needs Pi
+  access. This supersedes the "publish a dummy `sensor_msgs/Image`" executable step
+  in Block B as drafted-not-run.
+
+- Track C: Block D's criterion "view only the telemetry panels (no-fix GPS state
+  and IMU)" is not achievable as written - the dashboard has no IMU subscription or
+  panel, and `updateGPS` (`app.js:1098-1146`) reads lat/lon only and never
+  `NavSatFix.status`, so a no-fix `0, 0` sample would render as a valid position. It
+  is replaced by:
+  1. Relay-plumbing validation (CLI `ros2 topic echo`): confirm
+     `/mavros/global_position/raw/fix` -> `/wamv/sensors/gps/gps/fix` (valid fix
+     forwarded, `status < 0` suppressed) and `/mavros/imu/data` ->
+     `/wamv/sensors/imu/imu/data`, with the simulation `/wamv/*` publishers off and
+     no command / write bridge running.
+  2. Valid-fix GPS display: with a valid `NavSatFix` on
+     `/wamv/sensors/gps/gps/fix`, the existing lat/lon panel and marker render
+     correctly - already supported today.
+  3. Separately gated dashboard UI additions (explicit approval, not this pass): an
+     IMU subscription plus panel, and a `NavSatFix.status` guard / render in
+     `updateGPS` that catches the `0, 0` no-fix case. Resolve the adapter's no-fix
+     policy (drop versus hold-last) together with this render.
+
+The external MAVROS adapter and the Hailo bridge remain gated; only a Track B dummy
+publisher may be materialized first, and only once an exact external path is
+approved.
