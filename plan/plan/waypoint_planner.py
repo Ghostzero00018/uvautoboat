@@ -418,6 +418,13 @@ class WaypointPlanner(Node):
 
     def gps_callback(self, msg):
         """Handle GPS updates."""
+        if not (
+            msg.status.status >= 0
+            and math.isfinite(msg.latitude)
+            and math.isfinite(msg.longitude)
+        ):
+            return
+
         self.current_gps = (msg.latitude, msg.longitude)
 
         # First GPS fix - store start position but wait for mission command
