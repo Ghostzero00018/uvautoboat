@@ -131,17 +131,25 @@ consumes.
 - The D435I is single-owner, so `realsense2_camera` and the Hailo runner cannot
   co-run; the annotated frames must originate from the runner.
 - Raw `Image` at `640x480@15` over WiFi is heavy (the RealSense feed had to drop to
-  `424x240x15`) - prefer compressed `image_transport` and / or a lower runner
-  `OUTRES`.
+  `424x240x15`) - prefer compressed `image_transport`. A lower runner `OUTRES` is
+  not available: `sd` = `640x480` is the floor, since
+  `wiki/Hailo_COCO_Overlay_Demo.md:196-197` offers only `sd|hd|fhd` and `:247`
+  hard-rejects anything else. Any further reduction must therefore come from the
+  bridge (downscale before publish) or from compressed transport, not from a
+  runner knob.
 
 ### Approach (chosen path plus fallbacks)
 
 - **Option 1 (chosen):** a thin Pi-side `rclpy` node taps the runner's annotated BGR
   frame and publishes `sensor_msgs/Image` (plus a `compressed` variant) on
-  `/hailo/overlay/image_raw`. It auto-appears in the dashboard camera dropdown
-  (matches the discovery filter) and reuses the unchanged `web_video_server` and
-  dashboard, so no `app.js` / `index.html` edit is needed to test, and the
-  loopback-only, no-new-exposed-port posture is preserved. Keep the bridge node
+  `/hailo/overlay/image_raw`. It matches the dashboard camera dropdown's discovery
+  filter, but matching is necessary rather than sufficient: discovery is a one-shot
+  query fired on the rosbridge connection event (`app.js:526-533`), and Refresh
+  calls `updateCameraStream()`, not the discovery. Start the publisher first, then
+  connect the browser - or hard-refresh an already-open tab so discovery reruns. It
+  reuses the unchanged `web_video_server` and dashboard, so no `app.js` /
+  `index.html` edit is needed to test, and the loopback-only, no-new-exposed-port
+  posture is preserved. Keep the bridge node
   external (like the runner) unless it is deliberately promoted into an in-repo ROS
   package (which triggers the `package.xml` dependency discipline).
 - Fallbacks, each worse: Option 2 (`web_video_server` Pi-side) and Option 3 (a small
@@ -150,17 +158,315 @@ consumes.
   transcode hop the `<img>` panel cannot render; Option 5 (tail the saved AVI) is a
   lag-tolerant stopgap only.
 
+### Track B Preflight B0 - Workstation Loopback
+
+- Prepared 14/07/2026; not run.
+- Workstation-only; no Pi or hardware.
+- Separate execution approval required.
+- Zero code changes.
+- Block A remains the first Pi / hardware action.
+
+Record any run results directly beneath this section.
+
+B0 is designed to validate three things that do not need the Pi: bgr8 ->
+`web_video_server` -> dashboard render at the exact `/hailo/overlay/image_raw`
+name; the four-cell QoS matrix; and the `148ba2f` dashboard GPS guard over real
+rosbridge (so far unit-tested plus a DevTools direct-call smoke that bypassed
+ROS, never delivered through a live graph). No dummy publisher is written: stock
+`image_tools/cam2image` `0.33.11-1noble` already supplies configurable
+dimensions, rate, QoS and animated synthetic frames.
+
+#### B0 prerequisites
+
+```bash
+command -v curl || echo "MISSING: sudo apt install curl"
+dpkg -l ros-jazzy-image-tools | grep '^ii'
+ss -tlnp | grep -E ':(8002|8080|9090)\b' || echo "PORTS FREE - good"
+pgrep -af 'rosbridge|web_video_server|serve_dashboard|cam2image|gazebo|gz sim|waypoint_planner' || echo "CLEAN - good"
+ss -tlnp | grep -E ':115[0-9][0-9]' || echo "NO DAEMON - good"
+```
+
+Abort if a port is already bound or a planner / sim is live; report rather than
+kill, because a running sim means the workstation is not in the assumed state.
+
+Do not use `one_click_launch_all/launch_autoboat_complete.sh`: Gazebo is
+unconditional (no `--skip-gazebo`) and its `cleanup()` (`:341`) `pkill -9`s
+rosbridge, `web_video_server` and `serve_dashboard`, killing this stack. Never
+run `web_video_server --help` - it starts a real server
+(`wiki/RealSense_Dashboard_Testing.md:11`).
+
+#### B0 environment preamble - every ROS terminal (T1, T2, T3, T4)
+
+Adapted from `wiki/RealSense_Dashboard_Testing.md` W1-W3, with three deliberate
+deviations. `ROS_DOMAIN_ID=42` isolates this run from the Pi's domain 12; W1
+never exports a domain at all, relying on `~/.bashrc:123`, so this is an added
+line rather than an edited one. `ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST`
+replaces the recipe's `SUBNET` (a legal Jazzy value,
+`rmw/discovery_options.h:36-37`). `unset ROS_LOCALHOST_ONLY` is kept from the
+recipe: it is deprecated in Jazzy, but when enabled it takes precedence and
+`ROS_AUTOMATIC_DISCOVERY_RANGE` is ignored outright, so the unset is what makes
+LOCALHOST bind.
+
+Ordering is load-bearing. The exports must follow `source ~/.bashrc` (which
+re-sets 12 / SUBNET at `:123-124`) and precede the first `ros2` call: the daemon
+is keyed by domain alone (42 -> port 11553, 12 -> 11523, never colliding) but
+inherits the discovery range at spawn, so a daemon created under SUBNET is
+silently reused for two hours.
+
+```bash
+source ~/.bashrc
+export ROS_DOMAIN_ID=42
+export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
+unset ROS_LOCALHOST_ONLY
+
+echo "ROS_DOMAIN_ID=$ROS_DOMAIN_ID"
+echo "ROS_AUTOMATIC_DISCOVERY_RANGE=$ROS_AUTOMATIC_DISCOVERY_RANGE"
+echo "ROS_LOCALHOST_ONLY=${ROS_LOCALHOST_ONLY:-unset}"
+```
+
+Abort if any terminal echoes `12`, `SUBNET`, or a set `ROS_LOCALHOST_ONLY`. T2
+(rosbridge) and T3 (`web_video_server`) need this preamble as much as T1: adapt
+only the first terminal and they stay on domain 12, seeing nothing, while the
+topic check still passes.
+
+#### B0 T1 - cam2image publisher (new terminal, foreground, long-running)
+
+```bash
+ros2 daemon stop
+ros2 daemon start
+
+ros2 run image_tools cam2image --ros-args \
+  -p burger_mode:=true \
+  -p width:=640 \
+  -p height:=480 \
+  -p frequency:=15.0 \
+  -p reliability:=reliable \
+  -p history:=keep_last \
+  -p depth:=10 \
+  -p frame_id:=hailo_overlay \
+  -r image:=/hailo/overlay/image_raw
+```
+
+Flags that are not obvious, all proven against tag `0.33.11` (the installed
+version). `frequency:=15.0` must carry the decimal - the parameter is declared a
+double and an int is rejected on type. `history:=keep_last` plus `depth:=10` are
+mandatory: the upstream default is `map.begin()->first`, and because
+`std::map` sorts keys, `"keep_all" < "keep_last"` makes the real default
+KEEP_ALL despite the help text, giving RELIABLE + an unbounded queue.
+`-r image:=...` is mandatory because the topic is the relative name `image`;
+unremapped it publishes `/image`, which fails the dashboard discovery filter.
+
+`640x480@15` is the stress case: it is the runner's only available floor
+(`wiki/Hailo_COCO_Overlay_Demo.md:196-198`, hard-validated to `sd|hd|fhd` at
+`:246-247`), and `2026-06-18:52` already records it unstable on this link
+(`110.592` Mbps raw bgr8 versus `36.634` Mbps at `424x240`, a 3.02x gap). A
+`424x240` dummy would pass a profile the real bridge cannot emit.
+
+Expect `Publishing image #N` incrementing. Abort on `Target resolution must be
+at least the burger size (64 x 64)`, which means width / height did not apply.
+
+#### B0 T2 - verification, matrix, GPS (new terminal, one-shot, reused)
+
+Never route these into a busy foreground terminal.
+
+```bash
+ros2 topic list | grep '^/hailo/overlay/image_raw$'
+ros2 topic info --verbose /hailo/overlay/image_raw
+```
+
+Read the `Reliability:` line under `Publishers:` - that is the field proving
+publisher QoS. Confirm `History (Depth): KEEP_LAST (10)`; `KEEP_ALL` means the
+`history` param did not apply. Expect `Type: sensor_msgs/msg/Image` and
+`Publisher count: 1`.
+
+Do not use `ros2 topic hz` as evidence anywhere in B0. Installed Jazzy's
+`ros2topic/verb/hz.py` passes `qos_profile_sensor_data` (BEST_EFFORT, depth 5)
+and exposes no `--qos-*` flag. A BEST_EFFORT subscriber is compatible with every
+publisher, so `hz` reports green in all four matrix cells and proves nothing
+about what the dashboard can see.
+
+#### B0 T3 - rosbridge (new terminal, foreground)
+
+Environment preamble first.
+
+```bash
+ros2 launch rosbridge_server rosbridge_websocket_launch.xml address:=127.0.0.1
+```
+
+#### B0 T4 - web_video_server (new terminal, foreground)
+
+Environment preamble first. Watch this terminal during the matrix; its log is
+the only positive proof for cell 2.
+
+```bash
+ros2 run web_video_server web_video_server --ros-args -p address:=127.0.0.1
+```
+
+Expected log: `Waiting For connections on 127.0.0.1:8080`.
+
+#### B0 T5 - dashboard HTTP (new terminal, foreground)
+
+No ROS environment needed: `serve_dashboard.py` imports only `http.server`,
+`re` and `sys`, is not a ROS node, and is unaffected by domain.
+
+```bash
+cd ~/seal_ws/src/uvautoboat/web_dashboard/autoboat
+python3 serve_dashboard.py 8002 127.0.0.1
+```
+
+#### B0 QoS matrix
+
+Start order is load-bearing: T1 must publish before the browser connects, since
+`populateCameraTopicList()` fires once on the rosbridge `connection` event
+(`app.js:526-533`) and Refresh calls `updateCameraStream()`, not the discovery.
+
+All four cells return HTTP 200 with byte-identical headers and all four time out
+under `--max-time`, because an MJPEG stream never ends and `MjpegStreamer`'s
+constructor sends the initial header before any QoS matching occurs. curl's exit
+code (28) and status line therefore discriminate nothing. The only signal is the
+count of `image/jpeg` parts in the body.
+
+```bash
+probe() {  # $1 = label, $2 = extra query string
+  curl -s --max-time 8 -o /tmp/mjpeg_$1.bin \
+    "http://127.0.0.1:8080/stream?topic=/hailo/overlay/image_raw&type=mjpeg&quality=80$2"
+  echo "$1: bytes=$(stat -c%s /tmp/mjpeg_$1.bin) frames=$(grep -ac 'image/jpeg' /tmp/mjpeg_$1.bin)"
+}
+```
+
+`bytes` near 22 with `frames=0` is no stream; megabytes with dozens of frames is
+streaming.
+
+Cell 2 and a genuine failure are indistinguishable by curl - a QoS mismatch and
+an absent or misspelled topic give the identical observable, because the header
+is sent before the topic is resolved at all. Cell 2 must be proven positively
+from T4's log:
+
+```text
+New publisher discovered on topic '/hailo/overlay/image_raw', offering
+incompatible QoS. No messages will be sent to it. Last incompatible policy:
+RELIABILITY_QOS_POLICY
+```
+
+T1 emits the mirror line. Absence of that warning with zero frames is a real
+failure, not cell 2.
+
+Phase A, RELIABLE publisher (T1 as launched above):
+
+```bash
+probe cell1 ""                          # expect frames > 0
+probe cell4 "&qos_profile=sensor_data"  # expect frames > 0
+```
+
+Phase B: Ctrl+C T1 and relaunch it with `-p reliability:=best_effort`, all else
+identical. Re-run `ros2 topic info --verbose` and confirm
+`Reliability: BEST_EFFORT` before probing.
+
+```bash
+probe cell2 ""                          # expect frames = 0 + QoS warning in T4
+probe cell3 "&qos_profile=sensor_data"  # expect frames > 0
+```
+
+A `qos_profile` typo does not return 4xx - it logs `Invalid QoS profile %s
+specified. Using default profile.` and falls back to RELIABLE, making cell 3
+present exactly like cell 2 and yielding a false "sensor_data does not work".
+Only `default`, `system_default` and `sensor_data` are accepted; if cell 3 reads
+zero frames, grep T4's log for `Invalid QoS profile` first. Restore T1 to
+`reliability:=reliable` afterwards.
+
+`qos_profile=sensor_data` is the conditional `app.js:669` patch if the matrix
+passes - QoS-compatible with both publisher reliabilities, but it changes
+delivery to BEST_EFFORT, so it is a deliberate trade rather than a free fix. It
+stays gated on explicit permission.
+
+#### B0 dashboard render check
+
+Open `http://127.0.0.1:8002/index.html` only after T1, T3, T4 and T5 are up. The
+dropdown should list `/hailo/overlay/image_raw` (the discovery filter
+`app.js:766` matches `/image_raw` at end-of-string). If it is absent, the page
+connected before T1 started - hard-refresh rather than debugging DDS. Manual
+entry needs the topic typed and then Refresh clicked: there is no Enter handler
+(`app.js:730` is a tooltip sync) and Refresh is debounced `2000` ms. Expect
+visibly bouncing sprites; a frozen image is a cached frame, not a live stream.
+
+#### B0 GPS guard over rosbridge
+
+Confirm `Publisher count: 0` on `/wamv/sensors/gps/gps/fix` first; a live sim
+would race these samples. `status` is a nested `NavSatStatus` whose own field is
+also named `status`, so the YAML needs `status: {status: -1}`. An omitted status
+defaults to `-2` (STATUS_UNKNOWN) and also renders No fix. Use `-t 10 -r 1`
+rather than `--once`: `-w` counts any matching subscription and three repo nodes
+already subscribe to this topic, so `--once` can fire before the browser is
+listening.
+
+Case (a), plausible coordinates with `status: -1` - must still read No fix:
+
+```bash
+ros2 topic pub -t 10 -r 1 /wamv/sensors/gps/gps/fix sensor_msgs/msg/NavSatFix \
+  '{header: {frame_id: gps}, status: {status: -1, service: 1},
+    latitude: -33.8361, longitude: 151.0697, altitude: 0.0}'
+```
+
+Coordinates are the dashboard's own Sydney Regatta datum (`app.js:351-352`), so
+the marker falls inside the default viewport. Expect `latitude` and `longitude`
+to render exactly `No fix | Pas de position`, with `local-x` and `local-y` at
+`N/A`. This would prove the guard keys on status, not coordinates.
+
+Case (b), `0,0` with `status: 0` - must render as a valid fix:
+
+```bash
+ros2 topic pub -t 10 -r 1 /wamv/sensors/gps/gps/fix sensor_msgs/msg/NavSatFix \
+  '{header: {frame_id: gps}, status: {status: 0, service: 1},
+    latitude: 0.0, longitude: 0.0, altitude: 0.0}'
+```
+
+Expect `latitude` and `longitude` to render exactly `0.000000°`. This would
+promote `app.js:1098`'s "0,0 is a valid location" assertion, and its
+`gps_fix.test.js` unit coverage, to end-to-end evidence over rosbridge.
+
+#### B0 cleanup - reverse order of startup
+
+Close the browser tab first (stopping the MJPEG pull and rosbridge socket), then
+Ctrl+C T5, T4, T3, T1 in that order, then `ros2 daemon stop` in T2 (which stops
+only the domain-42 daemon on `11553`, leaving domain 12 untouched).
+
+```bash
+ss -tlnp | grep -E ':(8002|8080|9090)\b' || echo "PORTS FREE - good"
+ss -tlnp | grep -E ':11553' || echo "DAEMON STOPPED - good"
+pgrep -af 'rosbridge|web_video_server|serve_dashboard|cam2image' || echo "ALL STOPPED - good"
+ros2 topic info --verbose /hailo/overlay/image_raw 2>/dev/null | grep 'Publisher count' || echo "TOPIC GONE - good"
+cd ~/seal_ws/src/uvautoboat && git status --short --branch
+```
+
+#### B0 output to record
+
+The three environment `echo` lines from one ROS terminal; full
+`ros2 topic info --verbose /hailo/overlay/image_raw` for both the RELIABLE and
+BEST_EFFORT runs; the four `probe` lines; any T4 line containing
+`incompatible QoS` or `Invalid QoS profile`; whether the dropdown listed the
+topic and the sprites animated; the literal rendered GPS text for cases (a) and
+(b); the five cleanup checks; and `git status --short --branch`.
+
 ### Track B Blocks (gated - start only on explicit approval)
 
-- Block A: repo guard; on the Pi, read the pinned runner source
-  (`~/hailo_coco_overlay_2026-07-10/hailo-apps/.../object_detection.py`) to find the
-  annotated-frame handoff (OpenCV `cv2` loop vs GStreamer pipeline) and whether its
-  CLI already exposes any network output. This is the load-bearing unknown.
+- Block A: repo guard; on the Pi, read the pinned runner source in the installed
+  checkout under `~/hailo_coco_overlay_2026-07-10/hailo-apps/`. Read BOTH files:
+  `.../standalone_apps/object_detection/object_detection.py` holds the `visualize()`
+  call site, while `.../core/common/toolbox.py` owns `visualize()` itself and the
+  annotated BGR frame (local `frame_to_show`). Establish the annotated-frame handoff
+  (OpenCV `cv2` loop vs GStreamer pipeline) and whether the CLI already exposes any
+  network output. Confirm the checkout SHA and cleanliness first, and re-derive every
+  location with `grep -n` in the installed tree: upstream line numbers are not
+  authoritative for the installed checkout, which may carry local edits or a
+  different SHA. This is the load-bearing unknown.
 - Block B (transport half, no runner change): on the Pi publish a dummy
   `sensor_msgs/Image` on `/hailo/overlay/image_raw`; confirm the workstation
   discovers it (`ROS_DOMAIN_ID=12` + daemon restart), `web_video_server` serves it,
-  and it auto-appears and streams in the dashboard camera dropdown - validating the
-  whole "new Image topic -> dashboard panel" chain with zero code change.
+  and it streams in the dashboard camera dropdown - validating the whole "new Image
+  topic -> dashboard panel" chain with zero code change. Start the Pi publisher
+  before connecting the browser, or hard-refresh an already-open tab: discovery is a
+  one-shot query on the rosbridge connection event, so a late-started publisher will
+  not appear on its own and would otherwise read as a false transport failure.
 - Block C: build the Option-1 frame tap (or wrapper) that publishes the runner's
   real annotated frames at a WiFi-friendly resolution / compressed transport,
   without disturbing the runner's env, camera ownership, or thermal budget.
