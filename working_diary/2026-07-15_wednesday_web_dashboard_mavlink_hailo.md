@@ -701,3 +701,71 @@ and uses the idempotent `rclpy.try_shutdown()`. Red-green unit tests + full
 (readiness stays false past 30 s, true on a real fix; clean SIGINT shutdown, no
 traceback, no orphan) all pass. Full record:
 `working_diary/2026-07-13_to_2026-07-14_vacation_sidework_dashboard_preflight.md`.
+
+## Block A Status - 15/07/2026 (Runner Frame Handoff Established)
+
+Track B Block A is complete. The pinned runner checkout under the external root
+`~/hailo_coco_overlay_2026-07-10/hailo-apps/` was inspected read-only on the Pi. The
+checkout is clean at the pinned SHA. Both required tracked sources hash-match the
+pinned commit, so those sources are byte-identical and their offsets are
+authoritative for this checkout.
+
+```text
+runner checkout (hailo-apps, tag 26.03.1)
+  891ce701c2ebe239a5d277759eb75a30f76678a9
+hailo_apps/python/standalone_apps/object_detection/object_detection.py (313 lines)
+  9f8eca7efc139a423459e87e1715bdf7bc42e1e0a1ecd84b628f62e195e22046
+hailo_apps/python/core/common/toolbox.py (968 lines)
+  c796def8fb99c8337b1ecee64011a2ea4fe099dbe5ea40dff2cd45a2ab848e9d
+```
+
+Locations re-derived in the installed checkout:
+
+| Location | Content |
+| --- | --- |
+| `object_detection.py:177` | `visualize()` call site |
+| `toolbox.py:664` | `def visualize(` - the definition |
+| `toolbox.py:773` | `cv2.cvtColor(frame_with_detections, cv2.COLOR_RGB2BGR)` -> `output_bgr_frame`, the annotated BGR frame |
+| `toolbox.py:775` | `frame_to_show = resize_frame_for_output(` |
+| `toolbox.py:788` | `cv2.imshow("Output", frame_to_show)` |
+| `toolbox.py:804` | `frame_to_show` passed to the `cv2.resize` at `:803` feeding the writer |
+| `toolbox.py:822` | `cv2.imwrite(output_image_path, frame_to_show)` |
+
+**Frame handoff.** The standalone visualization/display/save loop is OpenCV-based;
+inference remains HailoRT. The annotated BGR frame exists as a local inside
+`visualize()` at `toolbox.py:773`. This resolves the load-bearing unknown the block
+was opened to settle.
+
+**CLI surface.** `object_detection.py:42` imports `get_standalone_parser` from
+`hailo_apps/python/core/common/parser.py`, so the base flags are declared outside both
+required files. The standalone runner exposes network input (RTSP / HTTP source
+handling), not network output. UDP and shared-memory sink fragments exist at
+`hailo_apps/python/core/gstreamer/gstreamer_helper_pipelines.py:615` and `:629`, but
+the search found only their definitions; this does not establish that the pipeline-app
+family exposes an integrated streaming path, and the standalone runner does not import
+them.
+
+**Bounded claims.** Option 1 is source-feasible, not runtime-proven. The BGR local
+establishes that an annotated frame is reachable in-process; it does not establish the
+integration. Whether the tap is a hook, callback, or wrapper - and where it attaches -
+remains a Block C design choice. `rclpy`, `cv_bridge`, QoS, compression, Wi-Fi
+performance, and frame-rate cost all remain unverified.
+
+**Evidence.** The raw A1 transcript (`block_a_a1_output.txt`) remains on the Pi under
+the external root; a clean workstation copy via `scp` is pending.
+
+**Gate state.** Block A complete. Block B is the next eligible block and awaits
+explicit approval; the transport half must be proven there before the tap is built.
+B0, Block C, and Block D remain closed.
+
+## Correction - 15/07/2026 (Track B Throughput Premise)
+
+The `110.592 Mbps`, `36.634 Mbps`, and `3.02x` values at `:262` are computed
+nominal raw-pixel payload rates, not measured throughput. The cited 18/06 record
+supports only the qualitative finding that `640x480x15` was unstable with long
+receive gaps and `424x240x15` was smoother. It records no Mbps measurement or
+`bgr8` encoding.
+
+If Block B resumes, it establishes the first synthetic-image link baseline. It
+does not reproduce the 18/06 D435I result, because the source and measurement
+method differ.
