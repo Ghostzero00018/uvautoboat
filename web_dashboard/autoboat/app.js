@@ -51,6 +51,194 @@ let cameraStatusEl = null;
 let cameraTopicInput = null;
 let currentStreamingTopic = null;
 
+// ========== TEMPORARY LIVE MAVLINK VIEW ==========
+// This temporary build is deliberately display-only. It subscribes directly to
+// MAVROS and blocks every dashboard command/config write at the final send boundary.
+const LIVE_MAVLINK_VIEW_ONLY = true;
+
+const LIVE_MAVLINK_TOPIC_SPECS = Object.freeze([
+    Object.freeze({
+        key: 'state',
+        name: '/mavros/state',
+        messageType: 'mavros_msgs/State',
+        throttle_rate: 500,
+        handler: updateLiveMavlinkState
+    }),
+    Object.freeze({
+        key: 'gps',
+        name: '/mavros/global_position/raw/fix',
+        messageType: 'sensor_msgs/NavSatFix',
+        throttle_rate: 500,
+        handler: updateLiveMavlinkGps
+    }),
+    Object.freeze({
+        key: 'imu',
+        name: '/mavros/imu/data',
+        messageType: 'sensor_msgs/Imu',
+        throttle_rate: 200,
+        handler: updateLiveMavlinkImu
+    }),
+    Object.freeze({
+        key: 'battery',
+        name: '/mavros/battery',
+        messageType: 'sensor_msgs/BatteryState',
+        throttle_rate: 1000,
+        handler: updateLiveMavlinkBattery
+    }),
+    Object.freeze({
+        key: 'rc',
+        name: '/mavros/rc/in',
+        messageType: 'mavros_msgs/RCIn',
+        throttle_rate: 500,
+        handler: updateLiveMavlinkRc
+    })
+]);
+
+function setLiveMavlinkValue(id, text, badgeState = '') {
+    const element = document.getElementById(id);
+    if (!element) return;
+    element.textContent = text;
+    if (badgeState) element.className = `value badge ${badgeState}`;
+}
+
+function markLiveMavlinkTopic(key) {
+    setLiveMavlinkValue(`mavlink-topic-${key}`, 'Live', 'clear');
+    const lastUpdate = document.getElementById('mavlink-last-update');
+    if (lastUpdate) lastUpdate.textContent = new Date().toLocaleTimeString();
+}
+
+function finiteNumber(value, digits, suffix = '') {
+    return Number.isFinite(value) ? `${value.toFixed(digits)}${suffix}` : 'N/A';
+}
+
+function finiteVector(vector, digits, suffix) {
+    if (!vector || ![vector.x, vector.y, vector.z].every(Number.isFinite)) return 'N/A';
+    return `${vector.x.toFixed(digits)}, ${vector.y.toFixed(digits)}, ${vector.z.toFixed(digits)} ${suffix}`;
+}
+
+function quaternionToEulerDegrees(quaternion) {
+    if (!quaternion || ![quaternion.x, quaternion.y, quaternion.z, quaternion.w].every(Number.isFinite)) {
+        return null;
+    }
+    const norm = Math.hypot(quaternion.x, quaternion.y, quaternion.z, quaternion.w);
+    if (norm < Number.EPSILON) return null;
+    const x = quaternion.x / norm;
+    const y = quaternion.y / norm;
+    const z = quaternion.z / norm;
+    const w = quaternion.w / norm;
+    const roll = Math.atan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y));
+    const pitchTerm = Math.max(-1, Math.min(1, 2 * (w * y - z * x)));
+    const pitch = Math.asin(pitchTerm);
+    const yaw = Math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z));
+    const toDegrees = 180 / Math.PI;
+    return { roll: roll * toDegrees, pitch: pitch * toDegrees, yaw: yaw * toDegrees };
+}
+
+function updateLiveMavlinkState(message) {
+    setLiveMavlinkValue('mavlink-connected', message.connected ? 'Connected' : 'Disconnected', message.connected ? 'clear' : 'critical');
+    setLiveMavlinkValue('mavlink-armed', message.armed ? 'ARMED' : 'Disarmed', message.armed ? 'critical' : 'clear');
+    setLiveMavlinkValue('mavlink-mode', message.mode || 'Unknown');
+    setLiveMavlinkValue('mavlink-system-status', Number.isFinite(message.system_status) ? String(message.system_status) : 'N/A');
+    setLiveMavlinkValue('mavlink-manual-input', message.manual_input === true ? 'Enabled' : message.manual_input === false ? 'Disabled' : 'Unknown');
+    markLiveMavlinkTopic('state');
+}
+
+function updateLiveMavlinkGps(message) {
+    const status = message?.status?.status;
+    const fixText = Number.isFinite(status) && status >= 0 ? `Fix (${status})` : `No fix (${Number.isFinite(status) ? status : 'unknown'})`;
+    setLiveMavlinkValue('mavlink-gps-fix', fixText, Number.isFinite(status) && status >= 0 ? 'clear' : 'warning');
+    setLiveMavlinkValue('mavlink-gps-altitude', finiteNumber(message.altitude, 2, ' m'));
+    markLiveMavlinkTopic('gps');
+    updateGPS(message);
+}
+
+function updateLiveMavlinkImu(message) {
+    const orientationUnavailable = Array.isArray(message.orientation_covariance)
+        && message.orientation_covariance[0] === -1;
+    const euler = orientationUnavailable ? null : quaternionToEulerDegrees(message.orientation);
+    setLiveMavlinkValue(
+        'mavlink-attitude',
+        euler ? `R ${euler.roll.toFixed(1)}° | P ${euler.pitch.toFixed(1)}° | Y ${euler.yaw.toFixed(1)}°` : 'N/A'
+    );
+    setLiveMavlinkValue('mavlink-gyro', finiteVector(message.angular_velocity, 2, 'rad/s'));
+    setLiveMavlinkValue('mavlink-accel', finiteVector(message.linear_acceleration, 2, 'm/s²'));
+    markLiveMavlinkTopic('imu');
+}
+
+function updateLiveMavlinkBattery(message) {
+    const voltage = finiteNumber(message.voltage, 2, ' V');
+    const percentage = Number.isFinite(message.percentage) && message.percentage >= 0
+        ? `${(message.percentage * 100).toFixed(0)}%`
+        : 'N/A';
+    const present = message.present === true ? 'Present' : message.present === false ? 'Not present' : 'Unknown';
+    setLiveMavlinkValue('mavlink-battery', `${voltage} | ${percentage} | ${present}`);
+    setLiveMavlinkValue('mavlink-battery-current', finiteNumber(message.current, 2, ' A'));
+    markLiveMavlinkTopic('battery');
+}
+
+function updateLiveMavlinkRc(message) {
+    const channels = Array.isArray(message.channels) ? message.channels : [];
+    setLiveMavlinkValue('mavlink-rc-rssi', Number.isFinite(message.rssi) ? `${message.rssi} raw` : 'N/A');
+    setLiveMavlinkValue(
+        'mavlink-rc-channels',
+        channels.length ? `${channels.length} channels | ${channels.slice(0, 8).join(', ')}` : '0 channels'
+    );
+    markLiveMavlinkTopic('rc');
+}
+
+function subscribeToLiveMavlinkTopics() {
+    LIVE_MAVLINK_TOPIC_SPECS.forEach((spec) => {
+        const topic = new ROSLIB.Topic({
+            ros,
+            name: spec.name,
+            messageType: spec.messageType,
+            throttle_rate: spec.throttle_rate,
+            queue_length: 1
+        });
+        topic.subscribe(spec.handler);
+    });
+}
+
+function resetLiveMavlinkTelemetry() {
+    LIVE_MAVLINK_TOPIC_SPECS.forEach((spec) => {
+        setLiveMavlinkValue(`mavlink-topic-${spec.key}`, 'Waiting', 'warning');
+    });
+    setLiveMavlinkValue('mavlink-connected', 'Disconnected', 'critical');
+}
+
+function reportBlockedDashboardWrite(action) {
+    const message = `LIVE MAVLINK VIEW-ONLY: blocked ${action}`;
+    console.warn(message);
+    if (typeof addLog === 'function') addLog(message, 'warning');
+    if (typeof showFeedback === 'function') showFeedback(message, 'warning');
+}
+
+function publishDashboardWrite(topic, message, action) {
+    if (LIVE_MAVLINK_VIEW_ONLY) {
+        reportBlockedDashboardWrite(action);
+        return false;
+    }
+    topic.publish(message);
+    return true;
+}
+
+function callDashboardWriteService(service, request, onSuccess, onError, action) {
+    if (LIVE_MAVLINK_VIEW_ONLY) {
+        reportBlockedDashboardWrite(action);
+        return false;
+    }
+    service.callService(request, onSuccess, onError);
+    return true;
+}
+
+function enableLiveMavlinkViewOnly() {
+    if (!LIVE_MAVLINK_VIEW_ONLY) return;
+    document.body.classList.add('live-mavlink-view-only');
+    const banner = document.getElementById('live-mavlink-safety-banner');
+    if (banner) banner.textContent = 'LIVE MAVLINK VIEW-ONLY — dashboard command/config writes are blocked. Use the physical safety controls for the real vehicle.';
+}
+// ========== END TEMPORARY LIVE MAVLINK VIEW ==========
+
 // Mission state
 let missionState = {
     state: 'UNKNOWN',
@@ -99,6 +287,7 @@ let currentState = {
 // Initialize everything when page loads
 window.addEventListener('load', () => {
     if (DEBUG_MODE) console.log('Dashboard loading...');
+    enableLiveMavlinkViewOnly();
     initMap();
     restorePersistedWaypoints();  // Recover waypoints after hard refresh
     connectToROS();
@@ -550,6 +739,7 @@ function connectToROS() {
         modularMissionCommandPublisher = null;
         healthLineTopic = null;
         healthStatusTopic = null;
+        resetLiveMavlinkTelemetry();
         addLog('Connection closed. Retrying in 5s...', 'warning');
         setTimeout(connectToROS, 5000);
     });
@@ -799,17 +989,8 @@ function updateConnectionStatus(isConnected) {
 function subscribeToTopics() {
     if (DEBUG_MODE) console.log('Subscribing to topics...');
     
-    // GPS Fix
-    const gpsTopic = new ROSLIB.Topic({
-        ros: ros,
-        name: '/wamv/sensors/gps/gps/fix',
-        messageType: 'sensor_msgs/NavSatFix'
-    });
-
-    gpsTopic.subscribe((message) => {
-        if (DEBUG_MODE) console.log('GPS data received:', message.latitude, message.longitude);
-        updateGPS(message);
-    });
+    // Temporary hardware view: direct, subscriber-only MAVROS diagnostics.
+    subscribeToLiveMavlinkTopics();
 
     // Left thruster
     const leftThrustTopic = new ROSLIB.Topic({
@@ -1604,7 +1785,11 @@ function initConfigPanel() {
             addLog('A* config not sent — fix out-of-range values first', 'warning');
             return;
         }
-        configPublisher.publish(new ROSLIB.Message({ data: JSON.stringify(config) }));
+        if (!publishDashboardWrite(
+            configPublisher,
+            new ROSLIB.Message({ data: JSON.stringify(config) }),
+            'A* configuration publish'
+        )) return;
         markClean(['cfg-astar-resolution', 'cfg-astar-safety', 'cfg-astar-max']);
         navModeDirty = false;
         // Spell out what got sent so the user knows the nav mode + 3 numeric params are ALL included
@@ -1647,7 +1832,11 @@ function initConfigPanel() {
                 astar_safety_margin: parseFloat(astarDefaults['cfg-astar-safety']),
                 astar_max_expansions: parseInt(astarDefaults['cfg-astar-max'], 10)
             };
-            configPublisher.publish(new ROSLIB.Message({ data: JSON.stringify(config) }));
+            if (!publishDashboardWrite(
+                configPublisher,
+                new ROSLIB.Message({ data: JSON.stringify(config) }),
+                'A* defaults publish'
+            )) return;
             markClean(astarIds);
             addLog('A* params reset to defaults and sent to ROS', 'info');
             showFeedback('✅ A* parameters reset to defaults and applied', 'success');
@@ -2081,9 +2270,9 @@ function sendConfig(pidOnly = false) {
     });
 
     // Publish to planning topics
-    configPublisher.publish(message);
+    if (!publishDashboardWrite(configPublisher, message, 'configuration publish')) return false;
     if (modularConfigPublisher) {
-        modularConfigPublisher.publish(message);
+        if (!publishDashboardWrite(modularConfigPublisher, message, 'modular configuration publish')) return false;
     }
 
     const sentCount = Object.keys(config).length;
@@ -2285,7 +2474,7 @@ function initMissionControl() {
                 name: '/planning/stop_mission',
                 serviceType: 'std_srvs/srv/Trigger'
             });
-            stopService.callService(new ROSLIB.ServiceRequest({}), (result) => {
+            callDashboardWriteService(stopService, new ROSLIB.ServiceRequest({}), (result) => {
                 if (result.success) {
                     addLog(`Mission stopped — ${result.message}`, 'info');
                 } else {
@@ -2293,7 +2482,7 @@ function initMissionControl() {
                 }
             }, (error) => {
                 addLog(`Stop service error: ${error}`, 'error');
-            });
+            }, 'stop mission service');
             setTimeout(() => alert('⏸️ Mission Stopped\n\nNavigation paused. Use Resume to continue.\n\n⏸️ Mission Arrêtée\n\nNavigation en pause. Utilisez Reprendre pour continuer.'), 100);
         });
     });
@@ -2455,7 +2644,7 @@ function generateWaypoints() {
     const configMsg = new ROSLIB.Message({
         data: JSON.stringify(config)
     });
-    configPublisher.publish(configMsg);
+    if (!publishDashboardWrite(configPublisher, configMsg, 'waypoint configuration publish')) return;
 
     // Call generate as a service; rosbridge forwards the config publish first,
     // so by the time the service handler runs the new config is already applied.
@@ -2465,7 +2654,7 @@ function generateWaypoints() {
         name: '/planning/generate_waypoints',
         serviceType: 'std_srvs/srv/Trigger'
     });
-    generateService.callService(new ROSLIB.ServiceRequest({}), (result) => {
+    callDashboardWriteService(generateService, new ROSLIB.ServiceRequest({}), (result) => {
         if (result.success) {
             addLog(`Waypoints generated — ${result.message}`, 'info');
         } else {
@@ -2473,7 +2662,7 @@ function generateWaypoints() {
         }
     }, (error) => {
         addLog(`Generate service error: ${error}`, 'error');
-    });
+    }, 'generate waypoints service');
     
     // Calculate and display preview info
     const totalWaypoints = lanes * 2 - 1;
@@ -2505,7 +2694,7 @@ function sendMissionCommand(command) {
     });
 
     // Publish to modular planner only
-    missionCommandPublisher.publish(msg);
+    if (!publishDashboardWrite(missionCommandPublisher, msg, `mission command ${command}`)) return false;
     addLog(`Mission command: ${command}`, 'info');
     if (DEBUG_MODE) console.log('Mission command sent to planner:', command);
 }
@@ -2515,6 +2704,11 @@ function emergencyStop() {
     if (!connected) {
         addLog('Not connected to ROS', 'error');
         return;
+    }
+
+    if (LIVE_MAVLINK_VIEW_ONLY) {
+        reportBlockedDashboardWrite('dashboard emergency-stop publish');
+        return false;
     }
 
     // Show critical warning with audio if possible
@@ -2543,8 +2737,8 @@ function emergencyStop() {
         messageType: 'std_msgs/Float64'
     });
 
-    leftThrustTopic.publish(zeroThrustMsg);
-    rightThrustTopic.publish(zeroThrustMsg);
+    if (!publishDashboardWrite(leftThrustTopic, zeroThrustMsg, 'left zero-thrust publish')) return false;
+    if (!publishDashboardWrite(rightThrustTopic, zeroThrustMsg, 'right zero-thrust publish')) return false;
 
     // 2. Latch e-stop on the dedicated safety-critical channel.
     //    Bool on /planning/emergency_stop is received by both planner and
@@ -2554,7 +2748,11 @@ function emergencyStop() {
         name: '/planning/emergency_stop',
         messageType: 'std_msgs/Bool'
     });
-    estopTopic.publish(new ROSLIB.Message({ data: true }));
+    if (!publishDashboardWrite(
+        estopTopic,
+        new ROSLIB.Message({ data: true }),
+        'emergency-stop latch publish'
+    )) return false;
 
     // 3. Visual feedback - flash the emergency stop button
     const emergencyBtn = document.getElementById('btn-emergency-stop');
@@ -3315,7 +3513,7 @@ function applyPerceptionParameters(presetParams = null) {
         data: JSON.stringify(params)
     });
 
-    configPublisher.publish(message);
+    if (!publishDashboardWrite(configPublisher, message, 'perception configuration publish')) return;
 
     // Clear dirty state for Perception inputs
     markClean(Object.keys(perceptionIdMap));
@@ -3379,7 +3577,7 @@ function applyControllerParameters(presetParams = null) {
         data: JSON.stringify(params)
     });
 
-    configPublisher.publish(message);
+    if (!publishDashboardWrite(configPublisher, message, 'controller configuration publish')) return;
 
     // Clear dirty state for Controller inputs
     markClean(Object.keys(controllerIdMap));
@@ -4229,7 +4427,7 @@ function runHealthCheck() {
         serviceType: 'std_srvs/srv/Trigger'
     });
     const request = new ROSLIB.ServiceRequest({});
-    healthService.callService(request, (response) => {
+    callDashboardWriteService(healthService, request, (response) => {
         if (response && !response.success) {
             if (btn) btn.disabled = false;
             setHealthStatus('error', 'Rejected');
@@ -4240,7 +4438,7 @@ function runHealthCheck() {
         setHealthStatus('error', 'Service failed');
         appendHealthLine('[ERROR] Service call failed: ' + error);
         appendHealthLine('Is /health_check/run running? Check that health_check_service node is launched.');
-    });
+    }, 'health check service');
 }
 
 window.addEventListener('load', () => {

@@ -357,8 +357,21 @@ bounded Gate C live run of `225` frames at `14.97 FPS` on `/dev/video4` at
 observation, not a sustained-thermal qualification). Run summary in the
 `working_diary/` entry for that date.
 
+## Live Dashboard Integration
+
+The standalone demo above now has a separate, external integration diagnostic
+for publishing the annotated frame to the workstation dashboard while minimal
+MAVROS telemetry remains view-only. Follow [Live Hailo and MAVROS Dashboard
+Testing](Live_Hailo_MAVLink_Dashboard_Testing) for its service order, helper
+checksum, safety boundary, pass markers, and shutdown sequence.
+
+That diagnostic does not replace or modify the canonical `hailo_coco_demo.sh`
+procedure documented here.
+
 ## Explicit Non-Claims
 
+- The following claims describe the standalone `hailo_coco_demo.sh` evidence
+  above, not the separate live-dashboard diagnostic.
 - Stock-COCO mechanics only; no maritime or custom-detector recovery, detector
   accuracy, or custom-HEF compatibility claim.
 - No Hailo compile / calibration / Tier 3, no export, no deployment.
@@ -370,6 +383,7 @@ observation, not a sustained-thermal qualification). Run summary in the
 ## Navigation
 
 - [Home](Home)
+- [Live Hailo and MAVROS Dashboard Testing](Live_Hailo_MAVLink_Dashboard_Testing)
 - [Hailo HAT Workstream Memo](Hailo_HAT_Workstream)
 - [YOLO Dataset Plan](YOLO_Dataset_Plan)
 - [Pi 5 Bring-up Smoke Test](Pi5_Bringup_Smoke_Test)

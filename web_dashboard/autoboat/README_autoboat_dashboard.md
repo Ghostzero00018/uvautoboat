@@ -37,18 +37,29 @@ Real-time web-based monitoring and control dashboard for the AutoBoat autonomous
    sudo apt install ros-jazzy-web-video-server
    ```
 
-4. **AutoBoat nodes** running via `autoboat.launch.yaml`
+4. **AutoBoat nodes** running via `autoboat.launch.yaml` for simulation, or the
+   isolated source stack from the live-hardware runbook for its view-only test
 5. **Internet access for map tiles only** — `roslibjs`, Leaflet, and fonts are vendored locally; OpenStreetMap tiles still require internet until Roadmap §1.3 Path B lands
 
 > **Not ros2-web-bridge.** A separate project ([ros2-web-bridge](https://github.com/RobotWebTools/ros2-web-bridge)) offered a Node.js-based alternative but was **archived in November 2025** (last targeted ROS 2 Dashing, 2019). This dashboard uses `rosbridge_suite`, the actively maintained official ROS package.
 
 ## Current Real-Boat Status
 
-As of 18/06/2026, this dashboard remains simulation-first: it reads and writes the existing `/wamv/*` topic contract. The Pi 5 MAVProxy / MAVROS camera-off telemetry path is proven, but no real-topic adapter is implemented here yet. For RealSense camera-display checks, follow [RealSense Dashboard Testing](../../wiki/RealSense_Dashboard_Testing.md): prefer the camera topic selector after rosbridge discovery lists `/camera/camera/color/image_raw`; manual entry can still try the topic for late-starting cameras, but the dashboard warns if it is not in the discovered list. Do not use dashboard mission or thruster controls against the real FCU until the command path is separately validated.
+The dashboard remains simulation-first and normally reads and writes the
+existing `/wamv/*` topic contract. On 15/07/2026, a temporary view-only mode
+displayed the stock-COCO Hailo stream and five direct MAVROS
+telemetry feeds together. That diagnostic did not validate any real-FCU write
+path. Follow [Live Hailo and MAVROS Dashboard
+Testing](../../wiki/Live_Hailo_MAVLink_Dashboard_Testing.md) for the isolated
+service order and safety boundary. For the separate RealSense camera-only
+check, use [RealSense Dashboard
+Testing](../../wiki/RealSense_Dashboard_Testing.md). Do not use dashboard
+mission or thruster controls against the real FCU until the command path is
+separately validated.
 
 ## Quick Start
 
-### Option A: One-Click Launch
+### Option A: Simulation One-Click Launch
 
 ```bash
 bash ~/seal_ws/src/uvautoboat/one_click_launch_all/launch_autoboat_complete.sh
@@ -68,8 +79,18 @@ Then open **<http://localhost:8002>**.
 | T4       | `ros2 launch ~/seal_ws/src/uvautoboat/launch/autoboat.launch.yaml`                             | Navigation system             |
 | T5       | `cd ~/seal_ws/src/uvautoboat/web_dashboard/autoboat && python3 serve_dashboard.py 8002`        | Dashboard (port 8002)         |
 
-> **Important:** The `delay_between_messages:=0.0` parameter is required for ROS 2 Jazzy.
+> **Important:** The installed Jazzy launch file currently defaults
+> `delay_between_messages` to `0.0`; the simulation command keeps it explicit.
 > Do NOT open `index.html` directly as a file (`file://`). Serve it via HTTP for WebSocket to work.
+
+### Real-Hardware View-Only Diagnostic
+
+Do not use the simulation one-click launcher for live Hailo/MAVROS testing.
+Follow [Live Hailo and MAVROS Dashboard
+Testing](../../wiki/Live_Hailo_MAVLink_Dashboard_Testing.md): start rosbridge,
+`web_video_server`, and the dashboard HTTP server on the workstation first;
+then run `pi_live_hailo_mavlink_dashboard.sh` on the Pi and open the browser
+only after `PI_SOURCE_STACK_READY=PASS`.
 
 ## Dashboard Panels
 

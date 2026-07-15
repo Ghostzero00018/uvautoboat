@@ -98,6 +98,83 @@
                 </div>
             </div>
 
+            <!-- Temporary direct MAVROS telemetry view for the bounded live-hardware test. -->
+            <div class="panel collapsible mavlink-panel">
+                <h2>Live MAVLink via MAVROS | Télémétrie MAVLink</h2>
+                <div id="live-mavlink-safety-banner" class="mavlink-safety-banner" role="status">
+                    LIVE MAVLINK VIEW-ONLY — dashboard command/config writes are blocked.
+                </div>
+                <div class="mavlink-topic-strip" aria-label="MAVROS topic activity">
+                    <span id="mavlink-topic-state" class="value badge warning">State: Waiting</span>
+                    <span id="mavlink-topic-gps" class="value badge warning">GPS: Waiting</span>
+                    <span id="mavlink-topic-imu" class="value badge warning">IMU: Waiting</span>
+                    <span id="mavlink-topic-battery" class="value badge warning">Battery: Waiting</span>
+                    <span id="mavlink-topic-rc" class="value badge warning">RC: Waiting</span>
+                </div>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <span class="label">FCU Connection:</span>
+                        <span id="mavlink-connected" class="value badge warning">Waiting</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Arming State:</span>
+                        <span id="mavlink-armed" class="value badge warning">Waiting</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Mode:</span>
+                        <span id="mavlink-mode" class="value">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">System Status (raw):</span>
+                        <span id="mavlink-system-status" class="value">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Manual Input:</span>
+                        <span id="mavlink-manual-input" class="value">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">GPS Fix:</span>
+                        <span id="mavlink-gps-fix" class="value badge warning">Waiting</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">GPS Altitude:</span>
+                        <span id="mavlink-gps-altitude" class="value">-</span>
+                    </div>
+                    <div class="info-item full-width">
+                        <span class="label">Attitude R/P/Y (quaternion-derived, diagnostic only):</span>
+                        <span id="mavlink-attitude" class="value telemetry-vector">-</span>
+                    </div>
+                    <div class="info-item full-width">
+                        <span class="label">Angular Velocity X/Y/Z:</span>
+                        <span id="mavlink-gyro" class="value telemetry-vector">-</span>
+                    </div>
+                    <div class="info-item full-width">
+                        <span class="label">Linear Acceleration X/Y/Z:</span>
+                        <span id="mavlink-accel" class="value telemetry-vector">-</span>
+                    </div>
+                    <div class="info-item full-width">
+                        <span class="label">Vehicle Battery (not Pi supply):</span>
+                        <span id="mavlink-battery" class="value telemetry-vector">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Battery Current:</span>
+                        <span id="mavlink-battery-current" class="value">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">RC RSSI (raw 0–255):</span>
+                        <span id="mavlink-rc-rssi" class="value">-</span>
+                    </div>
+                    <div class="info-item full-width">
+                        <span class="label">RC Channels:</span>
+                        <span id="mavlink-rc-channels" class="value telemetry-vector">-</span>
+                    </div>
+                    <div class="info-item full-width">
+                        <span class="label">Last MAVROS Update:</span>
+                        <span id="mavlink-last-update" class="value">-</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- Obstacle Detection Panel -->
             <div class="panel collapsible">
                 <h2>Obstacle Detection | Détection d'Obstacles (LiDAR v2.1)</h2>
@@ -894,12 +971,13 @@
                     <div class="camera-controls">
                         <label for="camera-topic">Camera Topic:</label>
                         <span class="combobox-wrapper">
-                            <input type="text" id="camera-topic" value="/wamv/sensors/cameras/front_left_camera_sensor/image_raw" autocomplete="off">
+                            <input type="text" id="camera-topic" value="/hailo/overlay/image_raw" autocomplete="off">
                             <button type="button" id="camera-topic-toggle" class="combobox-toggle" aria-label="Show available camera topics" tabindex="-1">▼</button>
                             <ul id="camera-topic-options" class="combobox-options" role="listbox" hidden>
                                 <li role="option" data-topic="/wamv/sensors/cameras/front_left_camera_sensor/image_raw" title="/wamv/sensors/cameras/front_left_camera_sensor/image_raw">/wamv/sensors/cameras/front_left_camera_sensor/image_raw</li>
                                 <li role="option" data-topic="/wamv/sensors/cameras/front_right_camera_sensor/image_raw" title="/wamv/sensors/cameras/front_right_camera_sensor/image_raw">/wamv/sensors/cameras/front_right_camera_sensor/image_raw</li>
                                 <li role="option" data-topic="/wamv/sensors/cameras/middle_right_camera_sensor/image_raw" title="/wamv/sensors/cameras/middle_right_camera_sensor/image_raw">/wamv/sensors/cameras/middle_right_camera_sensor/image_raw</li>
+                                <li role="option" data-topic="/hailo/overlay/image_raw" title="/hailo/overlay/image_raw">/hailo/overlay/image_raw</li>
                             </ul>
                         </span>
                         <button id="btn-refresh-camera" class="config-btn apply">Refresh | Actualiser</button>

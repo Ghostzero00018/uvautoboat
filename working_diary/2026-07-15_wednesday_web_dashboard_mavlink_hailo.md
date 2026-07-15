@@ -769,3 +769,55 @@ receive gaps and `424x240x15` was smoother. It records no Mbps measurement or
 If Block B resumes, it establishes the first synthetic-image link baseline. It
 does not reproduce the 18/06 D435I result, because the source and measurement
 method differ.
+
+## EOD Live Integration Status - 15/07/2026
+
+The user completed a bounded live diagnostic with the Pi, D435I, Hailo AI
+HAT+, and powered control box on `IoT IMT Nord Europe`. In the browser, the
+user observed the live stock-COCO Hailo overlay with detection boxes and class
+labels while the temporary native MAVROS panel displayed actual control-box
+telemetry.
+
+The two browser data paths remained separate:
+
+- Hailo produced the annotated BGR frame, the temporary Pi bridge published
+  `/hailo/overlay/image_raw`, and workstation `web_video_server` served the
+  browser's MJPEG stream.
+- MAVProxy owned `/dev/ttyAMA0:57600` and fanned MAVLink to a minimal MAVROS
+  profile. ROS 2 DDS carried `/mavros/state`, raw GPS, IMU, battery, and RC to
+  workstation rosbridge, and the browser subscribed to those five topics.
+
+The observed run established simultaneous live rendering and read-only
+telemetry delivery. The FCU was connected and disarmed; raw GPS no-fix remains
+valid telemetry and is not a transport failure. The D435I had one owner: the
+Hailo path ran with `realsense2_camera` stopped. The temporary stream profile
+was `240p@10fps`, selected for this diagnostic rather than as an optimized
+production setting.
+
+The external Pi helper used for the run is not tracked in this repository. Its
+verified workstation copy has SHA-256
+`3c5be701f6399f207449662e2337a0c12d0814d975106e2f8f5bf194c4baf9ce`.
+The dashboard implementation also remains an intentional, uncommitted
+diagnostic across `app.js`, `index.html`, `style_merged.css`, and
+`test/mavlink_telemetry.test.js`.
+
+This result does not establish a full 120-second endurance acceptance because
+the final completion and teardown markers were not returned for the record. It
+also does not validate any dashboard-to-FCU command or information-write path:
+no arming, mode, setpoint, RC override, mission upload, or other control action
+was attempted. Block B's synthetic throughput baseline remains incomplete, and
+the custom maritime detector accuracy branch remains separate from this stock
+COCO integration proof.
+
+## EOD Helper Provenance Correction - 15/07/2026
+
+The SHA-256 at `:799` identifies the current workstation archive at
+`~/Desktop/pi_helpers/pi_live_hailo_mavlink_dashboard.sh`: `45,676` bytes with
+SHA-256
+`3c5be701f6399f207449662e2337a0c12d0814d975106e2f8f5bf194c4baf9ce`.
+It is a later corrected snapshot, not proof that the earlier observed run used
+those exact bytes. The service order and browser result remain observed; this
+helper revision needs a Pi-side checksum match plus
+`PI_SOURCE_WINDOW=COMPLETE` and `TEARDOWN=PASS` from the same run before it is
+recorded as runtime-validated. The durable procedure is in
+`wiki/Live_Hailo_MAVLink_Dashboard_Testing.md`.
