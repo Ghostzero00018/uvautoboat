@@ -195,7 +195,7 @@ uvautoboat/
 ├── images/                     # Logo + diagram assets referenced from docs
 ├── wiki/                       # Wiki documentation
 ├── working_diary/              # Daily development logs
-├── tools/                      # Ad-hoc ops scripts (e.g. rate_probe.py — QoS-aware topic-hz)
+├── tools/                      # Operational diagnostics and probes (live stack, topic rates, …)
 ├── legacy/                     # Deprecated code (see legacy/DEPRECATED.md)
 └── USER_MANUAL.md              # Detailed technical manual
 ```

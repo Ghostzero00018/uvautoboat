@@ -155,3 +155,101 @@ on a pre-heartbeat MAVProxy link-down message. The user attributed that
 occurrence to incomplete FCU startup after a battery replug restored the link.
 The helper's immediate link-down abort still bypasses its finite heartbeat
 deadline and remains an external-helper defect to correct under a new checksum.
+
+## Block 2 Helper Source Boundary And Offline Correction - 16/07/2026
+
+The source-storage boundary was deliberately revised for the helper alone. Its
+canonical source is now tracked at
+`tools/pi_live_hailo_mavlink_dashboard.sh`; HEFs, calibration data, the Hailo
+runtime tree, generated logs, and other runtime artifacts remain outside the
+repository. The earlier `45,676`-byte snapshot with SHA-256
+`3c5be701f6399f207449662e2337a0c12d0814d975106e2f8f5bf194c4baf9ce`
+remains a historical, unvalidated deployment snapshot.
+
+The tracked helper is `47,979` bytes with SHA-256
+`3e8a7ea3ef6f8427ee4243c7c744089fc77e79b46d76ec2b38a799336dd8860f`.
+It keeps the finite heartbeat deadline but treats an initial MAVProxy link-down
+line as a warning while that deadline still has time remaining. A heartbeat
+arriving before the deadline can recover the startup; absence of a heartbeat
+still fails at the deadline. The default remains a bounded 120-second source
+window. Opt-in `LIVE_HOLD_AFTER_WINDOW=1` completes and marks that evidence
+window, then retains the same command, thermal, process, graph, source,
+connected-disarmed-state, and power monitoring until an operator presses
+`Ctrl+C`. `TEARDOWN=PASS` remains teardown-owned and cannot print while the
+stack is still running. An interrupt during the completion-to-hold marker
+transition is deferred until those lifecycle markers are internally
+consistent, then requests normal teardown.
+
+Shell syntax and offline contract checks cover transient heartbeat recovery,
+finite heartbeat failure, invalid hold configuration, pre-window and hold-stop
+interrupt semantics, reuse of the safety checks in both phases, unique marker
+emission, and lifecycle ordering. No live hardware or browser run has used this
+new checksum. It is not runtime-validated, and W5 rate/temperature evidence,
+same-run provenance, `PI_SOURCE_WINDOW=COMPLETE`, and `TEARDOWN=PASS` remain
+open.
+
+**Next steps:** Await explicit approval for the checksum-matched, user-run
+Block 2 live gate. Transfer the tracked helper to the Pi, verify its checksum,
+then capture W5 topic rates and temperature plus the complete window, hold, and
+teardown marker sequence from the same invocation. Do not treat this helper
+revision as runtime-validated before that evidence returns.
+
+## Block 2 W5 Procedure Preparation - 16/07/2026
+
+The canonical live-dashboard runbook now records the live offered QoS and runs
+six sequential, QoS-compatible topic-rate probes with a durable workstation
+log. It also captures the Pi start temperature before launch and the helper
+watchdog's exact same-run peak plus the post-teardown temperature. The first
+checksum-matched validation run must copy back its complete Pi log directory
+even when it passes.
+
+This user-run procedure is prepared but has not been run. W5 rate and
+temperature evidence, same-run provenance, the complete source-window and hold
+sequence, and verified teardown therefore remain open.
+
+## Block 2 Preflight Handoff Correction - 16/07/2026
+
+The workstation and Pi preflight bodies are now implemented as the two modes of
+`tools/live_dashboard_preflight.sh` instead of being carried as long shell
+blocks. The `workstation` mode runs the offline test set, verifies the helper
+pin and required SSID, and rejects occupied ports and conflicting processes.
+The `pi` mode verifies the same helper pin, default device ownership, UDP port,
+same-link route and SSID, then runs the helper's non-hardware preflight-only
+path. It does not start MAVProxy, MAVROS, Hailo inference, the camera, or the
+UART link.
+
+The preflight file is `5,782` bytes with SHA-256
+`341e6f1b50fc5c9e7006ffe4986d7e7c4439252d1dff4b1913c1d25dc72295eb`.
+Its process scan uses separate patterns and fails before inspection on empty,
+alternation-based, or line-broken entries. The contract harness exercises
+no-match, real-match, inspection-error, and invalid-pattern paths and pins the
+full workstation and Pi pattern sets.
+
+The workstation mode reached its SSID gate and correctly stopped because the
+machine was not on the required IoT link. Pi mode and the live pipeline have
+not been run. The helper remains unchanged at SHA-256
+`3e8a7ea3ef6f8427ee4243c7c744089fc77e79b46d76ec2b38a799336dd8860f`,
+and all live acceptance evidence remains open.
+
+## EOD Network Correction And Friday Handoff - 16/07/2026
+
+The user confirmed that both live hosts now use `IMT Nord Europe 5G`, with Pi
+IPv4 `10.100.249.131` and workstation Wi-Fi IPv4 `10.100.253.235`;
+`172.17.0.1` is the workstation Docker bridge and is not a live-stack endpoint.
+This supersedes the active helper and preflight IoT-SSID defaults above without
+rewriting older IoT-network test evidence.
+
+The corrected helper is `47,978` bytes with SHA-256
+`b778f69e3c692ae6e221d8a341962baf879d6aa2336df8f21912a3f1fbb81c12`.
+The corrected preflight is `5,781` bytes with SHA-256
+`ffbc05b4a11896140c2a917386fe6b4fbafa3a459513680b8ac95614d1cc73fa`.
+Both shell harnesses now pin the exact 5G SSID contract. These revisions remain
+offline-verified only; the 5G link has not yet re-proved cross-host DDS or the
+complete browser, W5, source-window, hold, and teardown acceptance.
+
+The approved consolidation design is deferred to the canonical Friday diary:
+`working_diary/2026-07-17_friday_live_dashboard_supervisor_consolidation.md`.
+It will replace the cross-host preflight with one workstation supervisor and
+one Pi helper while keeping W5 explicitly operator-gated. No consolidation was
+implemented during this EOD wrap. `images/LogoBase.png` remains retained as a
+design-source asset.

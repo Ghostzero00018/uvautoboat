@@ -95,9 +95,12 @@ Do not use the simulation one-click launcher for live Hailo/MAVROS testing.
 Follow [Live Hailo and MAVROS Dashboard
 Testing](../../wiki/Live_Hailo_MAVLink_Dashboard_Testing.md): start rosbridge,
 `web_video_server`, and the dashboard HTTP server on the workstation first;
-then run `pi_live_hailo_mavlink_dashboard.sh` on the Pi and open the browser
-only after `PI_SOURCE_STACK_READY=PASS`. Treat any MAVROS topic marked `Stale`
-as a failed diagnostic even if another topic continues updating.
+then transfer the tracked
+[`pi_live_hailo_mavlink_dashboard.sh`](../../tools/pi_live_hailo_mavlink_dashboard.sh)
+and [`live_dashboard_preflight.sh`](../../tools/live_dashboard_preflight.sh) to
+the Pi, pass both workstation and Pi preflights, and open the browser only after
+`PI_SOURCE_STACK_READY=PASS`. Treat any MAVROS topic marked `Stale` as a failed
+diagnostic even if another topic continues updating.
 
 ## Dashboard Panels
 
