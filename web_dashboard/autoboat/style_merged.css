@@ -247,20 +247,13 @@ h2 {
 
 body.live-mavlink-view-only .mission-control-panel,
 body.live-mavlink-view-only .config-panel,
+body.live-mavlink-view-only .tuning-panel,
 body.live-mavlink-view-only .health-check-panel {
     outline: 3px solid rgba(220, 53, 69, 0.45);
     outline-offset: 2px;
 }
 
-body.live-mavlink-view-only .mission-control-panel button,
-body.live-mavlink-view-only .mission-control-panel input,
-body.live-mavlink-view-only .mission-control-panel select,
-body.live-mavlink-view-only .config-panel button,
-body.live-mavlink-view-only .config-panel input,
-body.live-mavlink-view-only .config-panel select,
-body.live-mavlink-view-only .health-check-panel button,
-body.live-mavlink-view-only #header-estop-badge,
-body.live-mavlink-view-only #footer-estop-badge {
+body.live-mavlink-view-only .live-mavlink-write-disabled {
     pointer-events: none !important;
     cursor: not-allowed !important;
     filter: grayscale(1);

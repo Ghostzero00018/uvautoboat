@@ -169,8 +169,8 @@
                         <span id="mavlink-rc-channels" class="value telemetry-vector">-</span>
                     </div>
                     <div class="info-item full-width">
-                        <span class="label">Last MAVROS Update:</span>
-                        <span id="mavlink-last-update" class="value">-</span>
+                        <span class="label">MAVROS Topic Ages:</span>
+                        <span id="mavlink-last-update" class="value">Waiting for MAVROS topics</span>
                     </div>
                 </div>
             </div>
@@ -341,15 +341,15 @@
 
                 <!-- Mission History Log -->
                 <div class="mission-history-section">
-                    <button class="mission-history-header" id="btn-toggle-history">
+                    <button class="mission-history-header view-only-diagnostic-control" id="btn-toggle-history">
                         <span class="history-icon">▶</span>
                         <span class="history-title">Mission History | Historique Mission</span>
                         <span id="history-count" class="history-count">(0 events)</span>
                     </button>
                     <div id="mission-history-content" class="mission-history-content is-hidden">
                         <div class="history-controls">
-                            <button id="btn-clear-history" class="history-btn">Clear | Effacer</button>
-                            <button id="btn-export-history" class="history-btn">Export JSON</button>
+                            <button id="btn-clear-history" class="history-btn view-only-diagnostic-control">Clear | Effacer</button>
+                            <button id="btn-export-history" class="history-btn view-only-diagnostic-control">Export JSON</button>
                         </div>
                         <div id="mission-history-log" class="mission-history-log">
                             <div class="history-empty">No events yet | Aucun événement</div>
@@ -676,7 +676,7 @@
                 <div class="tuning-sections">
                     <!-- LiDAR Perception Parameters -->
                     <div class="tuning-section">
-                        <button class="tuning-section-header" data-target="perception-params">
+                        <button class="tuning-section-header view-only-diagnostic-control" data-target="perception-params">
                             <span class="section-icon">▶</span>
                             <span class="section-title">LiDAR Perception Parameters</span>
                             <span class="section-node">/lidar_perception_node</span>
@@ -800,7 +800,7 @@
 
                     <!-- Heading Controller Parameters -->
                     <div class="tuning-section">
-                        <button class="tuning-section-header" data-target="controller-params">
+                        <button class="tuning-section-header view-only-diagnostic-control" data-target="controller-params">
                             <span class="section-icon">▶</span>
                             <span class="section-title">Heading Controller Parameters</span>
                             <span class="section-node">/heading_controller</span>
@@ -1010,9 +1010,9 @@
                     <div class="terminal-controls">
                         <span id="health-check-status" class="health-status-badge">Idle</span>
                         <button id="btn-run-health-check" class="terminal-btn">Run | Lancer</button>
-                        <button id="btn-clear-health-check" class="terminal-btn">Clear | Effacer</button>
+                        <button id="btn-clear-health-check" class="terminal-btn view-only-diagnostic-control">Clear | Effacer</button>
                         <label class="auto-scroll-label">
-                            <input type="checkbox" id="health-auto-scroll" checked>
+                            <input type="checkbox" id="health-auto-scroll" class="view-only-diagnostic-control" checked>
                             Auto-scroll
                         </label>
                     </div>

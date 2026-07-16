@@ -120,6 +120,10 @@ chmod +x pi_live_hailo_mavlink_dashboard.sh
 ./pi_live_hailo_mavlink_dashboard.sh
 ```
 
+Run the helper directly. Do not wrap it in an external GNU `timeout`; its own
+default 120-second window must finish naturally so it can emit the completion
+and teardown markers.
+
 The expected negative probe prints
 `CANONICAL_STRIPPED_RCLPY=UNAVAILABLE informational rc=1` and a
 `ModuleNotFoundError` traceback. It is informational only when immediately
@@ -149,10 +153,18 @@ Then open or hard-refresh <http://127.0.0.1:8002/>. Select
 `/hailo/overlay/image_raw` in the Camera panel and verify:
 
 - live Hailo boxes and class labels;
-- MAVROS state remains connected and disarmed;
-- GPS, IMU, battery, and RC activity reaches the view-only panel;
+- all five MAVROS badges remain `Live` with independent ages below `3.0 s`;
+- MAVROS state remains freshly connected and disarmed;
+- GPS, IMU, battery, and RC activity reaches the view-only panel without a
+  `Stale` badge or cleared values;
 - GPS no-fix is displayed as telemetry state, not transport loss;
+- vehicle-writing mission, configuration, tuning, and health-check controls are
+  inert while local history, export, copy, and auto-scroll controls remain
+  usable;
 - dashboard command and configuration writes remain blocked.
+
+Any `Stale` badge fails the browser check for that topic. A surviving IMU topic
+must not make state, GPS, battery, or RC appear current.
 
 Do not use mission, thruster, arming, mode, RC override, parameter, or setpoint
 controls during this diagnostic.
@@ -169,8 +181,9 @@ TEARDOWN=PASS
 
 Pi logs are written under
 `~/hailo_coco_overlay_2026-07-10/logs/live_dashboard_YYYYMMDD_HHMMSS`.
-For review, paste the Pi console from `PI_SOURCE_STACK_READY=PASS` through the
-final `logs=` line. Copy back the matching directory from a new workstation
+For review, paste the Pi console from the checksum `OK` line through the final
+`logs=` line. This ties the helper bytes, source window, and teardown result to
+the same invocation. Copy back the matching directory from a new workstation
 terminal when a failure needs analysis:
 
 ```bash

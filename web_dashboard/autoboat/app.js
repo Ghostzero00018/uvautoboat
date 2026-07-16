@@ -55,10 +55,33 @@ let currentStreamingTopic = null;
 // This temporary build is deliberately display-only. It subscribes directly to
 // MAVROS and blocks every dashboard command/config write at the final send boundary.
 const LIVE_MAVLINK_VIEW_ONLY = true;
+const LIVE_MAVLINK_STALE_AFTER_MS = 3000;
+const LIVE_MAVLINK_FRESHNESS_INTERVAL_MS = 500;
+const LIVE_MAVLINK_WRITE_CONTROL_SELECTOR = [
+    '.mission-control-panel button:not(.view-only-diagnostic-control)',
+    '.mission-control-panel input:not(.view-only-diagnostic-control)',
+    '.mission-control-panel select:not(.view-only-diagnostic-control)',
+    '.mission-control-panel textarea:not(.view-only-diagnostic-control)',
+    '.config-panel button:not(.view-only-diagnostic-control)',
+    '.config-panel input:not(.view-only-diagnostic-control)',
+    '.config-panel select:not(.view-only-diagnostic-control)',
+    '.config-panel textarea:not(.view-only-diagnostic-control)',
+    '.tuning-panel button:not(.view-only-diagnostic-control)',
+    '.tuning-panel input:not(.view-only-diagnostic-control)',
+    '.tuning-panel select:not(.view-only-diagnostic-control)',
+    '.tuning-panel textarea:not(.view-only-diagnostic-control)',
+    '.health-check-panel button:not(.view-only-diagnostic-control)',
+    '.health-check-panel input:not(.view-only-diagnostic-control)',
+    '.health-check-panel select:not(.view-only-diagnostic-control)',
+    '.health-check-panel textarea:not(.view-only-diagnostic-control)'
+].join(', ');
+let liveMavlinkFreshnessTimer = null;
+const liveMavlinkReceivedAt = new Map();
 
 const LIVE_MAVLINK_TOPIC_SPECS = Object.freeze([
     Object.freeze({
         key: 'state',
+        label: 'State',
         name: '/mavros/state',
         messageType: 'mavros_msgs/State',
         throttle_rate: 500,
@@ -66,6 +89,7 @@ const LIVE_MAVLINK_TOPIC_SPECS = Object.freeze([
     }),
     Object.freeze({
         key: 'gps',
+        label: 'GPS',
         name: '/mavros/global_position/raw/fix',
         messageType: 'sensor_msgs/NavSatFix',
         throttle_rate: 500,
@@ -73,6 +97,7 @@ const LIVE_MAVLINK_TOPIC_SPECS = Object.freeze([
     }),
     Object.freeze({
         key: 'imu',
+        label: 'IMU',
         name: '/mavros/imu/data',
         messageType: 'sensor_msgs/Imu',
         throttle_rate: 200,
@@ -80,6 +105,7 @@ const LIVE_MAVLINK_TOPIC_SPECS = Object.freeze([
     }),
     Object.freeze({
         key: 'battery',
+        label: 'Battery',
         name: '/mavros/battery',
         messageType: 'sensor_msgs/BatteryState',
         throttle_rate: 1000,
@@ -87,12 +113,40 @@ const LIVE_MAVLINK_TOPIC_SPECS = Object.freeze([
     }),
     Object.freeze({
         key: 'rc',
+        label: 'RC',
         name: '/mavros/rc/in',
         messageType: 'mavros_msgs/RCIn',
         throttle_rate: 500,
         handler: updateLiveMavlinkRc
     })
 ]);
+
+const LIVE_MAVLINK_EMPTY_VALUES = Object.freeze({
+    state: Object.freeze([
+        Object.freeze({ id: 'mavlink-connected', disconnected: 'Disconnected', stale: 'Unknown (stale)', badge: 'critical' }),
+        Object.freeze({ id: 'mavlink-armed', disconnected: 'Unavailable', stale: 'Unknown (stale)', badge: 'critical' }),
+        Object.freeze({ id: 'mavlink-mode', disconnected: '-', stale: '-' }),
+        Object.freeze({ id: 'mavlink-system-status', disconnected: '-', stale: '-' }),
+        Object.freeze({ id: 'mavlink-manual-input', disconnected: '-', stale: '-' })
+    ]),
+    gps: Object.freeze([
+        Object.freeze({ id: 'mavlink-gps-fix', disconnected: '-', stale: '-', badge: 'warning' }),
+        Object.freeze({ id: 'mavlink-gps-altitude', disconnected: '-', stale: '-' })
+    ]),
+    imu: Object.freeze([
+        Object.freeze({ id: 'mavlink-attitude', disconnected: '-', stale: '-' }),
+        Object.freeze({ id: 'mavlink-gyro', disconnected: '-', stale: '-' }),
+        Object.freeze({ id: 'mavlink-accel', disconnected: '-', stale: '-' })
+    ]),
+    battery: Object.freeze([
+        Object.freeze({ id: 'mavlink-battery', disconnected: '-', stale: '-' }),
+        Object.freeze({ id: 'mavlink-battery-current', disconnected: '-', stale: '-' })
+    ]),
+    rc: Object.freeze([
+        Object.freeze({ id: 'mavlink-rc-rssi', disconnected: '-', stale: '-' }),
+        Object.freeze({ id: 'mavlink-rc-channels', disconnected: '-', stale: '-' })
+    ])
+});
 
 function setLiveMavlinkValue(id, text, badgeState = '') {
     const element = document.getElementById(id);
@@ -101,10 +155,46 @@ function setLiveMavlinkValue(id, text, badgeState = '') {
     if (badgeState) element.className = `value badge ${badgeState}`;
 }
 
-function markLiveMavlinkTopic(key) {
-    setLiveMavlinkValue(`mavlink-topic-${key}`, 'Live', 'clear');
+function clearLiveMavlinkTopicValues(key, reason = 'disconnected') {
+    const entries = LIVE_MAVLINK_EMPTY_VALUES[key] || [];
+    entries.forEach((entry) => {
+        const text = reason === 'stale' ? entry.stale : entry.disconnected;
+        setLiveMavlinkValue(entry.id, text, entry.badge || '');
+    });
+}
+
+function formatLiveMavlinkAge(ageMs) {
+    const tenths = Math.floor(Math.max(0, ageMs) / 100) / 10;
+    return `${tenths.toFixed(1)} s`;
+}
+
+function refreshLiveMavlinkFreshness(now = Date.now()) {
+    const summary = LIVE_MAVLINK_TOPIC_SPECS.map((spec) => {
+        const receivedAt = liveMavlinkReceivedAt.get(spec.key);
+        if (!Number.isFinite(receivedAt)) {
+            setLiveMavlinkValue(`mavlink-topic-${spec.key}`, `${spec.label}: Waiting`, 'warning');
+            return `${spec.label}: waiting`;
+        }
+
+        const ageMs = Math.max(0, now - receivedAt);
+        const ageText = formatLiveMavlinkAge(ageMs);
+        if (ageMs >= LIVE_MAVLINK_STALE_AFTER_MS) {
+            setLiveMavlinkValue(`mavlink-topic-${spec.key}`, `${spec.label}: Stale (${ageText})`, 'critical');
+            clearLiveMavlinkTopicValues(spec.key, 'stale');
+            return `${spec.label}: stale (${ageText})`;
+        }
+
+        setLiveMavlinkValue(`mavlink-topic-${spec.key}`, `${spec.label}: Live (${ageText})`, 'clear');
+        return `${spec.label}: ${ageText}`;
+    });
+
     const lastUpdate = document.getElementById('mavlink-last-update');
-    if (lastUpdate) lastUpdate.textContent = new Date().toLocaleTimeString();
+    if (lastUpdate) lastUpdate.textContent = summary.join(' | ');
+}
+
+function markLiveMavlinkTopic(key, receivedAt = Date.now()) {
+    liveMavlinkReceivedAt.set(key, receivedAt);
+    refreshLiveMavlinkFreshness(receivedAt);
 }
 
 function finiteNumber(value, digits, suffix = '') {
@@ -135,6 +225,11 @@ function quaternionToEulerDegrees(quaternion) {
 }
 
 function updateLiveMavlinkState(message) {
+    if (message?.connected !== true) {
+        clearLiveMavlinkTopicValues('state');
+        markLiveMavlinkTopic('state');
+        return;
+    }
     setLiveMavlinkValue('mavlink-connected', message.connected ? 'Connected' : 'Disconnected', message.connected ? 'clear' : 'critical');
     setLiveMavlinkValue('mavlink-armed', message.armed ? 'ARMED' : 'Disarmed', message.armed ? 'critical' : 'clear');
     setLiveMavlinkValue('mavlink-mode', message.mode || 'Unknown');
@@ -200,10 +295,9 @@ function subscribeToLiveMavlinkTopics() {
 }
 
 function resetLiveMavlinkTelemetry() {
-    LIVE_MAVLINK_TOPIC_SPECS.forEach((spec) => {
-        setLiveMavlinkValue(`mavlink-topic-${spec.key}`, 'Waiting', 'warning');
-    });
-    setLiveMavlinkValue('mavlink-connected', 'Disconnected', 'critical');
+    liveMavlinkReceivedAt.clear();
+    LIVE_MAVLINK_TOPIC_SPECS.forEach((spec) => clearLiveMavlinkTopicValues(spec.key));
+    refreshLiveMavlinkFreshness();
 }
 
 function reportBlockedDashboardWrite(action) {
@@ -213,29 +307,48 @@ function reportBlockedDashboardWrite(action) {
     if (typeof showFeedback === 'function') showFeedback(message, 'warning');
 }
 
+function dashboardWriteAllowed(action) {
+    if (!LIVE_MAVLINK_VIEW_ONLY) return true;
+    reportBlockedDashboardWrite(action);
+    return false;
+}
+
 function publishDashboardWrite(topic, message, action) {
-    if (LIVE_MAVLINK_VIEW_ONLY) {
-        reportBlockedDashboardWrite(action);
-        return false;
-    }
+    if (!dashboardWriteAllowed(action)) return false;
     topic.publish(message);
     return true;
 }
 
 function callDashboardWriteService(service, request, onSuccess, onError, action) {
-    if (LIVE_MAVLINK_VIEW_ONLY) {
-        reportBlockedDashboardWrite(action);
-        return false;
-    }
+    if (!dashboardWriteAllowed(action)) return false;
     service.callService(request, onSuccess, onError);
     return true;
+}
+
+function disableLiveMavlinkWriteControl(control) {
+    control.inert = true;
+    control.setAttribute('inert', '');
+    control.setAttribute('aria-disabled', 'true');
+    if ('disabled' in control) control.disabled = true;
+    control.classList.add('live-mavlink-write-disabled');
 }
 
 function enableLiveMavlinkViewOnly() {
     if (!LIVE_MAVLINK_VIEW_ONLY) return;
     document.body.classList.add('live-mavlink-view-only');
+    document.querySelectorAll(LIVE_MAVLINK_WRITE_CONTROL_SELECTOR)
+        .forEach(disableLiveMavlinkWriteControl);
+    ['header-estop-badge', 'footer-estop-badge'].forEach((id) => {
+        const shortcut = document.getElementById(id);
+        if (!shortcut) return;
+        disableLiveMavlinkWriteControl(shortcut);
+    });
     const banner = document.getElementById('live-mavlink-safety-banner');
     if (banner) banner.textContent = 'LIVE MAVLINK VIEW-ONLY — dashboard command/config writes are blocked. Use the physical safety controls for the real vehicle.';
+    resetLiveMavlinkTelemetry();
+    if (liveMavlinkFreshnessTimer === null) {
+        liveMavlinkFreshnessTimer = setInterval(refreshLiveMavlinkFreshness, LIVE_MAVLINK_FRESHNESS_INTERVAL_MS);
+    }
 }
 // ========== END TEMPORARY LIVE MAVLINK VIEW ==========
 
@@ -1193,7 +1306,7 @@ function subscribeToTopics() {
     addLog('Subscribed to topics (AutoBoat + Modular)', 'info');
     
     // Enable mission control UI when connected (before config received)
-    updateMissionControlUI({ state: 'UNKNOWN', gps_ready: true });
+    updateMissionControlUI({ state: 'UNKNOWN', gps_ready: false });
     
     // Create publisher for configuration updates (Planner modular mode only)
     configPublisher = new ROSLIB.Topic({
@@ -2442,14 +2555,14 @@ function initMissionControl() {
     // Step 2: Confirm/Cancel Waypoints
     document.getElementById('btn-confirm-waypoints').addEventListener('click', () => {
         debounceCommand(() => {
-            sendMissionCommand('confirm_waypoints');
+            if (!sendMissionCommand('confirm_waypoints')) return;
             setTimeout(() => alert('✅ Waypoints Confirmed\n\nRoute locked. Ready to start mission.\n\n✅ Waypoints Confirmés\n\nRoute verrouillée. Prêt à démarrer la mission.'), 100);
         });
     });
 
     document.getElementById('btn-cancel-waypoints').addEventListener('click', () => {
         debounceCommand(() => {
-            sendMissionCommand('cancel_waypoints');
+            if (!sendMissionCommand('cancel_waypoints')) return;
             clearWaypointPreview();
             setTimeout(() => alert('❌ Waypoints Cancelled\n\nRoute cleared. Generate new waypoints.\n\n❌ Waypoints Annulés\n\nRoute effacée. Générer de nouveaux waypoints.'), 100);
         });
@@ -2461,7 +2574,7 @@ function initMissionControl() {
         // without a deliberate confirm (mirrors Reset/Go-Home/E-Stop).
         if (confirm('✅ Start mission? The boat will begin navigation. | Démarrer la mission? Le bateau va commencer la navigation.')) {
             debounceCommand(() => {
-                sendMissionCommand('start_mission');
+                if (!sendMissionCommand('start_mission')) return;
                 setTimeout(() => alert('✅ Mission Started\n\nThe boat will begin navigation.\n\n✅ Mission Démarrée\n\nLe bateau va commencer la navigation.'), 100);
             });
         }
@@ -2477,13 +2590,13 @@ function initMissionControl() {
             callDashboardWriteService(stopService, new ROSLIB.ServiceRequest({}), (result) => {
                 if (result.success) {
                     addLog(`Mission stopped — ${result.message}`, 'info');
+                    setTimeout(() => alert('⏸️ Mission Stopped\n\nNavigation paused. Use Resume to continue.\n\n⏸️ Mission Arrêtée\n\nNavigation en pause. Utilisez Reprendre pour continuer.'), 100);
                 } else {
                     addLog(`Stop rejected: ${result.message}`, 'warning');
                 }
             }, (error) => {
                 addLog(`Stop service error: ${error}`, 'error');
             }, 'stop mission service');
-            setTimeout(() => alert('⏸️ Mission Stopped\n\nNavigation paused. Use Resume to continue.\n\n⏸️ Mission Arrêtée\n\nNavigation en pause. Utilisez Reprendre pour continuer.'), 100);
         });
     });
 
@@ -2492,7 +2605,7 @@ function initMissionControl() {
         // without a deliberate confirm (mirrors Reset/Go-Home/E-Stop).
         if (confirm('▶️ Resume mission? The boat will continue navigation. | Reprendre la mission? Le bateau va continuer la navigation.')) {
             debounceCommand(() => {
-                sendMissionCommand('resume_mission');
+                if (!sendMissionCommand('resume_mission')) return;
                 setTimeout(() => alert('▶️ Mission Resumed\n\nNavigation continuing.\n\n▶️ Mission Reprise\n\nNavigation en cours.'), 100);
             });
         }
@@ -2515,7 +2628,7 @@ function initMissionControl() {
         }
         if (confirm('Reset mission and clear waypoints? | Réinitialiser la mission et effacer les waypoints?')) {
             debounceCommand(() => {
-                sendMissionCommand('reset_mission');
+                if (!sendMissionCommand('reset_mission')) return;
                 clearWaypointPreview();
                 missionState.startLat = null;
                 missionState.startLon = null;
@@ -2550,7 +2663,7 @@ function initMissionControl() {
         }
         if (confirm('🏠 Go Home: The boat will navigate to its starting point. Continue? | Le bateau va naviguer vers son point de départ. Continuer?')) {
             debounceCommand(() => {
-                sendMissionCommand('go_home');
+                if (!sendMissionCommand('go_home')) return;
                 addLog('🏠 Go Home activated | Retour maison activé', 'info');
                 setTimeout(() => alert('🏠 Go Home Activated\n\nBoat navigating to starting position.\n\n🏠 Retour Maison Activé\n\nBateau naviguant vers position de départ.'), 100);
             });
@@ -2567,14 +2680,14 @@ function initMissionControl() {
     // Joystick Override — debounced to prevent rapid toggling during command latency
     document.getElementById('btn-joystick-enable').addEventListener('click', () => {
         debounceCommand(() => {
-            sendMissionCommand('joystick_enable');
+            if (!sendMissionCommand('joystick_enable')) return;
             setTimeout(() => alert('🎮 Joystick Mode Enabled\n\nAutonomous control disabled. Use keyboard teleop.\n\n🎮 Mode Joystick Activé\n\nContrôle autonome désactivé. Utilisez le téléopération.'), 100);
         });
     });
 
     document.getElementById('btn-joystick-disable').addEventListener('click', () => {
         debounceCommand(() => {
-            sendMissionCommand('joystick_disable');
+            if (!sendMissionCommand('joystick_disable')) return;
             setTimeout(() => alert('Autonomous Mode Restored\n\nJoystick override disabled.\n\nMode Autonome Restauré\n\nJoystick désactivé.'), 100);
         });
     });
@@ -2605,7 +2718,7 @@ function initMissionControl() {
 function generateWaypoints() {
     if (!connected || !configPublisher) {
         addLog('Not connected to ROS', 'error');
-        return;
+        return false;
     }
     
     // Get waypoint parameters from mission control inputs (validated)
@@ -2616,7 +2729,7 @@ function generateWaypoints() {
 
     if (hasValidationErrors()) {
         addLog('Waypoint generation aborted — fix out-of-range values first', 'warning');
-        return;
+        return false;
     }
 
     // Update hidden config fields for compatibility
@@ -2644,7 +2757,7 @@ function generateWaypoints() {
     const configMsg = new ROSLIB.Message({
         data: JSON.stringify(config)
     });
-    if (!publishDashboardWrite(configPublisher, configMsg, 'waypoint configuration publish')) return;
+    if (!publishDashboardWrite(configPublisher, configMsg, 'waypoint configuration publish')) return false;
 
     // Call generate as a service; rosbridge forwards the config publish first,
     // so by the time the service handler runs the new config is already applied.
@@ -2654,7 +2767,7 @@ function generateWaypoints() {
         name: '/planning/generate_waypoints',
         serviceType: 'std_srvs/srv/Trigger'
     });
-    callDashboardWriteService(generateService, new ROSLIB.ServiceRequest({}), (result) => {
+    if (!callDashboardWriteService(generateService, new ROSLIB.ServiceRequest({}), (result) => {
         if (result.success) {
             addLog(`Waypoints generated — ${result.message}`, 'info');
         } else {
@@ -2662,7 +2775,7 @@ function generateWaypoints() {
         }
     }, (error) => {
         addLog(`Generate service error: ${error}`, 'error');
-    }, 'generate waypoints service');
+    }, 'generate waypoints service')) return false;
     
     // Calculate and display preview info
     const totalWaypoints = lanes * 2 - 1;
@@ -2671,13 +2784,14 @@ function generateWaypoints() {
     document.getElementById('estimated-distance').textContent = `Distance: ~${estimatedDistance}m`;
     
     addLog(`Generating ${totalWaypoints} waypoints: ${length}m × ${lanes} lanes`, 'info');
+    return true;
 }
 
 // Send mission command to Planner (modular mode)
 function sendMissionCommand(command) {
     if (!connected) {
         addLog('Not connected to ROS', 'error');
-        return;
+        return false;
     }
 
     // Create publisher if not exists (Planner only)
@@ -2697,13 +2811,14 @@ function sendMissionCommand(command) {
     if (!publishDashboardWrite(missionCommandPublisher, msg, `mission command ${command}`)) return false;
     addLog(`Mission command: ${command}`, 'info');
     if (DEBUG_MODE) console.log('Mission command sent to planner:', command);
+    return true;
 }
 
 // Emergency Stop - Immediately halt the boat
 function emergencyStop() {
     if (!connected) {
         addLog('Not connected to ROS', 'error');
-        return;
+        return false;
     }
 
     if (LIVE_MAVLINK_VIEW_ONLY) {
@@ -2716,7 +2831,7 @@ function emergencyStop() {
 
     if (!confirmed) {
         addLog('Emergency stop cancelled by user', 'warning');
-        return;
+        return false;
     }
 
     addLog('🚨 EMERGENCY STOP ACTIVATED | ARRÊT D\'URGENCE ACTIVÉ 🚨', 'error');
@@ -2767,14 +2882,15 @@ function emergencyStop() {
     addLog('Zero thrust commanded to both thrusters', 'error');
     addLog('Mission emergency stop sent to planner', 'error');
     addLog('Boat should be stopped. Verify manually before resuming.', 'warning');
+    return true;
 }
 
 // Update mission control UI based on state
 function updateMissionControlUI(state) {
     if (DEBUG_MODE) console.log('updateMissionControlUI called with state:', state);
     missionState.state = (state.state || 'UNKNOWN').toString().toUpperCase();
-    // If no gps_ready field, assume true when connected (for testing)
-    missionState.gpsReady = (state.gps_ready !== undefined) ? state.gps_ready : connected;
+    // Missing readiness evidence stays fail-closed until the planner publishes it.
+    missionState.gpsReady = (state.gps_ready !== undefined) ? state.gps_ready : false;
     missionState.missionArmed = state.mission_armed || false;
     missionState.joystickOverride = state.joystick_override || false;
     // Guard fields that /planning/mission_status owns — /planning/config doesn't carry them
@@ -3334,8 +3450,9 @@ function applyPreset(presetName) {
     const preset = TUNING_PRESETS[presetName];
     if (!preset) {
         addLog(`Preset ${presetName} not found`, 'error');
-        return;
+        return false;
     }
+    if (!dashboardWriteAllowed(`${preset.name} preset publish`)) return false;
 
     // Confirmation dialog — presets overwrite BOTH Perception and Controller params in one click,
     // so prevent misclicks by asking the user to confirm before anything is sent to ROS.
@@ -3347,7 +3464,7 @@ function applyPreset(presetName) {
                 `Current values will be replaced.`;
     if (!confirm(msg)) {
         addLog(`Preset ${preset.name} cancelled by user`, 'info');
-        return;
+        return false;
     }
 
     const statusEl = document.getElementById('preset-status');
@@ -3387,20 +3504,26 @@ function applyPreset(presetName) {
     }
 
     // Apply parameters to ROS
-    applyPerceptionParameters(preset.perception);
-    applyControllerParameters(preset.controller);
+    const perceptionSent = applyPerceptionParameters(preset.perception);
+    const controllerSent = applyControllerParameters(preset.controller);
+    if (!perceptionSent || !controllerSent) {
+        statusEl.textContent = `${preset.name} preset not sent`;
+        statusEl.classList.remove('text-ok');
+        statusEl.classList.add('text-warn');
+        addLog(`${preset.name} preset not sent`, 'warning');
+        return false;
+    }
 
     setTimeout(() => {
-        statusEl.textContent = `✅ ${preset.name} preset applied — ${changed.length} field(s) changed`;
-        statusEl.classList.remove('text-warn');
-        statusEl.classList.add('text-ok');
+        statusEl.textContent = `${preset.name} preset sent — awaiting ROS confirmation`;
         setTimeout(() => {
             statusEl.textContent = '';
-            statusEl.classList.remove('text-ok');
+            statusEl.classList.remove('text-warn');
         }, 4000);
     }, 500);
 
-    addLog(`Applied ${preset.name} preset (${changed.length} fields changed)`, 'info');
+    addLog(`Sent ${preset.name} preset (${changed.length} local fields changed)`, 'info');
+    return true;
 }
 
 // Update Perception input fields from preset
@@ -3470,7 +3593,7 @@ function applyPerceptionParameters(presetParams = null) {
     if (!connected || !configPublisher) {
         addLog('Not connected to ROS', 'error');
         showFeedback('❌ Not connected to ROS', 'error');
-        return;
+        return false;
     }
 
     // Perception input ID to param name mapping
@@ -3502,7 +3625,7 @@ function applyPerceptionParameters(presetParams = null) {
 
     if (hasValidationErrors()) {
         addLog('Perception config not sent — fix out-of-range values first', 'warning');
-        return;
+        return false;
     }
 
     // Presets send all params; manual edits send only changed ones
@@ -3513,15 +3636,16 @@ function applyPerceptionParameters(presetParams = null) {
         data: JSON.stringify(params)
     });
 
-    if (!publishDashboardWrite(configPublisher, message, 'perception configuration publish')) return;
+    if (!publishDashboardWrite(configPublisher, message, 'perception configuration publish')) return false;
 
     // Clear dirty state for Perception inputs
     markClean(Object.keys(perceptionIdMap));
 
     const sentCount = Object.keys(params).length;
     addLog(`✅ Perception: ${sentCount} parameter(s) sent via config topic`, 'info');
-    showFeedback(`✅ Perception: ${sentCount} parameter(s) applied`, 'success');
+    showFeedback(`Perception: ${sentCount} parameter(s) sent`, 'info');
     if (DEBUG_MODE) console.log('Perception config sent to /planning/set_config:', params);
+    return true;
 }
 
 // Apply Heading Controller parameters via config topic
@@ -3529,7 +3653,7 @@ function applyControllerParameters(presetParams = null) {
     if (!connected || !configPublisher) {
         addLog('Not connected to ROS', 'error');
         showFeedback('❌ Not connected to ROS', 'error');
-        return;
+        return false;
     }
 
     // Controller input ID to param name mapping
@@ -3566,7 +3690,7 @@ function applyControllerParameters(presetParams = null) {
 
     if (hasValidationErrors()) {
         addLog('Controller config not sent — fix out-of-range values first', 'warning');
-        return;
+        return false;
     }
 
     // Presets send all params; manual edits send only changed ones
@@ -3577,15 +3701,16 @@ function applyControllerParameters(presetParams = null) {
         data: JSON.stringify(params)
     });
 
-    if (!publishDashboardWrite(configPublisher, message, 'controller configuration publish')) return;
+    if (!publishDashboardWrite(configPublisher, message, 'controller configuration publish')) return false;
 
     // Clear dirty state for Controller inputs
     markClean(Object.keys(controllerIdMap));
 
     const sentCount = Object.keys(params).length;
     addLog(`✅ Controller: ${sentCount} parameter(s) sent via config topic`, 'info');
-    showFeedback(`✅ Controller: ${sentCount} parameter(s) applied`, 'success');
+    showFeedback(`Controller: ${sentCount} parameter(s) sent`, 'info');
     if (DEBUG_MODE) console.log('Controller config sent to /planning/set_config:', params);
+    return true;
 }
 
 // Show visual feedback toast notification
@@ -4299,7 +4424,7 @@ updateGPS = function(message) {
 // Hook into waypoint generation to trigger validation
 const originalGenerateWaypoints = generateWaypoints;
 generateWaypoints = function() {
-    originalGenerateWaypoints();
+    if (!originalGenerateWaypoints()) return false;
 
     // Validate waypoints after they're received (with delay for ROS processing)
     setTimeout(async () => {
@@ -4309,6 +4434,7 @@ generateWaypoints = function() {
             displayValidationResults(validation);
         }
     }, 1500);
+    return true;
 };
 
 // Initialize Phase 2 features on page load
@@ -4412,8 +4538,9 @@ function runHealthCheck() {
         setHealthStatus('error', 'No rosbridge');
         clearHealthOutput();
         appendHealthLine('[ERROR] Not connected to rosbridge — start the simulation first.');
-        return;
+        return false;
     }
+    if (!dashboardWriteAllowed('health check service')) return false;
     subscribeHealthTopics();
     if (btn) btn.disabled = true;
     healthCheckStartTime = Date.now();
@@ -4427,7 +4554,7 @@ function runHealthCheck() {
         serviceType: 'std_srvs/srv/Trigger'
     });
     const request = new ROSLIB.ServiceRequest({});
-    callDashboardWriteService(healthService, request, (response) => {
+    if (!callDashboardWriteService(healthService, request, (response) => {
         if (response && !response.success) {
             if (btn) btn.disabled = false;
             setHealthStatus('error', 'Rejected');
@@ -4438,7 +4565,11 @@ function runHealthCheck() {
         setHealthStatus('error', 'Service failed');
         appendHealthLine('[ERROR] Service call failed: ' + error);
         appendHealthLine('Is /health_check/run running? Check that health_check_service node is launched.');
-    }, 'health check service');
+    }, 'health check service')) {
+        if (btn) btn.disabled = false;
+        return false;
+    }
+    return true;
 }
 
 window.addEventListener('load', () => {
@@ -4533,7 +4664,7 @@ function addExportButton(headerSelector, panelName, label) {
     const header = document.querySelector(headerSelector);
     if (!header) return;
     const btn = document.createElement('button');
-    btn.className = 'terminal-btn export-btn';
+    btn.className = 'terminal-btn export-btn view-only-diagnostic-control';
     btn.textContent = label || 'Export JSON';
     btn.title = `Export ${panelName} data as JSON`;
     btn.addEventListener('click', (e) => {
@@ -4548,7 +4679,7 @@ function addExportButtonToControls(controlsSelector, panelName, label) {
     const controls = document.querySelector(controlsSelector);
     if (!controls) return;
     const btn = document.createElement('button');
-    btn.className = 'terminal-btn export-btn';
+    btn.className = 'terminal-btn export-btn view-only-diagnostic-control';
     btn.textContent = label || 'Export JSON';
     btn.title = `Export ${panelName} data as JSON`;
     btn.addEventListener('click', (e) => {
@@ -4563,7 +4694,7 @@ function addCopyButton(controlsSelector, panelContentSelector, label) {
     const controls = document.querySelector(controlsSelector);
     if (!controls) return;
     const btn = document.createElement('button');
-    btn.className = 'terminal-btn export-btn';
+    btn.className = 'terminal-btn export-btn view-only-diagnostic-control';
     btn.textContent = label || 'Copy';
     btn.title = 'Copy panel text to clipboard';
     btn.addEventListener('click', (e) => {

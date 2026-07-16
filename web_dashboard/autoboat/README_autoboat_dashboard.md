@@ -49,7 +49,13 @@ The dashboard remains simulation-first and normally reads and writes the
 existing `/wamv/*` topic contract. On 15/07/2026, a temporary view-only mode
 displayed the stock-COCO Hailo stream and five direct MAVROS
 telemetry feeds together. That diagnostic did not validate any real-FCU write
-path. Follow [Live Hailo and MAVROS Dashboard
+path. The 16/07/2026 reliability review kept this mode diagnostic-only. Its
+implementation now gives each MAVROS topic an independent three-second
+freshness threshold, clears the corresponding values when a topic becomes
+stale, clears the whole panel when rosbridge disconnects, and makes all
+write-capable controls inert while preserving local history, export, copy, and
+auto-scroll controls. These safeguards have automated coverage; live browser
+revalidation remains pending. Follow [Live Hailo and MAVROS Dashboard
 Testing](../../wiki/Live_Hailo_MAVLink_Dashboard_Testing.md) for the isolated
 service order and safety boundary. For the separate RealSense camera-only
 check, use [RealSense Dashboard
@@ -90,7 +96,8 @@ Follow [Live Hailo and MAVROS Dashboard
 Testing](../../wiki/Live_Hailo_MAVLink_Dashboard_Testing.md): start rosbridge,
 `web_video_server`, and the dashboard HTTP server on the workstation first;
 then run `pi_live_hailo_mavlink_dashboard.sh` on the Pi and open the browser
-only after `PI_SOURCE_STACK_READY=PASS`.
+only after `PI_SOURCE_STACK_READY=PASS`. Treat any MAVROS topic marked `Stale`
+as a failed diagnostic even if another topic continues updating.
 
 ## Dashboard Panels
 
@@ -98,6 +105,7 @@ only after `PI_SOURCE_STACK_READY=PASS`.
 | -------------------------- | -------------------------------------------------------------------------------- |
 | **Connection Status**      | WebSocket connection indicator (green/red)                                       |
 | **GPS Position**           | Latitude, longitude, local X/Y coordinates                                      |
+| **Live MAVLink Diagnostic** | Five direct MAVROS feeds with independent ages and stale-value clearing         |
 | **Mission Status**         | State badge, waypoint progress, distance, speed, time remaining                 |
 | **Mission Control**        | Generate, Confirm, Start, Stop, Resume, Emergency Stop, Go Home, Reset          |
 | **Obstacle Detection**     | Front/Left/Right clearance with urgency scores and status badge                 |

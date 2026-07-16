@@ -2,7 +2,13 @@
 
 Security posture, known vulnerabilities, and recommended mitigations for the AutoBoat web dashboard.
 
-**Status:** Assessment completed 16/04/2026. Initial code fixes (SRI hashes, server-side `PARAM_RANGES` bounds) landed 17/04/2026; dashboard XSS rendering fixes landed 04/05/2026; CSP wrapper + CDN-free Path A vendoring landed 05/05/2026; CSP `'unsafe-inline'` drop on `script-src` + `style-src` + per-request Host derivation landed 06/05/2026; camera free-text topic warning landed 18/06/2026. Remaining items below.
+**Status:** Assessment completed 16/04/2026. Initial code fixes (SRI hashes,
+server-side `PARAM_RANGES` bounds) landed 17/04/2026; dashboard XSS rendering
+fixes landed 04/05/2026; CSP wrapper + CDN-free Path A vendoring landed
+05/05/2026; CSP `'unsafe-inline'` drop on `script-src` + `style-src` +
+per-request Host derivation landed 06/05/2026; camera free-text topic warning
+landed 18/06/2026; temporary view-only diagnostic hardening landed
+16/07/2026. Remaining items below.
 
 ---
 
@@ -16,6 +22,14 @@ Security posture, known vulnerabilities, and recommended mitigations for the Aut
 | Network binding | Default launch posture is `0.0.0.0` on all 3 ports — accessible to entire LAN. Loopback-only test runs should bind `8002`, `9090`, and `8080` to `127.0.0.1`. |
 | Input validation | **Two-layer (since 17/04/2026):** client-side HTML `min`/`max` attributes + server-side `PARAM_RANGES` rejection in each Python node (`heading_controller`, `waypoint_planner`, `lidar_perception`). Out-of-range values rejected with `Rejected <name>=<value> (valid range: lo–hi)` at WARN level. |
 | XSS protection | Improved — world banner, rosout terminal, event logs, mission history, and waypoint validation all write dynamic text via `textContent`. CSP wrapper deployed 05/05/2026 (CDN-free after Roadmap §1.3 path A vendoring landed same day); `'unsafe-inline'` dropped from `script-src` + `style-src` 06/05/2026 — see [Content Security Policy](#content-security-policy) below. |
+
+> **Temporary diagnostic exception (16/07/2026):** the current hard-coded live
+> MAVLink build makes vehicle-writing mission, configuration, tuning, and
+> health-check controls inert while preserving local diagnostic controls. It
+> rejects dashboard publishes and service calls at the final send boundary.
+> This is not authentication or rosbridge authorization: another LAN client can
+> still write directly, and any future non-view-only dashboard build restores
+> the authorization risk described below.
 
 ### Open Ports
 
