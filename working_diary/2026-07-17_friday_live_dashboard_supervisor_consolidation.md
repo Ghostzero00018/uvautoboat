@@ -1,11 +1,30 @@
-# Friday 17/07/2026 - Live Dashboard Supervisor Consolidation
+# Friday 17/07/2026 - Live Dashboard Two-Command Demo
 
 ## Goal
 
-Reduce the live-dashboard handoff to two operational files: one workstation
-supervisor and one Pi helper. Preserve every existing fail-closed, view-only,
-thermal, disarmed-state, marker, and teardown contract. W5 remains an explicit
-operator-gated measurement after browser acceptance.
+Reach **two operational commands** for the live dashboard - one workstation command,
+one Pi command - and use them to run the basic demo: the Pi sends the Hailo overlay and
+control-box telemetry, and the workstation browser displays both. Nothing else is
+launched by hand.
+
+This is deliberately **not** the full "only two files" consolidation, and it writes no
+new supervisor from scratch. The workstation side is reached by extending the existing
+`tools/live_dashboard_preflight.sh` with a `run` mode - reusing its checks and adapting
+the lifecycle patterns already proven in the Pi helper. Renaming, deduplication, and
+file deletion are mechanical steps that come **after** the two-command flow has actually
+run. The scope is sized for a short day, and the live demo is the priority outcome, not
+the consolidation.
+
+The rate probe is automated inside the supervisor rather than gated on operator
+attestation. The reason is coordination, not evidence rescue: the runbook already
+permits a probe to extend into `PI_SOURCE_HOLD=ACTIVE`, so a human-gated probe would not
+lose the evidence outright. Automating it removes the manual hand-off delay and
+guarantees the probe belongs to the same invocation.
+
+Browser visual acceptance stays a required human observation, recorded as independent
+evidence rather than as a precondition for the probe. A run may produce valid rate
+evidence while its visual acceptance fails; report the two separately and never let one
+imply the other.
 
 ## Starting Context
 
@@ -16,62 +35,193 @@ operator-gated measurement after browser acceptance.
 - The 5G link has not proved cross-host DDS. Same SSID and same address range are
   insufficient; keep the direct-route and ROS graph gates.
 - The current helper and interim preflight are offline-verified but not
-  runtime-validated. Regenerate and record every checksum after consolidation.
+  runtime-validated. Regenerate and record every checksum after any change.
 - Keep `images/LogoBase.png`.
 
-## Block A - Workstation Supervisor
+### Division Of Proof - Do Not Duplicate
 
-Replace the interim cross-host preflight with
-`tools/live_dashboard_workstation.sh`:
+Each host proves only what it can actually observe. The Pi helper already owns its side
+and needs **no change for the demo**:
 
-- `run` performs W1, starts rosbridge, `web_video_server`, and the dashboard in
-  separate process groups, records external logs, verifies ports/nodes/HTTP,
-  and continuously monitors them;
-- `rates --browser-accepted` treats the flag as explicit operator attestation
-  after the Pi readiness marker and manual combined-view acceptance; without
-  it, W5 fails closed;
-- workstation teardown stops dashboard, video server, then rosbridge and emits
-  `WORKSTATION_TEARDOWN=PASS` only after groups, ports, and ROS nodes are gone.
+| Check | Owner | Where |
+| --- | --- | --- |
+| Pi -> workstation route, gateway-crossing rejection | Pi helper | `pi_live_hailo_mavlink_dashboard.sh:854-856` |
+| Pi SSID and interface | Pi helper | `:858-860` |
+| Device owners (`fuser` on UART, camera, `/dev/hailo0`) | Pi helper | `:848-850` |
+| UDP `14550` availability | Pi helper | `:851-852` |
+| HEF checksum | Pi helper | `:846` |
+| Pi-side visibility of `/rosbridge_websocket`, `/web_video_server`, `/rosapi` | Pi helper | `:372-380` |
+| `/rosapi/topics_for_type` service | Pi helper | `:382` |
 
-W5 failure preserves its log, exits nonzero, and leaves W2-W4 running for
-orderly Pi-first teardown. It never retries or tears down services
-automatically.
+The workstation supervisor must **not** re-prove any of the above - it has neither the
+Pi's address nor the Pi's viewpoint. It proves only local facts: its own SSID and IPv4,
+its three services, their ports and nodes, HTTP reachability, the shared ROS graph as
+seen from the workstation, and arrival of the six expected topics.
 
-Add offline tests for real process-group cleanup, readiness denial, premature
-child exit, reverse teardown order, W5 failure, and marker honesty. Do not use
-`pkill -f`.
+## Block A - Extend The Workstation Preflight Into A Supervisor
 
-## Block B - Single Pi Helper
+Block A **extends the existing workstation preflight into a foreground supervisor,
+reusing its runtime checks and adapting the proven lifecycle patterns from the Pi
+helper. It is not a greenfield supervisor implementation.**
 
-Make `tools/pi_live_hailo_mavlink_dashboard.sh` the only Pi operational file:
+Add a `run` mode to `tools/live_dashboard_preflight.sh`. Do not create a new empty file:
+the two ingredients already exist and are proven.
 
-- retain external checksum verification and direct foreground execution;
-- add robust device-owner error handling, explicit RealSense/MAVProxy/MAVROS
-  conflict checks, and a single-instance `flock`;
-- make `--preflight-only` require `WORKSTATION_IP`, run every applicable
-  pre-start non-actuating gate, emit `P1_PREFLIGHT=PASS`, and exit before any
-  child starts; retain heartbeat, source, image, and connected-disarmed gates
-  in the normal live path;
-- leave lifecycle markers, monitored hold, thermal abort, disarmed-state gate,
-  and teardown ownership unchanged.
+- **Reuse in place** - `run_workstation_preflight()` (`live_dashboard_preflight.sh:121`)
+  plus its port (`:87`), process-conflict (`:62`), helper-pin (`:57`), and SSID checks.
+- **Adapt from the Pi helper** - the lifecycle patterns already working on the Pi side:
+  `start_child` (`pi_live_hailo_mavlink_dashboard.sh:238`), `group_alive` (`:84`),
+  `stop_group` (`:89`), `cleanup` (`:113`), the `CHILD_PGIDS` array (`:55`), the
+  `SUPERVISOR_PGID` self-exclusion guard (`:92`), and the trap hand-off (`:118-119`).
+  The self-exclusion guard prevents the supervisor from signalling its own process
+  group - already solved once, so do not re-derive it.
 
-## Block C - Documentation And Offline Gate
+The Pi helper stays a Pi-side supervisor and is not touched. It owns UART, MAVProxy,
+MAVROS, Hailo, and the camera; the workstation's rosbridge, `web_video_server`, and HTTP
+server must be managed by a local workstation process. Absent SSH remote control, the Pi
+helper cannot own that half - which is exactly why the workstation needs its own
+foreground supervisor.
 
-Update the runbook, dashboard README, Friday diary, checksums, sizes, and tests.
-Remove the superseded Pi copy of the workstation preflight. Run the full shell,
-dashboard, syntax, and documentation checks before proposing live execution.
+Phases, in order:
 
-## Block D - Separately Approved 5G Live Gate
+1. **Runtime preflight** - `run` must **not** execute development-time tests, so it
+   cannot call today's `run_workstation_preflight()` as-is: that function currently runs
+   both shell harnesses, the full Node suite, and `node --check`
+   (`live_dashboard_preflight.sh:128-132`). Split the existing function rather than
+   rewriting it:
+   - **static gate** - the two shell harnesses plus `node --test` / `node --check`;
+   - **runtime preflight** - required commands, helper pin, SSID and IPv4, ports, and
+     process conflicts;
+   - the existing `workstation` mode calls both, preserving today's behaviour;
+   - the new `run` calls **only** the runtime preflight, then enters the supervisor.
 
-The user runs the hardware test with the FCU disarmed, propulsion isolated,
-Hailo exclusively owning the D435I, MAVProxy exclusively owning the UART, and
-MAVROS consuming loopback only. First re-prove direct routing and Pi visibility
-of `/rosbridge_websocket`, `/web_video_server`, `/rosapi`, and
-`/rosapi/topics_for_type`. Then capture browser behaviour, W5 output,
-temperatures, and both log directories from the same live-test run. Stop Pi P1
-first and require Pi `TEARDOWN=PASS`; then stop the workstation supervisor and
-require `WORKSTATION_TEARDOWN=PASS`.
+   The live marker must also stop claiming test execution: today's
+   `W1_PREFLIGHT=PASS tests=dashboard,helper,preflight ports=...`
+   (`live_dashboard_preflight.sh:145`) would be dishonest from `run`, which runs no
+   tests. Emit a marker that states only what `run` actually did.
+2. **Services** - start rosbridge, `web_video_server`, and the dashboard, each in its
+   own process group with an external log. Verify ports, ROS nodes, and HTTP. Emit
+   `WORKSTATION_SERVICES=UP`, then supervise every child for the rest of the run.
+3. **Print the Pi command** - emit one copy-paste block that carries the workstation
+   IPv4, the tracked helper checksum verification, `LIVE_HOLD_AFTER_WINDOW=1`, and the
+   helper launch as a single operation. The hold flag is mandatory in the printed
+   command: the helper defaults to `0` (`pi_live_hailo_mavlink_dashboard.sh:18`) and
+   would otherwise exit at `120` s, which contradicts browser observation followed by a
+   Pi-first `Ctrl+C`.
+4. **Arrival gate** - block until the six expected topics are present in the graph
+   **and** actually carrying messages: the Hailo overlay image topic plus the five
+   MAVROS telemetry topics. Bound the wait with an explicit timeout. Emit
+   `PI_DATA_ARRIVED=PASS` with elapsed time. This is a workstation-observable fact only;
+   Pi-side route and node visibility stay with the helper.
+5. **Automatic rate probe** - on arrival, run the six sequential QoS-compatible probes
+   against the live offered QoS with a durable log. Emit
+   `W5_RATE_PROBES=PASS topics=6 duration_each=10s`.
+6. **Supervise** - keep watching children, ports, and nodes so the operator can open the
+   browser and judge the combined view while the stack stays up.
+7. **Teardown** - on `Ctrl+C`, stop dashboard, then video server, then rosbridge, and
+   emit `WORKSTATION_TEARDOWN=PASS` only after groups, ports, and ROS nodes are gone.
 
-No browser automation, SSH-controlled Pi launch, W5 retry, automatic stream
-profile choice, Gazebo, navigation/controller nodes, or dashboard-to-FCU write
-path. Do not start a later block without explicit approval.
+### Failure model - hold, never abandon
+
+A supervisor that exits while its three children keep running has abandoned lifecycle
+ownership: nothing supervises them, and no honest `WORKSTATION_TEARDOWN=PASS` can be
+produced afterwards. So on any phase failure after services are up:
+
+- record the failure and the final nonzero status, but **stay running and keep
+  supervising**;
+- do not probe, do not retry, do not tear services down automatically;
+- wait for the Pi to stop and for the operator's `Ctrl+C`, then perform the same reverse
+  teardown and emit `WORKSTATION_TEARDOWN=PASS` if it genuinely succeeded;
+- exit with the preserved nonzero status.
+
+A failure before services are up exits nonzero immediately - there is nothing to own.
+
+Never wrap the run in an external GNU `timeout`. Emit each marker exactly once, and
+never print a marker for a phase that did not pass.
+
+### Required offline tests (not deferrable)
+
+Add these four scenarios to the **existing** `tools/test_live_dashboard_preflight.sh`.
+Do not create four new test files.
+
+That harness is a literal-contract checker plus single-function stub execution
+(`test_live_dashboard_preflight.sh:20`, `extract_function` at `:23`) - it is **not** a
+supervisor integration environment. So the four lifecycle cases need an explicit test
+seam, or `failure-hold` will either hang the harness or start real services:
+
+- use short-lived fake child processes and injectable commands - never ROS, network, or
+  hardware;
+- give every case an internal deadline so a held supervisor cannot stall the suite;
+- clean up every spawned child even when an assertion fails;
+- update the case count from `8` to `12` (`test_live_dashboard_preflight.sh:164`).
+
+These are the minimum for an unattended supervisor and must land with Block A:
+
+- marker honesty - no marker prints for a phase that did not pass; each prints once;
+- child monitoring - a premature child exit is detected and reported;
+- failure-hold - a failed phase holds and keeps supervising instead of exiting;
+- reverse teardown - dashboard, then video server, then rosbridge; `PASS` only after
+  groups, ports, and nodes are gone.
+
+Do not use `pkill -f`.
+
+## Block B - The Live Demo (separately approved)
+
+The demo, run by the user, with the FCU disarmed, propulsion isolated, Hailo exclusively
+owning the D435I, MAVProxy exclusively owning the UART, and MAVROS consuming loopback
+only. Exactly two commands, each foreground in its own terminal:
+
+1. **Workstation:** `tools/live_dashboard_preflight.sh run` - preflights, starts the
+   services, prints the Pi command, waits for arrival, probes automatically, supervises.
+   The name still says "preflight" today; it is renamed only after the demo has run.
+2. **Pi:** paste the command the workstation printed - it verifies the checksum, sets
+   `WORKSTATION_IP` and `LIVE_HOLD_AFTER_WINDOW=1`, and launches the helper in one
+   operation.
+
+The Pi helper is used **as-is**; no Pi-side change is in tomorrow's scope.
+
+Open the browser only after both commands report their readiness markers, then judge the
+combined overlay-plus-telemetry view - this is the demo's actual acceptance. Capture,
+from the same invocation: browser behaviour, the automatic probe output and log,
+`PI_TEMP_START_MC` / `PI_TEMP_PEAK_MC` and the post-teardown temperature, and both log
+directories - copy the Pi log directory back even on a pass.
+
+Stop Pi P1 first and require `PI_SOURCE_WINDOW=COMPLETE` and `TEARDOWN=PASS`; then stop
+the workstation supervisor and require `WORKSTATION_TEARDOWN=PASS`.
+
+Acceptance closes only when the Pi-side checksum match, the complete window, the
+automatic rate evidence, and both teardown markers come from that same run. Report the
+browser visual result separately from the rate result; neither implies the other.
+
+No browser automation, SSH-controlled Pi launch, probe retry, automatic stream profile
+choice, external GNU `timeout` wrapper, Gazebo, navigation/controller nodes, or
+dashboard-to-FCU write path. Do not start a later block without explicit approval.
+
+## Deferred - after the two-command flow has run
+
+Not tomorrow. These are the consolidation and hardening items, all of which need the
+demo to have run first:
+
+- **Mechanical rename** - once the demo has run, rename so the filenames state what the
+  files became. Run from the repository root:
+
+  ```bash
+  git mv tools/live_dashboard_preflight.sh tools/live_dashboard_workstation.sh
+  git mv tools/test_live_dashboard_preflight.sh tools/test_live_dashboard_workstation.sh
+  ```
+
+  Keep the rename as its own commit so rename history survives.
+- **Retire the Pi wrapper mode** - the preflight's `pi` mode is already a thin wrapper
+  around `"$HELPER" --preflight-only`; drop it once the supervisor prints the Pi command
+  directly.
+- **Harness continuity** - keep `tools/test_pi_live_hailo_mavlink_dashboard.sh`. The
+  workstation harness follows its file through the rename; never delete regression
+  coverage without moving it.
+- **Pi helper hardening** - only the genuinely missing items: generalized process-conflict
+  rejection and a single-instance `flock`. The route, SSID, device-owner, UDP, checksum,
+  and node/service gates already exist and must not be reimplemented.
+- **Documentation closeout** - rewrite the runbook around the two-command flow, collapse
+  the former W1-W5 sections, and regenerate every checksum and byte size.
+
+**Next steps:** Implement Block A with its four required tests, run the offline gate,
+then request approval for the Block B demo.
