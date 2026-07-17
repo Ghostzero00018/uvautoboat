@@ -7,7 +7,7 @@ REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 DASHBOARD_DIR="$REPO_ROOT/web_dashboard/autoboat"
 HELPER="$SCRIPT_DIR/pi_live_hailo_mavlink_dashboard.sh"
 EXPECTED_HELPER_SHA256='b778f69e3c692ae6e221d8a341962baf879d6aa2336df8f21912a3f1fbb81c12'
-EXPECTED_SSID='IMT Nord Europe 5G'
+EXPECTED_SSID="${LIVE_SSID:-IoT IMT Nord Europe}"
 ROS_SETUP='/opt/ros/jazzy/setup.bash'
 LIVE_DOMAIN_ID='12'
 WORKSTATION_LOG_ROOT="${LIVE_DASHBOARD_LOG_ROOT:-$HOME/Desktop}"
@@ -447,8 +447,8 @@ print_pi_command() {
   printf '  chmod +x pi_live_hailo_mavlink_dashboard.sh\n'
   printf "  printf 'PI_TEMP_START_MC='\n"
   printf '  cat /sys/class/thermal/thermal_zone0/temp\n'
-  printf "  exec env WORKSTATION_IP='%s' LIVE_HOLD_AFTER_WINDOW=1 ./pi_live_hailo_mavlink_dashboard.sh\n" \
-    "$WORKSTATION_IP"
+  printf '  exec env WORKSTATION_IP=%q LIVE_SSID=%q LIVE_HOLD_AFTER_WINDOW=1 ./pi_live_hailo_mavlink_dashboard.sh\n' \
+    "$WORKSTATION_IP" "$EXPECTED_SSID"
   printf ')\n\n'
 }
 
@@ -810,7 +810,7 @@ run_pi_preflight() {
     || fail "cannot read SSID on Pi interface: $pi_interface"
   [ "$ssid" = "$EXPECTED_SSID" ] || fail "unexpected Pi SSID: ${ssid:-NONE}"
 
-  "$HELPER" --preflight-only
+  LIVE_SSID="$EXPECTED_SSID" "$HELPER" --preflight-only
   log "P1_PREFLIGHT=PASS workstation=$workstation_ip dev=$pi_interface ssid=$ssid"
 }
 

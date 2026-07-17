@@ -33,13 +33,13 @@ extract_function() {
 bash -n "$PREFLIGHT"
 
 require_literal "EXPECTED_HELPER_SHA256='b778f69e3c692ae6e221d8a341962baf879d6aa2336df8f21912a3f1fbb81c12'"
-require_literal "EXPECTED_SSID='IMT Nord Europe 5G'"
+require_literal 'EXPECTED_SSID="${LIVE_SSID:-IoT IMT Nord Europe}"'
 require_literal 'reject_conflicting_processes workstation "${WORKSTATION_CONFLICT_PATTERNS[@]}"'
 require_literal 'reject_conflicting_processes Pi "${PI_CONFLICT_PATTERNS[@]}"'
 require_literal 'pgrep -af -- "$pattern"'
 require_literal 'case "$pattern" in'
 require_literal 'process pattern contains alternation'
-require_literal '"$HELPER" --preflight-only'
+require_literal 'LIVE_SSID="$EXPECTED_SSID" "$HELPER" --preflight-only'
 require_literal 'W1_PREFLIGHT=PASS'
 require_literal 'P1_PREFLIGHT=PASS'
 require_literal 'set +u'
@@ -84,8 +84,21 @@ grep -Fq 'b778f69e3c692ae6e221d8a341962baf879d6aa2336df8f21912a3f1fbb81c12' \
   || fail 'printed Pi command does not verify the helper pin'
 grep -Fq 'LIVE_HOLD_AFTER_WINDOW=1' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not enable the monitored hold'
+grep -Fq 'LIVE_SSID=IoT\ IMT\ Nord\ Europe' <<<"$PI_COMMAND_BLOCK" \
+  || fail 'printed Pi command does not carry the default IoT SSID'
 ! grep -Fq 'live_dashboard_preflight.sh' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command reintroduced the Pi-side preflight'
+
+PI_COMMAND_OVERRIDE_OUTPUT="$(LIVE_SSID="Test Lab's IoT" bash -c '
+  source "$1"
+  WORKSTATION_IP=192.0.2.10
+  print_pi_command
+' _ "$PREFLIGHT")"
+PI_COMMAND_OVERRIDE_BLOCK="$(sed -n '/^($/,/^)$/{p}' <<<"$PI_COMMAND_OVERRIDE_OUTPUT")"
+EXPECTED_OVERRIDE_QUOTED="$(printf '%q' "Test Lab's IoT")"
+bash -n <<<"$PI_COMMAND_OVERRIDE_BLOCK"
+grep -Fq "LIVE_SSID=$EXPECTED_OVERRIDE_QUOTED" <<<"$PI_COMMAND_OVERRIDE_BLOCK" \
+  || fail 'printed Pi command did not shell-quote the SSID override'
 
 set +e
 PRE_READY_INTERRUPT_OUTPUT="$(bash -c '
@@ -109,7 +122,7 @@ grep -Fq 'stop requested; waiting for orderly workstation teardown' \
 
 NETWORK_OUTPUT="$(bash -c '
   source "$1"
-  nmcli() { printf "wlp7s0:yes:IMT Nord Europe 5G\n"; }
+  nmcli() { printf "wlp7s0:yes:IoT IMT Nord Europe\n"; }
   ip() { printf "7: wlp7s0    inet 10.100.253.235/24 brd 10.100.253.255 scope global dynamic wlp7s0\n"; }
   resolve_workstation_network
   [ "$WORKSTATION_INTERFACE" = wlp7s0 ]
@@ -121,8 +134,8 @@ set +e
 MULTI_NETWORK_OUTPUT="$(bash -c '
   source "$1"
   nmcli() {
-    printf "wlp7s0:yes:IMT Nord Europe 5G\n"
-    printf "wlan1:yes:IMT Nord Europe 5G\n"
+    printf "wlp7s0:yes:IoT IMT Nord Europe\n"
+    printf "wlan1:yes:IoT IMT Nord Europe\n"
   }
   ip() { return 0; }
   resolve_workstation_network

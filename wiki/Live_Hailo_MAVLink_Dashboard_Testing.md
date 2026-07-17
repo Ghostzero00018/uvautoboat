@@ -27,8 +27,8 @@ whenever either checksum differs.
 | Helper SHA-256 | `b778f69e3c692ae6e221d8a341962baf879d6aa2336df8f21912a3f1fbb81c12` |
 | Preflight source | `tools/live_dashboard_preflight.sh` |
 | Preflight Pi destination | `~/hailo_coco_overlay_2026-07-10/live_dashboard_preflight.sh` |
-| Preflight size | `25,608` bytes |
-| Preflight SHA-256 | `27942aa0ab10dc9bc5fb949868e3956eae8d1987c07dd0c73acf4d6fb8d5b8de` |
+| Preflight size | `25,678` bytes |
+| Preflight SHA-256 | `de08299cdf1a201f23619c0d434604cadaedcef29dc5926a84d04f33560c55fc` |
 
 This revision retains the finite 120-second evidence window and adds an
 opt-in, fully monitored post-window hold for demonstrations. A transient
@@ -45,7 +45,7 @@ the Hailo runtime tree, and generated logs remain outside this repository.
 
 ## Before Starting
 
-- Workstation and Pi are on the same `IMT Nord Europe 5G` link with
+- Workstation and Pi are on the same `IoT IMT Nord Europe` link with
   `ROS_DOMAIN_ID=12` and `ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET`.
 - Control box is powered, the FCU is disarmed, and propulsion is isolated.
 - D435I and Hailo hardware are connected to the Pi.
@@ -64,7 +64,7 @@ a service.
 
 Host: workstation. Terminal: new W1, one-shot. Working directory: repository
 root. This runs the dashboard, helper, and preflight contract tests, verifies
-the helper checksum, requires the exact configured 5G SSID, prints the current
+the helper checksum, requires the exact configured IoT SSID, prints the current
 IPv4 addresses, and rejects occupied dashboard ports or conflicting processes.
 
 ```bash
@@ -133,7 +133,7 @@ read -r -p 'Current Pi SSH endpoint (user@host): ' PI_SSH
   cd ~/seal_ws/src/uvautoboat
   : "${PI_SSH:?Pi SSH endpoint is required}"
   echo 'b778f69e3c692ae6e221d8a341962baf879d6aa2336df8f21912a3f1fbb81c12  tools/pi_live_hailo_mavlink_dashboard.sh' | sha256sum -c -
-  echo '27942aa0ab10dc9bc5fb949868e3956eae8d1987c07dd0c73acf4d6fb8d5b8de  tools/live_dashboard_preflight.sh' | sha256sum -c -
+  echo 'de08299cdf1a201f23619c0d434604cadaedcef29dc5926a84d04f33560c55fc  tools/live_dashboard_preflight.sh' | sha256sum -c -
   scp tools/pi_live_hailo_mavlink_dashboard.sh tools/live_dashboard_preflight.sh \
     "${PI_SSH}:~/hailo_coco_overlay_2026-07-10/"
 )
@@ -157,7 +157,7 @@ export WORKSTATION_IP
   set -euo pipefail
   : "${WORKSTATION_IP:?Workstation Wi-Fi IPv4 is required}"
   echo 'b778f69e3c692ae6e221d8a341962baf879d6aa2336df8f21912a3f1fbb81c12  pi_live_hailo_mavlink_dashboard.sh' | sha256sum -c -
-  echo '27942aa0ab10dc9bc5fb949868e3956eae8d1987c07dd0c73acf4d6fb8d5b8de  live_dashboard_preflight.sh' | sha256sum -c -
+  echo 'de08299cdf1a201f23619c0d434604cadaedcef29dc5926a84d04f33560c55fc  live_dashboard_preflight.sh' | sha256sum -c -
   chmod +x pi_live_hailo_mavlink_dashboard.sh live_dashboard_preflight.sh
   ./live_dashboard_preflight.sh pi "$WORKSTATION_IP"
 )
@@ -173,7 +173,8 @@ the helper directly in the foreground:
   : "${WORKSTATION_IP:?Run the P1 preflight block first}"
   printf 'PI_TEMP_START_MC='
   cat /sys/class/thermal/thermal_zone0/temp
-  exec env WORKSTATION_IP="$WORKSTATION_IP" LIVE_HOLD_AFTER_WINDOW=1 \
+  exec env WORKSTATION_IP="$WORKSTATION_IP" LIVE_SSID='IoT IMT Nord Europe' \
+    LIVE_HOLD_AFTER_WINDOW=1 \
     ./pi_live_hailo_mavlink_dashboard.sh
 )
 ```

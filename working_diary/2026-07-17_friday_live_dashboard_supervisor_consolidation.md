@@ -310,3 +310,45 @@ plus `node --check` pass. The workstation preflight is now `25,608` bytes with S
 `27942aa0ab10dc9bc5fb949868e3956eae8d1987c07dd0c73acf4d6fb8d5b8de`; this supersedes
 the earlier checksum entries above. The matching runbook fields were refreshed. The Pi
 helper remains unchanged, and neither the Pi preparation gate nor Block B was run.
+
+## Block B first attempt and network correction
+
+The Pi preparation gate was completed on 17/07/2026. Its installed helper initially
+failed the checksum check, so only the tracked helper was transferred. The landed copy
+then matched
+`b778f69e3c692ae6e221d8a341962baf879d6aa2336df8f21912a3f1fbb81c12`.
+
+The first Block B attempt used `IMT Nord Europe 5G`. The workstation supervisor reached
+`WORKSTATION_SERVICES=UP` with logs under
+`/home/ghostzero/Desktop/live_dashboard_workstation_20260717_143007`. The Pi passed its
+local import, provenance, HEF, and MAVProxy import gates, but stopped because the
+workstation rosbridge node was not visible from the Pi. It did not reach
+`PI_SOURCE_STACK_READY=PASS`. The Pi reported `TEARDOWN=PASS` with logs under
+`/home/imt-aqua-drone/hailo_coco_overlay_2026-07-10/logs/live_dashboard_20260717_143102`;
+that directory was copied back to
+`/home/ghostzero/Desktop/test_logs_folder/live_dashboard_20260717_143102`. The
+workstation was then stopped with `Ctrl+C` and reported
+`WORKSTATION_TEARDOWN=PASS` after dashboard, video-server, then rosbridge teardown.
+
+A separate cross-host ROS 2 exchange check reproduced the network distinction: DDS
+traffic did not cross between the two hosts on `IMT Nord Europe 5G`, while it did cross
+after both hosts joined `IoT IMT Nord Europe`. The IoT network therefore replaces the
+5G network for this live demo even though it currently has no Internet access. This
+closes only the network-selection diagnosis; it is not a successful live Hailo/MAVROS
+dashboard run.
+
+The workstation supervisor now defaults to the env-overridable
+`LIVE_SSID=IoT IMT Nord Europe` selection and carries the selected SSID into its printed
+Pi command with shell-safe quoting. The retained `pi` wrapper also passes the same value
+to the helper. The Pi helper itself remains byte-identical at its existing checksum, so
+no new Pi transfer is required for this correction.
+
+The existing offline gate passes after the correction: the workstation harness remains
+`12/12`, the Pi helper harness passes, the dashboard suite remains `26/26`, and shell
+syntax plus `node --check` pass. The workstation preflight is now `25,678` bytes with
+SHA-256
+`de08299cdf1a201f23619c0d434604cadaedcef29dc5926a84d04f33560c55fc`;
+the current runbook checksum fields and IoT prerequisite were refreshed. Block B remains
+open until both hosts switch to `IoT IMT Nord Europe` and complete a new same-run live
+attempt. Recheck both IPv4 addresses after that switch rather than reusing the 5G
+addresses.
