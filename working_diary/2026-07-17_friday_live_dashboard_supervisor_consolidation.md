@@ -225,3 +225,88 @@ demo to have run first:
 
 **Next steps:** Implement Block A with its four required tests, run the offline gate,
 then request approval for the Block B demo.
+
+## Block A outcome - offline implementation complete
+
+Block A was implemented on 17/07/2026. Block B was not started, and no live services or
+hardware paths were run.
+
+- `tools/live_dashboard_preflight.sh run` now owns the ROS Jazzy environment, performs
+  only the runtime preflight, starts the three workstation services in separate process
+  groups, verifies their local ports, nodes, service, and HTTP endpoints, and prints the
+  single checksum-pinned Pi command with `LIVE_HOLD_AFTER_WINDOW=1`.
+- Arrival first uses publisher-only graph queries, then bounded message samples for all
+  six topics. The full six-topic rate probe starts only after arrival passes.
+- Any post-service phase failure is preserved and enters the monitored hold without a
+  retry or automatic teardown. `Ctrl+C` suppresses unfinished phase markers and hands
+  off to dashboard, video-server, then rosbridge teardown.
+- The existing `workstation` mode still runs the two shell harnesses, the Node suite,
+  `node --check`, and the runtime preflight. Its behaviour and marker remain separate
+  from the new runtime-only `run` mode.
+- The four required lifecycle scenarios now run through the source-safe supervisor seam
+  with short-lived fake process groups and internal deadlines. The preflight harness
+  passes `12/12`; the Pi helper harness passes; the dashboard suite passes `26/26`; shell
+  syntax checks and `node --check` pass.
+
+The Pi helper was not modified and remains pinned at
+`b778f69e3c692ae6e221d8a341962baf879d6aa2336df8f21912a3f1fbb81c12`.
+The workstation preflight is now `25,570` bytes with SHA-256
+`f5da03ebea643f534f52ddc117c318ef76b6cb75fb4627c5cf2977bafb65852a`.
+The matching runbook checksum fields were refreshed without changing its superseded
+Pi-side preflight procedure.
+
+The current supervisor and helper revisions remain offline-verified only. Before Block B,
+the separately user-run preparation gate must confirm that the Pi helper at
+`~/hailo_coco_overlay_2026-07-10/pi_live_hailo_mavlink_dashboard.sh` matches the pinned
+helper checksum; transfer only that helper if it does not.
+
+## Block A supervision interrupt correction
+
+A deterministic supervisor seam reproduced a benign but evidence-breaking race: when
+`Ctrl+C` interrupted a foreground local-health query, its nonzero status was recorded as
+a supervision failure even though the stop request was valid. The supervision failure
+branch now checks the stop request before recording a phase failure or entering the
+failure hold.
+
+The existing `12/12` harness now also requires:
+
+- an interrupted supervision query to return the preserved status without a false phase
+  failure or hold;
+- the arrival failure branch to enter its bounded monitored hold exactly once;
+- the production teardown verifier to reject an occupied workstation port or a remaining
+  workstation ROS node before allowing `WORKSTATION_TEARDOWN=PASS`.
+
+The full offline gate remains green: both shell harnesses pass, the dashboard suite passes
+`26/26`, and shell syntax plus `node --check` pass. The corrected workstation preflight
+is `25,607` bytes with SHA-256
+`51e9a00a391b7c20f07f04709ffe8566c14bcd404d37f989ce31d6721e62a8a1`; this supersedes
+the earlier Block A checksum above. The matching runbook fields were refreshed. The Pi
+helper remains unchanged at its existing pin.
+
+Arrival defaults remain unchanged at `120` seconds overall and `3` seconds per topic.
+For the first demo, a conservative proposal is `360` seconds overall and `10` seconds per
+topic: the overall window includes operator paste and Pi startup, while the longer sample
+allows a nominal `1 Hz` topic to satisfy the current two-message rate-probe contract. This
+proposal is not applied and is not runtime-proven. It reduces timing risk but cannot
+eliminate the Hailo publisher-advertised-before-data race under the no-retry rule.
+
+## Arrival defaults applied
+
+The first-demo arrival proposal was approved and applied after the supervision interrupt
+correction. The env-overridable workstation defaults are now:
+
+- `LIVE_ARRIVAL_TIMEOUT_SECONDS=360` for the overall arrival deadline;
+- `LIVE_ARRIVAL_SAMPLE_SECONDS=10` for each of the six sequential message samples.
+
+The longer overall window includes operator paste and Pi startup time. The longer sample
+gives a nominal `1 Hz` topic adequate margin to meet the current two-message rate-probe
+contract. These defaults reduce timing risk but remain offline-verified only; they do not
+remove the Hailo publisher-advertised-before-data race or change the no-retry failure
+model.
+
+The full offline gate passes with the new defaults: both shell harnesses pass, the
+preflight harness remains `12/12`, the dashboard suite passes `26/26`, and shell syntax
+plus `node --check` pass. The workstation preflight is now `25,608` bytes with SHA-256
+`27942aa0ab10dc9bc5fb949868e3956eae8d1987c07dd0c73acf4d6fb8d5b8de`; this supersedes
+the earlier checksum entries above. The matching runbook fields were refreshed. The Pi
+helper remains unchanged, and neither the Pi preparation gate nor Block B was run.

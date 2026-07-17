@@ -27,8 +27,8 @@ whenever either checksum differs.
 | Helper SHA-256 | `b778f69e3c692ae6e221d8a341962baf879d6aa2336df8f21912a3f1fbb81c12` |
 | Preflight source | `tools/live_dashboard_preflight.sh` |
 | Preflight Pi destination | `~/hailo_coco_overlay_2026-07-10/live_dashboard_preflight.sh` |
-| Preflight size | `5,781` bytes |
-| Preflight SHA-256 | `ffbc05b4a11896140c2a917386fe6b4fbafa3a459513680b8ac95614d1cc73fa` |
+| Preflight size | `25,608` bytes |
+| Preflight SHA-256 | `27942aa0ab10dc9bc5fb949868e3956eae8d1987c07dd0c73acf4d6fb8d5b8de` |
 
 This revision retains the finite 120-second evidence window and adds an
 opt-in, fully monitored post-window hold for demonstrations. A transient
@@ -133,7 +133,7 @@ read -r -p 'Current Pi SSH endpoint (user@host): ' PI_SSH
   cd ~/seal_ws/src/uvautoboat
   : "${PI_SSH:?Pi SSH endpoint is required}"
   echo 'b778f69e3c692ae6e221d8a341962baf879d6aa2336df8f21912a3f1fbb81c12  tools/pi_live_hailo_mavlink_dashboard.sh' | sha256sum -c -
-  echo 'ffbc05b4a11896140c2a917386fe6b4fbafa3a459513680b8ac95614d1cc73fa  tools/live_dashboard_preflight.sh' | sha256sum -c -
+  echo '27942aa0ab10dc9bc5fb949868e3956eae8d1987c07dd0c73acf4d6fb8d5b8de  tools/live_dashboard_preflight.sh' | sha256sum -c -
   scp tools/pi_live_hailo_mavlink_dashboard.sh tools/live_dashboard_preflight.sh \
     "${PI_SSH}:~/hailo_coco_overlay_2026-07-10/"
 )
@@ -157,7 +157,7 @@ export WORKSTATION_IP
   set -euo pipefail
   : "${WORKSTATION_IP:?Workstation Wi-Fi IPv4 is required}"
   echo 'b778f69e3c692ae6e221d8a341962baf879d6aa2336df8f21912a3f1fbb81c12  pi_live_hailo_mavlink_dashboard.sh' | sha256sum -c -
-  echo 'ffbc05b4a11896140c2a917386fe6b4fbafa3a459513680b8ac95614d1cc73fa  live_dashboard_preflight.sh' | sha256sum -c -
+  echo '27942aa0ab10dc9bc5fb949868e3956eae8d1987c07dd0c73acf4d6fb8d5b8de  live_dashboard_preflight.sh' | sha256sum -c -
   chmod +x pi_live_hailo_mavlink_dashboard.sh live_dashboard_preflight.sh
   ./live_dashboard_preflight.sh pi "$WORKSTATION_IP"
 )

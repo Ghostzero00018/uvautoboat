@@ -8,6 +8,18 @@ DASHBOARD_DIR="$REPO_ROOT/web_dashboard/autoboat"
 HELPER="$SCRIPT_DIR/pi_live_hailo_mavlink_dashboard.sh"
 EXPECTED_HELPER_SHA256='b778f69e3c692ae6e221d8a341962baf879d6aa2336df8f21912a3f1fbb81c12'
 EXPECTED_SSID='IMT Nord Europe 5G'
+ROS_SETUP='/opt/ros/jazzy/setup.bash'
+LIVE_DOMAIN_ID='12'
+WORKSTATION_LOG_ROOT="${LIVE_DASHBOARD_LOG_ROOT:-$HOME/Desktop}"
+SERVICE_READY_TIMEOUT_SECONDS="${LIVE_SERVICE_READY_TIMEOUT_SECONDS:-30}"
+ARRIVAL_TIMEOUT_SECONDS="${LIVE_ARRIVAL_TIMEOUT_SECONDS:-360}"
+ARRIVAL_SAMPLE_SECONDS="${LIVE_ARRIVAL_SAMPLE_SECONDS:-10}"
+TEARDOWN_TIMEOUT_SECONDS="${LIVE_TEARDOWN_TIMEOUT_SECONDS:-15}"
+SUPERVISOR_POLL_SECONDS="${LIVE_SUPERVISOR_POLL_SECONDS:-1}"
+CHILD_STARTUP_SETTLE_SECONDS="${LIVE_CHILD_STARTUP_SETTLE_SECONDS:-0.2}"
+STOP_POLL_SECONDS="${LIVE_STOP_POLL_SECONDS:-1}"
+STOP_INT_ATTEMPTS="${LIVE_STOP_INT_ATTEMPTS:-5}"
+STOP_TERM_ATTEMPTS="${LIVE_STOP_TERM_ATTEMPTS:-3}"
 
 WORKSTATION_CONFLICT_PATTERNS=(
   'rosbridge'
@@ -35,6 +47,51 @@ WORKSTATION_PORTS=(8002 8080 9090)
 PI_DEVICES=(/dev/ttyAMA0 /dev/video4 /dev/hailo0)
 THERMAL_PATH='/sys/class/thermal/thermal_zone0/temp'
 
+EXPECTED_TOPICS=(
+  '/hailo/overlay/image_raw'
+  '/mavros/state'
+  '/mavros/global_position/raw/fix'
+  '/mavros/imu/data'
+  '/mavros/battery'
+  '/mavros/rc/in'
+)
+EXPECTED_TOPIC_TYPES=(
+  'sensor_msgs/msg/Image'
+  'mavros_msgs/msg/State'
+  'sensor_msgs/msg/NavSatFix'
+  'sensor_msgs/msg/Imu'
+  'sensor_msgs/msg/BatteryState'
+  'mavros_msgs/msg/RCIn'
+)
+EXPECTED_TOPIC_RELIABILITY=(reliable best_effort best_effort best_effort best_effort best_effort)
+EXPECTED_TOPIC_DEPTH=(1 10 10 10 10 10)
+
+ROSBRIDGE_COMMAND=(
+  ros2 launch rosbridge_server rosbridge_websocket_launch.xml address:=127.0.0.1
+)
+VIDEO_COMMAND=(
+  ros2 run web_video_server web_video_server --ros-args -p address:=127.0.0.1
+)
+DASHBOARD_COMMAND=(
+  bash -c 'cd -- "$1" && shift && exec "$@"' _ "$DASHBOARD_DIR"
+  python3 serve_dashboard.py 8002 127.0.0.1
+)
+
+declare -a CHILD_NAMES=()
+declare -a CHILD_PIDS=()
+declare -a CHILD_PGIDS=()
+declare -A EMITTED_MARKERS=()
+SUPERVISOR_PGID=''
+WORKSTATION_INTERFACE=''
+WORKSTATION_IP=''
+RUN_DIR=''
+RATE_LOG=''
+SERVICES_UP=0
+CLEANING=0
+STOP_REQUESTED=0
+FINAL_RC=0
+ARRIVAL_ELAPSED_SECONDS=0
+
 log() {
   printf '[live-dashboard-preflight] %s\n' "$*"
 }
@@ -46,6 +103,7 @@ fail() {
 
 usage() {
   printf 'usage: %s workstation\n' "${0##*/}" >&2
+  printf '       %s run\n' "${0##*/}" >&2
   printf '       %s pi WORKSTATION_IP\n' "${0##*/}" >&2
   exit 2
 }
@@ -118,31 +176,599 @@ reject_device_owners() {
   done
 }
 
-run_workstation_preflight() {
-  local wifi_state ip_state
+setup_ros_environment() {
+  local source_rc=0
 
-  for command in node sha256sum nmcli ip ss pgrep awk grep; do
-    require_command "$command"
-  done
+  [ -r "$ROS_SETUP" ] || fail "ROS Jazzy setup missing: $ROS_SETUP"
+  set +u
+  # shellcheck disable=SC1091
+  source "$ROS_SETUP" || source_rc=$?
+  set -u
+  [ "$source_rc" -eq 0 ] || fail "cannot source ROS Jazzy setup: $ROS_SETUP"
 
-  check_helper_pin
+  export ROS_DOMAIN_ID="$LIVE_DOMAIN_ID"
+  export ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET
+  unset ROS_LOCALHOST_ONLY ROS_STATIC_PEERS ROS_DISCOVERY_SERVER
+  unset RMW_IMPLEMENTATION FASTDDS_DEFAULT_PROFILES_FILE
+  unset FASTRTPS_DEFAULT_PROFILES_FILE CYCLONEDDS_URI
+}
+
+resolve_workstation_network() {
+  local wifi_state matched_devices ip_state cidr address
+  local -a devices=() addresses=()
+
+  wifi_state="$(nmcli -t -f DEVICE,ACTIVE,SSID dev wifi)" \
+    || fail 'cannot inspect workstation Wi-Fi state'
+  matched_devices="$(awk -F: -v expected="$EXPECTED_SSID" \
+    '$2 == "yes" && $3 == expected { print $1 }' <<<"$wifi_state")"
+  while IFS= read -r address; do
+    [ -n "$address" ] && devices+=("$address")
+  done <<<"$matched_devices"
+  [ "${#devices[@]}" -eq 1 ] \
+    || fail "expected one active interface on SSID '$EXPECTED_SSID', found ${#devices[@]}"
+  WORKSTATION_INTERFACE="${devices[0]}"
+
+  ip_state="$(ip -4 -o address show dev "$WORKSTATION_INTERFACE" scope global)" \
+    || fail "cannot inspect IPv4 on interface: $WORKSTATION_INTERFACE"
+  while IFS= read -r cidr; do
+    [ -n "$cidr" ] || continue
+    address="${cidr%%/*}"
+    addresses+=("$address")
+  done < <(awk '{print $4}' <<<"$ip_state")
+  [ "${#addresses[@]}" -eq 1 ] \
+    || fail "expected one global IPv4 on $WORKSTATION_INTERFACE, found ${#addresses[@]}"
+  WORKSTATION_IP="${addresses[0]}"
+  [[ "$WORKSTATION_IP" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] \
+    || fail "invalid workstation IPv4: $WORKSTATION_IP"
+  printf 'workstation_ipv4=%s dev=%s ssid=%s\n' \
+    "$WORKSTATION_IP" "$WORKSTATION_INTERFACE" "$EXPECTED_SSID"
+}
+
+run_workstation_static_gate() {
+  require_command node
   "$SCRIPT_DIR/test_pi_live_hailo_mavlink_dashboard.sh" "$HELPER"
   "$SCRIPT_DIR/test_live_dashboard_preflight.sh" "$SCRIPT_DIR/live_dashboard_preflight.sh"
   node --test --test-isolation=none "$DASHBOARD_DIR"/test/*.test.js
   node --check "$DASHBOARD_DIR/app.js"
+}
 
-  wifi_state="$(nmcli -t -f ACTIVE,SSID dev wifi)" \
-    || fail 'cannot inspect workstation Wi-Fi state'
-  grep -Fxq "yes:$EXPECTED_SSID" <<<"$wifi_state" \
-    || fail "workstation is not on SSID: $EXPECTED_SSID"
+run_workstation_runtime_preflight() {
+  local command
 
-  ip_state="$(ip -4 -brief address)" \
-    || fail 'cannot inspect workstation IPv4 addresses'
-  printf '%s\n' "$ip_state"
+  for command in awk bash curl date grep ip mkdir nmcli pgrep ps python3 \
+    setsid sha256sum ss tee tr; do
+    require_command "$command"
+  done
+  setup_ros_environment
+  require_command ros2
+  ros2 pkg prefix rosbridge_server >/dev/null \
+    || fail 'rosbridge_server package missing'
+  ros2 pkg prefix web_video_server >/dev/null \
+    || fail 'web_video_server package missing'
+  [ -r "$DASHBOARD_DIR/serve_dashboard.py" ] \
+    || fail "dashboard server missing: $DASHBOARD_DIR/serve_dashboard.py"
+  [ -x "$SCRIPT_DIR/rate_probe.py" ] \
+    || fail "rate probe missing or not executable: $SCRIPT_DIR/rate_probe.py"
 
+  check_helper_pin
+  resolve_workstation_network
   reject_listening_tcp_ports "${WORKSTATION_PORTS[@]}"
   reject_conflicting_processes workstation "${WORKSTATION_CONFLICT_PATTERNS[@]}"
+}
+
+run_workstation_preflight() {
+  run_workstation_static_gate
+  run_workstation_runtime_preflight
   log 'W1_PREFLIGHT=PASS tests=dashboard,helper,preflight ports=8002,8080,9090'
+}
+
+emit_marker_once() {
+  local key="$1"
+  shift
+  [ "${EMITTED_MARKERS[$key]:-0}" -eq 0 ] || return 0
+  EMITTED_MARKERS[$key]=1
+  log "$*"
+}
+
+init_supervisor_state() {
+  CHILD_NAMES=()
+  CHILD_PIDS=()
+  CHILD_PGIDS=()
+  EMITTED_MARKERS=()
+  SERVICES_UP=0
+  CLEANING=0
+  STOP_REQUESTED=0
+  FINAL_RC=0
+  ARRIVAL_ELAPSED_SECONDS=0
+  SUPERVISOR_PGID="$(ps -o pgid= -p $$ | tr -d ' ')" \
+    || fail 'cannot determine workstation supervisor process group'
+  [[ "$SUPERVISOR_PGID" =~ ^[1-9][0-9]*$ ]] \
+    || fail 'invalid workstation supervisor process group'
+  RUN_DIR="$WORKSTATION_LOG_ROOT/live_dashboard_workstation_$(date +%Y%m%d_%H%M%S)"
+  mkdir -p "$RUN_DIR"
+  RATE_LOG="$RUN_DIR/w5_live_rates.log"
+}
+
+group_alive() {
+  local pgid="$1"
+  kill -0 -- "-$pgid" 2>/dev/null
+}
+
+stop_group() {
+  local name="$1" pgid="$2" pid="$3" signal attempts i
+  if ! [[ "$pgid" =~ ^[1-9][0-9]*$ ]]; then
+    printf '[live-dashboard-preflight] CLEANUP_ERROR: invalid process group name=%s pgid=%s\n' \
+      "$name" "$pgid" >&2
+    return 1
+  fi
+  if [ "$pgid" = "$SUPERVISOR_PGID" ]; then
+    printf '[live-dashboard-preflight] CLEANUP_ERROR: refusing supervisor process group name=%s pgid=%s\n' \
+      "$name" "$pgid" >&2
+    return 1
+  fi
+  group_alive "$pgid" || { wait "$pid" 2>/dev/null || true; return 0; }
+
+  for signal in INT TERM KILL; do
+    kill -"$signal" -- "-$pgid" 2>/dev/null || true
+    case "$signal" in
+      INT) attempts="$STOP_INT_ATTEMPTS" ;;
+      TERM) attempts="$STOP_TERM_ATTEMPTS" ;;
+      KILL) attempts=1 ;;
+    esac
+    for ((i=0; i<attempts; i++)); do
+      group_alive "$pgid" || break
+      sleep "$STOP_POLL_SECONDS" || true
+    done
+    group_alive "$pgid" || break
+  done
+  wait "$pid" 2>/dev/null || true
+  if group_alive "$pgid"; then
+    printf '[live-dashboard-preflight] CLEANUP_ERROR: process group still alive name=%s pgid=%s\n' \
+      "$name" "$pgid" >&2
+    return 1
+  fi
+  log "stopped $name"
+}
+
+start_child() {
+  local name="$1" logfile="$2" pid pgid index
+  shift 2
+  ( trap - INT QUIT; exec setsid "$@" ) >"$logfile" 2>&1 < /dev/null &
+  pid=$!
+  pgid="$pid"
+  CHILD_NAMES+=("$name")
+  CHILD_PIDS+=("$pid")
+  CHILD_PGIDS+=("$pgid")
+  index=$((${#CHILD_PGIDS[@]} - 1))
+  sleep "$CHILD_STARTUP_SETTLE_SECONDS" || true
+  kill -0 "$pid" 2>/dev/null \
+    || fail "$name exited during startup; see $logfile"
+  pgid="$(ps -o pgid= -p "$pid" | tr -d ' ')"
+  [[ "$pgid" =~ ^[1-9][0-9]*$ ]] \
+    || fail "cannot determine $name process group"
+  [ "$pgid" != "$SUPERVISOR_PGID" ] \
+    || fail "$name did not enter a separate process group"
+  CHILD_PGIDS[$index]="$pgid"
+  [ "$pgid" = "$pid" ] \
+    || fail "$name process group is not led by its registered PID"
+  log "started $name pid=$pid pgid=$pgid log=$logfile"
+}
+
+monitor_children_once() {
+  local verifier_fn="${1:-:}" i
+  for ((i=0; i<${#CHILD_NAMES[@]}; i++)); do
+    if ! kill -0 "${CHILD_PIDS[$i]}" 2>/dev/null; then
+      printf '[live-dashboard-preflight] CHILD_EXITED: name=%s pid=%s\n' \
+        "${CHILD_NAMES[$i]}" "${CHILD_PIDS[$i]}" >&2
+      return 1
+    fi
+    if ! group_alive "${CHILD_PGIDS[$i]}"; then
+      printf '[live-dashboard-preflight] CHILD_GROUP_EXITED: name=%s pgid=%s\n' \
+        "${CHILD_NAMES[$i]}" "${CHILD_PGIDS[$i]}" >&2
+      return 1
+    fi
+  done
+  "$verifier_fn"
+}
+
+loopback_listener_ready() {
+  local port="$1" state
+  state="$(ss -H -ltn "sport = :$port")" || return 1
+  awk -v expected="127.0.0.1:$port" \
+    '$4 == expected { found = 1 } END { exit found ? 0 : 1 }' <<<"$state"
+}
+
+workstation_nodes_present() {
+  local nodes
+  nodes="$(ros2 node list --no-daemon --spin-time 2)" || return 1
+  grep -Fxq '/rosbridge_websocket' <<<"$nodes" || return 1
+  grep -Fxq '/rosapi' <<<"$nodes" || return 1
+  grep -Fxq '/web_video_server' <<<"$nodes"
+}
+
+workstation_rosapi_service_present() {
+  local services
+  services="$(ros2 service list --no-daemon --spin-time 2)" || return 1
+  grep -Fxq '/rosapi/topics_for_type' <<<"$services"
+}
+
+verify_workstation_services_ready_once() {
+  local port
+  for port in "${WORKSTATION_PORTS[@]}"; do
+    loopback_listener_ready "$port" || return 1
+  done
+  workstation_nodes_present || return 1
+  workstation_rosapi_service_present || return 1
+  curl --fail --silent --show-error --max-time 3 --output /dev/null \
+    http://127.0.0.1:8002/ || return 1
+  curl --fail --silent --show-error --max-time 3 --output /dev/null \
+    http://127.0.0.1:8080/ || return 1
+}
+
+verify_workstation_local_health_once() {
+  local port
+  for port in "${WORKSTATION_PORTS[@]}"; do
+    loopback_listener_ready "$port" || return 1
+  done
+  workstation_nodes_present
+}
+
+monitor_workstation_once() {
+  monitor_children_once verify_workstation_local_health_once
+}
+
+wait_for_workstation_services() {
+  local deadline=$((SECONDS + SERVICE_READY_TIMEOUT_SECONDS))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    monitor_children_once || return 1
+    if verify_workstation_services_ready_once; then
+      return 0
+    fi
+    sleep "$SUPERVISOR_POLL_SECONDS" || true
+  done
+  printf '[live-dashboard-preflight] FAIL: workstation services did not become ready within %ss\n' \
+    "$SERVICE_READY_TIMEOUT_SECONDS" >&2
+  return 1
+}
+
+start_workstation_services() {
+  start_child rosbridge "$RUN_DIR/rosbridge.log" "${ROSBRIDGE_COMMAND[@]}"
+  start_child web-video-server "$RUN_DIR/web_video_server.log" "${VIDEO_COMMAND[@]}"
+  start_child dashboard "$RUN_DIR/dashboard.log" "${DASHBOARD_COMMAND[@]}"
+}
+
+print_pi_command() {
+  printf '\nPi P1: paste this single compound command\n'
+  printf '(\n'
+  printf '  set -euo pipefail\n'
+  printf '  cd ~/hailo_coco_overlay_2026-07-10\n'
+  printf "  printf '%%s  %%s\\n' '%s' 'pi_live_hailo_mavlink_dashboard.sh' | sha256sum -c -\n" \
+    "$EXPECTED_HELPER_SHA256"
+  printf '  chmod +x pi_live_hailo_mavlink_dashboard.sh\n'
+  printf "  printf 'PI_TEMP_START_MC='\n"
+  printf '  cat /sys/class/thermal/thermal_zone0/temp\n'
+  printf "  exec env WORKSTATION_IP='%s' LIVE_HOLD_AFTER_WINDOW=1 ./pi_live_hailo_mavlink_dashboard.sh\n" \
+    "$WORKSTATION_IP"
+  printf ')\n\n'
+}
+
+topic_has_publisher() {
+  local topic="$1" info count
+  info="$(ros2 topic info --no-daemon --spin-time 2 "$topic" 2>/dev/null)" \
+    || return 1
+  count="$(awk -F': ' '/^Publisher count:/{print $2}' <<<"$info")"
+  [[ "$count" =~ ^[0-9]+$ ]] && [ "$count" -gt 0 ]
+}
+
+all_expected_publishers_present() {
+  local topic
+  for topic in "${EXPECTED_TOPICS[@]}"; do
+    topic_has_publisher "$topic" || return 1
+  done
+}
+
+wait_for_pi_data_arrival() {
+  local start_seconds="$SECONDS" deadline index remaining required rc
+  local topic type reliability depth sample
+  deadline=$((SECONDS + ARRIVAL_TIMEOUT_SECONDS))
+
+  [ "$STOP_REQUESTED" -eq 0 ] || return 130
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    [ "$STOP_REQUESTED" -eq 0 ] || return 130
+    monitor_workstation_once || return 1
+    [ "$STOP_REQUESTED" -eq 0 ] || return 130
+    if all_expected_publishers_present; then
+      [ "$STOP_REQUESTED" -eq 0 ] || return 130
+      break
+    fi
+    [ "$STOP_REQUESTED" -eq 0 ] || return 130
+    sleep "$SUPERVISOR_POLL_SECONDS" || true
+  done
+  [ "$STOP_REQUESTED" -eq 0 ] || return 130
+  all_expected_publishers_present || {
+    printf '[live-dashboard-preflight] FAIL: six expected publishers did not arrive within %ss\n' \
+      "$ARRIVAL_TIMEOUT_SECONDS" >&2
+    return 1
+  }
+  [ "$STOP_REQUESTED" -eq 0 ] || return 130
+
+  for index in "${!EXPECTED_TOPICS[@]}"; do
+    [ "$STOP_REQUESTED" -eq 0 ] || return 130
+    monitor_workstation_once || return 1
+    [ "$STOP_REQUESTED" -eq 0 ] || return 130
+    remaining=$((deadline - SECONDS))
+    required=$(((${#EXPECTED_TOPICS[@]} - index) * ARRIVAL_SAMPLE_SECONDS))
+    [ "$remaining" -ge "$required" ] || {
+      printf '[live-dashboard-preflight] FAIL: insufficient arrival window before sampling %s\n' \
+        "${EXPECTED_TOPICS[$index]}" >&2
+      return 1
+    }
+    topic="${EXPECTED_TOPICS[$index]}"
+    type="${EXPECTED_TOPIC_TYPES[$index]}"
+    reliability="${EXPECTED_TOPIC_RELIABILITY[$index]}"
+    depth="${EXPECTED_TOPIC_DEPTH[$index]}"
+    sample="$RUN_DIR/arrival_$((index + 1)).log"
+    if python3 "$SCRIPT_DIR/rate_probe.py" --topic "$topic" --type "$type" \
+      --reliability "$reliability" --depth "$depth" \
+      --duration "$ARRIVAL_SAMPLE_SECONDS" >"$sample" 2>&1; then
+      :
+    else
+      rc=$?
+      [ "$STOP_REQUESTED" -eq 0 ] || return 130
+      printf '[live-dashboard-preflight] FAIL: no message from %s rc=%s; see %s\n' \
+        "$topic" "$rc" "$sample" >&2
+      return "$rc"
+    fi
+    [ "$STOP_REQUESTED" -eq 0 ] || return 130
+  done
+  [ "$STOP_REQUESTED" -eq 0 ] || return 130
+  monitor_workstation_once || return 1
+  [ "$STOP_REQUESTED" -eq 0 ] || return 130
+  ARRIVAL_ELAPSED_SECONDS=$((SECONDS - start_seconds))
+}
+
+run_rate_probe_body() {
+  local index topic
+  [ "$STOP_REQUESTED" -eq 0 ] || return 130
+  date -Is || return $?
+  [ "$STOP_REQUESTED" -eq 0 ] || return 130
+  for topic in "${EXPECTED_TOPICS[@]}"; do
+    [ "$STOP_REQUESTED" -eq 0 ] || return 130
+    monitor_workstation_once || return $?
+    [ "$STOP_REQUESTED" -eq 0 ] || return 130
+    printf '=== %s ===\n' "$topic"
+    ros2 topic info --no-daemon --spin-time 3 --verbose "$topic" || return $?
+    [ "$STOP_REQUESTED" -eq 0 ] || return 130
+    monitor_workstation_once || return $?
+  done
+  for index in "${!EXPECTED_TOPICS[@]}"; do
+    [ "$STOP_REQUESTED" -eq 0 ] || return 130
+    monitor_workstation_once || return $?
+    [ "$STOP_REQUESTED" -eq 0 ] || return 130
+    python3 "$SCRIPT_DIR/rate_probe.py" \
+      --topic "${EXPECTED_TOPICS[$index]}" \
+      --type "${EXPECTED_TOPIC_TYPES[$index]}" \
+      --reliability "${EXPECTED_TOPIC_RELIABILITY[$index]}" \
+      --depth "${EXPECTED_TOPIC_DEPTH[$index]}" --duration 10 || return $?
+    [ "$STOP_REQUESTED" -eq 0 ] || return 130
+    monitor_workstation_once || return $?
+  done
+  [ "$STOP_REQUESTED" -eq 0 ] || return 130
+  monitor_workstation_once
+}
+
+run_rate_probes() {
+  local body_rc=0 tee_pid tee_rc=0
+  [ "$STOP_REQUESTED" -eq 0 ] || return 130
+  if run_rate_probe_body > >(tee "$RATE_LOG") 2>&1; then
+    :
+  else
+    body_rc=$?
+  fi
+  tee_pid=$!
+  if wait "$tee_pid"; then
+    :
+  else
+    tee_rc=$?
+  fi
+  [ "$STOP_REQUESTED" -eq 0 ] || return 130
+  [ "$body_rc" -eq 0 ] || return "$body_rc"
+  [ "$tee_rc" -eq 0 ] || return "$tee_rc"
+}
+
+stop_requested() {
+  [ "$STOP_REQUESTED" -eq 1 ]
+}
+
+record_phase_failure() {
+  local phase="$1" rc="$2"
+  [ "$rc" -ne 0 ] || rc=1
+  [ "$FINAL_RC" -ne 0 ] || FINAL_RC="$rc"
+  printf '[live-dashboard-preflight] PHASE_FAIL: phase=%s rc=%s preserved_rc=%s\n' \
+    "$phase" "$rc" "$FINAL_RC" >&2
+}
+
+supervise_children() {
+  local monitor_fn="${1:-monitor_workstation_once}"
+  local stop_fn="${2:-stop_requested}" rc
+  while ! "$stop_fn"; do
+    if "$monitor_fn"; then
+      :
+    else
+      rc=$?
+      return "$rc"
+    fi
+    sleep "$SUPERVISOR_POLL_SECONDS" || true
+  done
+}
+
+hold_after_failure() {
+  local monitor_fn="${1:-monitor_workstation_once}"
+  local stop_fn="${2:-stop_requested}"
+  log "FAILURE_HOLD=ACTIVE preserved_rc=$FINAL_RC stop=Ctrl+C"
+  while ! "$stop_fn"; do
+    if "$monitor_fn"; then :; else :; fi
+    sleep "$SUPERVISOR_POLL_SECONDS" || true
+  done
+}
+
+run_post_service_phases() {
+  local arrival_fn="${1:-wait_for_pi_data_arrival}"
+  local probe_fn="${2:-run_rate_probes}"
+  local monitor_fn="${3:-monitor_workstation_once}"
+  local stop_fn="${4:-stop_requested}" rc
+
+  "$stop_fn" && return "$FINAL_RC"
+  if "$arrival_fn"; then
+    "$stop_fn" && return "$FINAL_RC"
+    emit_marker_once PI_DATA_ARRIVED \
+      "PI_DATA_ARRIVED=PASS topics=6 elapsed=${ARRIVAL_ELAPSED_SECONDS}s"
+  else
+    rc=$?
+    "$stop_fn" && return "$FINAL_RC"
+    record_phase_failure arrival "$rc"
+    hold_after_failure "$monitor_fn" "$stop_fn"
+    return "$FINAL_RC"
+  fi
+
+  "$stop_fn" && return "$FINAL_RC"
+  if "$probe_fn"; then
+    "$stop_fn" && return "$FINAL_RC"
+    emit_marker_once W5_RATE_PROBES \
+      "W5_RATE_PROBES=PASS topics=6 duration_each=10s log=$RATE_LOG"
+  else
+    rc=$?
+    "$stop_fn" && return "$FINAL_RC"
+    record_phase_failure rate-probes "$rc"
+    hold_after_failure "$monitor_fn" "$stop_fn"
+    return "$FINAL_RC"
+  fi
+
+  "$stop_fn" && return "$FINAL_RC"
+  if supervise_children "$monitor_fn" "$stop_fn"; then
+    return "$FINAL_RC"
+  else
+    rc=$?
+    "$stop_fn" && return "$FINAL_RC"
+    record_phase_failure supervision "$rc"
+    hold_after_failure "$monitor_fn" "$stop_fn"
+    return "$FINAL_RC"
+  fi
+}
+
+verify_workstation_gone_once() {
+  local i port state nodes
+  for ((i=0; i<${#CHILD_PGIDS[@]}; i++)); do
+    group_alive "${CHILD_PGIDS[$i]}" && return 1
+  done
+  for port in "${WORKSTATION_PORTS[@]}"; do
+    state="$(ss -H -ltn "sport = :$port")" || return 1
+    [ -z "$state" ] || return 1
+  done
+  nodes="$(ros2 node list --no-daemon --spin-time 2)" || return 1
+  ! grep -Fxq '/rosbridge_websocket' <<<"$nodes" || return 1
+  ! grep -Fxq '/rosapi' <<<"$nodes" || return 1
+  ! grep -Fxq '/web_video_server' <<<"$nodes"
+}
+
+wait_for_workstation_teardown() {
+  local deadline=$((SECONDS + TEARDOWN_TIMEOUT_SECONDS))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    verify_workstation_gone_once && return 0
+    sleep "$SUPERVISOR_POLL_SECONDS" || true
+  done
+  return 1
+}
+
+teardown_workstation_services() {
+  local verifier_fn="${1:-wait_for_workstation_teardown}" i
+  local teardown_rc=0
+  for ((i=${#CHILD_NAMES[@]}-1; i>=0; i--)); do
+    stop_group "${CHILD_NAMES[$i]}" "${CHILD_PGIDS[$i]}" "${CHILD_PIDS[$i]}" \
+      || teardown_rc=1
+  done
+  if ! "$verifier_fn"; then
+    printf '[live-dashboard-preflight] WORKSTATION_TEARDOWN=FAIL; inspect logs and local owners\n' >&2
+    teardown_rc=1
+  fi
+  if [ "$teardown_rc" -eq 0 ] && [ "$SERVICES_UP" -eq 1 ]; then
+    emit_marker_once WORKSTATION_TEARDOWN 'WORKSTATION_TEARDOWN=PASS'
+  fi
+  return "$teardown_rc"
+}
+
+cleanup() {
+  local incoming_rc=$? cleanup_rc=0 final_rc
+  [ "$CLEANING" -eq 0 ] || exit "$incoming_rc"
+  CLEANING=1
+  trap - EXIT ERR
+  trap ':' INT TERM
+  set +e
+  if [ "${#CHILD_NAMES[@]}" -gt 0 ]; then
+    teardown_workstation_services || cleanup_rc=$?
+  fi
+  [ -z "$RUN_DIR" ] || log "logs=$RUN_DIR"
+  final_rc="$incoming_rc"
+  [ "$final_rc" -ne 0 ] || final_rc="$FINAL_RC"
+  [ "$final_rc" -ne 0 ] || final_rc="$cleanup_rc"
+  exit "$final_rc"
+}
+
+on_supervisor_interrupt() {
+  STOP_REQUESTED=1
+  if [ "$SERVICES_UP" -eq 0 ]; then
+    log 'stop requested before workstation services were ready'
+    exit 130
+  fi
+  log 'stop requested; waiting for orderly workstation teardown'
+}
+
+on_supervisor_term() {
+  [ "$FINAL_RC" -ne 0 ] || FINAL_RC=143
+  STOP_REQUESTED=1
+  if [ "$SERVICES_UP" -eq 0 ]; then
+    log 'termination requested before workstation services were ready'
+    exit 143
+  fi
+  log 'termination requested; waiting for orderly workstation teardown'
+}
+
+run_workstation_supervisor() {
+  local rc
+  run_workstation_runtime_preflight
+  log "WORKSTATION_RUNTIME_PREFLIGHT=PASS helper=verified ssid=$EXPECTED_SSID dev=$WORKSTATION_INTERFACE ipv4=$WORKSTATION_IP ports=8002,8080,9090"
+
+  init_supervisor_state
+  trap cleanup EXIT
+  trap on_supervisor_interrupt INT
+  trap on_supervisor_term TERM
+
+  start_workstation_services
+  if wait_for_workstation_services; then
+    SERVICES_UP=1
+    emit_marker_once WORKSTATION_SERVICES \
+      "WORKSTATION_SERVICES=UP ports=8002,8080,9090 nodes=rosbridge,rosapi,web_video_server logs=$RUN_DIR"
+  else
+    rc=$?
+    exit "$rc"
+  fi
+
+  [ "$STOP_REQUESTED" -eq 0 ] || exit "$FINAL_RC"
+  if print_pi_command; then
+    :
+  else
+    rc=$?
+    record_phase_failure pi-command "$rc"
+    hold_after_failure monitor_workstation_once stop_requested
+    exit "$FINAL_RC"
+  fi
+
+  if run_post_service_phases; then
+    rc=0
+  else
+    rc=$?
+  fi
+  exit "$rc"
 }
 
 run_pi_preflight() {
@@ -191,9 +817,12 @@ run_pi_preflight() {
 main() {
   case "$#:${1:-}" in
     1:workstation) run_workstation_preflight ;;
+    1:run) run_workstation_supervisor ;;
     2:pi) run_pi_preflight "$2" ;;
     *) usage ;;
   esac
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi
