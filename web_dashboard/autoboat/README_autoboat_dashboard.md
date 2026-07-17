@@ -46,19 +46,30 @@ Real-time web-based monitoring and control dashboard for the AutoBoat autonomous
 ## Current Real-Boat Status
 
 The dashboard remains simulation-first and normally reads and writes the
-existing `/wamv/*` topic contract. On 15/07/2026, a temporary view-only mode
-displayed the stock-COCO Hailo stream and five direct MAVROS
-telemetry feeds together. That diagnostic did not validate any real-FCU write
-path. The 16/07/2026 reliability review kept this mode diagnostic-only. Its
-implementation now gives each MAVROS topic an independent three-second
-freshness threshold, clears the corresponding values when a topic becomes
-stale, clears the whole panel when rosbridge disconnects, and makes all
-write-capable controls inert while preserving local history, export, copy, and
-auto-scroll controls. These safeguards have automated coverage; live browser
-revalidation remains pending. Follow [Live Hailo and MAVROS Dashboard
+existing `/wamv/*` topic contract. The temporary real-boat mode is view-only:
+it displays the stock-COCO Hailo stream and five direct MAVROS telemetry feeds
+without validating any real-FCU write path. Its implementation gives each
+MAVROS topic an independent three-second freshness threshold, clears the
+corresponding values when a topic becomes stale, clears the whole panel when
+rosbridge disconnects, and makes all write-capable controls inert while
+preserving Mission History, tuning expanders, health clear/auto-scroll, export,
+and copy controls.
+
+On 17/07/2026, two runs from the clean, pushed workstation checkout on
+`IoT IMT Nord Europe` proved six-topic arrival and automatic rate measurement;
+both had operator-confirmed combined Hailo and MAVLink browser output.
+Each printed Pi command verified the deployed helper checksum before launch.
+The Hailo image measured `7.40 Hz` and `7.50 Hz`, and each MAVROS topic measured
+approximately `1.00 Hz`. The detailed stale, disconnect, and inert-control
+behaviour matrix retains automated coverage but was not deliberately exercised
+in full during those live runs. In both runs the workstation dashboard stack
+became unavailable unexpectedly before the intended Pi-first stop, without
+deliberate operator intervention. Its cause and clean Pi-first normal shutdown
+remain open. Follow
+[Live Hailo and MAVROS Dashboard
 Testing](../../wiki/Live_Hailo_MAVLink_Dashboard_Testing.md) for the isolated
-service order and safety boundary. For the separate RealSense camera-only
-check, use [RealSense Dashboard
+two-command service order and safety boundary. For the separate RealSense
+camera-only check, use [RealSense Dashboard
 Testing](../../wiki/RealSense_Dashboard_Testing.md). Do not use dashboard
 mission or thruster controls against the real FCU until the command path is
 separately validated.
@@ -93,14 +104,21 @@ Then open **<http://localhost:8002>**.
 
 Do not use the simulation one-click launcher for live Hailo/MAVROS testing.
 Follow [Live Hailo and MAVROS Dashboard
-Testing](../../wiki/Live_Hailo_MAVLink_Dashboard_Testing.md): start rosbridge,
-`web_video_server`, and the dashboard HTTP server on the workstation first;
-then transfer the tracked
+Testing](../../wiki/Live_Hailo_MAVLink_Dashboard_Testing.md). Run
+`tools/live_dashboard_preflight.sh run` on the workstation, then paste its
+complete printed command on the Pi. The supervisor starts rosbridge,
+`web_video_server`, and the dashboard, waits for all six topics, and records the
+automatic rate probes. Transfer only the tracked
 [`pi_live_hailo_mavlink_dashboard.sh`](../../tools/pi_live_hailo_mavlink_dashboard.sh)
-and [`live_dashboard_preflight.sh`](../../tools/live_dashboard_preflight.sh) to
-the Pi, pass both workstation and Pi preflights, and open the browser only after
-`PI_SOURCE_STACK_READY=PASS`. Treat any MAVROS topic marked `Stale` as a failed
-diagnostic even if another topic continues updating.
+when its Pi checksum differs; never deploy the workstation preflight to the Pi.
+Open the browser only after `PI_SOURCE_STACK_READY=PASS` on the Pi and
+`PI_DATA_ARRIVED=PASS` on the workstation. For shutdown, follow the full
+runbook: first require workstation `W5_RATE_PROBES=PASS` plus Pi
+`COMMAND_SENTINEL=PASS`, `PI_SOURCE_WINDOW=COMPLETE`, and
+`PI_SOURCE_HOLD=ACTIVE`; stop the Pi and require
+`PI_SOURCE_HOLD=STOP operator-requested` plus `TEARDOWN=PASS`, then stop the
+workstation and require `WORKSTATION_TEARDOWN=PASS`. Treat any MAVROS topic
+marked `Stale` as a failed diagnostic even if another topic continues updating.
 
 ## Dashboard Panels
 
@@ -250,12 +268,12 @@ Start, Resume, Go Home, Reset, and Emergency Stop prompt a confirmation before a
 
 ## Troubleshooting
 
-> **Offline / no-internet deployment** (e.g., the IoT IMT Nord Europe institutional network used for Phase 5 hardware bring-up): `roslib`, Leaflet (JS + CSS + images), and Google Fonts are vendored under `vendor/` as of 05/05/2026, so the dashboard libraries self-load without internet. OpenStreetMap tiles still come from the public tile server; without internet the map background is missing, though boat markers / waypoints / path overlays can still draw. Roadmap §1.3 Path B tracks the required offline tile server + pre-generated MBTiles work before the first IoT-network field deployment.
+> **Offline / no-internet deployment** (including the `IoT IMT Nord Europe` link used for live Hailo/MAVROS testing): `roslib`, Leaflet (JS + CSS + images), and Google Fonts are vendored under `vendor/` as of 05/05/2026, so the dashboard libraries self-load without internet. OpenStreetMap tiles still come from the public tile server; without internet the map background is missing, though boat markers / waypoints / path overlays can still draw. Roadmap §1.3 Path B tracks the required offline tile server and pre-generated MBTiles work before field deployment.
 
 | Problem                           | Solution                                                              |
 | --------------------------------- | --------------------------------------------------------------------- |
 | Dashboard shows "Disconnected"    | See diagnostic steps below                                            |
-| Port 9090 in use                  | Kill old instance: `pkill -9 -f rosbridge`                            |
+| Port 9090 in use                  | Stop the owning launcher or supervisor; identify the listener with `ss -ltnp 'sport = :9090'` |
 | Apply buttons stay grey           | Nodes not publishing `/planning/config` — check navigation is launched |
 | Reset then Apply sends old values | Fixed — Reset now marks inputs dirty to prevent ROS sync race         |
 | Camera feed not showing           | Check `web_video_server`; for Pi RealSense use the loopback-only procedure in `wiki/RealSense_Dashboard_Testing.md` and compare the direct MJPEG URL before changing the camera launch |
@@ -313,4 +331,4 @@ Part of the uvautoboat project — Apache License 2.0.
 
 Built with [roslibjs](http://robotwebtools.org/), [Leaflet.js](https://leafletjs.com/), [OpenStreetMap](https://www.openstreetmap.org/).
 
-Last updated: 18/06/2026
+Last updated: 17/07/2026

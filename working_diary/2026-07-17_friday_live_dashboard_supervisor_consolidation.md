@@ -352,3 +352,73 @@ the current runbook checksum fields and IoT prerequisite were refreshed. Block B
 open until both hosts switch to `IoT IMT Nord Europe` and complete a new same-run live
 attempt. Recheck both IPv4 addresses after that switch rather than reusing the 5G
 addresses.
+
+## Block B live outcome - combined demo proven, clean shutdown open
+
+Two runs from the clean, pushed workstation checkout on `IoT IMT Nord Europe` proved the
+two-command live path with workstation `192.168.0.108` and Pi `192.168.0.109`. Each
+printed Pi command verified the deployed helper checksum before launch. The
+workstation/Pi run pairs were
+`live_dashboard_workstation_20260717_145833` / `live_dashboard_20260717_145905` and
+`live_dashboard_workstation_20260717_151713` / `live_dashboard_20260717_151749`.
+
+The browser result and rate result are separate evidence:
+
+- during the first IoT run, the operator confirmed simultaneous live stock-COCO Hailo
+  detections and MAVLink statistics in the dashboard;
+- `PI_DATA_ARRIVED=PASS` covered all six topics after `248` seconds and `260` seconds;
+- both automatic probes emitted `W5_RATE_PROBES=PASS`; the Hailo image measured
+  `7.40 Hz` and `7.50 Hz`, while each MAVROS topic measured approximately `1.00 Hz`;
+- MAVROS reported `connected=true armed=false`, and both source windows finished with
+  `COMMAND_SENTINEL=PASS messages=0` and `PI_SOURCE_WINDOW=COMPLETE`;
+- the copied Pi logs record `PI_TEMP_PEAK_MC=68300` and `PI_TEMP_PEAK_MC=67200`, below
+  the `80000` mC abort threshold.
+
+Both Pi log directories were copied to `/home/ghostzero/Desktop/test_logs_folder`, and
+both workstation log directories remain under `/home/ghostzero/Desktop`. This closes the
+same-run visual result for the first IoT run and the topic-arrival, rate, source-window,
+helper-checksum, and log-copy evidence for both runs. It also proves that cross-host DDS
+carries the six required topics on the IoT link.
+
+The normal shutdown sequence remains open. In both runs the workstation was stopped
+before the Pi, so the Pi correctly failed closed when rosbridge disappeared in the first
+run and when `/rosapi/topics_for_type` disappeared in the second. Each Pi cleanup still
+emitted `TEARDOWN=PASS`, and each workstation cleanup emitted
+`WORKSTATION_TEARDOWN=PASS`, but neither run emitted
+`PI_SOURCE_HOLD=STOP operator-requested`. A future lifecycle acceptance must stop the Pi
+first and capture that marker before stopping the workstation. Post-teardown Pi
+temperature and full endurance acceptance also remain open; no third run is needed for
+today's bounded live-demo result.
+
+## EOD documentation closeout
+
+The living runbook now uses the proven two-command supervisor flow and deploys only the
+Pi helper. The dashboard README, Board, Roadmap, wiki home, Hailo pages, and user manual
+now distinguish the first run's human browser observation from both runs' arrival/rate
+evidence and retain the incomplete Pi-first lifecycle boundary. The current supervisor
+and helper pins remain `de08299cdf1a201f23619c0d434604cadaedcef29dc5926a84d04f33560c55fc`
+and `b778f69e3c692ae6e221d8a341962baf879d6aa2336df8f21912a3f1fbb81c12`.
+No code or configuration changed during this closeout.
+
+**Next steps:** At the next live-hardware window, reuse the current two-command IoT
+procedure and close only the remaining lifecycle evidence: after the rate marker and Pi
+source window, stop the Pi first, capture `PI_SOURCE_HOLD=STOP operator-requested`, Pi
+`TEARDOWN=PASS`, and `PI_TEMP_POST_MC`, then stop the workstation and capture
+`WORKSTATION_TEARDOWN=PASS`. Treat full endurance as a separate later gate; do not
+reopen the proven browser, telemetry, or same-run rate results without an invalidating
+change.
+
+## Operator correction after closeout
+
+The operator later confirmed that the second IoT run's combined dashboard visual was
+also good, matching the first run: both runs displayed the live stock-COCO Hailo
+detection overlay and MAVLink telemetry together. Human visual acceptance therefore
+passed for both runs and remains separate from the automatic rate evidence.
+
+The workstation dashboard stack became unavailable before the Pi in both runs, but this
+was not an intended manual stop. Treat the workstation-side early termination as an
+unresolved defect rather than an operator stop-order error. The Pi correctly failed
+closed and both teardown markers still passed. Normal Pi-first lifecycle evidence and
+post-teardown Pi temperature remain open because the unexpected termination prevented
+their collection. Follow up by diagnosing the supervisor and child-service lifecycle
+before the next live-hardware attempt.

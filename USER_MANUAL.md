@@ -73,7 +73,7 @@ The project implements a hierarchical autonomous navigation framework combining 
 | Phase 2 | Autonomous Navigation | ✅ DONE |
 | Phase 3 | Coverage Planning | ⏸️ Planned |
 | Phase 4 | Integration & Testing | 🔄 90% |
-| Phase 5 | Real-Hardware Deployment | 🔜 Planned |
+| Phase 5 | Real-Hardware Deployment | 🔄 In Progress |
 
 See [Board.md](Board.md) for detailed milestones and progress tracking.
 
@@ -1744,7 +1744,7 @@ Open an issue on [GitHub](https://github.com/Ghostzero00018/uvautoboat/issues) w
 
 Project finished by IMT NORD EUROPE DNM DMI-2026
 
-Last updated at 09/07/2026
+Last updated at 17/07/2026
 
 ---
 

@@ -42,6 +42,14 @@ single-day observations.
   `hailortcli run yolo26n_route_a_six_heads.hef` completed `293` frames at
   `58.22 FPS`. Evidence:
   `working_diary/2026-07-03_friday_hailo_pi_runtime_bringup.md`.
+- Separate stock-COCO live state (17/07/2026): two bounded runs on
+  `IoT IMT Nord Europe` carried the Hailo overlay and five MAVROS feeds to the
+  workstation. During both runs, the operator confirmed the combined browser
+  view. Automatic probes measured Hailo at `7.40 Hz` and `7.50 Hz`
+  with telemetry near `1 Hz`. MAVROS stayed connected and disarmed, and the
+  command sentinel observed zero messages on its five monitored command topics.
+  This is stock-model integration evidence only; it
+  does not advance custom-detector calibration, accuracy, or live integration.
 - Do not reuse the current NCNN export for Hailo. Hailo deployment needs a HEF
   artifact compiled from an ONNX/TFLite-style path with Hailo tooling.
 
@@ -56,7 +64,9 @@ RealSense RGB -> ROS 2 image topic -> custom NCNN inference on Pi CPU
 That path is mechanically proven for short runs, but sustained `imgsz=640` CPU
 inference failed the thermal gate on 26/06/2026. The 29/06/2026 workstation run
 created a separate `imgsz=320` NCNN export as the next CPU-side thermal lever,
-but that export is still gated behind a clean MAVProxy / MAVROS telemetry pass.
+which was previously gated behind a clean MAVProxy / MAVROS telemetry pass.
+That telemetry gate closed on 15/07/2026 and was repeated twice on 17/07/2026;
+the `imgsz=320` export has still not been copied to or run on the Pi.
 
 Hailo is the active accelerator branch from 01/07/2026 onward. It is being
 evaluated as a way to move inference off the Pi CPU, not as a replacement for
@@ -335,12 +345,35 @@ Next gates, in order:
    input and publish detection messages, only after Tier 3 passes on saved
    frames.
 
-## Still Out Of Scope After Runtime Smoke
+## Stock-COCO Live Dashboard Evidence
 
-- No change to the active MAVProxy / MAVROS diary.
+Two tracked-supervisor runs completed on `IoT IMT Nord Europe` on 17/07/2026.
+Both reached the six-topic message-arrival gate. Automatic probes measured
+`/hailo/overlay/image_raw` at `7.40 Hz` and `7.50 Hz`; state, raw GPS, IMU,
+battery, and RC were each near `1 Hz`. MAVROS reported `connected: true` and
+armed `false`, and the command sentinel observed zero messages on its five
+monitored command topics.
+During both runs, the operator confirmed the combined stock-COCO overlay and
+MAVLink telemetry in the browser.
+
+Pi thermal peaks were `68.3 C` and `67.2 C`, below the `80 C` abort threshold.
+The Pi run directories `live_dashboard_20260717_145905` and
+`live_dashboard_20260717_151749` were copied back to the workstation. In both
+runs the workstation dashboard stack became unavailable unexpectedly before
+the intended Pi-first stop, without deliberate operator intervention. The Pi
+correctly failed closed when rosbridge/rosapi disappeared and then reported
+`TEARDOWN=PASS`; workstation teardown also passed. This proves fail-closed
+cleanup, not the required normal Pi-first operator shutdown. The cause,
+post-teardown temperature, full endurance, optimized transport, GPS fix, and
+every FCU write remain open.
+
+## Still Out Of Scope For The Custom-Detector Track
+
 - No copy of the 320 NCNN export to the Pi.
-- No RealSense + Hailo + MAVROS combined-load test.
-- No dashboard integration or real-FCU command/write path.
+- No custom-detector RealSense + Hailo + MAVROS combined-load acceptance.
+- No custom-detector calibration, accuracy-grade Tier 3, or live dashboard
+  integration.
+- No real-FCU command/write path.
 
 ## Source Anchors
 

@@ -365,6 +365,22 @@ MAVROS telemetry remains view-only. Follow [Live Hailo and MAVROS Dashboard
 Testing](Live_Hailo_MAVLink_Dashboard_Testing) for its service order, helper
 checksum, safety boundary, pass markers, and shutdown sequence.
 
+On 17/07/2026, two tracked-supervisor runs on `IoT IMT Nord Europe` reached the
+six-topic arrival gate. During both runs, the operator confirmed the combined
+stock-COCO overlay and MAVLink telemetry browser view. Automatic
+probes measured the overlay at `7.40 Hz` and `7.50 Hz`; state, raw GPS, IMU,
+battery, and RC were near `1 Hz`.
+MAVROS stayed connected and disarmed, and the command sentinel observed zero
+messages on its five monitored command topics. Pi thermal peaks were `68.3 C`
+and `67.2 C`; both Pi run directories were copied back to the workstation.
+
+In both runs the workstation dashboard stack became unavailable unexpectedly
+before the intended Pi-first stop, without deliberate operator intervention.
+Pi and workstation teardown markers passed fail-closed, but this is not the
+required normal Pi-first operator shutdown. The cause, post-teardown
+temperature, full endurance, optimized transport, GPS fix, custom-detector
+calibration/accuracy/live integration, and every FCU write remain open.
+
 That diagnostic does not replace or modify the canonical `hailo_coco_demo.sh`
 procedure documented here.
 
