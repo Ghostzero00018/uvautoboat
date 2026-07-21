@@ -82,6 +82,12 @@ declare -a CHILD_PIDS=()
 declare -a CHILD_PGIDS=()
 declare -A EMITTED_MARKERS=()
 SUPERVISOR_PGID=''
+SUPERVISOR_LOG=''
+SUPERVISOR_PHASE='not-started'
+SUPERVISOR_STOP_TRIGGER='none'
+SUPERVISOR_STOP_SIGNAL='none'
+SUPERVISOR_STOP_PHASE='none'
+SUPERVISOR_FAILED_PHASE='none'
 WORKSTATION_INTERFACE=''
 WORKSTATION_IP=''
 RUN_DIR=''
@@ -92,12 +98,45 @@ STOP_REQUESTED=0
 FINAL_RC=0
 ARRIVAL_ELAPSED_SECONDS=0
 
+append_supervisor_log() {
+  local line="$1"
+  [ -n "$SUPERVISOR_LOG" ] || return 0
+  if ! printf 'timestamp=%s %s\n' "${EPOCHREALTIME:-unknown}" "$line" \
+    >>"$SUPERVISOR_LOG"; then
+    printf '[live-dashboard-preflight] LOG_WRITE_ERROR: path=%s\n' \
+      "$SUPERVISOR_LOG" >&2
+  fi
+  return 0
+}
+
 log() {
-  printf '[live-dashboard-preflight] %s\n' "$*"
+  local line="[live-dashboard-preflight] $*"
+  append_supervisor_log "$line"
+  printf '%s\n' "$line"
+}
+
+log_error() {
+  local line="[live-dashboard-preflight] $*"
+  append_supervisor_log "$line"
+  printf '%s\n' "$line" >&2
+}
+
+set_supervisor_phase() {
+  SUPERVISOR_PHASE="$1"
+  log "SUPERVISOR_PHASE=$SUPERVISOR_PHASE"
+}
+
+record_stop_trigger() {
+  local signal="$1"
+  [ "$SUPERVISOR_STOP_TRIGGER" = none ] || return 0
+  SUPERVISOR_STOP_TRIGGER=signal
+  SUPERVISOR_STOP_SIGNAL="$signal"
+  SUPERVISOR_STOP_PHASE="$SUPERVISOR_PHASE"
+  log "SUPERVISOR_STOP trigger=signal signal=$signal phase=$SUPERVISOR_STOP_PHASE"
 }
 
 fail() {
-  printf '[live-dashboard-preflight] FAIL: %s\n' "$*" >&2
+  log_error "FAIL: $*"
   exit 1
 }
 
@@ -280,6 +319,12 @@ init_supervisor_state() {
   STOP_REQUESTED=0
   FINAL_RC=0
   ARRIVAL_ELAPSED_SECONDS=0
+  SUPERVISOR_LOG=''
+  SUPERVISOR_PHASE=initialization
+  SUPERVISOR_STOP_TRIGGER=none
+  SUPERVISOR_STOP_SIGNAL=none
+  SUPERVISOR_STOP_PHASE=none
+  SUPERVISOR_FAILED_PHASE=none
   SUPERVISOR_PGID="$(ps -o pgid= -p $$ | tr -d ' ')" \
     || fail 'cannot determine workstation supervisor process group'
   [[ "$SUPERVISOR_PGID" =~ ^[1-9][0-9]*$ ]] \
@@ -287,6 +332,12 @@ init_supervisor_state() {
   RUN_DIR="$WORKSTATION_LOG_ROOT/live_dashboard_workstation_$(date +%Y%m%d_%H%M%S)"
   mkdir -p "$RUN_DIR"
   RATE_LOG="$RUN_DIR/w5_live_rates.log"
+  SUPERVISOR_LOG="$RUN_DIR/supervisor.log"
+  if ! : >>"$SUPERVISOR_LOG"; then
+    SUPERVISOR_LOG=''
+    fail "cannot create supervisor lifecycle log: $RUN_DIR/supervisor.log"
+  fi
+  log "SUPERVISOR_START pid=$BASHPID pgid=$SUPERVISOR_PGID phase=$SUPERVISOR_PHASE"
 }
 
 group_alive() {
@@ -297,13 +348,11 @@ group_alive() {
 stop_group() {
   local name="$1" pgid="$2" pid="$3" signal attempts i
   if ! [[ "$pgid" =~ ^[1-9][0-9]*$ ]]; then
-    printf '[live-dashboard-preflight] CLEANUP_ERROR: invalid process group name=%s pgid=%s\n' \
-      "$name" "$pgid" >&2
+    log_error "CLEANUP_ERROR: invalid process group name=$name pgid=$pgid"
     return 1
   fi
   if [ "$pgid" = "$SUPERVISOR_PGID" ]; then
-    printf '[live-dashboard-preflight] CLEANUP_ERROR: refusing supervisor process group name=%s pgid=%s\n' \
-      "$name" "$pgid" >&2
+    log_error "CLEANUP_ERROR: refusing supervisor process group name=$name pgid=$pgid"
     return 1
   fi
   group_alive "$pgid" || { wait "$pid" 2>/dev/null || true; return 0; }
@@ -323,8 +372,7 @@ stop_group() {
   done
   wait "$pid" 2>/dev/null || true
   if group_alive "$pgid"; then
-    printf '[live-dashboard-preflight] CLEANUP_ERROR: process group still alive name=%s pgid=%s\n' \
-      "$name" "$pgid" >&2
+    log_error "CLEANUP_ERROR: process group still alive name=$name pgid=$pgid"
     return 1
   fi
   log "stopped $name"
@@ -358,13 +406,12 @@ monitor_children_once() {
   local verifier_fn="${1:-:}" i
   for ((i=0; i<${#CHILD_NAMES[@]}; i++)); do
     if ! kill -0 "${CHILD_PIDS[$i]}" 2>/dev/null; then
-      printf '[live-dashboard-preflight] CHILD_EXITED: name=%s pid=%s\n' \
-        "${CHILD_NAMES[$i]}" "${CHILD_PIDS[$i]}" >&2
+      log_error "CHILD_EXITED: name=${CHILD_NAMES[$i]} pid=${CHILD_PIDS[$i]}"
       return 1
     fi
     if ! group_alive "${CHILD_PGIDS[$i]}"; then
-      printf '[live-dashboard-preflight] CHILD_GROUP_EXITED: name=%s pgid=%s\n' \
-        "${CHILD_NAMES[$i]}" "${CHILD_PGIDS[$i]}" >&2
+      log_error \
+        "CHILD_GROUP_EXITED: name=${CHILD_NAMES[$i]} pgid=${CHILD_PGIDS[$i]}"
       return 1
     fi
   done
@@ -426,8 +473,8 @@ wait_for_workstation_services() {
     fi
     sleep "$SUPERVISOR_POLL_SECONDS" || true
   done
-  printf '[live-dashboard-preflight] FAIL: workstation services did not become ready within %ss\n' \
-    "$SERVICE_READY_TIMEOUT_SECONDS" >&2
+  log_error \
+    "FAIL: workstation services did not become ready within ${SERVICE_READY_TIMEOUT_SECONDS}s"
   return 1
 }
 
@@ -486,8 +533,8 @@ wait_for_pi_data_arrival() {
   done
   [ "$STOP_REQUESTED" -eq 0 ] || return 130
   all_expected_publishers_present || {
-    printf '[live-dashboard-preflight] FAIL: six expected publishers did not arrive within %ss\n' \
-      "$ARRIVAL_TIMEOUT_SECONDS" >&2
+    log_error \
+      "FAIL: six expected publishers did not arrive within ${ARRIVAL_TIMEOUT_SECONDS}s"
     return 1
   }
   [ "$STOP_REQUESTED" -eq 0 ] || return 130
@@ -499,8 +546,8 @@ wait_for_pi_data_arrival() {
     remaining=$((deadline - SECONDS))
     required=$(((${#EXPECTED_TOPICS[@]} - index) * ARRIVAL_SAMPLE_SECONDS))
     [ "$remaining" -ge "$required" ] || {
-      printf '[live-dashboard-preflight] FAIL: insufficient arrival window before sampling %s\n' \
-        "${EXPECTED_TOPICS[$index]}" >&2
+      log_error \
+        "FAIL: insufficient arrival window before sampling ${EXPECTED_TOPICS[$index]}"
       return 1
     }
     topic="${EXPECTED_TOPICS[$index]}"
@@ -515,8 +562,7 @@ wait_for_pi_data_arrival() {
     else
       rc=$?
       [ "$STOP_REQUESTED" -eq 0 ] || return 130
-      printf '[live-dashboard-preflight] FAIL: no message from %s rc=%s; see %s\n' \
-        "$topic" "$rc" "$sample" >&2
+      log_error "FAIL: no message from $topic rc=$rc; see $sample"
       return "$rc"
     fi
     [ "$STOP_REQUESTED" -eq 0 ] || return 130
@@ -584,8 +630,8 @@ record_phase_failure() {
   local phase="$1" rc="$2"
   [ "$rc" -ne 0 ] || rc=1
   [ "$FINAL_RC" -ne 0 ] || FINAL_RC="$rc"
-  printf '[live-dashboard-preflight] PHASE_FAIL: phase=%s rc=%s preserved_rc=%s\n' \
-    "$phase" "$rc" "$FINAL_RC" >&2
+  [ "$SUPERVISOR_FAILED_PHASE" != none ] || SUPERVISOR_FAILED_PHASE="$phase"
+  log_error "PHASE_FAIL: phase=$phase rc=$rc preserved_rc=$FINAL_RC"
 }
 
 supervise_children() {
@@ -605,6 +651,7 @@ supervise_children() {
 hold_after_failure() {
   local monitor_fn="${1:-monitor_workstation_once}"
   local stop_fn="${2:-stop_requested}"
+  set_supervisor_phase failure-hold
   log "FAILURE_HOLD=ACTIVE preserved_rc=$FINAL_RC stop=Ctrl+C"
   while ! "$stop_fn"; do
     if "$monitor_fn"; then :; else :; fi
@@ -618,6 +665,7 @@ run_post_service_phases() {
   local monitor_fn="${3:-monitor_workstation_once}"
   local stop_fn="${4:-stop_requested}" rc
 
+  set_supervisor_phase arrival
   "$stop_fn" && return "$FINAL_RC"
   if "$arrival_fn"; then
     "$stop_fn" && return "$FINAL_RC"
@@ -631,6 +679,7 @@ run_post_service_phases() {
     return "$FINAL_RC"
   fi
 
+  set_supervisor_phase rate-probes
   "$stop_fn" && return "$FINAL_RC"
   if "$probe_fn"; then
     "$stop_fn" && return "$FINAL_RC"
@@ -644,6 +693,7 @@ run_post_service_phases() {
     return "$FINAL_RC"
   fi
 
+  set_supervisor_phase supervision
   "$stop_fn" && return "$FINAL_RC"
   if supervise_children "$monitor_fn" "$stop_fn"; then
     return "$FINAL_RC"
@@ -688,7 +738,7 @@ teardown_workstation_services() {
       || teardown_rc=1
   done
   if ! "$verifier_fn"; then
-    printf '[live-dashboard-preflight] WORKSTATION_TEARDOWN=FAIL; inspect logs and local owners\n' >&2
+    log_error 'WORKSTATION_TEARDOWN=FAIL; inspect logs and local owners'
     teardown_rc=1
   fi
   if [ "$teardown_rc" -eq 0 ] && [ "$SERVICES_UP" -eq 1 ]; then
@@ -698,12 +748,20 @@ teardown_workstation_services() {
 }
 
 cleanup() {
-  local incoming_rc=$? cleanup_rc=0 final_rc
+  local incoming_rc=$?
+  local cleanup_rc=0 final_rc exit_phase="$SUPERVISOR_PHASE"
   [ "$CLEANING" -eq 0 ] || exit "$incoming_rc"
   CLEANING=1
   trap - EXIT ERR
   trap ':' INT TERM
   set +e
+  if [ "$SUPERVISOR_STOP_TRIGGER" = none ]; then
+    SUPERVISOR_STOP_TRIGGER=exit
+    SUPERVISOR_STOP_SIGNAL=none
+    SUPERVISOR_STOP_PHASE="$exit_phase"
+    log "SUPERVISOR_STOP trigger=exit signal=none phase=$SUPERVISOR_STOP_PHASE incoming_status=$incoming_rc"
+  fi
+  set_supervisor_phase teardown
   if [ "${#CHILD_NAMES[@]}" -gt 0 ]; then
     teardown_workstation_services || cleanup_rc=$?
   fi
@@ -711,10 +769,12 @@ cleanup() {
   final_rc="$incoming_rc"
   [ "$final_rc" -ne 0 ] || final_rc="$FINAL_RC"
   [ "$final_rc" -ne 0 ] || final_rc="$cleanup_rc"
+  log "SUPERVISOR_EXIT status=$final_rc trigger=$SUPERVISOR_STOP_TRIGGER signal=$SUPERVISOR_STOP_SIGNAL stop_phase=$SUPERVISOR_STOP_PHASE failed_phase=$SUPERVISOR_FAILED_PHASE cleanup_rc=$cleanup_rc"
   exit "$final_rc"
 }
 
 on_supervisor_interrupt() {
+  record_stop_trigger INT
   STOP_REQUESTED=1
   if [ "$SERVICES_UP" -eq 0 ]; then
     log 'stop requested before workstation services were ready'
@@ -724,6 +784,7 @@ on_supervisor_interrupt() {
 }
 
 on_supervisor_term() {
+  record_stop_trigger TERM
   [ "$FINAL_RC" -ne 0 ] || FINAL_RC=143
   STOP_REQUESTED=1
   if [ "$SERVICES_UP" -eq 0 ]; then
@@ -736,14 +797,16 @@ on_supervisor_term() {
 run_workstation_supervisor() {
   local rc
   run_workstation_runtime_preflight
-  log "WORKSTATION_RUNTIME_PREFLIGHT=PASS helper=verified ssid=$EXPECTED_SSID dev=$WORKSTATION_INTERFACE ipv4=$WORKSTATION_IP ports=8002,8080,9090"
 
   init_supervisor_state
   trap cleanup EXIT
   trap on_supervisor_interrupt INT
   trap on_supervisor_term TERM
+  log "WORKSTATION_RUNTIME_PREFLIGHT=PASS helper=verified ssid=$EXPECTED_SSID dev=$WORKSTATION_INTERFACE ipv4=$WORKSTATION_IP ports=8002,8080,9090"
 
+  set_supervisor_phase service-start
   start_workstation_services
+  set_supervisor_phase service-readiness
   if wait_for_workstation_services; then
     SERVICES_UP=1
     emit_marker_once WORKSTATION_SERVICES \
@@ -754,6 +817,7 @@ run_workstation_supervisor() {
   fi
 
   [ "$STOP_REQUESTED" -eq 0 ] || exit "$FINAL_RC"
+  set_supervisor_phase pi-command
   if print_pi_command; then
     :
   else

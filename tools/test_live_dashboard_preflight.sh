@@ -794,5 +794,160 @@ set -e
   || fail "reverse-teardown case failed rc=$TEARDOWN_CASE_RC: $TEARDOWN_CASE_OUTPUT"
 pass_case
 
-[ "$CASE_COUNT" -eq 12 ] || fail "executed $CASE_COUNT cases instead of 12"
+REAL_SIGINT_CASE_DIR="$TEST_TMP/real-sigint"
+mkdir -p "$REAL_SIGINT_CASE_DIR"
+set +e
+REAL_SIGINT_CASE_OUTPUT="$(bash -c '
+  set -euo pipefail
+  source "$1"
+  CASE_DIR="$2"
+  WORKSTATION_LOG_ROOT="$CASE_DIR"
+  CHILD_STARTUP_SETTLE_SECONDS=0.02
+  SUPERVISOR_POLL_SECONDS=0.02
+  STOP_POLL_SECONDS=0.02
+  STOP_INT_ATTEMPTS=2
+  STOP_TERM_ATTEMPTS=2
+  WATCHDOG_PID=""
+  case_cleanup() {
+    local rc=$? pgid signaler_pid
+    trap - EXIT INT TERM
+    set +e
+    [ -z "$WATCHDOG_PID" ] || kill -TERM -- "-$WATCHDOG_PID" 2>/dev/null
+    [ -z "$WATCHDOG_PID" ] || wait "$WATCHDOG_PID" 2>/dev/null
+    if [ -r "$CASE_DIR/signaler.pid" ]; then
+      read -r signaler_pid <"$CASE_DIR/signaler.pid"
+      if [[ "$signaler_pid" =~ ^[1-9][0-9]*$ ]]; then
+        kill -TERM -- "-$signaler_pid" 2>/dev/null
+      fi
+    fi
+    if [ -r "$CASE_DIR/child.pgids" ]; then
+      while read -r pgid; do
+        [[ "$pgid" =~ ^[1-9][0-9]*$ ]] || continue
+        kill -INT -- "-$pgid" 2>/dev/null
+        kill -TERM -- "-$pgid" 2>/dev/null
+        kill -KILL -- "-$pgid" 2>/dev/null
+      done <"$CASE_DIR/child.pgids"
+    fi
+    exit "$rc"
+  }
+  trap case_cleanup EXIT
+  trap "exit 124" TERM
+  setsid bash -c "sleep 8; kill -TERM \"\$1\" 2>/dev/null" _ "$BASHPID" \
+    >"$CASE_DIR/watchdog.log" 2>&1 < /dev/null &
+  WATCHDOG_PID=$!
+
+  run_workstation_runtime_preflight() {
+    WORKSTATION_INTERFACE=wlp7s0
+    WORKSTATION_IP=192.0.2.10
+  }
+  start_workstation_services() {
+    local child_code
+    child_code="name=\"\$1\"; trace=\"\$2\"; deadline=\$((SECONDS + 5)); trap \"printf \\\"%s\\\\n\\\" \\\"\$name\\\" >>\\\"\$trace\\\"; exit 0\" INT; trap \"exit 0\" TERM; while [ \"\$SECONDS\" -lt \"\$deadline\" ]; do sleep 0.02; done; exit 125"
+    start_child rosbridge "$RUN_DIR/rosbridge.log" \
+      bash -c "$child_code" _ rosbridge "$CASE_DIR/child-int.trace"
+    start_child web-video-server "$RUN_DIR/web_video_server.log" \
+      bash -c "$child_code" _ web-video-server "$CASE_DIR/child-int.trace"
+    start_child dashboard "$RUN_DIR/dashboard.log" \
+      bash -c "$child_code" _ dashboard "$CASE_DIR/child-int.trace"
+    printf "%s\n" "${CHILD_PGIDS[@]}" >"$CASE_DIR/child.pgids"
+  }
+  wait_for_workstation_services() { return 0; }
+  print_pi_command() { return 0; }
+  wait_for_pi_data_arrival() {
+    ARRIVAL_ELAPSED_SECONDS=0
+    return 0
+  }
+  run_rate_probes() { return 0; }
+  monitor_workstation_once() {
+    monitor_children_once
+    : >"$CASE_DIR/supervision.ready"
+  }
+  wait_for_workstation_teardown() {
+    local pgid
+    for pgid in "${CHILD_PGIDS[@]}"; do
+      group_alive "$pgid" && return 1
+    done
+    return 0
+  }
+
+  SUPERVISOR_OUTPUT="$({
+    set -e
+    signal_target="$BASHPID"
+    setsid bash -c "
+      target=\"\$1\"
+      marker=\"\$2\"
+      sent=\"\$3\"
+      for ((i=0; i<500; i++)); do
+        if [ -e \"\$marker\" ]; then
+          kill -INT \"\$target\"
+          : >\"\$sent\"
+          exit 0
+        fi
+        sleep 0.01
+      done
+      kill -TERM \"\$target\" 2>/dev/null
+      exit 124
+    " _ "$signal_target" "$CASE_DIR/supervision.ready" "$CASE_DIR/signaler.sent" \
+      >"$CASE_DIR/signaler.log" 2>&1 < /dev/null &
+    printf "%s\n" "$!" >"$CASE_DIR/signaler.pid"
+    run_workstation_supervisor
+  } 2>&1)"
+  SUPERVISOR_RC=$?
+
+  printf "%s\n" "$SUPERVISOR_OUTPUT" >"$CASE_DIR/supervisor.out"
+  [ "$SUPERVISOR_RC" -eq 0 ] \
+    || fail "real SIGINT supervisor returned $SUPERVISOR_RC instead of 0"
+  [ -e "$CASE_DIR/signaler.sent" ] || fail "real SIGINT signaler did not run"
+  [ "$(grep -Fc "stop requested; waiting for orderly workstation teardown" "$CASE_DIR/supervisor.out")" -eq 1 ] \
+    || fail "real SIGINT stop request was not emitted exactly once"
+  ! grep -Fq "PHASE_FAIL:" "$CASE_DIR/supervisor.out" \
+    || fail "real SIGINT recorded a false phase failure"
+  ! grep -Fq "FAILURE_HOLD=ACTIVE" "$CASE_DIR/supervisor.out" \
+    || fail "real SIGINT entered failure hold"
+
+  shopt -s nullglob
+  run_dirs=("$CASE_DIR"/live_dashboard_workstation_*)
+  [ "${#run_dirs[@]}" -eq 1 ] \
+    || fail "real SIGINT created ${#run_dirs[@]} run directories instead of 1"
+  supervisor_log="${run_dirs[0]}/supervisor.log"
+  [ -r "$supervisor_log" ] || fail "durable supervisor log missing"
+  [ "$(grep -Fc "SUPERVISOR_STOP trigger=signal signal=INT phase=supervision" "$supervisor_log")" -eq 1 ] \
+    || fail "durable supervisor log did not record one supervision-phase SIGINT"
+  [ "$(grep -Fc "SUPERVISOR_EXIT status=0 trigger=signal signal=INT stop_phase=supervision failed_phase=none cleanup_rc=0" "$supervisor_log")" -eq 1 ] \
+    || fail "durable supervisor log did not record the successful final status"
+  [ "$(grep -Fc "WORKSTATION_TEARDOWN=PASS" "$supervisor_log")" -eq 1 ] \
+    || fail "durable supervisor log did not record successful teardown"
+  [ "$(grep -Fc "SUPERVISOR_STOP trigger=" "$supervisor_log")" -eq 1 ] \
+    || fail "durable supervisor log recorded more than one stop trigger"
+
+  for child in dashboard web-video-server rosbridge; do
+    [ "$(grep -Fc "stopped $child" "$CASE_DIR/supervisor.out")" -eq 1 ] \
+      || fail "real SIGINT did not stop $child exactly once"
+  done
+  dashboard_line="$(awk "/stopped dashboard/{print NR; exit}" "$CASE_DIR/supervisor.out")"
+  video_line="$(awk "/stopped web-video-server/{print NR; exit}" "$CASE_DIR/supervisor.out")"
+  rosbridge_line="$(awk "/stopped rosbridge/{print NR; exit}" "$CASE_DIR/supervisor.out")"
+  [ -n "$dashboard_line" ] && [ "$dashboard_line" -lt "$video_line" ] \
+    && [ "$video_line" -lt "$rosbridge_line" ] \
+    || fail "real SIGINT did not preserve reverse teardown order"
+
+  [ -r "$CASE_DIR/child-int.trace" ] || fail "fake-child INT trace missing"
+  mapfile -t child_order <"$CASE_DIR/child-int.trace"
+  [ "${#child_order[@]}" -eq 3 ] \
+    && [ "${child_order[0]}" = dashboard ] \
+    && [ "${child_order[1]}" = web-video-server ] \
+    && [ "${child_order[2]}" = rosbridge ] \
+    || fail "fake children did not receive INT once in reverse order"
+  while read -r pgid; do
+    ! kill -0 -- "-$pgid" 2>/dev/null \
+      || fail "fake child process group remains alive: $pgid"
+  done <"$CASE_DIR/child.pgids"
+' _ "$PREFLIGHT" "$REAL_SIGINT_CASE_DIR" 2>&1)"
+REAL_SIGINT_CASE_RC=$?
+set -e
+[ "$REAL_SIGINT_CASE_RC" -eq 0 ] \
+  || fail "real-SIGINT lifecycle case failed rc=$REAL_SIGINT_CASE_RC: $REAL_SIGINT_CASE_OUTPUT"
+pass_case
+
+[ "$CASE_COUNT" -eq 13 ] || fail "executed $CASE_COUNT cases instead of 13"
 printf 'PASS: live-dashboard preflight contracts cases=%s\n' "$CASE_COUNT"

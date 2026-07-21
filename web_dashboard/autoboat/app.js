@@ -51,9 +51,215 @@ let cameraStatusEl = null;
 let cameraTopicInput = null;
 let currentStreamingTopic = null;
 
+// ========== CAMERA VIEWER PRESENTATION ==========
+const CAMERA_VIEWER_MIN_ZOOM = 1;
+const CAMERA_VIEWER_MAX_ZOOM = 4;
+const CAMERA_VIEWER_ZOOM_STEP = 0.5;
+let cameraViewerEl = null;
+let cameraViewerToolbarEl = null;
+let cameraViewerFeedEl = null;
+let cameraViewerEnlargeEl = null;
+let cameraViewerZoomOutEl = null;
+let cameraViewerZoomLevelEl = null;
+let cameraViewerZoomInEl = null;
+let cameraViewerResetEl = null;
+let cameraViewerCloseEl = null;
+let cameraViewerOpen = false;
+let cameraViewerZoom = CAMERA_VIEWER_MIN_ZOOM;
+let cameraViewerImageAvailable = true;
+let cameraViewerOpener = null;
+
+function initCameraViewer() {
+    cameraViewerEl = document.getElementById('camera-viewer');
+    cameraViewerToolbarEl = document.getElementById('camera-viewer-controls');
+    cameraViewerFeedEl = document.getElementById('camera-feed');
+    cameraViewerEnlargeEl = document.getElementById('btn-enlarge-camera');
+    cameraViewerZoomOutEl = document.getElementById('btn-camera-zoom-out');
+    cameraViewerZoomLevelEl = document.getElementById('camera-zoom-level');
+    cameraViewerZoomInEl = document.getElementById('btn-camera-zoom-in');
+    cameraViewerResetEl = document.getElementById('btn-camera-zoom-reset');
+    cameraViewerCloseEl = document.getElementById('btn-camera-viewer-close');
+
+    if (!cameraViewerEl || !cameraViewerToolbarEl || !cameraViewerFeedEl
+        || !cameraViewerEnlargeEl || !cameraImageEl || !cameraViewerZoomOutEl
+        || !cameraViewerZoomLevelEl || !cameraViewerZoomInEl
+        || !cameraViewerResetEl || !cameraViewerCloseEl) {
+        return;
+    }
+
+    cameraViewerEnlargeEl.addEventListener('click', () => openCameraViewer(cameraViewerEnlargeEl));
+    cameraImageEl.addEventListener('click', () => openCameraViewer(cameraImageEl));
+    cameraImageEl.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        openCameraViewer(cameraImageEl);
+    });
+    cameraViewerZoomOutEl.addEventListener('click', () => adjustCameraViewerZoom(-CAMERA_VIEWER_ZOOM_STEP));
+    cameraViewerZoomInEl.addEventListener('click', () => adjustCameraViewerZoom(CAMERA_VIEWER_ZOOM_STEP));
+    cameraViewerResetEl.addEventListener('click', resetCameraViewerZoom);
+    cameraViewerCloseEl.addEventListener('click', closeCameraViewer);
+    document.addEventListener('keydown', handleCameraViewerKeydown, { capture: true });
+    applyCameraViewerZoom(CAMERA_VIEWER_MIN_ZOOM);
+}
+
+function setCameraViewerTriggerState(expanded) {
+    const value = expanded ? 'true' : 'false';
+    cameraViewerEnlargeEl.setAttribute('aria-expanded', value);
+    if (expanded) {
+        cameraImageEl.removeAttribute('role');
+        cameraImageEl.removeAttribute('aria-label');
+        cameraImageEl.removeAttribute('aria-haspopup');
+        cameraImageEl.removeAttribute('aria-controls');
+        cameraImageEl.removeAttribute('aria-expanded');
+        cameraImageEl.setAttribute('tabindex', '-1');
+    } else {
+        cameraImageEl.setAttribute('role', 'button');
+        cameraImageEl.setAttribute('aria-label', 'Enlarge camera view');
+        cameraImageEl.setAttribute('aria-haspopup', 'dialog');
+        cameraImageEl.setAttribute('aria-controls', 'camera-viewer');
+        cameraImageEl.setAttribute('aria-expanded', value);
+        cameraImageEl.setAttribute('tabindex', '0');
+    }
+}
+
+function openCameraViewer(trigger) {
+    if (cameraViewerOpen || !cameraViewerEl) return false;
+    if (typeof onboardingState !== 'undefined' && onboardingState.backdrop) return false;
+
+    cameraViewerOpener = trigger && typeof trigger.focus === 'function'
+        ? trigger
+        : document.activeElement;
+    resetCameraViewerZoom();
+    cameraViewerOpen = true;
+    cameraViewerToolbarEl.hidden = false;
+    cameraViewerEl.classList.add('camera-viewer-open');
+    document.body.classList.add('camera-viewer-active');
+    cameraViewerEl.setAttribute('role', 'dialog');
+    cameraViewerEl.setAttribute('aria-modal', 'true');
+    cameraViewerEl.setAttribute('aria-labelledby', 'camera-viewer-title');
+    cameraViewerFeedEl.setAttribute('role', 'region');
+    cameraViewerFeedEl.setAttribute('aria-label', 'Zoomed camera view');
+    cameraViewerFeedEl.setAttribute('tabindex', '0');
+    setCameraViewerTriggerState(true);
+    cameraViewerCloseEl.focus({ preventScroll: true });
+    return true;
+}
+
+function closeCameraViewer() {
+    if (!cameraViewerOpen) return false;
+
+    const opener = cameraViewerOpener;
+    resetCameraViewerZoom();
+    cameraViewerOpen = false;
+    cameraViewerOpener = null;
+    cameraViewerEl.classList.remove('camera-viewer-open');
+    document.body.classList.remove('camera-viewer-active');
+    cameraViewerToolbarEl.hidden = true;
+    cameraViewerEl.removeAttribute('role');
+    cameraViewerEl.removeAttribute('aria-modal');
+    cameraViewerEl.removeAttribute('aria-labelledby');
+    cameraViewerFeedEl.removeAttribute('role');
+    cameraViewerFeedEl.removeAttribute('aria-label');
+    cameraViewerFeedEl.removeAttribute('tabindex');
+    setCameraViewerTriggerState(false);
+
+    if (opener && opener.isConnected && typeof opener.focus === 'function') {
+        opener.focus({ preventScroll: true });
+    }
+    return true;
+}
+
+function applyCameraViewerZoom(nextZoom) {
+    const boundedZoom = Math.min(
+        CAMERA_VIEWER_MAX_ZOOM,
+        Math.max(CAMERA_VIEWER_MIN_ZOOM, nextZoom)
+    );
+    cameraViewerZoom = Math.round(boundedZoom / CAMERA_VIEWER_ZOOM_STEP)
+        * CAMERA_VIEWER_ZOOM_STEP;
+    if (cameraImageEl) {
+        cameraImageEl.style.setProperty('--camera-viewer-scale', String(cameraViewerZoom));
+    }
+    if (cameraViewerZoomLevelEl) {
+        cameraViewerZoomLevelEl.textContent = `${cameraViewerZoom.toFixed(1)}×`;
+    }
+    syncCameraViewerControls();
+}
+
+function adjustCameraViewerZoom(delta) {
+    if (!cameraViewerImageAvailable) return false;
+    applyCameraViewerZoom(cameraViewerZoom + delta);
+    return true;
+}
+
+function resetCameraViewerZoom() {
+    applyCameraViewerZoom(CAMERA_VIEWER_MIN_ZOOM);
+    if (cameraViewerFeedEl) {
+        cameraViewerFeedEl.scrollLeft = 0;
+        cameraViewerFeedEl.scrollTop = 0;
+    }
+}
+
+function setCameraViewerImageAvailable(available) {
+    cameraViewerImageAvailable = !!available;
+    syncCameraViewerControls();
+}
+
+function syncCameraViewerControls() {
+    if (!cameraViewerZoomOutEl || !cameraViewerZoomInEl || !cameraViewerResetEl) return;
+    cameraViewerZoomOutEl.disabled = !cameraViewerImageAvailable
+        || cameraViewerZoom <= CAMERA_VIEWER_MIN_ZOOM;
+    cameraViewerZoomInEl.disabled = !cameraViewerImageAvailable
+        || cameraViewerZoom >= CAMERA_VIEWER_MAX_ZOOM;
+    cameraViewerResetEl.disabled = !cameraViewerImageAvailable;
+}
+
+function cameraViewerFocusableElements() {
+    if (!cameraViewerEl) return [];
+    return Array.from(cameraViewerEl.querySelectorAll(
+        'button, [href], input, select, textarea, [tabindex]'
+    )).filter((element) => !element.disabled
+        && !element.hidden
+        && element.getAttribute('tabindex') !== '-1');
+}
+
+function handleCameraViewerKeydown(event) {
+    if (!cameraViewerOpen) return;
+
+    if (event.key === 'Escape') {
+        event.preventDefault();
+        if (typeof event.stopImmediatePropagation === 'function') {
+            event.stopImmediatePropagation();
+        } else {
+            event.stopPropagation();
+        }
+        closeCameraViewer();
+        return;
+    }
+    if (event.key !== 'Tab') return;
+
+    const focusable = cameraViewerFocusableElements();
+    if (focusable.length === 0) {
+        event.preventDefault();
+        cameraViewerCloseEl.focus({ preventScroll: true });
+        return;
+    }
+    const currentIndex = focusable.indexOf(document.activeElement);
+    if (event.shiftKey && currentIndex <= 0) {
+        event.preventDefault();
+        focusable[focusable.length - 1].focus({ preventScroll: true });
+    } else if (!event.shiftKey && (currentIndex === -1 || currentIndex === focusable.length - 1)) {
+        event.preventDefault();
+        focusable[0].focus({ preventScroll: true });
+    }
+}
+// ========== END CAMERA VIEWER PRESENTATION ==========
+
 // ========== TEMPORARY LIVE MAVLINK VIEW ==========
 // This temporary build is deliberately display-only. It subscribes directly to
 // MAVROS and blocks every dashboard command/config write at the final send boundary.
+// Safety gate: before setting this false, keep an operational E-Stop reachable by
+// pointer or keyboard while the expanded camera viewer remains open. The current
+// full-screen overlay and focus trap cover all three E-Stop controls.
 const LIVE_MAVLINK_VIEW_ONLY = true;
 const LIVE_MAVLINK_STALE_AFTER_MS = 3000;
 const LIVE_MAVLINK_FRESHNESS_INTERVAL_MS = 500;
@@ -879,7 +1085,10 @@ function initCameraFeed() {
         return;
     }
 
+    initCameraViewer();
+
     cameraImageEl.addEventListener('load', () => {
+        setCameraViewerImageAvailable(true);
         // MJPEG fires 'load' on every frame. Don't overwrite a sticky user-input
         // validation error — otherwise the "Invalid topic" message vanishes in
         // ~30 ms when the old stream's next frame arrives.
@@ -889,6 +1098,7 @@ function initCameraFeed() {
     });
 
     cameraImageEl.addEventListener('error', () => {
+        setCameraViewerImageAvailable(false);
         cameraStatusEl.textContent = 'Camera feed unavailable. Start web_video_server? | Flux indisponible';
         cameraStatusEl.classList.add('error');
     });

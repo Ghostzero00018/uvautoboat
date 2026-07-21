@@ -284,6 +284,114 @@ body.live-mavlink-view-only .live-mavlink-write-disabled {
     justify-content: center;
 }
 
+body.camera-viewer-active {
+    overflow: hidden;
+}
+
+.camera-viewer-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    width: 100%;
+    padding: 12px 16px;
+    background: #111827;
+    color: #fff;
+}
+
+.camera-viewer-controls[hidden] {
+    display: none;
+}
+
+.camera-viewer-title {
+    font-weight: 700;
+}
+
+.camera-viewer-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.camera-viewer-actions button {
+    padding: 8px 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 5px;
+    background: #f8fafc;
+    color: #111827;
+    cursor: pointer;
+    font: inherit;
+}
+
+.camera-viewer-actions button:hover:not(:disabled),
+.camera-viewer-actions button:focus-visible {
+    background: #dbeafe;
+    outline: 3px solid #60a5fa;
+    outline-offset: 1px;
+}
+
+.camera-viewer-actions button:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+
+#camera-zoom-level {
+    min-width: 3.8rem;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+}
+
+#camera-image[role="button"] {
+    cursor: zoom-in;
+}
+
+#camera-image[role="button"]:focus-visible {
+    outline: 4px solid #60a5fa;
+    outline-offset: -4px;
+}
+
+.camera-container.camera-viewer-open {
+    --camera-viewer-scale: 1;
+    position: fixed;
+    inset: 0;
+    z-index: 9000;
+    width: auto;
+    min-height: 0;
+    margin: 0;
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    overflow: hidden;
+    background: #000;
+}
+
+.camera-container.camera-viewer-open #camera-feed {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    text-align: left;
+    overscroll-behavior: contain;
+}
+
+.camera-container.camera-viewer-open #camera-image {
+    display: block;
+    width: 100%;
+    max-width: none;
+    max-height: none;
+    border-radius: 0;
+    object-fit: contain;
+    zoom: var(--camera-viewer-scale, 1);
+    cursor: default;
+}
+
+.camera-container.camera-viewer-open .camera-status {
+    background: #111827;
+}
+
 #camera-feed {
     width: 100%;
     text-align: center;

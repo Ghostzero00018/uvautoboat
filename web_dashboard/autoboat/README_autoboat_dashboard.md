@@ -19,7 +19,9 @@ Real-time web-based monitoring and control dashboard for the AutoBoat autonomous
 - **Emergency stop** with red pulsing badge and thrust cut
 - **Obstacle detection** with Front/Left/Right clearance, urgency scores, clusters, gaps
 - **Anti-stuck status** with Kalman drift uncertainty indicator
-- **Embedded camera feed** via web_video_server (MJPEG)
+- **Single-stream camera viewer** via web_video_server (MJPEG), with image, keyboard,
+  or button Enlarge; `1.0×`–`4.0×` zoom; Reset; Close; Escape; focus trapping; and
+  camera-error recovery without opening another stream
 - **State badges** for: INIT, WAITING_CONFIRM, READY, DRIVING, PAUSED, FINISHED, EMERGENCY_STOP, JOYSTICK
 
 ## Prerequisites
@@ -54,6 +56,11 @@ corresponding values when a topic becomes stale, clears the whole panel when
 rosbridge disconnects, and makes all write-capable controls inert while
 preserving Mission History, tuning expanders, health clear/auto-scroll, export,
 and copy controls.
+
+The expanded camera viewer is approved only for this view-only mode. Its full-screen
+overlay and focus trap cover the current E-Stop button and shortcuts. Before any future
+write-enabled build reuses the viewer, an operational E-Stop must remain reachable by
+pointer or keyboard without closing the viewer.
 
 On 17/07/2026, two runs from the clean, pushed workstation checkout on
 `IoT IMT Nord Europe` proved six-topic arrival and automatic rate measurement;
@@ -139,7 +146,7 @@ marked `Stale` as a failed diagnostic even if another topic continues updating.
 | **Health Check**           | Live streaming 49-check system diagnostic with elapsed time                     |
 | **System Logs**            | Timestamped, color-coded log entries                                            |
 | **ROS2 Terminal**          | Direct ROS2 command output                                                      |
-| **Camera Feed**            | MJPEG stream; combobox auto-populated from rosbridge with free-text fallback    |
+| **Camera Feed**            | One MJPEG image with topic combobox, in-place Enlarge, bounded zoom, Reset, Close, Escape, focus trapping, and error recovery |
 
 ## Configuration System
 

@@ -12,6 +12,11 @@ The image and telemetry paths are separate:
 - rosbridge carries the five direct MAVROS subscriptions used by the temporary state,
   GPS, IMU, battery, and RC panel.
 
+The expanded camera viewer is accepted only while `LIVE_MAVLINK_VIEW_ONLY=true`. Its
+full-screen overlay and focus trap cover the current E-Stop button and shortcuts. Do not
+reuse it in a write-enabled build until an operational E-Stop remains reachable by
+pointer or keyboard without closing the viewer.
+
 Do not use `one_click_launch_all/launch_autoboat_complete.sh` for this test. It starts
 Gazebo and navigation nodes. Do not deploy or run the workstation preflight on the Pi;
 the retained `pi` wrapper mode is not part of this procedure.
@@ -27,8 +32,8 @@ The repository copies are canonical. Only the helper is deployed to the Pi.
 | Helper size | `47,978` bytes |
 | Helper SHA-256 | `b778f69e3c692ae6e221d8a341962baf879d6aa2336df8f21912a3f1fbb81c12` |
 | Workstation supervisor | `tools/live_dashboard_preflight.sh` |
-| Supervisor size | `25,678` bytes |
-| Supervisor SHA-256 | `de08299cdf1a201f23619c0d434604cadaedcef29dc5926a84d04f33560c55fc` |
+| Supervisor size | `27,564` bytes |
+| Supervisor SHA-256 | `b7fd414b23c6c3b5e7d2dabde3828b8b3e98e24a28fa9bc243314baaef781ead` |
 
 The helper retains its finite `120`-second evidence window and uses
 `LIVE_HOLD_AFTER_WINDOW=1` for the monitored demonstration hold. A transient MAVProxy
@@ -180,7 +185,9 @@ PI_SOURCE_STACK_READY=PASS
 PI_DATA_ARRIVED=PASS topics=6 ...
 ```
 
-Select `/hailo/overlay/image_raw` in the Camera panel and verify:
+Open the browser developer tools Network panel, clear its log, filter for `/stream?`,
+then hard-refresh the dashboard. Select `/hailo/overlay/image_raw` in the Camera panel
+and verify:
 
 - live Hailo boxes and class labels;
 - all five MAVROS badges remain `Live` with independent ages below `3.0 s`;
@@ -191,7 +198,15 @@ Select `/hailo/overlay/image_raw` in the Camera panel and verify:
 - vehicle-writing controls in the mission, configuration, tuning, and health-check
   panels are inert, while Mission History, tuning expanders, health clear/auto-scroll,
   export, and copy controls remain usable;
-- dashboard command and configuration writes remain blocked.
+- dashboard command and configuration writes remain blocked;
+- exactly one Hailo `/stream?...` request is present and remains continuously active;
+- image click, Enter/Space on the image, and the Enlarge button open the same viewer;
+- Close receives focus, Tab stays inside the viewer, and Escape closes it and restores
+  focus to the opening image or button;
+- Zoom out, Zoom in, and Reset keep the scale within `1.0×`–`4.0×`, with Reset returning
+  to `1.0×` and the top-left scroll position;
+- opening, zooming, resetting, and closing add no second `/stream?...` request. The same
+  original Network row must remain active throughout the sequence.
 
 Any `Stale` badge fails the browser check for that topic. A surviving IMU topic must not
 make state, GPS, battery, or RC appear current. Do not use mission, thruster, arming,
@@ -199,6 +214,10 @@ mode, RC override, parameter, or setpoint controls during this diagnostic.
 
 Record the browser visual result separately from the automatic rate result. Neither
 implies the other.
+
+This view-only check does not clear the viewer for a write-enabled release. Before
+changing that boundary, add a separate acceptance smoke test with the viewer open: an
+operational E-Stop must be reachable by pointer or keyboard without closing the viewer.
 
 ## Failure hold
 
@@ -274,7 +293,7 @@ arrival samples, and `w5_live_rates.log` with the matching Pi console and log di
 
 Report:
 
-- browser visual result;
+- browser visual result, camera-viewer controls, and the one-continuing-stream result;
 - automatic rate result and rate-log path;
 - helper checksum `OK`, connected/disarmed state, command sentinel, and source-window
   markers;
