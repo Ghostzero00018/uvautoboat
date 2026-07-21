@@ -379,3 +379,16 @@ pass that condition as a separate acceptance smoke test.
 **Next step:** Commit and push the complete Tuesday working tree on `main`, then prepare
 the separately gated fresh full-stack pipeline. Do not start the live run from this
 documentation block.
+
+## EOD Addendum - Post-Commit Viewer Defect - 21/07/2026
+
+After the Block D/E commit and push (`98227cf`), an operator browser check of the new
+camera viewer surfaced a defect the passing static suites did not catch: a single
+Zoom-in click jumped straight from `1.0x` to `4.0x`, after which Zoom in, Zoom out, and
+Reset appeared unusable while Close still worked. The `5/5` camera-viewer and `31/31`
+suites and the source-level single-stream boundary recorded in Block D stand unchanged;
+this is a browser-behaviour defect, exactly the browser-only surface Block D flagged as
+outside static coverage. The 22/07 work is therefore reprioritized to diagnose and fix it
+first, ahead of the fresh full-stack acceptance - see
+`working_diary/2026-07-22_wednesday_camera_viewer_defect_follow_up.md`. This addendum
+records the post-commit finding only; the blocks above are unchanged.

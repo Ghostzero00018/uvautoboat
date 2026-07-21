@@ -7,13 +7,14 @@ stream or the view-only dashboard boundary.
 
 ## Evidence carried forward
 
-- Pushed code baseline: `98227cf`; this pre-diary is the only workspace change.
-- The second 21/07/2026 live run passed fresh workstation-first startup, six-topic
-  arrival, automatic rates, connected/disarmed monitoring, the bounded Pi window, and
-  local workstation teardown. The copied Pi run contained 16 files, passed the bounded
-  artifact check, and recorded a `67200` mC peak.
-- Strict Pi-first shutdown did not pass. The Pi console reported loss of remote
-  rosbridge visibility instead of `PI_SOURCE_HOLD=STOP operator-requested`; exact
+- Code baseline: `98227cf`; the initial viewer-defect scaffold landed at `68d37b4`.
+- The second 21/07/2026 live run passed six-topic arrival, automatic rates,
+  connected/disarmed monitoring, the bounded Pi window, and local workstation teardown.
+  The copied Pi run recorded a `67750` mC peak.
+- Neither ordering gate was proven by the preserved sequence. The successful Pi runtime
+  exceeded the workstation supervisor's lifetime, so both a fresh workstation-first
+  startup and a strict Pi-first shutdown remain open. The Pi console reported loss of
+  remote rosbridge visibility instead of `PI_SOURCE_HOLD=STOP operator-requested`; exact
   cross-host order remains unproven.
 - Operator-reported viewer defect: one Zoom-in click jumped from `1.0×` to `4.0×`;
   Zoom in, Zoom out, and Reset then appeared unusable, while Close still worked.
