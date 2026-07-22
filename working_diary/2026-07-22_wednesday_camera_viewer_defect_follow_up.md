@@ -213,3 +213,45 @@ Evidence hierarchy for repeated invocation:
 4. Retain the teardown order at `wiki/Live_Hailo_MAVLink_Dashboard_Testing.md:255`: wait for
    the W5 rate-probe and source-window markers, stop P1, require the Pi teardown markers,
    then stop W1 and copy the logs.
+
+## Live-session SSH endpoint - 22/07/2026
+
+For this session only, both machines remain on `IoT IMT Nord Europe` and the Pi SSH/SCP
+endpoint is `imt-aqua-drone@10.120.2.249`. This value replaces only the interactive
+`PI_SSH` prompts in the helper-transfer and log-copy phases. W1 must still derive the
+workstation address dynamically and print the complete P1 launch command.
+
+If the Pi helper checksum is not already current, run from workstation W0:
+
+```bash
+cd ~/seal_ws/src/uvautoboat
+PI_SSH='imt-aqua-drone@10.120.2.249'
+
+printf '%s  %s\n' \
+  '7222f6779a81103af140ac8571df926d25a7ab818a02f0dbe4c921dab666b648' \
+  'tools/pi_live_hailo_mavlink_dashboard.sh' | sha256sum -c -
+
+ssh "$PI_SSH" 'mkdir -p ~/hailo_coco_overlay_2026-07-10'
+scp tools/pi_live_hailo_mavlink_dashboard.sh \
+  "${PI_SSH}:hailo_coco_overlay_2026-07-10/"
+```
+
+Repeat the Pi-local checksum check and continue only after it prints
+`pi_live_hailo_mavlink_dashboard.sh: OK`.
+
+After Pi-first teardown, copy the exact Pi run directory from workstation W2:
+
+```bash
+PI_SSH='imt-aqua-drone@10.120.2.249'
+read -r -p 'Run name from the Pi logs= path: ' RUN_NAME
+: "${RUN_NAME:?Pi run name is required}"
+
+mkdir -p ~/Desktop/test_logs_folder
+scp -r "${PI_SSH}:hailo_coco_overlay_2026-07-10/logs/${RUN_NAME}" \
+  ~/Desktop/test_logs_folder/
+
+ls -la "$HOME/Desktop/test_logs_folder/$RUN_NAME"
+```
+
+Do not substitute the Pi address for `WORKSTATION_IP`; the supervisor supplies the
+current workstation address to P1.
