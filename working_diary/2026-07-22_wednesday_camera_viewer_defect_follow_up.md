@@ -448,3 +448,187 @@ No Pi command, live service, hardware run, browser reload, fullscreen check, or 
 window check was run after these changes. The next gate is a separate user-run live
 acceptance: require the fullscreen-ready marker, visually verify the annotated Pi window
 and continuing workstation stream, preserve `supervisor.log`, and use Pi-first teardown.
+
+## Dual-output field result and third-run fixes - 22/07/2026
+
+The second 22/07/2026 combined run used these evidence directories:
+
+- workstation:
+  `/home/ghostzero/Desktop/live_dashboard_workstation_20260722_170248`;
+- Pi:
+  `/home/ghostzero/Desktop/test_logs_folder/live_dashboard_20260722_170417`, copied
+  from
+  `/home/imt-aqua-drone/hailo_coco_overlay_2026-07-10/logs/live_dashboard_20260722_170417`.
+
+### Runtime result
+
+The professor's dual-output requirement is runtime-proven for the stock-COCO diagnostic:
+the annotated Hailo view ran simultaneously in the Pi desktop window and the workstation
+dashboard. The Pi log recorded the fullscreen selection and at least `2,800` annotated
+ROS publications. The workstation passed six-topic arrival and all automatic rate
+probes; the Hailo image averaged about `7.41 Hz`. The FCU remained connected and
+disarmed, the five protected command topics carried zero messages, and the thermal peak
+was `67.2 C`, below the `80 C` abort threshold.
+
+The Pi supervisor later stopped automatically in `live-hold` because one successful
+remote service-list snapshot omitted `/rosapi/topics_for_type`. The workstation rosapi
+process was still running and its supervisor remained in normal supervision until the
+operator stopped it about `37` seconds later. Pi teardown passed with `cleanup_rc=0`;
+the Hailo `KeyboardInterrupt` was produced by that controlled child teardown, not by an
+inference or display failure.
+
+The Pi window itself reached fullscreen, but the operator reported that the rendered
+image remained at its smaller size. The logged `320x240` dimensions belong only to the
+downscaled ROS copy used by the workstation dashboard. The Pi display continues to use
+the separate upstream SD annotated frame. The Qt warning shows that native Wayland was
+not selected, but the exact XWayland image-rectangle behavior was not measured in this
+run.
+
+### Confirmed causes and correction
+
+`reject_command_services()` previously failed on the first successful but incomplete
+service snapshot. Its lower-level retry covered command errors only, so the live
+semantic miss bypassed retry and caused the spurious hold abort.
+
+The `target=120s elapsed=200s` marker did not prove that the timed monitor ran for
+`200` seconds. After the finite monitor returned, the helper deliberately performed
+fresh image, telemetry, endpoint, and disarmed-state verification before calculating
+and emitting the completion marker. The extra duration therefore needs separate
+accounting rather than a generic timeout around the live command.
+
+The remaining Pi-image scaling cause is still a live-verified hypothesis. The previous
+wrapper requested fullscreen before the upstream visualizer's first `imshow`; the next
+run must determine whether delaying the request until the HighGUI window has completed
+one `imshow` and `waitKey` cycle allows the rendered image rectangle to expand.
+
+### Approved static fixes
+
+The Pi helper now retries up to three semantic service snapshots. Every snapshot still
+rejects a dashboard command service immediately, persistent rosapi absence remains
+fail-closed, and a finite monitor deadline hands the check to the final-verification
+phase instead of starting another observation after the evidence window closes. The
+initial graph gate retains its longer discovery spin.
+
+The generated wrapper still pre-creates the existing `"Output"` window as resizable.
+Fullscreen mode now emits a pending marker, waits through the first upstream GUI cycle,
+requests fullscreen on callback two, and reads `cv2.getWindowImageRect()` on callback
+three after another GUI cycle. Only a successful rectangle read emits the new
+evidence-backed fullscreen-ready marker. Window creation failure remains headless;
+fullscreen-property failure remains resizable; rectangle-read failure is recorded as
+unavailable. All paths continue annotated ROS publication.
+
+The source-window marker now separates `monitored`, `final_verification`, and total
+`elapsed` seconds. The dashboard JavaScript, HTML, CSS, camera-viewer tests, original
+MJPEG image, ROS image resolution, Hailo capture and inference settings, and view-only
+FCU boundary are unchanged.
+
+Static verification passed:
+
+- Pi helper lifecycle, window ordering, fallback, publication, semantic-retry, deadline,
+  heartbeat, and hold contracts;
+- workstation preflight contracts, `13/13` cases;
+- dashboard tests, `31/31`, including the unchanged camera-viewer `5/5` contract;
+- Bash syntax for both helpers and both focused test scripts;
+- generated Hailo wrapper compilation and dashboard JavaScript syntax.
+
+Current operational pins:
+
+This snapshot is superseded for the third run; use the latest deployment-pin section
+below.
+
+- Pi helper: `54,789` bytes,
+  `1d5b81e5d26a1645621a5841e65bd4035a30dd57ec5d3ffd19a9d0df56231931`;
+- workstation supervisor: `27,621` bytes,
+  `30aa99b9017ec5d29e0fe24e1d152084628df9df2a20e2165757715b9968adf4`.
+
+No third Pi command, live service, hardware run, or browser reload was performed after
+these fixes.
+
+**Next step:** Under separate user-run approval, deploy the new Pi-helper checksum and
+repeat the two-command session. Require semantic-retry survival or a persistent-miss
+failure, the fullscreen pending and rectangle-ready markers, a visibly enlarged Pi image,
+the unchanged workstation stream and rates, the new source-window timing breakdown, and
+a normal Pi-first operator stop.
+
+## Third-run deadline correction - 22/07/2026
+
+The saved second-run evidence does not attribute the `120s` to `200s` gap to a ROS
+service-list query. The deployed helper's deterministic phase order shows that the last
+service phase, logged at `remaining=17s`, completed before `remaining=3s`. The last
+monitor phase was command-subscriber inspection, followed by final verification. The
+fresh final Hailo sample timestamp precedes the completion marker by about `46.56`
+seconds, proving that final verification consumed a substantial part of the gap. The old
+helper did not record its monitor-end timestamp, so the exact split is unrecoverable.
+
+The finite live-window path now gives every ROS graph-list/info query one shared absolute
+deadline. The raw three-attempt retry loop uses only the remaining budget and terminates
+the entire query process group at expiry; a late successful response is discarded.
+Deadline status propagates through node, service, command-subscriber, image-publisher,
+and MAVROS-source checks and hands the interrupted phase to final verification. Initial
+discovery and the operator-controlled hold continue with deadline `0` and retain their
+previous behavior.
+
+Final verification now has a separate `90`-second absolute deadline and repeats the
+complete four-phase graph contract before accepting fresh image, GPS, IMU, battery, RC,
+connected/disarmed-state, temperature, and power evidence. Deadline exhaustion is
+fail-closed and cannot emit `PI_SOURCE_WINDOW=COMPLETE`. Tests cover timeout output,
+slow successful responses, shared retry budget, unchanged deadline-zero behavior,
+phase-one handoff, complete final graph ordering, and final exhaustion.
+
+The fullscreen callback and exception handling, generated image resolution, dashboard
+viewer, single MJPEG connection, and view-only FCU boundary are unchanged by this
+correction.
+
+Current third-run deployment pins supersede the earlier operational snapshot without
+rewriting its historical checksums:
+
+- Pi helper: `61,228` bytes,
+  `1f043fcb67474f22130886cd415e338efccdf84de306f77961ff85e3b79c00a9`;
+- workstation supervisor: `27,621` bytes,
+  `d072f9436655e9e2737b709e6259701be50f5c8509bf8351916629cc657af085`.
+
+Static verification passed for the Pi helper, workstation preflight `13/13`, dashboard
+`31/31`, Bash syntax, and the generated wrapper's Python compilation. No third Pi
+command, live service, hardware run, browser reload, or external diary change was made.
+
+**Next step:** Under separate user-run approval, deploy the current Pi-helper checksum
+and repeat the two-command session. Require fullscreen rectangle evidence and a visibly
+enlarged Pi image, simultaneous workstation streaming, a source-window timing breakdown
+without a deadline failure, and a normal Pi-first operator stop.
+
+## Topic-echo hard-deadline parity - 22/07/2026
+
+The pre-commit review found one remaining finite-window liveness gap. ROS graph commands
+already had an external process-tree deadline, but the state and telemetry samples relied
+only on `ros2 topic echo --timeout`. That cooperative option bounds the message wait but
+cannot terminate a CLI process stuck during middleware discovery, initialization, or
+shutdown.
+
+Finite-window and final-verification topic samples now run under an external hard timeout
+using the full remaining absolute budget. The inner ROS message timeout remains the lower
+of its normal maximum and that remaining budget. This separation preserves an ordinary
+no-message result when more phase time remains while still terminating a hung CLI process
+at the absolute deadline. Startup checks and the operator-controlled hold keep deadline
+`0` and do not use the external wrapper.
+
+Focused tests now cover the exact outer and inner timeout values both above and below the
+normal message-wait maximum, a real parent-and-child timeout, hard-timeout status mapping,
+raw status `75` normalization with and without a deadline, unchanged deadline-zero
+behavior, and direct MAVROS-source deadline propagation without a retry after exhaustion.
+
+Current third-run deployment pins supersede the previous third-run snapshot:
+
+- Pi helper: `61,404` bytes,
+  `10bb75e453dd86cc68bd217a078f40e2b4318e324d89de35f274563955435e50`;
+- workstation supervisor: `27,621` bytes,
+  `39175bd46021605d9b0cca2578b347b5dcc00e3c8fd05be6fc409bb177c7065f`.
+
+Static verification passed for the Pi helper, workstation preflight `13/13`, dashboard
+`31/31`, Bash syntax, generated-wrapper compilation, and dashboard JavaScript syntax. No
+third Pi command, live service, hardware run, browser reload, commit, push, or external
+diary change was made.
+
+**Next step:** Under separate user-run approval, deploy the latest Pi-helper checksum and
+repeat the two-command session. Require fullscreen rectangle evidence and a visibly
+enlarged Pi image, simultaneous workstation streaming, bounded source-window timing, and
+a normal Pi-first operator stop.

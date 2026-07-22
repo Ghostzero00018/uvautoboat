@@ -30,11 +30,11 @@ procedure.
 | --- | --- |
 | Helper source | `tools/pi_live_hailo_mavlink_dashboard.sh` |
 | Helper Pi destination | `~/hailo_coco_overlay_2026-07-10/pi_live_hailo_mavlink_dashboard.sh` |
-| Helper size | `52,426` bytes |
-| Helper SHA-256 | `89ae95442989bf1e93a0efe22774a6ea17a33b0a38288ad85b141e467501e01a` |
+| Helper size | `61,404` bytes |
+| Helper SHA-256 | `10bb75e453dd86cc68bd217a078f40e2b4318e324d89de35f274563955435e50` |
 | Workstation supervisor | `tools/live_dashboard_preflight.sh` |
 | Supervisor size | `27,621` bytes |
-| Supervisor SHA-256 | `442fb65de288c3a0d1813b771f6e212feb9c2a0a2f112e5450db524b6af5a8a5` |
+| Supervisor SHA-256 | `39175bd46021605d9b0cca2578b347b5dcc00e3c8fd05be6fc409bb177c7065f` |
 
 The helper retains its finite `120`-second evidence window and uses
 `LIVE_HOLD_AFTER_WINDOW=1` for the monitored demonstration hold. A transient MAVProxy
@@ -45,9 +45,12 @@ Direct helper calls default to `HAILO_LOCAL_DISPLAY=0` and retain `--no-display`
 When local display is enabled, `HAILO_LOCAL_WINDOW_MODE` defaults to `resizable`.
 The tracked supervisor explicitly selects `HAILO_LOCAL_DISPLAY=1` and
 `HAILO_LOCAL_WINDOW_MODE=fullscreen`, enabling the Pi desktop Hailo window while
-retaining the same annotated ROS publisher for the workstation dashboard. Static tests
-cover resizable, fullscreen, headless, and both defensive fallback paths. The new
-window modes still require live acceptance.
+retaining the same annotated ROS publisher for the workstation dashboard. In fullscreen
+mode, the wrapper waits for the first upstream `imshow` and `waitKey` cycle before
+requesting fullscreen, then reads the image rectangle after the next GUI cycle. Static
+tests cover this ordering, resizable and headless modes, rectangle evidence, and all
+three defensive fallback paths. The frame-gated fullscreen behavior still requires live
+acceptance.
 
 On 17/07/2026, two runs from the clean, pushed workstation checkout on
 `IoT IMT Nord Europe` proved six-topic arrival and automatic rate measurement. Both
@@ -58,6 +61,17 @@ their Pi source windows, but the workstation dashboard stack became unavailable
 unexpectedly before the intended Pi-first stop in each run, without deliberate operator
 intervention. Fail-closed cleanup passed; the cause and clean Pi-first normal shutdown
 remain open.
+
+On 22/07/2026, the Pi desktop Hailo window and workstation dashboard displayed the same
+annotated stream simultaneously. The helper published at least `2,800` frames, all six
+workstation topics arrived, automatic rates passed, the FCU remained connected and
+disarmed, no monitored command message appeared, and the Pi thermal peak was `67.2 C`.
+The Pi then stopped during the monitored hold after one successful but incomplete remote
+ROS service snapshot omitted `/rosapi/topics_for_type`; the workstation rosapi process
+was still running, and both cleanups passed. The helper now accepts a recovered service
+within three semantic observations while still rejecting any command service immediately
+and failing closed after persistent misses. A third run must prove that retry behavior,
+the frame-gated fullscreen image rectangle, and a normal Pi-first operator stop.
 
 ## Before starting
 
@@ -80,6 +94,17 @@ remain open.
 Use new foreground terminals. Do not reuse a terminal already running a service. Never
 wrap either live command in an external GNU `timeout`.
 
+The finite Pi source window internally gives every ROS graph-list/info query and finite
+topic sample the same absolute deadline. Graph commands and topic-echo process trees are
+hard-stopped at the remaining budget; topic echoes also retain their cooperative message
+wait, capped by that budget. Deadline exhaustion hands the interrupted phase to a separate
+`90`-second final verification, which repeats required workstation nodes, forbidden
+services and subscribers, the single Hailo publisher, all five MAVROS source identities,
+fresh image and telemetry samples, connected/disarmed state, temperature, and power.
+Final-verification exhaustion is fail-closed and cannot emit the source-window completion
+marker. Startup discovery and the operator-controlled post-window hold retain their
+existing behavior.
+
 ## Deployment preparation - helper only
 
 This preparation is not one of the two live commands. On the Pi, verify the installed
@@ -88,7 +113,7 @@ helper before starting:
 ```bash
 cd ~/hailo_coco_overlay_2026-07-10
 printf '%s  %s\n' \
-  '89ae95442989bf1e93a0efe22774a6ea17a33b0a38288ad85b141e467501e01a' \
+  '10bb75e453dd86cc68bd217a078f40e2b4318e324d89de35f274563955435e50' \
   'pi_live_hailo_mavlink_dashboard.sh' | sha256sum -c -
 ```
 
@@ -97,7 +122,7 @@ only the helper from a workstation terminal:
 
 ```bash
 cd ~/seal_ws/src/uvautoboat
-echo '89ae95442989bf1e93a0efe22774a6ea17a33b0a38288ad85b141e467501e01a  tools/pi_live_hailo_mavlink_dashboard.sh' \
+echo '10bb75e453dd86cc68bd217a078f40e2b4318e324d89de35f274563955435e50  tools/pi_live_hailo_mavlink_dashboard.sh' \
   | sha256sum -c -
 
 read -r -p 'Current Pi SSH endpoint (user@host): ' PI_SSH
@@ -150,16 +175,21 @@ printf 'DISPLAY=%s\n' "${DISPLAY:-}"
 
 Stop if the value is empty. The helper must print
 `HAILO_LOCAL_DISPLAY=ENABLED display=... window_mode=fullscreen`; it fails closed instead
-of silently accepting a missing desktop session. The Hailo child must then print:
+of silently accepting a missing desktop session. The Hailo child first prints the
+frame gate and then the evidence-backed ready marker:
 
 ```text
-HAILO_LOCAL_WINDOW=READY mode=fullscreen name=Output
+HAILO_LOCAL_WINDOW=PENDING mode=fullscreen name=Output gate=first-imshow
+HAILO_LOCAL_WINDOW=READY mode=fullscreen name=Output rect=x,y,width,height source=getWindowImageRect
 ```
 
 `HAILO_LOCAL_WINDOW=FALLBACK_RESIZABLE ...` means fullscreen setup failed but the
 resizable window remains available. `HAILO_LOCAL_WINDOW=FALLBACK_HEADLESS ...` means
-window creation failed and the visualizer continued headless. Either fallback fails the
-new Pi-window acceptance; preserve the logs and do not describe the run as fullscreen.
+window creation failed and the visualizer continued headless.
+`HAILO_LOCAL_WINDOW=EVIDENCE_UNAVAILABLE ...` means fullscreen was requested but its
+rendered image rectangle could not be measured. Any of these three markers fails the new
+Pi-window acceptance; preserve the logs and do not describe the run as verified
+fullscreen.
 
 The expected negative import probe prints
 `CANONICAL_STRIPPED_RCLPY=UNAVAILABLE informational rc=1` and a
@@ -178,6 +208,12 @@ Stop immediately on a checksum failure, missing readiness marker, `STOP:`,
 `ERROR line=`, thermal abort, command-sentinel abort, or loss of connected and disarmed
 MAVROS state. `CLEANUP_ERROR` or `TEARDOWN=FAIL` also makes the run a failure. GPS no-fix
 is valid telemetry and is not transport loss.
+
+A single successful but incomplete remote service-list snapshot is retried. The helper
+still stops after three observations omit `/rosapi/topics_for_type`, and it rejects a
+dashboard command service on the first snapshot where one appears. If the finite evidence
+window closes between observations, the service check moves to the final-verification
+phase instead of reporting an unobserved service loss.
 
 ## Workstation arrival and automatic rate evidence
 
@@ -271,7 +307,7 @@ have emitted:
 
 ```text
 COMMAND_SENTINEL=PASS messages=0; FCU remained observed-disarmed
-PI_SOURCE_WINDOW=COMPLETE target=120s ...
+PI_SOURCE_WINDOW=COMPLETE target=120s monitored=... final_verification=... elapsed=... ...
 PI_SOURCE_HOLD=ACTIVE monitored=true stop=Ctrl+C
 ```
 
@@ -294,6 +330,13 @@ Then stop in this exact order:
 Do not stop the workstation while the Pi remains in its monitored hold. If the Pi stops
 because rosbridge, rosapi, or `web_video_server` disappeared, the shutdown order was not
 a clean Pi-first operator stop even when both cleanup markers pass.
+
+The `monitored` field covers the finite evidence window and its shared absolute query
+deadline. `final_verification` covers the complete fail-closed graph, fresh image,
+telemetry, connected/disarmed-state, temperature, and power checks performed before
+completion, with a separate `90`-second absolute deadline. `elapsed` is their combined
+wall time. Any `STOP: final verification exceeded 90s during ...` marker fails the run;
+`PI_SOURCE_WINDOW=COMPLETE` must not follow it.
 
 ## Temperatures and log copy-back
 

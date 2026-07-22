@@ -16,6 +16,7 @@ EXPECTED_SSID="${LIVE_SSID:-IMT Nord Europe 5G}"
 DOMAIN="${LIVE_ROS_DOMAIN_ID:-12}"
 RUN_SECONDS="${LIVE_RUN_SECONDS:-120}"
 HOLD_AFTER_WINDOW="${LIVE_HOLD_AFTER_WINDOW:-0}"
+FINAL_VERIFY_SECONDS="${LIVE_FINAL_VERIFY_SECONDS:-90}"
 LOCAL_DISPLAY="${HAILO_LOCAL_DISPLAY:-0}"
 LOCAL_WINDOW_MODE="${HAILO_LOCAL_WINDOW_MODE:-resizable}"
 ABORT_MC="${HAILO_DEMO_ABORT_MC:-80000}"
@@ -66,6 +67,7 @@ declare -a COMMAND_TOPICS=(
 CLEANING=0
 WINDOW_COMPLETE=0
 WINDOW_START_SECONDS=0
+WINDOW_MONITOR_END_SECONDS=0
 HOLD_ACTIVE=0
 LIFECYCLE_TRANSITION_ACTIVE=0
 STOP_REQUESTED=0
@@ -377,27 +379,84 @@ wait_for_mavproxy_heartbeat() {
   fi
 }
 
-ros2_graph_query() {
-  local attempt output=''
+ros2_graph_query_before() {
+  local deadline="$1"
+  shift
+  local attempt output='' query_rc remaining
   for attempt in 1 2 3; do
-    if output="$(ros2 "$@" 2>&1)"; then
+    query_rc=0
+    if [ "$deadline" -eq 0 ]; then
+      output="$(ros2 "$@" 2>&1)" || query_rc=$?
+    else
+      remaining=$((deadline - SECONDS))
+      [ "$remaining" -gt 0 ] || return 75
+      output="$(timeout --signal=KILL "${remaining}s" ros2 "$@" 2>&1)" \
+        || query_rc=$?
+      if [ "$query_rc" -eq 124 ] || [ "$query_rc" -eq 137 ] \
+          || [ "$SECONDS" -ge "$deadline" ]; then
+        return 75
+      fi
+    fi
+    if [ "$query_rc" -eq 0 ]; then
       printf '%s\n' "$output"
       return 0
     fi
-    [ "$attempt" -eq 3 ] || sleep 1
+    if [ "$attempt" -ne 3 ]; then
+      if [ "$deadline" -ne 0 ] && [ "$SECONDS" -ge "$deadline" ]; then
+        return 75
+      fi
+      sleep 1
+    fi
   done
   printf '%s\n' "$output" >&2
   return 1
 }
 
+ros2_graph_query() {
+  ros2_graph_query_before 0 "$@"
+}
+
+bounded_topic_echo() {
+  local deadline="$1" max_timeout="$2"
+  shift 2
+  local remaining timeout_seconds query_rc=0
+  timeout_seconds="$max_timeout"
+  if [ "$deadline" -ne 0 ]; then
+    remaining=$((deadline - SECONDS))
+    [ "$remaining" -gt 0 ] || return 75
+    [ "$remaining" -ge "$timeout_seconds" ] || timeout_seconds="$remaining"
+    timeout --signal=KILL "${remaining}s" \
+      ros2 topic echo --once --timeout "$timeout_seconds" "$@" || query_rc=$?
+    if [ "$query_rc" -eq 124 ] || [ "$query_rc" -eq 137 ] \
+        || [ "$SECONDS" -ge "$deadline" ]; then
+      return 75
+    fi
+  else
+    ros2 topic echo --once --timeout "$timeout_seconds" "$@" || query_rc=$?
+  fi
+  [ "$query_rc" -ne 75 ] || query_rc=1
+  return "$query_rc"
+}
+
+require_final_check_result() {
+  local result="$1" context="$2" failure="$3"
+  [ "$result" -ne 75 ] \
+    || die "final verification exceeded ${FINAL_VERIFY_SECONDS}s during $context"
+  [ "$result" -eq 0 ] || die "$failure"
+}
+
 topic_publishers() {
-  local topic="$1" topics info count
-  topics="$(ros2_graph_query topic list --no-daemon --spin-time 2)" || return 2
+  local topic="$1" deadline="${2:-0}" topics info count query_rc=0
+  topics="$(ros2_graph_query_before "$deadline" topic list --no-daemon --spin-time 2)" \
+    || query_rc=$?
+  [ "$query_rc" -eq 0 ] || return "$query_rc"
   if ! grep -Fxq "$topic" <<<"$topics"; then
     printf '0\n'
     return 0
   fi
-  info="$(ros2_graph_query topic info --no-daemon --spin-time 2 "$topic")" || return 2
+  info="$(ros2_graph_query_before "$deadline" topic info --no-daemon --spin-time 2 "$topic")" \
+    || query_rc=$?
+  [ "$query_rc" -eq 0 ] || return "$query_rc"
   count="$(awk -F': ' '/^Publisher count:/{print $2}' <<<"$info")"
   [ -n "$count" ] || return 2
   printf '%s\n' "$count"
@@ -417,10 +476,17 @@ topic_subscriptions() {
 }
 
 require_publisher_count() {
-  local topic="$1" expected="$2" context="$3" attempt count='UNKNOWN'
+  local topic="$1" expected="$2" context="$3" deadline="${4:-0}"
+  local attempt count='UNKNOWN' query_rc
   for attempt in 1 2 3; do
-    if count="$(topic_publishers "$topic")" && [ "$count" = "$expected" ]; then
+    query_rc=0
+    count="$(topic_publishers "$topic" "$deadline")" || query_rc=$?
+    [ "$query_rc" -ne 75 ] || return 75
+    if [ "$query_rc" -eq 0 ] && [ "$count" = "$expected" ]; then
       return 0
+    fi
+    if [ "$deadline" -ne 0 ] && [ "$SECONDS" -ge "$deadline" ]; then
+      return 75
     fi
     check_command_sentinel
     check_thermal_watchdog
@@ -430,7 +496,8 @@ require_publisher_count() {
 }
 
 graph_nodes() {
-  ros2_graph_query node list --no-daemon --spin-time 2
+  local deadline="${1:-0}"
+  ros2_graph_query_before "$deadline" node list --no-daemon --spin-time 2
 }
 
 reject_forbidden_nodes() {
@@ -456,24 +523,59 @@ require_workstation_nodes() {
 }
 
 reject_command_services() {
-  local services
-  services="$(ros2_graph_query service list --no-daemon --spin-time 2)" \
-    || die 'cannot inspect ROS services'
-  grep -Fxq '/rosapi/topics_for_type' <<<"$services" \
-    || die 'workstation rosapi topics_for_type service is not visible from the Pi'
-  if grep -Eq '^/planning/(stop_mission|generate_waypoints|emergency_stop)$' <<<"$services"; then
-    printf '%s\n' "$services" >&2
-    die 'dashboard command service server detected; dashboard-only isolation required'
-  fi
+  local deadline="${1:-0}" spin_time="${2:-2}"
+  local query_error="${3:-cannot inspect ROS services}" attempt services query_rc
+  for attempt in 1 2 3; do
+    if [ "$deadline" -ne 0 ] && [ "$SECONDS" -ge "$deadline" ]; then
+      return 75
+    fi
+    query_rc=0
+    services="$(ros2_graph_query_before "$deadline" service list --no-daemon --spin-time "$spin_time")" \
+      || query_rc=$?
+    [ "$query_rc" -ne 75 ] || return 75
+    [ "$query_rc" -eq 0 ] || die "$query_error"
+    if [ "$deadline" -ne 0 ] && [ "$SECONDS" -ge "$deadline" ]; then
+      return 75
+    fi
+    if grep -Eq '^/planning/(stop_mission|generate_waypoints|emergency_stop)$' \
+        <<<"$services"; then
+      printf '%s\n' "$services" >&2
+      die 'dashboard command service server detected; dashboard-only isolation required'
+    fi
+    if grep -Fxq '/rosapi/topics_for_type' <<<"$services"; then
+      return 0
+    fi
+    if [ "$deadline" -ne 0 ] && [ "$SECONDS" -ge "$deadline" ]; then
+      return 75
+    fi
+    if [ -n "${SAFETY_MONITOR_PID:-}" ]; then
+      check_command_sentinel
+    fi
+    if [ -n "${THERMAL_WATCHDOG_PID:-}" ]; then
+      check_thermal_watchdog
+    fi
+    if [ "$attempt" -ne 3 ]; then
+      if [ "$deadline" -ne 0 ] && [ "$SECONDS" -ge "$deadline" ]; then
+        return 75
+      fi
+      sleep 1
+    fi
+  done
+  die 'workstation rosapi topics_for_type service is not visible from the Pi'
 }
 
 require_mavros_source() {
-  local topic="$1" attempt info count nodes node identity_unknown last='query failed'
+  local topic="$1" deadline="${2:-0}"
+  local attempt info count nodes node identity_unknown last='query failed' query_rc
   for attempt in 1 2 3; do
     info=''
     nodes=''
     identity_unknown=0
-    if info="$(ros2_graph_query topic info --verbose --no-daemon --spin-time 2 "$topic")"; then
+    query_rc=0
+    info="$(ros2_graph_query_before "$deadline" topic info --verbose --no-daemon --spin-time 2 "$topic")" \
+      || query_rc=$?
+    [ "$query_rc" -ne 75 ] || return 75
+    if [ "$query_rc" -eq 0 ]; then
       count="$(awk -F': ' '/^Publisher count:/{print $2}' <<<"$info")"
       last="publisher count ${count:-UNKNOWN}"
       if [ "$count" = '1' ]; then
@@ -502,6 +604,9 @@ require_mavros_source() {
         fi
       fi
     fi
+    if [ "$deadline" -ne 0 ] && [ "$SECONDS" -ge "$deadline" ]; then
+      return 75
+    fi
     check_command_sentinel
     [ "$attempt" -eq 3 ] || sleep 1
   done
@@ -509,17 +614,24 @@ require_mavros_source() {
 }
 
 sample_connected_disarmed_state() {
-  ros2 topic echo --once --timeout 5 /mavros/state mavros_msgs/msg/State \
+  local deadline="${1:-0}"
+  bounded_topic_echo "$deadline" 5 /mavros/state mavros_msgs/msg/State \
     >"$STATE_SAMPLE" 2>&1 \
     && grep -q '^connected: true' "$STATE_SAMPLE" \
     && grep -q '^armed: false' "$STATE_SAMPLE"
 }
 
 require_connected_disarmed_state() {
-  local context="$1" attempt
+  local context="$1" deadline="${2:-0}" attempt sample_rc
   for attempt in 1 2 3; do
-    if sample_connected_disarmed_state; then
+    sample_rc=0
+    sample_connected_disarmed_state "$deadline" || sample_rc=$?
+    [ "$sample_rc" -ne 75 ] || return 75
+    if [ "$sample_rc" -eq 0 ]; then
       return 0
+    fi
+    if [ "$deadline" -ne 0 ] && [ "$SECONDS" -ge "$deadline" ]; then
+      return 75
     fi
     check_command_sentinel
     [ "$attempt" -eq 3 ] || sleep 1
@@ -528,7 +640,7 @@ require_connected_disarmed_state() {
 }
 
 initial_graph_gate() {
-  local nodes services topics topic info pubs subs
+  local nodes topics topic info pubs subs
   nodes="$(ros2_graph_query node list --no-daemon --spin-time 3)" \
     || die 'cannot inspect the initial ROS node graph'
   reject_forbidden_nodes "$nodes"
@@ -538,14 +650,7 @@ initial_graph_gate() {
     die 'existing live-integration node detected'
   fi
 
-  services="$(ros2_graph_query service list --no-daemon --spin-time 3)" \
-    || die 'cannot inspect the initial ROS service graph'
-  grep -Fxq '/rosapi/topics_for_type' <<<"$services" \
-    || die 'workstation rosapi topics_for_type service is not visible from the Pi'
-  if grep -Eq '^/planning/(stop_mission|generate_waypoints|emergency_stop)$' <<<"$services"; then
-    printf '%s\n' "$services" >&2
-    die 'dashboard command service server detected; dashboard-only isolation required'
-  fi
+  reject_command_services 0 3 'cannot inspect the initial ROS service graph'
 
   topics="$(ros2_graph_query topic list --no-daemon --spin-time 3)" \
     || die 'cannot inspect the initial ROS topic graph'
@@ -561,14 +666,18 @@ initial_graph_gate() {
 }
 
 reject_unexpected_command_subscribers() {
-  local topic attempt info nodes node identity_unknown verified
+  local deadline="${1:-0}" topic attempt info nodes node identity_unknown verified query_rc
   for topic in "${COMMAND_TOPICS[@]}"; do
     verified=0
     for attempt in 1 2 3; do
       info=''
       nodes=''
       identity_unknown=0
-      if info="$(ros2_graph_query topic info --verbose --no-daemon --spin-time 2 "$topic")"; then
+      query_rc=0
+      info="$(ros2_graph_query_before "$deadline" topic info --verbose --no-daemon --spin-time 2 "$topic")" \
+        || query_rc=$?
+      [ "$query_rc" -ne 75 ] || return 75
+      if [ "$query_rc" -eq 0 ]; then
         nodes="$(awk -F': ' '
           /^Node name:/ {name=$2}
           /^Node namespace:/ {namespace=$2}
@@ -590,6 +699,9 @@ reject_unexpected_command_subscribers() {
             break
           fi
         fi
+      fi
+      if [ "$deadline" -ne 0 ] && [ "$SECONDS" -ge "$deadline" ]; then
+        return 75
       fi
       check_command_sentinel
       [ "$attempt" -eq 3 ] || sleep 1
@@ -656,10 +768,46 @@ check_temperature() {
   fi
 }
 
+final_graph_verification() {
+  local deadline="$1" nodes result=0 source_topic
+
+  nodes="$(graph_nodes "$deadline")" || result=$?
+  [ "$result" -eq 0 ] || return "$result"
+  reject_forbidden_nodes "$nodes"
+  require_workstation_nodes "$nodes"
+  check_command_sentinel
+  check_thermal_watchdog
+
+  reject_command_services "$deadline" || result=$?
+  [ "$result" -eq 0 ] || return "$result"
+  check_command_sentinel
+  check_thermal_watchdog
+  reject_unexpected_command_subscribers "$deadline" || result=$?
+  [ "$result" -eq 0 ] || return "$result"
+  check_command_sentinel
+  check_thermal_watchdog
+  require_publisher_count "$IMAGE_TOPIC" 1 final-verification "$deadline" || result=$?
+  [ "$result" -eq 0 ] || return "$result"
+  check_command_sentinel
+  check_thermal_watchdog
+
+  for source_topic in \
+    /mavros/state \
+    /mavros/global_position/raw/fix \
+    /mavros/imu/data \
+    /mavros/battery \
+    /mavros/rc/in; do
+    require_mavros_source "$source_topic" "$deadline" || result=$?
+    [ "$result" -eq 0 ] || return "$result"
+    check_command_sentinel
+    check_thermal_watchdog
+  done
+}
+
 monitor_live_stack() {
   local context="$1" deadline="$2"
   local next_graph_check=$SECONDS next_state_check=$SECONDS
-  local next_power_check=$SECONDS graph_phase=0 nodes
+  local next_power_check=$SECONDS graph_phase=0 nodes phase_rc source_topic remaining
 
   while [ "$deadline" -eq 0 ] || [ "$SECONDS" -lt "$deadline" ]; do
     check_command_sentinel
@@ -678,23 +826,47 @@ monitor_live_stack() {
     if [ "$SECONDS" -ge "$next_graph_check" ]; then
       case "$graph_phase" in
         0)
-          nodes="$(graph_nodes)" || die 'cannot inspect the ROS node graph'
+          phase_rc=0
+          nodes="$(graph_nodes "$deadline")" || phase_rc=$?
+          [ "$phase_rc" -ne 75 ] || break
+          [ "$phase_rc" -eq 0 ] || die 'cannot inspect the ROS node graph'
           reject_forbidden_nodes "$nodes"
           require_workstation_nodes "$nodes"
-          reject_command_services
+          phase_rc=0
+          if reject_command_services "$deadline"; then
+            :
+          else
+            phase_rc=$?
+            [ "$phase_rc" -eq 75 ] && break
+            return "$phase_rc"
+          fi
           ;;
         1)
-          reject_unexpected_command_subscribers
+          phase_rc=0
+          reject_unexpected_command_subscribers "$deadline" || phase_rc=$?
+          [ "$phase_rc" -ne 75 ] || break
+          [ "$phase_rc" -eq 0 ] || return "$phase_rc"
           ;;
         2)
-          require_publisher_count "$IMAGE_TOPIC" 1 "$context"
+          phase_rc=0
+          require_publisher_count "$IMAGE_TOPIC" 1 "$context" "$deadline" || phase_rc=$?
+          [ "$phase_rc" -ne 75 ] || break
+          [ "$phase_rc" -eq 0 ] || return "$phase_rc"
           ;;
         3)
-          require_mavros_source /mavros/state
-          require_mavros_source /mavros/global_position/raw/fix
-          require_mavros_source /mavros/imu/data
-          require_mavros_source /mavros/battery
-          require_mavros_source /mavros/rc/in
+          for source_topic in \
+            /mavros/state \
+            /mavros/global_position/raw/fix \
+            /mavros/imu/data \
+            /mavros/battery \
+            /mavros/rc/in; do
+            phase_rc=0
+            require_mavros_source "$source_topic" "$deadline" || phase_rc=$?
+            if [ "$phase_rc" -eq 75 ]; then
+              break 2
+            fi
+            [ "$phase_rc" -eq 0 ] || return "$phase_rc"
+          done
           ;;
       esac
       check_thermal_watchdog
@@ -702,8 +874,15 @@ monitor_live_stack() {
       next_graph_check=$((SECONDS + 1))
     fi
 
+    if [ "$deadline" -ne 0 ] && [ "$SECONDS" -ge "$deadline" ]; then
+      break
+    fi
+
     if [ "$SECONDS" -ge "$next_state_check" ]; then
-      require_connected_disarmed_state "$context"
+      phase_rc=0
+      require_connected_disarmed_state "$context" "$deadline" || phase_rc=$?
+      [ "$phase_rc" -ne 75 ] || break
+      [ "$phase_rc" -eq 0 ] || return "$phase_rc"
       next_state_check=$((SECONDS + 4))
     fi
 
@@ -712,16 +891,27 @@ monitor_live_stack() {
       next_power_check=$((SECONDS + 10))
     fi
 
+    if [ "$deadline" -ne 0 ]; then
+      remaining=$((deadline - SECONDS))
+      [ "$remaining" -gt 0 ] || break
+      if [ "$remaining" -lt "$POLL_S" ]; then
+        sleep "$remaining"
+        break
+      fi
+    fi
     sleep "$POLL_S"
   done
 }
 
 complete_source_window() {
+  local monitored_seconds final_verification_seconds
+  monitored_seconds=$((WINDOW_MONITOR_END_SECONDS - WINDOW_START_SECONDS))
+  final_verification_seconds=$((SECONDS - WINDOW_MONITOR_END_SECONDS))
   WINDOW_ELAPSED_SECONDS=$((SECONDS - WINDOW_START_SECONDS))
   LIFECYCLE_TRANSITION_ACTIVE=1
   set_supervisor_phase source-window-complete
   log 'COMMAND_SENTINEL=PASS messages=0; FCU remained observed-disarmed'
-  log "PI_SOURCE_WINDOW=COMPLETE target=${RUN_SECONDS}s elapsed=${WINDOW_ELAPSED_SECONDS}s peak=$((PEAK_TEMP / 1000))C"
+  log "PI_SOURCE_WINDOW=COMPLETE target=${RUN_SECONDS}s monitored=${monitored_seconds}s final_verification=${final_verification_seconds}s elapsed=${WINDOW_ELAPSED_SECONDS}s peak=$((PEAK_TEMP / 1000))C"
   WINDOW_COMPLETE=1
 
   if [ "$HOLD_AFTER_WINDOW" -eq 1 ]; then
@@ -849,6 +1039,8 @@ esac
 [[ "$RUN_SECONDS" =~ ^[1-9][0-9]*$ ]] || die 'LIVE_RUN_SECONDS must be a positive integer'
 [[ "$HOLD_AFTER_WINDOW" =~ ^[01]$ ]] \
   || die 'LIVE_HOLD_AFTER_WINDOW must be 0 or 1'
+[[ "$FINAL_VERIFY_SECONDS" =~ ^[1-9][0-9]*$ ]] \
+  || die 'LIVE_FINAL_VERIFY_SECONDS must be a positive integer'
 [[ "$LOCAL_DISPLAY" =~ ^[01]$ ]] \
   || die 'HAILO_LOCAL_DISPLAY must be 0 or 1'
 [[ "$LOCAL_WINDOW_MODE" =~ ^(resizable|fullscreen)$ ]] \
@@ -930,7 +1122,7 @@ cat >"$MAVROS_PLUGINLISTS" <<'YAML'
       - rc_io
 YAML
 
-for command in fuser ss setsid iwgetid ip install ros2; do
+for command in fuser ss setsid iwgetid ip install ros2 timeout; do
   require_command "$command"
 done
 
@@ -1021,6 +1213,11 @@ publisher = node.create_publisher(
 original_visualize = detector.visualize
 state = {"last_publish_ns": 0, "count": 0}
 window_name = "Output"
+window_state = {
+    "callback_count": 0,
+    "fullscreen_pending": False,
+    "rect_pending": False,
+}
 
 
 def configure_local_window(visualization_settings):
@@ -1047,6 +1244,32 @@ def configure_local_window(visualization_settings):
         return
 
     if window_mode == "fullscreen":
+        window_state["fullscreen_pending"] = True
+        print(
+            f"HAILO_LOCAL_WINDOW=PENDING mode=fullscreen name={window_name} "
+            "gate=first-imshow",
+            flush=True,
+        )
+        return
+
+    print(
+        f"HAILO_LOCAL_WINDOW=READY mode={window_mode} name={window_name}",
+        flush=True,
+    )
+
+
+def advance_fullscreen_gate(visualization_settings):
+    if visualization_settings.no_display:
+        return
+    if not (
+        window_state["fullscreen_pending"] or window_state["rect_pending"]
+    ):
+        return
+
+    window_state["callback_count"] += 1
+    if window_state["fullscreen_pending"]:
+        if window_state["callback_count"] < 2:
+            return
         try:
             cv2.setWindowProperty(
                 window_name,
@@ -1059,12 +1282,30 @@ def configure_local_window(visualization_settings):
                 f"error={type(exc).__name__}",
                 flush=True,
             )
+            window_state["fullscreen_pending"] = False
             return
+        window_state["fullscreen_pending"] = False
+        window_state["rect_pending"] = True
+        return
 
-    print(
-        f"HAILO_LOCAL_WINDOW=READY mode={window_mode} name={window_name}",
-        flush=True,
-    )
+    if window_state["callback_count"] < 3:
+        return
+    try:
+        x, y, width, height = cv2.getWindowImageRect(window_name)
+    except cv2.error as exc:
+        print(
+            "HAILO_LOCAL_WINDOW=EVIDENCE_UNAVAILABLE mode=fullscreen "
+            f"name={window_name} stage=getWindowImageRect "
+            f"error={type(exc).__name__}",
+            flush=True,
+        )
+    else:
+        print(
+            f"HAILO_LOCAL_WINDOW=READY mode=fullscreen name={window_name} "
+            f"rect={x},{y},{width},{height} source=getWindowImageRect",
+            flush=True,
+        )
+    window_state["rect_pending"] = False
 
 
 def publishing_visualize(
@@ -1078,6 +1319,7 @@ def publishing_visualize(
     configure_local_window(visualization_settings)
 
     def callback_and_publish(*args, **kwargs):
+        advance_fullscreen_gate(visualization_settings)
         annotated_rgb = callback(*args, **kwargs)
         now_ns = time.monotonic_ns()
         if now_ns - state["last_publish_ns"] < period_ns:
@@ -1480,56 +1722,84 @@ log 'scope: Pi source readiness only; GPS no-fix is valid telemetry and must not
 WINDOW_START_SECONDS=$SECONDS
 DEADLINE=$((WINDOW_START_SECONDS + RUN_SECONDS))
 monitor_live_stack live-window "$DEADLINE"
+WINDOW_MONITOR_END_SECONDS=$SECONDS
+FINAL_VERIFY_DEADLINE=$((WINDOW_MONITOR_END_SECONDS + FINAL_VERIFY_SECONDS))
 
 check_command_sentinel
 check_thermal_watchdog
-require_connected_disarmed_state final
+FINAL_CHECK_RC=0
+require_connected_disarmed_state final "$FINAL_VERIFY_DEADLINE" || FINAL_CHECK_RC=$?
+require_final_check_result "$FINAL_CHECK_RC" disarmed-state \
+  'MAVROS connection/disarmed state failed during final verification'
 check_command_sentinel
 check_thermal_watchdog
 require_group_alive mavproxy "$MAVPROXY_PID" "$MAVPROXY_PGID" "$MAVPROXY_LOG"
 require_group_alive mavros "$MAVROS_PID" "$MAVROS_PGID" "$MAVROS_LOG"
 require_group_alive hailo-bridge "$HAILO_PID" "$HAILO_PGID" "$HAILO_LOG"
-ros2 topic echo --once --timeout 5 --no-arr \
+FINAL_CHECK_RC=0
+final_graph_verification "$FINAL_VERIFY_DEADLINE" || FINAL_CHECK_RC=$?
+require_final_check_result "$FINAL_CHECK_RC" graph-contract \
+  'final ROS graph verification failed'
+
+FINAL_CHECK_RC=0
+bounded_topic_echo "$FINAL_VERIFY_DEADLINE" 5 --no-arr \
   --qos-reliability reliable --qos-history keep_last --qos-depth 1 \
-  "$IMAGE_TOPIC" sensor_msgs/msg/Image >"$IMAGE_SAMPLE" 2>&1 \
-  && grep -q '^encoding: bgr8' "$IMAGE_SAMPLE" \
+  "$IMAGE_TOPIC" sensor_msgs/msg/Image >"$IMAGE_SAMPLE" 2>&1 || FINAL_CHECK_RC=$?
+require_final_check_result "$FINAL_CHECK_RC" Hailo-image \
+  "no fresh final Hailo image; see $IMAGE_SAMPLE"
+grep -q '^encoding: bgr8' "$IMAGE_SAMPLE" \
   && grep -q "^height: $STREAM_HEIGHT" "$IMAGE_SAMPLE" \
-  || die "no fresh final Hailo image; see $IMAGE_SAMPLE"
+  || die "invalid final Hailo image; see $IMAGE_SAMPLE"
 check_command_sentinel
 check_thermal_watchdog
-ros2 topic echo --once --timeout 5 --no-arr \
+FINAL_CHECK_RC=0
+bounded_topic_echo "$FINAL_VERIFY_DEADLINE" 5 --no-arr \
   --qos-reliability best_effort --qos-history keep_last --qos-depth 10 \
   /mavros/global_position/raw/fix sensor_msgs/msg/NavSatFix >"$GPS_SAMPLE" 2>&1 \
-  || die "no fresh final MAVROS raw GPS sample; see $GPS_SAMPLE"
+  || FINAL_CHECK_RC=$?
+require_final_check_result "$FINAL_CHECK_RC" GPS-sample \
+  "no fresh final MAVROS raw GPS sample; see $GPS_SAMPLE"
 check_command_sentinel
 check_thermal_watchdog
-ros2 topic echo --once --timeout 5 --no-arr \
+FINAL_CHECK_RC=0
+bounded_topic_echo "$FINAL_VERIFY_DEADLINE" 5 --no-arr \
   --qos-reliability best_effort --qos-history keep_last --qos-depth 10 \
   /mavros/imu/data sensor_msgs/msg/Imu >"$IMU_SAMPLE" 2>&1 \
-  || die "no fresh final MAVROS IMU sample; see $IMU_SAMPLE"
+  || FINAL_CHECK_RC=$?
+require_final_check_result "$FINAL_CHECK_RC" IMU-sample \
+  "no fresh final MAVROS IMU sample; see $IMU_SAMPLE"
 check_command_sentinel
 check_thermal_watchdog
-ros2 topic echo --once --timeout 5 --no-arr \
+FINAL_CHECK_RC=0
+bounded_topic_echo "$FINAL_VERIFY_DEADLINE" 5 --no-arr \
   --qos-reliability best_effort --qos-history keep_last --qos-depth 10 \
   /mavros/battery sensor_msgs/msg/BatteryState >"$BATTERY_SAMPLE" 2>&1 \
-  || die "no fresh final MAVROS battery sample; see $BATTERY_SAMPLE"
+  || FINAL_CHECK_RC=$?
+require_final_check_result "$FINAL_CHECK_RC" battery-sample \
+  "no fresh final MAVROS battery sample; see $BATTERY_SAMPLE"
 check_command_sentinel
 check_thermal_watchdog
-ros2 topic echo --once --timeout 5 --no-arr \
+FINAL_CHECK_RC=0
+bounded_topic_echo "$FINAL_VERIFY_DEADLINE" 5 --no-arr \
   --qos-reliability best_effort --qos-history keep_last --qos-depth 10 \
   /mavros/rc/in mavros_msgs/msg/RCIn >"$RC_SAMPLE" 2>&1 \
-  || die "no fresh final MAVROS RC input sample; see $RC_SAMPLE"
+  || FINAL_CHECK_RC=$?
+require_final_check_result "$FINAL_CHECK_RC" RC-sample \
+  "no fresh final MAVROS RC input sample; see $RC_SAMPLE"
 check_command_sentinel
 check_thermal_watchdog
-require_mavros_source /mavros/state
-require_mavros_source /mavros/global_position/raw/fix
-require_mavros_source /mavros/imu/data
-require_mavros_source /mavros/battery
-require_mavros_source /mavros/rc/in
-require_connected_disarmed_state final-verdict
+FINAL_CHECK_RC=0
+require_connected_disarmed_state final-verdict "$FINAL_VERIFY_DEADLINE" \
+  || FINAL_CHECK_RC=$?
+require_final_check_result "$FINAL_CHECK_RC" final-disarmed-verdict \
+  'MAVROS connection/disarmed state failed during final verdict'
 require_group_alive mavproxy "$MAVPROXY_PID" "$MAVPROXY_PGID" "$MAVPROXY_LOG"
 require_group_alive mavros "$MAVROS_PID" "$MAVROS_PGID" "$MAVROS_LOG"
 require_group_alive hailo-bridge "$HAILO_PID" "$HAILO_PGID" "$HAILO_LOG"
 check_command_sentinel
 check_thermal_watchdog
+check_temperature final-verification
+check_power final-verification
+[ "$SECONDS" -lt "$FINAL_VERIFY_DEADLINE" ] \
+  || die "final verification exceeded ${FINAL_VERIFY_SECONDS}s during completion"
 complete_source_window
