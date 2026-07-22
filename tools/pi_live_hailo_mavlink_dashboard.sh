@@ -17,6 +17,7 @@ DOMAIN="${LIVE_ROS_DOMAIN_ID:-12}"
 RUN_SECONDS="${LIVE_RUN_SECONDS:-120}"
 HOLD_AFTER_WINDOW="${LIVE_HOLD_AFTER_WINDOW:-0}"
 LOCAL_DISPLAY="${HAILO_LOCAL_DISPLAY:-0}"
+LOCAL_WINDOW_MODE="${HAILO_LOCAL_WINDOW_MODE:-resizable}"
 ABORT_MC="${HAILO_DEMO_ABORT_MC:-80000}"
 POLL_S="${LIVE_POLL_SECONDS:-2}"
 STREAM_HEIGHT="${HAILO_STREAM_HEIGHT:-240}"
@@ -68,14 +69,68 @@ WINDOW_START_SECONDS=0
 HOLD_ACTIVE=0
 LIFECYCLE_TRANSITION_ACTIVE=0
 STOP_REQUESTED=0
+SUPERVISOR_LOG=''
+SUPERVISOR_PHASE='initialization'
+SUPERVISOR_STOP_TRIGGER='none'
+SUPERVISOR_STOP_SIGNAL='none'
+SUPERVISOR_STOP_PHASE='none'
+SUPERVISOR_FAILED_PHASE='none'
 SUPERVISOR_PGID="$(ps -o pgid= -p $$ | tr -d ' ')"
 
+append_supervisor_log() {
+  local line="$1"
+  [ -n "$SUPERVISOR_LOG" ] || return 0
+  if ! printf 'timestamp=%s %s\n' "${EPOCHREALTIME:-unknown}" "$line" \
+      >>"$SUPERVISOR_LOG"; then
+    printf '[live-dashboard] LOG_WRITE_ERROR: path=%s\n' "$SUPERVISOR_LOG" >&2
+  fi
+  return 0
+}
+
 log() {
-  printf '[live-dashboard] %s\n' "$*"
+  local line="[live-dashboard] $*"
+  append_supervisor_log "$line"
+  printf '%s\n' "$line"
+}
+
+log_error() {
+  local line="[live-dashboard] $*"
+  append_supervisor_log "$line"
+  printf '%s\n' "$line" >&2
+}
+
+set_supervisor_phase() {
+  SUPERVISOR_PHASE="$1"
+  log "PI_SUPERVISOR_PHASE=$SUPERVISOR_PHASE"
+}
+
+record_stop_trigger() {
+  local trigger="$1" signal="$2"
+  [ "$SUPERVISOR_STOP_TRIGGER" = none ] || return 0
+  SUPERVISOR_STOP_TRIGGER="$trigger"
+  SUPERVISOR_STOP_SIGNAL="$signal"
+  SUPERVISOR_STOP_PHASE="$SUPERVISOR_PHASE"
+  log "PI_SUPERVISOR_STOP trigger=$trigger signal=$signal phase=$SUPERVISOR_STOP_PHASE"
+}
+
+finalize_supervisor() {
+  local rc="$1" cleanup_rc="$2" final_rc
+  if [ "$cleanup_rc" -eq 0 ]; then
+    log 'TEARDOWN=PASS'
+  else
+    log_error 'TEARDOWN=FAIL; inspect remaining processes and topics'
+  fi
+  final_rc="$rc"
+  [ "$final_rc" -ne 0 ] || final_rc="$cleanup_rc"
+  log "logs=$RUN_DIR"
+  log "PI_SUPERVISOR_EXIT status=$final_rc trigger=$SUPERVISOR_STOP_TRIGGER signal=$SUPERVISOR_STOP_SIGNAL stop_phase=$SUPERVISOR_STOP_PHASE failed_phase=$SUPERVISOR_FAILED_PHASE cleanup_rc=$cleanup_rc"
+  return "$final_rc"
 }
 
 die() {
-  printf '[live-dashboard] STOP: %s\n' "$*" >&2
+  SUPERVISOR_FAILED_PHASE="$SUPERVISOR_PHASE"
+  record_stop_trigger failure none
+  log_error "STOP: $*"
   exit 1
 }
 
@@ -89,7 +144,7 @@ configure_hailo_display() {
   [ -n "${DISPLAY:-}" ] \
     || die 'HAILO_LOCAL_DISPLAY=1 requires a Pi desktop or Remmina terminal with DISPLAY set'
   HAILO_DISPLAY_ARGS=()
-  log "HAILO_LOCAL_DISPLAY=ENABLED display=$DISPLAY"
+  log "HAILO_LOCAL_DISPLAY=ENABLED display=$DISPLAY window_mode=$LOCAL_WINDOW_MODE"
 }
 
 require_command() {
@@ -118,8 +173,7 @@ stop_group() {
   done
   wait "$pid" 2>/dev/null || true
   if group_alive "$pgid"; then
-    printf '[live-dashboard] CLEANUP_ERROR: process group still alive name=%s pgid=%s\n' \
-      "$name" "$pgid" >&2
+    log_error "CLEANUP_ERROR: process group still alive name=$name pgid=$pgid"
     return 1
   fi
   log "stopped $name"
@@ -133,6 +187,11 @@ cleanup() {
   trap - EXIT ERR
   trap ':' INT TERM
   set +e
+
+  if [ "$SUPERVISOR_STOP_TRIGGER" = none ]; then
+    record_stop_trigger exit none
+  fi
+  set_supervisor_phase teardown
 
   if [ "$WINDOW_COMPLETE" -eq 1 ]; then
     for ((i=0; i<${#CHILD_PGIDS[@]}; i++)); do
@@ -210,25 +269,21 @@ cleanup() {
   PORT_STATE="$(ss -H -ulnp 'sport = :14550' 2>/dev/null)"
   [ -z "$PORT_STATE" ] || cleanup_rc=1
 
-  if [ "$cleanup_rc" -eq 0 ]; then
-    log 'TEARDOWN=PASS'
-  else
-    printf '[live-dashboard] TEARDOWN=FAIL; inspect remaining processes and topics\n' >&2
-  fi
-  log "logs=$RUN_DIR"
-  final_rc="$rc"
-  [ "$final_rc" -ne 0 ] || final_rc="$cleanup_rc"
+  finalize_supervisor "$rc" "$cleanup_rc"
+  final_rc=$?
   exit "$final_rc"
 }
 
 on_error() {
   local rc=$? line="$1" command="$2"
-  printf '[live-dashboard] ERROR line=%s rc=%s command=%s\n' \
-    "$line" "$rc" "$command" >&2
+  SUPERVISOR_FAILED_PHASE="$SUPERVISOR_PHASE"
+  record_stop_trigger error none
+  log_error "ERROR line=$line rc=$rc command=$command"
   exit "$rc"
 }
 
 on_interrupt() {
+  record_stop_trigger signal INT
   log 'interrupt received'
   if [ "$LIFECYCLE_TRANSITION_ACTIVE" -eq 1 ]; then
     STOP_REQUESTED=1
@@ -246,9 +301,15 @@ on_interrupt() {
   exit 130
 }
 
+on_termination() {
+  record_stop_trigger signal TERM
+  log 'termination received'
+  exit 143
+}
+
 trap 'on_error "$LINENO" "$BASH_COMMAND"' ERR
 trap on_interrupt INT
-trap 'log "termination received"; exit 143' TERM
+trap on_termination TERM
 
 start_child() {
   local name="$1" logfile="$2" pid pgid index
@@ -658,14 +719,18 @@ monitor_live_stack() {
 complete_source_window() {
   WINDOW_ELAPSED_SECONDS=$((SECONDS - WINDOW_START_SECONDS))
   LIFECYCLE_TRANSITION_ACTIVE=1
+  set_supervisor_phase source-window-complete
   log 'COMMAND_SENTINEL=PASS messages=0; FCU remained observed-disarmed'
   log "PI_SOURCE_WINDOW=COMPLETE target=${RUN_SECONDS}s elapsed=${WINDOW_ELAPSED_SECONDS}s peak=$((PEAK_TEMP / 1000))C"
   WINDOW_COMPLETE=1
 
   if [ "$HOLD_AFTER_WINDOW" -eq 1 ]; then
     HOLD_START_SECONDS=$SECONDS
+    set_supervisor_phase live-hold
     log 'PI_SOURCE_HOLD=ACTIVE monitored=true stop=Ctrl+C'
     HOLD_ACTIVE=1
+  else
+    set_supervisor_phase post-window
   fi
   LIFECYCLE_TRANSITION_ACTIVE=0
 
@@ -786,6 +851,8 @@ esac
   || die 'LIVE_HOLD_AFTER_WINDOW must be 0 or 1'
 [[ "$LOCAL_DISPLAY" =~ ^[01]$ ]] \
   || die 'HAILO_LOCAL_DISPLAY must be 0 or 1'
+[[ "$LOCAL_WINDOW_MODE" =~ ^(resizable|fullscreen)$ ]] \
+  || die 'HAILO_LOCAL_WINDOW_MODE must be resizable or fullscreen'
 [[ "$ABORT_MC" =~ ^[1-9][0-9]*$ ]] || die 'HAILO_DEMO_ABORT_MC must be a positive integer'
 [[ "$POLL_S" =~ ^[1-9][0-9]*$ ]] || die 'LIVE_POLL_SECONDS must be a positive integer'
 [[ "$STREAM_HEIGHT" =~ ^[1-9][0-9]*$ ]] || die 'HAILO_STREAM_HEIGHT must be a positive integer'
@@ -794,6 +861,21 @@ esac
 [[ "$HEARTBEAT_TIMEOUT" =~ ^[1-9][0-9]*$ ]] \
   || die 'MAVLINK_HEARTBEAT_TIMEOUT must be a positive integer'
 [[ "$DOMAIN" =~ ^[0-9]+$ ]] || die 'LIVE_ROS_DOMAIN_ID must be a non-negative integer'
+
+if [ "$PREFLIGHT_ONLY" -eq 0 ]; then
+  mkdir -p "$RUN_DIR"
+  SUPERVISOR_LOG="$RUN_DIR/supervisor.log"
+  if ! : >"$SUPERVISOR_LOG"; then
+    SUPERVISOR_LOG=''
+    die "cannot create Pi supervisor lifecycle log: $RUN_DIR/supervisor.log"
+  fi
+  PEAK_TEMP=0
+  trap cleanup EXIT
+  HELPER_SHA256="$(sha256sum "$0" | awk '{print $1}')" \
+    || die 'cannot calculate Pi helper checksum'
+  log "PI_SUPERVISOR_START pid=$BASHPID pgid=$SUPERVISOR_PGID helper_sha256=$HELPER_SHA256 phase=$SUPERVISOR_PHASE"
+  set_supervisor_phase runtime-preflight
+fi
 configure_hailo_display
 
 for command in git sha256sum ps awk grep python3 env; do
@@ -837,7 +919,6 @@ if [ "$PREFLIGHT_ONLY" -eq 1 ]; then
 fi
 
 [ -n "$WS_IP" ] || die 'WORKSTATION_IP is required for a live run'
-mkdir -p "$RUN_DIR"
 
 cat >"$MAVROS_PLUGINLISTS" <<'YAML'
 /**:
@@ -848,8 +929,6 @@ cat >"$MAVROS_PLUGINLISTS" <<'YAML'
       - imu
       - rc_io
 YAML
-PEAK_TEMP=0
-trap cleanup EXIT
 
 for command in fuser ss setsid iwgetid ip install ros2; do
   require_command "$command"
@@ -941,6 +1020,51 @@ publisher = node.create_publisher(
 
 original_visualize = detector.visualize
 state = {"last_publish_ns": 0, "count": 0}
+window_name = "Output"
+
+
+def configure_local_window(visualization_settings):
+    if visualization_settings.no_display:
+        return
+
+    window_mode = os.environ["HAILO_LOCAL_WINDOW_MODE"]
+    try:
+        cv2.namedWindow(
+            window_name,
+            cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO,
+        )
+    except cv2.error as exc:
+        visualization_settings.no_display = True
+        try:
+            cv2.destroyWindow(window_name)
+        except cv2.error:
+            pass
+        print(
+            f"HAILO_LOCAL_WINDOW=FALLBACK_HEADLESS mode={window_mode} "
+            f"stage=namedWindow error={type(exc).__name__}",
+            flush=True,
+        )
+        return
+
+    if window_mode == "fullscreen":
+        try:
+            cv2.setWindowProperty(
+                window_name,
+                cv2.WND_PROP_FULLSCREEN,
+                cv2.WINDOW_FULLSCREEN,
+            )
+        except cv2.error as exc:
+            print(
+                "HAILO_LOCAL_WINDOW=FALLBACK_RESIZABLE requested=fullscreen "
+                f"error={type(exc).__name__}",
+                flush=True,
+            )
+            return
+
+    print(
+        f"HAILO_LOCAL_WINDOW=READY mode={window_mode} name={window_name}",
+        flush=True,
+    )
 
 
 def publishing_visualize(
@@ -951,6 +1075,8 @@ def publishing_visualize(
     fps_tracker=None,
     stop_event=None,
 ):
+    configure_local_window(visualization_settings)
+
     def callback_and_publish(*args, **kwargs):
         annotated_rgb = callback(*args, **kwargs)
         now_ns = time.monotonic_ns()
@@ -1183,6 +1309,7 @@ log "stream=${STREAM_HEIGHT}p@${STREAM_FPS}fps safety-biased-temporary-diagnosti
 log 'boundary: Pi owns serial/MAVROS/Hailo DDS sources; workstation owns ports 8002/8080/9090 and browser'
 
 OLDPWD="$PWD"
+set_supervisor_phase service-start
 start_child safety-monitor "$SAFETY_LOG" \
   env "COMMAND_ABORT_FILE=$COMMAND_ABORT_FILE" python3 "$SAFETY_MONITOR"
 SAFETY_MONITOR_PID="$LAST_CHILD_PID"
@@ -1282,6 +1409,7 @@ HAILO_ENV=(
   "HAILO_APPS_REPO=$REPO"
   "HAILO_STREAM_HEIGHT=$STREAM_HEIGHT"
   "HAILO_STREAM_FPS=$STREAM_FPS"
+  "HAILO_LOCAL_WINDOW_MODE=$LOCAL_WINDOW_MODE"
 )
 check_temperature pre-hailo
 check_power pre-hailo
@@ -1344,6 +1472,7 @@ TOPICS="$(ros2_graph_query topic list --no-daemon --spin-time 2)" \
   || die 'cannot enumerate final ROS topics'
 MAVROS_TOPIC_COUNT="$(grep -c '^/mavros/' <<<"$TOPICS" || true)"
 [ "$MAVROS_TOPIC_COUNT" -gt 0 ] || die 'no MAVROS topics discovered'
+set_supervisor_phase live-window
 log "PI_SOURCE_STACK_READY=PASS mavros_topics=$MAVROS_TOPIC_COUNT image_topic=$IMAGE_TOPIC"
 log "dashboard: hard-refresh; camera=$IMAGE_TOPIC; native MAVROS panel reads five topics directly"
 log 'scope: Pi source readiness only; GPS no-fix is valid telemetry and must not be misread as transport loss'

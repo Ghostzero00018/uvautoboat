@@ -365,6 +365,15 @@ MAVROS telemetry remains view-only. Follow [Live Hailo and MAVROS Dashboard
 Testing](Live_Hailo_MAVLink_Dashboard_Testing) for its service order, helper
 checksum, safety boundary, pass markers, and shutdown sequence.
 
+The live-dashboard helper uses its generated ROS wrapper to pre-create the existing
+`"Output"` window as resizable. Its tracked workstation launch selects fullscreen
+startup, while direct local-display use defaults to resizable. Window-creation failure
+falls back to headless visualization, and fullscreen-property failure retains the
+resizable window; the same annotated callback remains the sole ROS image publisher.
+Each Pi run also persists the parent helper lifecycle in `supervisor.log`. These changes
+do not alter the standalone launcher's fixed-size behavior documented above, and the new
+live-dashboard window modes still require Pi-side visual acceptance.
+
 On 17/07/2026, two tracked-supervisor runs on `IoT IMT Nord Europe` reached the
 six-topic arrival gate. During both runs, the operator confirmed the combined
 stock-COCO overlay and MAVLink telemetry browser view. Automatic

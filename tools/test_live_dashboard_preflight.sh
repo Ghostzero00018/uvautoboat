@@ -32,7 +32,7 @@ extract_function() {
 [ -r "$PREFLIGHT" ] || fail "preflight script missing: $PREFLIGHT"
 bash -n "$PREFLIGHT"
 
-require_literal "EXPECTED_HELPER_SHA256='7222f6779a81103af140ac8571df926d25a7ab818a02f0dbe4c921dab666b648'"
+require_literal "EXPECTED_HELPER_SHA256='89ae95442989bf1e93a0efe22774a6ea17a33b0a38288ad85b141e467501e01a'"
 require_literal 'EXPECTED_SSID="${LIVE_SSID:-IoT IMT Nord Europe}"'
 require_literal 'reject_conflicting_processes workstation "${WORKSTATION_CONFLICT_PATTERNS[@]}"'
 require_literal 'reject_conflicting_processes Pi "${PI_CONFLICT_PATTERNS[@]}"'
@@ -79,13 +79,15 @@ PI_COMMAND_OUTPUT="$(bash -c '
 PI_COMMAND_BLOCK="$(sed -n '/^($/,/^)$/{p}' <<<"$PI_COMMAND_OUTPUT")"
 [ -n "$PI_COMMAND_BLOCK" ] || fail 'printed Pi command block missing'
 bash -n <<<"$PI_COMMAND_BLOCK"
-grep -Fq '7222f6779a81103af140ac8571df926d25a7ab818a02f0dbe4c921dab666b648' \
+grep -Fq '89ae95442989bf1e93a0efe22774a6ea17a33b0a38288ad85b141e467501e01a' \
   <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not verify the helper pin'
 grep -Fq 'LIVE_HOLD_AFTER_WINDOW=1' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not enable the monitored hold'
 grep -Fq 'HAILO_LOCAL_DISPLAY=1' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not enable the Pi desktop Hailo window'
+grep -Fq 'HAILO_LOCAL_WINDOW_MODE=fullscreen' <<<"$PI_COMMAND_BLOCK" \
+  || fail 'printed Pi command does not select fullscreen Hailo presentation'
 grep -Fq 'LIVE_SSID=IoT\ IMT\ Nord\ Europe' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not carry the default IoT SSID'
 ! grep -Fq 'live_dashboard_preflight.sh' <<<"$PI_COMMAND_BLOCK" \

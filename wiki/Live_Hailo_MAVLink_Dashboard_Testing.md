@@ -30,11 +30,11 @@ procedure.
 | --- | --- |
 | Helper source | `tools/pi_live_hailo_mavlink_dashboard.sh` |
 | Helper Pi destination | `~/hailo_coco_overlay_2026-07-10/pi_live_hailo_mavlink_dashboard.sh` |
-| Helper size | `48,536` bytes |
-| Helper SHA-256 | `7222f6779a81103af140ac8571df926d25a7ab818a02f0dbe4c921dab666b648` |
+| Helper size | `52,426` bytes |
+| Helper SHA-256 | `89ae95442989bf1e93a0efe22774a6ea17a33b0a38288ad85b141e467501e01a` |
 | Workstation supervisor | `tools/live_dashboard_preflight.sh` |
-| Supervisor size | `27,586` bytes |
-| Supervisor SHA-256 | `d9afdef2da670f1f09f3a03eeee8c10c72a09f15c95418b5d6f33ad697e4603d` |
+| Supervisor size | `27,621` bytes |
+| Supervisor SHA-256 | `442fb65de288c3a0d1813b771f6e212feb9c2a0a2f112e5450db524b6af5a8a5` |
 
 The helper retains its finite `120`-second evidence window and uses
 `LIVE_HOLD_AFTER_WINDOW=1` for the monitored demonstration hold. A transient MAVProxy
@@ -42,10 +42,12 @@ link-down line does not bypass the finite heartbeat deadline. HEFs, calibration 
 the Hailo runtime tree, and generated logs remain outside this repository.
 
 Direct helper calls default to `HAILO_LOCAL_DISPLAY=0` and retain `--no-display`.
-The tracked supervisor explicitly selects `HAILO_LOCAL_DISPLAY=1`, enabling the Pi
-desktop Hailo window while retaining the same annotated ROS publisher for the
-workstation dashboard. The combined local-window and dashboard presentation is
-source- and static-test-feasible but has not yet been runtime-proven.
+When local display is enabled, `HAILO_LOCAL_WINDOW_MODE` defaults to `resizable`.
+The tracked supervisor explicitly selects `HAILO_LOCAL_DISPLAY=1` and
+`HAILO_LOCAL_WINDOW_MODE=fullscreen`, enabling the Pi desktop Hailo window while
+retaining the same annotated ROS publisher for the workstation dashboard. Static tests
+cover resizable, fullscreen, headless, and both defensive fallback paths. The new
+window modes still require live acceptance.
 
 On 17/07/2026, two runs from the clean, pushed workstation checkout on
 `IoT IMT Nord Europe` proved six-topic arrival and automatic rate measurement. Both
@@ -86,7 +88,7 @@ helper before starting:
 ```bash
 cd ~/hailo_coco_overlay_2026-07-10
 printf '%s  %s\n' \
-  '7222f6779a81103af140ac8571df926d25a7ab818a02f0dbe4c921dab666b648' \
+  '89ae95442989bf1e93a0efe22774a6ea17a33b0a38288ad85b141e467501e01a' \
   'pi_live_hailo_mavlink_dashboard.sh' | sha256sum -c -
 ```
 
@@ -95,7 +97,7 @@ only the helper from a workstation terminal:
 
 ```bash
 cd ~/seal_ws/src/uvautoboat
-echo '7222f6779a81103af140ac8571df926d25a7ab818a02f0dbe4c921dab666b648  tools/pi_live_hailo_mavlink_dashboard.sh' \
+echo '89ae95442989bf1e93a0efe22774a6ea17a33b0a38288ad85b141e467501e01a  tools/pi_live_hailo_mavlink_dashboard.sh' \
   | sha256sum -c -
 
 read -r -p 'Current Pi SSH endpoint (user@host): ' PI_SSH
@@ -132,7 +134,7 @@ WORKSTATION_SERVICES=UP ... logs=/home/.../live_dashboard_workstation_...
 
 Leave W1 running. It prints one compound Pi command carrying the current workstation
 IPv4 address, selected SSID, helper checksum, `LIVE_HOLD_AFTER_WINDOW=1`, and
-`HAILO_LOCAL_DISPLAY=1`.
+`HAILO_LOCAL_DISPLAY=1 HAILO_LOCAL_WINDOW_MODE=fullscreen`.
 
 ## Live command 2 - Pi source stack
 
@@ -147,8 +149,17 @@ printf 'DISPLAY=%s\n' "${DISPLAY:-}"
 ```
 
 Stop if the value is empty. The helper must print
-`HAILO_LOCAL_DISPLAY=ENABLED display=...`; it fails closed instead of silently reverting
-to headless mode.
+`HAILO_LOCAL_DISPLAY=ENABLED display=... window_mode=fullscreen`; it fails closed instead
+of silently accepting a missing desktop session. The Hailo child must then print:
+
+```text
+HAILO_LOCAL_WINDOW=READY mode=fullscreen name=Output
+```
+
+`HAILO_LOCAL_WINDOW=FALLBACK_RESIZABLE ...` means fullscreen setup failed but the
+resizable window remains available. `HAILO_LOCAL_WINDOW=FALLBACK_HEADLESS ...` means
+window creation failed and the visualizer continued headless. Either fallback fails the
+new Pi-window acceptance; preserve the logs and do not describe the run as fullscreen.
 
 The expected negative import probe prints
 `CANONICAL_STRIPPED_RCLPY=UNAVAILABLE informational rc=1` and a
@@ -211,7 +222,8 @@ then hard-refresh the dashboard. Select `/hailo/overlay/image_raw` in the Camera
 and verify:
 
 - live Hailo boxes and class labels;
-- the Pi desktop window remains open with the same live Hailo boxes and class labels;
+- the Pi desktop window starts fullscreen and remains open with the same live Hailo boxes
+  and class labels;
 - all five MAVROS badges remain `Live` with independent ages below `3.0 s`;
 - MAVROS state remains freshly connected and disarmed;
 - GPS, IMU, battery, and RC activity reaches the view-only panel without a `Stale`
@@ -266,11 +278,13 @@ PI_SOURCE_HOLD=ACTIVE monitored=true stop=Ctrl+C
 Then stop in this exact order:
 
 1. Press `Ctrl+C` once in Pi P1.
-2. Wait for both Pi markers:
+2. Wait for the Pi lifecycle markers:
 
    ```text
    PI_SOURCE_HOLD=STOP operator-requested
    TEARDOWN=PASS
+   logs=/home/.../live_dashboard_...
+   PI_SUPERVISOR_EXIT status=0 trigger=signal signal=INT stop_phase=live-hold failed_phase=none cleanup_rc=0
    ```
 
 3. Only after Pi `TEARDOWN=PASS`, press `Ctrl+C` once in workstation W1.
@@ -285,7 +299,9 @@ a clean Pi-first operator stop even when both cleanup markers pass.
 
 Pi logs are written under
 `~/hailo_coco_overlay_2026-07-10/logs/live_dashboard_YYYYMMDD_HHMMSS`. In the returned Pi
-terminal, use the exact path from the helper's final `logs=` line:
+terminal, use the exact path from the helper's `logs=` line. Each run directory now
+contains `supervisor.log`, which persists the helper's display selection, phases, stop
+trigger, failure reason if any, teardown verdict, and final status:
 
 ```bash
 read -r -p 'Exact Pi run directory from logs=: ' RUN_DIR
@@ -294,6 +310,8 @@ printf 'PI_TEMP_PEAK_MC='
 cat "$RUN_DIR/thermal_peak_mc.txt"
 printf 'PI_TEMP_POST_MC='
 cat /sys/class/thermal/thermal_zone0/temp
+test -r "$RUN_DIR/supervisor.log"
+tail -n 12 "$RUN_DIR/supervisor.log"
 ```
 
 `PI_TEMP_START_MC` is printed by the compound launch command. Copy every Pi run directory
@@ -311,7 +329,8 @@ ls -la "$HOME/Desktop/test_logs_folder/$RUN_NAME"
 ```
 
 The workstation run directory is already under `~/Desktop`. Retain its service logs,
-arrival samples, and `w5_live_rates.log` with the matching Pi console and log directory.
+arrival samples, and `w5_live_rates.log` with the matching Pi run directory and Pi
+`supervisor.log`.
 
 Report:
 
@@ -322,7 +341,7 @@ Report:
   markers;
 - `PI_TEMP_START_MC`, `PI_TEMP_PEAK_MC`, and `PI_TEMP_POST_MC`;
 - `PI_SOURCE_HOLD=STOP operator-requested`, Pi `TEARDOWN=PASS`, and
-  `WORKSTATION_TEARDOWN=PASS`;
+  `PI_SUPERVISOR_EXIT status=0 ...` plus `WORKSTATION_TEARDOWN=PASS`;
 - both exact run directories and the copy-back result.
 
 This procedure proves bounded simultaneous view-only delivery only. It does not prove

@@ -115,9 +115,11 @@ Testing](../../wiki/Live_Hailo_MAVLink_Dashboard_Testing.md). Run
 `tools/live_dashboard_preflight.sh run` on the workstation, then paste its
 complete printed command in a new terminal opened from the active Pi desktop or
 Remmina session; do not use an SSH-only terminal. The terminal must have a nonempty
-`DISPLAY`. The printed command selects `HAILO_LOCAL_DISPLAY=1`, which opens the
-annotated Hailo window on the Pi while the existing annotated topic continues to the
-workstation dashboard. This combined presentation still requires live acceptance.
+`DISPLAY`. The printed command selects `HAILO_LOCAL_DISPLAY=1` and
+`HAILO_LOCAL_WINDOW_MODE=fullscreen`, which opens the existing annotated Hailo window
+fullscreen on the Pi while the same annotated topic continues to the workstation
+dashboard. Direct helper use defaults to a resizable local window when display is
+enabled. These new window modes still require live acceptance.
 The supervisor starts rosbridge,
 `web_video_server`, and the dashboard, waits for all six topics, and records the
 automatic rate probes. Transfer only the tracked
@@ -128,9 +130,10 @@ Open the browser only after `PI_SOURCE_STACK_READY=PASS` on the Pi and
 runbook: first require workstation `W5_RATE_PROBES=PASS` plus Pi
 `COMMAND_SENTINEL=PASS`, `PI_SOURCE_WINDOW=COMPLETE`, and
 `PI_SOURCE_HOLD=ACTIVE`; stop the Pi and require
-`PI_SOURCE_HOLD=STOP operator-requested` plus `TEARDOWN=PASS`, then stop the
-workstation and require `WORKSTATION_TEARDOWN=PASS`. Treat any MAVROS topic
-marked `Stale` as a failed diagnostic even if another topic continues updating.
+`PI_SOURCE_HOLD=STOP operator-requested`, `TEARDOWN=PASS`, and a successful
+`PI_SUPERVISOR_EXIT` in the Pi run directory's `supervisor.log`; then stop the
+workstation and require `WORKSTATION_TEARDOWN=PASS`. Treat any MAVROS topic marked
+`Stale` as a failed diagnostic even if another topic continues updating.
 
 ## Dashboard Panels
 

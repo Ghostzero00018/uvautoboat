@@ -204,15 +204,15 @@ Evidence hierarchy for repeated invocation:
 ## Live-session procedural corrections
 
 1. Verify the Pi-installed helper before W1; the workstation checksum does not prove the Pi
-   copy. Run the `sha256sum -c` step at `wiki/Live_Hailo_MAVLink_Dashboard_Testing.md:81`
-   against `7222f6779a81103af140ac8571df926d25a7ab818a02f0dbe4c921dab666b648`.
+   copy. Run the `sha256sum -c` step in the runbook's deployment-preparation section
+   against `89ae95442989bf1e93a0efe22774a6ea17a33b0a38288ad85b141e467501e01a`.
 2. Close every dashboard tab before W1. An open tab reconnects and recreates ROS and MJPEG
    endpoints, which correctly trips the Pi isolation gate. Reopen one tab only after
    `PI_SOURCE_STACK_READY=PASS` and `PI_DATA_ARRIVED=PASS topics=6`.
 3. Run Block A before any acceptance Zoom-in click, following the ready sequence above.
-4. Retain the teardown order at `wiki/Live_Hailo_MAVLink_Dashboard_Testing.md:255`: wait for
-   the W5 rate-probe and source-window markers, stop P1, require the Pi teardown markers,
-   then stop W1 and copy the logs.
+4. Retain the runbook's Pi-first teardown order: wait for the W5 rate-probe and
+   source-window markers, stop P1, require the Pi teardown markers, then stop W1 and copy
+   the logs.
 
 ## Live-session SSH endpoint - 22/07/2026
 
@@ -228,7 +228,7 @@ cd ~/seal_ws/src/uvautoboat
 PI_SSH='imt-aqua-drone@10.120.2.249'
 
 printf '%s  %s\n' \
-  '7222f6779a81103af140ac8571df926d25a7ab818a02f0dbe4c921dab666b648' \
+  '89ae95442989bf1e93a0efe22774a6ea17a33b0a38288ad85b141e467501e01a' \
   'tools/pi_live_hailo_mavlink_dashboard.sh' | sha256sum -c -
 
 ssh "$PI_SSH" 'mkdir -p ~/hailo_coco_overlay_2026-07-10'
@@ -255,3 +255,196 @@ ls -la "$HOME/Desktop/test_logs_folder/$RUN_NAME"
 
 Do not substitute the Pi address for `WORKSTATION_IP`; the supervisor supplies the
 current workstation address to P1.
+
+## Live-run evidence and revised priority - 22/07/2026
+
+The dashboard camera-viewer zoom investigation is parked without a JavaScript, HTML,
+CSS, or viewer-test change. The active presentation priority is now the Pi-local Hailo
+window: keep the existing annotated workstation stream, make the existing Pi window
+drag-resizable, and provide a fullscreen presentation mode without adding another
+camera owner, inference process, ROS image publisher, MJPEG request, or media player.
+
+The combined run used these copied evidence directories:
+
+- workstation:
+  `/home/ghostzero/Desktop/live_dashboard_workstation_20260722_144223`;
+- Pi:
+  `/home/ghostzero/Desktop/test_logs_folder/live_dashboard_20260722_144239`, copied
+  from
+  `/home/imt-aqua-drone/hailo_coco_overlay_2026-07-10/logs/live_dashboard_20260722_144239`.
+
+### Combined Hailo-window and dashboard result
+
+The Pi GUI software path worked. `hailo.log` selected the existing Qt/XWayland path,
+entered the upstream OpenCV display event loop, and continued annotated ROS publication
+through `HAILO_ROS_FRAME count=18100`. The captured image sample is `bgr8`, `320x240`,
+with frame ID `hailo_overlay`. No missing HighGUI, Qt, xcb, GTK, display-authentication,
+codec, or media-player error appears. The final `KeyboardInterrupt` occurred inside
+`cv2.waitKey(1)` during child teardown after the sustained frame sequence; it is not an
+earlier display or inference failure.
+
+This run therefore removes the remembered missing-viewer-package concern for the Hailo
+window. The earlier missing `rqt_image_view` package and the older headless Pi image were
+different, superseded conditions. Do not install VLC, FFmpeg, GStreamer, another ROS
+viewer, or a replacement OpenCV package for the requested window improvement.
+
+The software evidence proves that the display branch and GUI event loop operated. It
+does not replace the operator's visual confirmation of the physical Pi window, nor does
+it prove a future fullscreen property until that mode receives a separate live check.
+
+### Safety, telemetry, and thermal evidence
+
+- The final refreshed MAVROS state sample at `15:25:11` reports `connected: true`,
+  `armed: false`, `guided: false`, and mode `MANUAL`.
+- The safety monitor reached its ready marker and recorded no command-topic, FCU-armed,
+  or FCU-disconnect abort. Neither `command_abort.txt` nor `thermal_abort.txt` exists.
+- Peak Pi temperature was `70500 mC` (`70.5 C`), below the `80000 mC` abort threshold.
+- The repeated GPS no-fix messages, the startup `AUTOPILOT_VERSION` fallback, and the
+  MAVProxy SRTM cache decode warning were non-blocking and did not terminate the run.
+
+### Cross-host termination chronology
+
+Pi child cleanup received `SIGINT` at `15:25:25.331 CEST`. The workstation supervisor
+remained in its normal supervision phase until it received a separate `SIGINT` at
+`15:29:46.971 CEST`, about `4 min 21.6 s` later. It then stopped the dashboard,
+`web_video_server`, and rosbridge in order, reported `WORKSTATION_TEARDOWN=PASS`, and
+exited with status `0`, `failed_phase=none`, and `cleanup_rc=0`.
+
+The workstation stack did not choose to abort because of a child failure, Pi publisher
+loss, arrival timeout, rate failure, or dashboard application error. The signal sender
+is not recorded, so the exact source of the workstation `SIGINT` remains an evidence
+gap.
+
+The copied Pi directory contains child logs but not the foreground helper transcript.
+Consequently, the child `SIGINT` lines alone cannot distinguish an operator request from
+a helper fail-closed exit. The missing decisive Pi markers are
+`PI_SOURCE_HOLD=STOP operator-requested`, any `STOP:` or `ERROR line=` marker, and the
+final `TEARDOWN=PASS` or `TEARDOWN=FAIL` line.
+
+### Camera-viewer probe validity
+
+The workstation browser reloaded at `15:26:18`, about `54 s` after Pi child cleanup had
+already stopped the Hailo publisher. Any viewer reading collected after that reload was
+not a live-feed Block A observation and cannot confirm or reject the original live-feed
+zoom symptom. Leave the dashboard zoom controls unchanged and do not advance the viewer
+repair gates from this run.
+
+### Pi-window implementation boundary
+
+The pinned upstream `toolbox.py` explicitly creates `"Output"` with
+`cv2.WINDOW_AUTOSIZE`, then calls `cv2.imshow()` and `cv2.waitKey(1)`. This explains the
+current fixed-size window. The narrow implementation seam is the generated ROS wrapper,
+not the checksum-enforced upstream checkout: when local display is enabled, pre-create
+the same `"Output"` window with `cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO` before the
+upstream visualizer runs. An explicit local-window mode can then select resizable or
+fullscreen startup via `cv2.WND_PROP_FULLSCREEN` without changing capture, inference,
+overlay publication, or dashboard transport. Keep the proven Qt/XWayland path; do not
+force native Wayland for this change.
+
+No Pi-window code change or new live acceptance was made from this evidence review.
+
+**Next step:** Inspect the tracked Pi and workstation shell helpers against the verified
+run evidence. If a shell or generated-wrapper change is needed, stop for separate code
+approval before editing it.
+
+## Shell-helper audit - read-only result
+
+Current focused checks remain green:
+
+- `bash tools/test_pi_live_hailo_mavlink_dashboard.sh` - PASS;
+- `bash tools/test_live_dashboard_preflight.sh` - PASS, `13/13` cases;
+- Bash syntax - PASS for both helpers and both focused test scripts.
+
+### Workstation supervisor verdict
+
+No shutdown fix is justified in `tools/live_dashboard_preflight.sh`. Its `SIGINT` trap,
+stop-request state, isolated child process groups, reverse teardown, durable
+`supervisor.log`, and final status behave exactly as the real-`SIGINT` test requires.
+Ignoring `SIGINT`, requiring a repeated interrupt, or treating it as a failure would
+weaken the documented safe-stop path. Bash does not expose the signal sender PID to the
+trap, so the existing log cannot attribute a keyboard interrupt versus another
+`kill -INT` source.
+
+The workstation helper will still need a coherence-only update after the Pi helper
+changes: refresh its pinned Pi-helper checksum and make the printed Pi launch command
+select the approved local-window mode. Those edits do not fix the 22/07 workstation
+shutdown and must not be described as its cause.
+
+### Pi helper verdict
+
+Two bounded changes are justified in `tools/pi_live_hailo_mavlink_dashboard.sh`:
+
+1. **Presentation contract.** Add a validated local-window mode and configure the
+   generated wrapper to pre-create the existing `"Output"` window as resizable, with an
+   optional fullscreen startup property. Preserve headless direct use, the existing
+   `HAILO_LOCAL_DISPLAY` gate, one D435I owner, one Hailo process, one annotated ROS
+   publisher, and the unchanged dashboard stream.
+2. **Durable lifecycle evidence.** Persist the Pi helper's own timestamped lifecycle,
+   stop-trigger, failure, hold-stop, teardown, and final-status markers inside each
+   `RUN_DIR`. The copied child logs were healthy but could not distinguish an operator
+   stop from a parent fail-closed exit because the foreground transcript was not stored.
+   Do not wrap the helper externally with `tee`, which would change pipeline and signal
+   semantics.
+
+The final Hailo `KeyboardInterrupt` traceback is expected child-teardown noise after a
+healthy run. Suppressing it is optional presentation cleanup, not a runtime-cause fix.
+
+Focused regression coverage must be added first for valid, default, headless, invalid,
+resizable, and fullscreen window modes; exact window-name and property ordering; and a
+durable Pi lifecycle log for normal interrupt and fail-closed paths. The existing Pi
+tests cover only `DISPLAY`, `--no-display`, console marker ordering, and cleanup; the
+workstation durable-log test cannot cover a Pi artifact.
+
+An approved Pi-helper edit will also require checksum and command-propagation updates in
+the workstation helper and its test, plus the helper size/checksum and acceptance wording
+in `wiki/Live_Hailo_MAVLink_Dashboard_Testing.md`. Keep the standalone demo's fixed-size
+statement unchanged because that launcher does not use the live-dashboard wrapper.
+
+No shell, Python, test, or configuration file was changed during this audit.
+
+**Next step:** Request separate code approval for the Pi resizable/fullscreen mode,
+durable Pi lifecycle log, focused regression tests, and required checksum/documentation
+propagation. Fullscreen remains user-run and separately acceptance-gated.
+
+## Approved helper implementation - static result
+
+The approved work landed in two risk-ordered slices. Durable lifecycle evidence was
+implemented first. Every live Pi run now creates `RUN_DIR/supervisor.log` before local
+display configuration and the ROS/Hailo preflight, then persists timestamped phase,
+stop-trigger, failure, hold-stop, teardown, log-path, and final-status markers. The exit
+trap is armed immediately after successful log creation. Functional tests cover a real
+hold-phase `SIGINT`, a fail-closed error, successful teardown, failed cleanup, exact final
+status, and a single recorded stop trigger.
+
+The generated ROS wrapper now accepts a validated `HAILO_LOCAL_WINDOW_MODE` of
+`resizable` or `fullscreen`. Local-display use defaults to `resizable`; the workstation
+supervisor's printed Pi command explicitly selects `fullscreen`. The wrapper pre-creates
+the existing `"Output"` window with `cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO` before
+the pinned upstream visualizer runs. A failed window creation switches the upstream
+visualizer to headless mode. A failed fullscreen property keeps the valid resizable
+window. In both injected failure tests, the original visualization callback still runs
+and publishes one annotated ROS image.
+
+The implementation preserves one D435I owner, one Hailo inference process, one annotated
+ROS publisher, the existing MJPEG connection, and the view-only FCU boundary. No
+dashboard JavaScript, HTML, CSS, or camera-viewer test was changed. The original zoom
+defect remains parked until Block A is repeated against a live feed before teardown.
+
+Static verification passed:
+
+- `bash tools/test_pi_live_hailo_mavlink_dashboard.sh`;
+- `bash tools/test_live_dashboard_preflight.sh` - `13/13` cases;
+- Bash syntax for both helpers and both focused test scripts;
+- Python compilation for the generated Hailo wrapper extracted from the helper.
+
+Current operational pins:
+
+- Pi helper: `52,426` bytes,
+  `89ae95442989bf1e93a0efe22774a6ea17a33b0a38288ad85b141e467501e01a`;
+- workstation supervisor: `27,621` bytes,
+  `442fb65de288c3a0d1813b771f6e212feb9c2a0a2f112e5450db524b6af5a8a5`.
+
+No Pi command, live service, hardware run, browser reload, fullscreen check, or resizable
+window check was run after these changes. The next gate is a separate user-run live
+acceptance: require the fullscreen-ready marker, visually verify the annotated Pi window
+and continuing workstation stream, preserve `supervisor.log`, and use Pi-first teardown.
