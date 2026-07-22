@@ -49,8 +49,12 @@ retaining the same annotated ROS publisher for the workstation dashboard. In ful
 mode, the wrapper waits for the first upstream `imshow` and `waitKey` cycle before
 requesting fullscreen, then reads the image rectangle after the next GUI cycle. Static
 tests cover this ordering, resizable and headless modes, rectangle evidence, and all
-three defensive fallback paths. The frame-gated fullscreen behavior still requires live
-acceptance.
+three defensive fallback paths. An operator-run 22/07/2026 attempt observed the
+frame-gated Pi-local HighGUI `"Output"` window live, but its rendered image stopped
+enlarging beyond a ceiling while that Pi window continued to grow. This is independent of
+the workstation browser dashboard and its camera viewer. The only recorded post-request
+image rectangle was `0,0,400,300`; the wrapper sampled it once, so the later manual-resize
+ceiling dimensions remain unmeasured. Pi-local image scaling remains open.
 
 On 17/07/2026, two runs from the clean, pushed workstation checkout on
 `IoT IMT Nord Europe` proved six-topic arrival and automatic rate measurement. Both
@@ -70,8 +74,20 @@ The Pi then stopped during the monitored hold after one successful but incomplet
 ROS service snapshot omitted `/rosapi/topics_for_type`; the workstation rosapi process
 was still running, and both cleanups passed. The helper now accepts a recovered service
 within three semantic observations while still rejecting any command service immediately
-and failing closed after persistent misses. A third run must prove that retry behavior,
-the frame-gated fullscreen image rectangle, and a normal Pi-first operator stop.
+and failing closed after persistent misses.
+
+A later 22/07/2026 attempt visually reproduced simultaneous Pi and dashboard output. The
+workstation log recorded an early dashboard client connection; the operator identified it
+as a tab left open and reported restarting the Pi helper during recovery. The workstation
+then exhausted its arrival window before sampling, and Pi source readiness followed that
+failure by about `36.9 s`. The copied Pi log holds only the later helper lifecycle: it
+reached readiness, then was operator-interrupted during `live-window` before
+`PI_SOURCE_WINDOW=COMPLETE` with status `130`. Pi and workstation cleanup passed, but this
+attempt does not accept retry/deadline timing or the normal completed-window/live-hold
+Pi-first lifecycle. The image inside the independent Pi-local HighGUI `"Output"` window
+scaled down and initially scaled up with that window, then stopped enlarging while the Pi
+window continued to grow. The workstation browser window is not the affected surface. A
+clean repeat remains required after the Pi-local scaling ceiling is diagnosed.
 
 ## Before starting
 
@@ -176,12 +192,17 @@ printf 'DISPLAY=%s\n' "${DISPLAY:-}"
 Stop if the value is empty. The helper must print
 `HAILO_LOCAL_DISPLAY=ENABLED display=... window_mode=fullscreen`; it fails closed instead
 of silently accepting a missing desktop session. The Hailo child first prints the
-frame gate and then the evidence-backed ready marker:
+frame gate and then the request-and-measurement marker:
 
 ```text
 HAILO_LOCAL_WINDOW=PENDING mode=fullscreen name=Output gate=first-imshow
 HAILO_LOCAL_WINDOW=READY mode=fullscreen name=Output rect=x,y,width,height source=getWindowImageRect
 ```
+
+`HAILO_LOCAL_WINDOW=READY ...` confirms that the fullscreen request returned and an image
+rectangle was read. It does not by itself prove that the outer Pi window filled the display
+or that the rendered image filled that window. Fullscreen acceptance also requires the
+visible Pi-local result and recorded rectangle observations to show the expected scaling.
 
 `HAILO_LOCAL_WINDOW=FALLBACK_RESIZABLE ...` means fullscreen setup failed but the
 resizable window remains available. `HAILO_LOCAL_WINDOW=FALLBACK_HEADLESS ...` means

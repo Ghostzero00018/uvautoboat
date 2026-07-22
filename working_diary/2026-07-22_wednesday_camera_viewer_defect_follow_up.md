@@ -632,3 +632,66 @@ diary change was made.
 repeat the two-command session. Require fullscreen rectangle evidence and a visibly
 enlarged Pi image, simultaneous workstation streaming, bounded source-window timing, and
 a normal Pi-first operator stop.
+
+## EOD closeout - 22/07/2026
+
+The final implementation commit is pushed and synchronized at `b771223`. The Pi desktop
+check reported `DISPLAY=:0`, and the deployed helper matched
+`10bb75e453dd86cc68bd217a078f40e2b4318e324d89de35f274563955435e50`.
+The final attempt used these evidence directories:
+
+- Pi, operator-provided path:
+  `/home/imt-aqua-drone/hailo_coco_overlay_2026-07-10/logs/live_dashboard_20260722_192205`;
+- workstation, inspected locally:
+  `/home/ghostzero/Desktop/live_dashboard_workstation_20260722_191845`.
+
+The workstation passed runtime preflight and started rosbridge, rosapi,
+`web_video_server`, and the dashboard. Its arrival phase then expired before the required
+sampling window and entered failure hold. The saved rosbridge log records an early
+dashboard client connection, followed later by a reload, reconnect, and two MJPEG
+requests. The operator identified the early client as the old tab that was not closed and
+reported that the Pi helper was started twice. The Pi directory
+`live_dashboard_20260722_192205` has since been copied back and inspected: it holds one
+Pi-helper lifecycle on the deployed `10bb75e4…` helper, so only that later launch is
+log-proven and the earlier first attempt is not in the copied logs. That run reached the
+command sentinel, MAVROS `connected=true armed=false`, telemetry, and source readiness.
+Its recorded overall thermal peak was `67.75 C`. Cross-host timestamps place Pi source
+readiness about `36.9 s` after the workstation had already entered failure hold. The Pi
+run was then operator-interrupted during `live-window` before `PI_SOURCE_WINDOW=COMPLETE`
+(`PI_SUPERVISOR_EXIT status=130 stop_phase=live-window`); its cleanup passed
+(`TEARDOWN=PASS cleanup_rc=0`), and the Pi stop signal preceded the workstation stop
+signal by about `11.9 s`.
+The operator stopped the failure hold; workstation teardown passed and preserved exit
+status `1` from the arrival failure.
+
+The operator nevertheless observed the annotated Hailo view simultaneously on the Pi and
+the dashboard, with the dashboard otherwise behaving normally. This attempt is not a
+formal arrival/rate, retry/deadline, or normal Pi-first lifecycle acceptance because its
+sequence was procedurally contaminated.
+
+The independent Pi-local HighGUI `"Output"` window launched by the Pi helper now resizes.
+Its image shrinks with a smaller Pi window and initially grows with a larger one. Beyond a
+repeatable ceiling, that Pi window continues to enlarge but its rendered image does not.
+The copied `hailo.log` records the frame-gated request-and-measurement sequence emitting
+`PENDING ... gate=first-imshow` and then `READY ... rect=0,0,400,300` after the first
+`imshow` cycle. This proves that the request returned and the initial rectangle was read,
+not that fullscreen fill succeeded. The wrapper samples once, so the manual-resize ceiling
+itself is not in the log.
+This is not the workstation browser window, dashboard camera viewer, MJPEG image, or page
+layout. The separate `320x240` ROS copy remains the workstation stream size and is not a
+confirmed cause of the Pi-local display ceiling. The next diagnosis must distinguish the
+upstream SD frame, HighGUI image rectangle, aspect-ratio behavior, and Qt/XWayland backend
+before any further code or package change.
+
+The camera-viewer zoom defect remains parked at its invalid Block A evidence capture. No
+viewer code, MJPEG ownership, stream URL, dashboard-to-FCU boundary, or acceptance claim
+changed today.
+
+**EOD status:** The 22/07 implementation, static verification, field evidence, and known
+limitations are recorded. No further live work is planned today. The scaling ceiling and
+a clean one-tab, one-helper acceptance move to
+`working_diary/2026-07-23_thursday_pi_hailo_window_scaling_follow_up.md`; the camera-viewer
+defect remains separately parked.
+
+**Next step:** On 23/07/2026, start with saved-log and source inspection only. Do not start
+services, hardware, or a code fix until that diary's separate gates are approved.
