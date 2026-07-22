@@ -16,6 +16,7 @@ EXPECTED_SSID="${LIVE_SSID:-IMT Nord Europe 5G}"
 DOMAIN="${LIVE_ROS_DOMAIN_ID:-12}"
 RUN_SECONDS="${LIVE_RUN_SECONDS:-120}"
 HOLD_AFTER_WINDOW="${LIVE_HOLD_AFTER_WINDOW:-0}"
+LOCAL_DISPLAY="${HAILO_LOCAL_DISPLAY:-0}"
 ABORT_MC="${HAILO_DEMO_ABORT_MC:-80000}"
 POLL_S="${LIVE_POLL_SECONDS:-2}"
 STREAM_HEIGHT="${HAILO_STREAM_HEIGHT:-240}"
@@ -53,6 +54,7 @@ THERMAL_PEAK_FILE="$RUN_DIR/thermal_peak_mc.txt"
 declare -a CHILD_NAMES=()
 declare -a CHILD_PIDS=()
 declare -a CHILD_PGIDS=()
+declare -a HAILO_DISPLAY_ARGS=()
 declare -a COMMAND_TOPICS=(
   '/planning/mission_command'
   '/planning/set_config'
@@ -75,6 +77,19 @@ log() {
 die() {
   printf '[live-dashboard] STOP: %s\n' "$*" >&2
   exit 1
+}
+
+configure_hailo_display() {
+  HAILO_DISPLAY_ARGS=(--no-display)
+  if [ "$LOCAL_DISPLAY" -eq 0 ]; then
+    log 'HAILO_LOCAL_DISPLAY=DISABLED'
+    return 0
+  fi
+
+  [ -n "${DISPLAY:-}" ] \
+    || die 'HAILO_LOCAL_DISPLAY=1 requires a Pi desktop or Remmina terminal with DISPLAY set'
+  HAILO_DISPLAY_ARGS=()
+  log "HAILO_LOCAL_DISPLAY=ENABLED display=$DISPLAY"
 }
 
 require_command() {
@@ -769,6 +784,8 @@ esac
 [[ "$RUN_SECONDS" =~ ^[1-9][0-9]*$ ]] || die 'LIVE_RUN_SECONDS must be a positive integer'
 [[ "$HOLD_AFTER_WINDOW" =~ ^[01]$ ]] \
   || die 'LIVE_HOLD_AFTER_WINDOW must be 0 or 1'
+[[ "$LOCAL_DISPLAY" =~ ^[01]$ ]] \
+  || die 'HAILO_LOCAL_DISPLAY must be 0 or 1'
 [[ "$ABORT_MC" =~ ^[1-9][0-9]*$ ]] || die 'HAILO_DEMO_ABORT_MC must be a positive integer'
 [[ "$POLL_S" =~ ^[1-9][0-9]*$ ]] || die 'LIVE_POLL_SECONDS must be a positive integer'
 [[ "$STREAM_HEIGHT" =~ ^[1-9][0-9]*$ ]] || die 'HAILO_STREAM_HEIGHT must be a positive integer'
@@ -777,6 +794,7 @@ esac
 [[ "$HEARTBEAT_TIMEOUT" =~ ^[1-9][0-9]*$ ]] \
   || die 'MAVLINK_HEARTBEAT_TIMEOUT must be a positive integer'
 [[ "$DOMAIN" =~ ^[0-9]+$ ]] || die 'LIVE_ROS_DOMAIN_ID must be a non-negative integer'
+configure_hailo_display
 
 for command in git sha256sum ps awk grep python3 env; do
   require_command "$command"
@@ -1271,7 +1289,8 @@ check_command_sentinel
 start_child hailo-bridge "$HAILO_LOG" env "${HAILO_ENV[@]}" \
   "$VENV/bin/python" "$HAILO_WRAPPER" \
   --hef-path "$HEF" --input "$CAM" --camera-resolution sd \
-  --output-resolution sd --frame-rate 15 --show-fps --no-display
+  --output-resolution sd --frame-rate 15 --show-fps \
+  "${HAILO_DISPLAY_ARGS[@]}"
 HAILO_PID="$LAST_CHILD_PID"
 HAILO_PGID="$LAST_CHILD_PGID"
 start_child thermal-watchdog "$THERMAL_LOG" \

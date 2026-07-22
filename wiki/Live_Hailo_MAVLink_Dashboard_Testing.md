@@ -23,22 +23,29 @@ the retained `pi` wrapper mode is not part of this procedure.
 
 ## Current tracked revisions
 
-The repository copies are canonical. Only the helper is deployed to the Pi.
+The repository copies are canonical. Only the helper is copied to the Pi for this
+procedure.
 
 | Item | Value |
 | --- | --- |
 | Helper source | `tools/pi_live_hailo_mavlink_dashboard.sh` |
 | Helper Pi destination | `~/hailo_coco_overlay_2026-07-10/pi_live_hailo_mavlink_dashboard.sh` |
-| Helper size | `47,978` bytes |
-| Helper SHA-256 | `b778f69e3c692ae6e221d8a341962baf879d6aa2336df8f21912a3f1fbb81c12` |
+| Helper size | `48,536` bytes |
+| Helper SHA-256 | `7222f6779a81103af140ac8571df926d25a7ab818a02f0dbe4c921dab666b648` |
 | Workstation supervisor | `tools/live_dashboard_preflight.sh` |
-| Supervisor size | `27,564` bytes |
-| Supervisor SHA-256 | `b7fd414b23c6c3b5e7d2dabde3828b8b3e98e24a28fa9bc243314baaef781ead` |
+| Supervisor size | `27,586` bytes |
+| Supervisor SHA-256 | `d9afdef2da670f1f09f3a03eeee8c10c72a09f15c95418b5d6f33ad697e4603d` |
 
 The helper retains its finite `120`-second evidence window and uses
 `LIVE_HOLD_AFTER_WINDOW=1` for the monitored demonstration hold. A transient MAVProxy
 link-down line does not bypass the finite heartbeat deadline. HEFs, calibration data,
 the Hailo runtime tree, and generated logs remain outside this repository.
+
+Direct helper calls default to `HAILO_LOCAL_DISPLAY=0` and retain `--no-display`.
+The tracked supervisor explicitly selects `HAILO_LOCAL_DISPLAY=1`, enabling the Pi
+desktop Hailo window while retaining the same annotated ROS publisher for the
+workstation dashboard. The combined local-window and dashboard presentation is
+source- and static-test-feasible but has not yet been runtime-proven.
 
 On 17/07/2026, two runs from the clean, pushed workstation checkout on
 `IoT IMT Nord Europe` proved six-topic arrival and automatic rate measurement. Both
@@ -56,6 +63,9 @@ remain open.
   required; OpenStreetMap background tiles may be absent.
 - Control box is powered, the FCU is disarmed, and propulsion is isolated.
 - D435I and Hailo hardware are connected to the Pi.
+- Pi Terminal P1 is opened from the active Pi desktop or Remmina session, has a
+  nonempty `DISPLAY`, and can create an OpenCV window. Do not use an SSH-only terminal
+  for this dual-output run.
 - Hailo exclusively owns the D435I, MAVProxy exclusively owns the UART, and MAVROS uses
   loopback only.
 - Gazebo, navigation/controller nodes, `realsense2_camera`, old MAVProxy, MAVROS, and
@@ -76,7 +86,7 @@ helper before starting:
 ```bash
 cd ~/hailo_coco_overlay_2026-07-10
 printf '%s  %s\n' \
-  'b778f69e3c692ae6e221d8a341962baf879d6aa2336df8f21912a3f1fbb81c12' \
+  '7222f6779a81103af140ac8571df926d25a7ab818a02f0dbe4c921dab666b648' \
   'pi_live_hailo_mavlink_dashboard.sh' | sha256sum -c -
 ```
 
@@ -85,7 +95,7 @@ only the helper from a workstation terminal:
 
 ```bash
 cd ~/seal_ws/src/uvautoboat
-echo 'b778f69e3c692ae6e221d8a341962baf879d6aa2336df8f21912a3f1fbb81c12  tools/pi_live_hailo_mavlink_dashboard.sh' \
+echo '7222f6779a81103af140ac8571df926d25a7ab818a02f0dbe4c921dab666b648  tools/pi_live_hailo_mavlink_dashboard.sh' \
   | sha256sum -c -
 
 read -r -p 'Current Pi SSH endpoint (user@host): ' PI_SSH
@@ -121,13 +131,24 @@ WORKSTATION_SERVICES=UP ... logs=/home/.../live_dashboard_workstation_...
 ```
 
 Leave W1 running. It prints one compound Pi command carrying the current workstation
-IPv4 address, selected SSID, helper checksum, and `LIVE_HOLD_AFTER_WINDOW=1`.
+IPv4 address, selected SSID, helper checksum, `LIVE_HOLD_AFTER_WINDOW=1`, and
+`HAILO_LOCAL_DISPLAY=1`.
 
 ## Live command 2 - Pi source stack
 
 Host: Pi. Terminal P1: new, foreground. Paste the complete compound command printed by
 W1, from the opening `(` through the closing `)`. Paste it as one block without editing
 or rewrapping individual lines.
+
+Before pasting, confirm the desktop display inherited by this terminal:
+
+```bash
+printf 'DISPLAY=%s\n' "${DISPLAY:-}"
+```
+
+Stop if the value is empty. The helper must print
+`HAILO_LOCAL_DISPLAY=ENABLED display=...`; it fails closed instead of silently reverting
+to headless mode.
 
 The expected negative import probe prints
 `CANONICAL_STRIPPED_RCLPY=UNAVAILABLE informational rc=1` and a
@@ -190,6 +211,7 @@ then hard-refresh the dashboard. Select `/hailo/overlay/image_raw` in the Camera
 and verify:
 
 - live Hailo boxes and class labels;
+- the Pi desktop window remains open with the same live Hailo boxes and class labels;
 - all five MAVROS badges remain `Live` with independent ages below `3.0 s`;
 - MAVROS state remains freshly connected and disarmed;
 - GPS, IMU, battery, and RC activity reaches the view-only panel without a `Stale`
@@ -203,8 +225,8 @@ and verify:
 - image click, Enter/Space on the image, and the Enlarge button open the same viewer;
 - Close receives focus, Tab stays inside the viewer, and Escape closes it and restores
   focus to the opening image or button;
-- Zoom out, Zoom in, and Reset keep the scale within `1.0×`–`4.0×`, with Reset returning
-  to `1.0×` and the top-left scroll position;
+- each Zoom out or Zoom in click changes the scale by exactly `0.5×` within
+  `1.0×`–`4.0×`, and Reset returns to `1.0×` and the top-left scroll position;
 - opening, zooming, resetting, and closing add no second `/stream?...` request. The same
   original Network row must remain active throughout the sequence.
 
@@ -293,6 +315,7 @@ arrival samples, and `w5_live_rates.log` with the matching Pi console and log di
 
 Report:
 
+- simultaneous annotated Pi-window and workstation-dashboard result;
 - browser visual result, camera-viewer controls, and the one-continuing-stream result;
 - automatic rate result and rate-log path;
 - helper checksum `OK`, connected/disarmed state, command sentinel, and source-window

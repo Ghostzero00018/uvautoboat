@@ -113,7 +113,12 @@ Do not use the simulation one-click launcher for live Hailo/MAVROS testing.
 Follow [Live Hailo and MAVROS Dashboard
 Testing](../../wiki/Live_Hailo_MAVLink_Dashboard_Testing.md). Run
 `tools/live_dashboard_preflight.sh run` on the workstation, then paste its
-complete printed command on the Pi. The supervisor starts rosbridge,
+complete printed command in a new terminal opened from the active Pi desktop or
+Remmina session; do not use an SSH-only terminal. The terminal must have a nonempty
+`DISPLAY`. The printed command selects `HAILO_LOCAL_DISPLAY=1`, which opens the
+annotated Hailo window on the Pi while the existing annotated topic continues to the
+workstation dashboard. This combined presentation still requires live acceptance.
+The supervisor starts rosbridge,
 `web_video_server`, and the dashboard, waits for all six topics, and records the
 automatic rate probes. Transfer only the tracked
 [`pi_live_hailo_mavlink_dashboard.sh`](../../tools/pi_live_hailo_mavlink_dashboard.sh)

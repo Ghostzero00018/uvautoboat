@@ -41,6 +41,10 @@ bash -n "$HELPER"
 require_literal 'HOLD_AFTER_WINDOW="${LIVE_HOLD_AFTER_WINDOW:-0}"'
 require_literal '[[ "$HOLD_AFTER_WINDOW" =~ ^[01]$ ]]'
 require_literal "die 'LIVE_HOLD_AFTER_WINDOW must be 0 or 1'"
+require_literal 'LOCAL_DISPLAY="${HAILO_LOCAL_DISPLAY:-0}"'
+require_literal '[[ "$LOCAL_DISPLAY" =~ ^[01]$ ]]'
+require_literal "die 'HAILO_LOCAL_DISPLAY must be 0 or 1'"
+require_literal 'configure_hailo_display() {'
 require_literal 'WS_IP="${WORKSTATION_IP:-}"'
 require_literal "die 'WORKSTATION_IP is required for a live run'"
 require_literal 'EXPECTED_SSID="${LIVE_SSID:-IMT Nord Europe 5G}"'
@@ -51,6 +55,61 @@ require_literal 'wait_for_mavproxy_heartbeat() {'
 require_literal 'MAVPROXY_LINK_DOWN=OBSERVED'
 require_literal 'MAVPROXY_LINK_RECOVERY=PASS'
 reject_literal 'MAVProxy reported link down before heartbeat'
+
+DISPLAY_FUNCTION="$(extract_function configure_hailo_display)"
+[ -n "$DISPLAY_FUNCTION" ] || fail 'display-mode function was not extractable'
+
+HEADLESS_DISPLAY_OUTPUT="$(bash -c '
+  eval "$1"
+  log() { printf "%s\n" "$*"; }
+  die() { printf "DIE: %s\n" "$*" >&2; exit 17; }
+  LOCAL_DISPLAY=0
+  unset DISPLAY
+  configure_hailo_display
+  printf "DISPLAY_ARGS=%s\n" "${HAILO_DISPLAY_ARGS[*]}"
+' _ "$DISPLAY_FUNCTION")"
+grep -Fxq 'HAILO_LOCAL_DISPLAY=DISABLED' <<<"$HEADLESS_DISPLAY_OUTPUT" \
+  || fail 'headless display mode did not emit its marker'
+grep -Fxq 'DISPLAY_ARGS=--no-display' <<<"$HEADLESS_DISPLAY_OUTPUT" \
+  || fail 'headless display mode omitted --no-display'
+
+LOCAL_DISPLAY_OUTPUT="$(bash -c '
+  eval "$1"
+  log() { printf "%s\n" "$*"; }
+  die() { printf "DIE: %s\n" "$*" >&2; exit 17; }
+  LOCAL_DISPLAY=1
+  DISPLAY=:77
+  configure_hailo_display
+  printf "DISPLAY_ARGS=%s\n" "${HAILO_DISPLAY_ARGS[*]}"
+' _ "$DISPLAY_FUNCTION")"
+grep -Fxq 'HAILO_LOCAL_DISPLAY=ENABLED display=:77' <<<"$LOCAL_DISPLAY_OUTPUT" \
+  || fail 'local display mode did not emit its marker'
+grep -Fxq 'DISPLAY_ARGS=' <<<"$LOCAL_DISPLAY_OUTPUT" \
+  || fail 'local display mode retained --no-display'
+
+set +e
+MISSING_DISPLAY_OUTPUT="$(bash -c '
+  eval "$1"
+  log() { printf "%s\n" "$*"; }
+  die() { printf "DIE: %s\n" "$*" >&2; exit 17; }
+  LOCAL_DISPLAY=1
+  unset DISPLAY
+  configure_hailo_display
+' _ "$DISPLAY_FUNCTION" 2>&1)"
+MISSING_DISPLAY_RC=$?
+set -e
+[ "$MISSING_DISPLAY_RC" -eq 17 ] \
+  || fail "missing-display case exited $MISSING_DISPLAY_RC instead of 17"
+grep -Fq 'requires a Pi desktop or Remmina terminal with DISPLAY set' \
+  <<<"$MISSING_DISPLAY_OUTPUT" \
+  || fail 'missing-display case did not explain the desktop-session requirement'
+
+HAILO_LAUNCH_BLOCK="$(sed -n '/^start_child hailo-bridge /,/^HAILO_PID=/p' "$HELPER")"
+[ -n "$HAILO_LAUNCH_BLOCK" ] || fail 'Hailo launch block was not extractable'
+grep -Fq '"${HAILO_DISPLAY_ARGS[@]}"' <<<"$HAILO_LAUNCH_BLOCK" \
+  || fail 'Hailo launch does not use the configured display arguments'
+! grep -Fq -- '--no-display' <<<"$HAILO_LAUNCH_BLOCK" \
+  || fail 'Hailo launch still forces headless mode'
 
 HEARTBEAT_FUNCTION="$(extract_function wait_for_mavproxy_heartbeat)"
 [ -n "$HEARTBEAT_FUNCTION" ] || fail 'heartbeat function was not extractable'
@@ -448,5 +507,13 @@ set -e
 [ "$INVALID_MODE_RC" -ne 0 ] || fail 'invalid hold mode was accepted'
 grep -Fq 'LIVE_HOLD_AFTER_WINDOW must be 0 or 1' <<<"$INVALID_MODE_OUTPUT" \
   || fail 'invalid hold mode did not fail at validation'
+
+set +e
+INVALID_DISPLAY_OUTPUT="$(HAILO_LOCAL_DISPLAY=2 "$HELPER" --preflight-only 2>&1)"
+INVALID_DISPLAY_RC=$?
+set -e
+[ "$INVALID_DISPLAY_RC" -ne 0 ] || fail 'invalid local-display mode was accepted'
+grep -Fq 'HAILO_LOCAL_DISPLAY must be 0 or 1' <<<"$INVALID_DISPLAY_OUTPUT" \
+  || fail 'invalid local-display mode did not fail at validation'
 
 printf 'PASS: heartbeat behavior and monitored hold/marker contracts\n'

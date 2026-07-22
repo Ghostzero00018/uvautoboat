@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 DASHBOARD_DIR="$REPO_ROOT/web_dashboard/autoboat"
 HELPER="$SCRIPT_DIR/pi_live_hailo_mavlink_dashboard.sh"
-EXPECTED_HELPER_SHA256='b778f69e3c692ae6e221d8a341962baf879d6aa2336df8f21912a3f1fbb81c12'
+EXPECTED_HELPER_SHA256='7222f6779a81103af140ac8571df926d25a7ab818a02f0dbe4c921dab666b648'
 EXPECTED_SSID="${LIVE_SSID:-IoT IMT Nord Europe}"
 ROS_SETUP='/opt/ros/jazzy/setup.bash'
 LIVE_DOMAIN_ID='12'
@@ -494,7 +494,7 @@ print_pi_command() {
   printf '  chmod +x pi_live_hailo_mavlink_dashboard.sh\n'
   printf "  printf 'PI_TEMP_START_MC='\n"
   printf '  cat /sys/class/thermal/thermal_zone0/temp\n'
-  printf '  exec env WORKSTATION_IP=%q LIVE_SSID=%q LIVE_HOLD_AFTER_WINDOW=1 ./pi_live_hailo_mavlink_dashboard.sh\n' \
+  printf '  exec env WORKSTATION_IP=%q LIVE_SSID=%q LIVE_HOLD_AFTER_WINDOW=1 HAILO_LOCAL_DISPLAY=1 ./pi_live_hailo_mavlink_dashboard.sh\n' \
     "$WORKSTATION_IP" "$EXPECTED_SSID"
   printf ')\n\n'
 }
