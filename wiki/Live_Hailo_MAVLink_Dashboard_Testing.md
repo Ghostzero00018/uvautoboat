@@ -23,18 +23,35 @@ the retained `pi` wrapper mode is not part of this procedure.
 
 ## Current tracked revisions
 
-The repository copies are canonical. Only the helper is copied to the Pi for this
-procedure.
+The repository copies below identify the uncommitted pre-trim revision used on
+23/07/2026. Only the tracked Pi helper was copied from the repository; the partial
+measurement also used separately checksum-pinned, untracked P0, phase-runner, and
+`xwininfo` checkpoint helpers on the Pi Desktop. This revision is retained for
+traceability, is not approved for another Pi-window experiment, and is scheduled for
+trim before the next live-dashboard work.
 
 | Item | Value |
 | --- | --- |
 | Helper source | `tools/pi_live_hailo_mavlink_dashboard.sh` |
-| Helper Pi destination | `~/hailo_coco_overlay_2026-07-10/pi_live_hailo_mavlink_dashboard.sh` |
-| Helper size | `61,404` bytes |
-| Helper SHA-256 | `10bb75e453dd86cc68bd217a078f40e2b4318e324d89de35f274563955435e50` |
+| Helper Pi destination | resolved Pi Desktop: `$(xdg-user-dir DESKTOP)/pi_live_hailo_mavlink_dashboard.sh` |
+| Helper size | `66,481` bytes |
+| Helper SHA-256 | `82e15bede13888fa33829ad5c16ddbcc23a3351a82996679fcc79ffb6fa9af07` |
 | Workstation supervisor | `tools/live_dashboard_preflight.sh` |
-| Supervisor size | `27,621` bytes |
-| Supervisor SHA-256 | `39175bd46021605d9b0cca2578b347b5dcc00e3c8fd05be6fc409bb177c7065f` |
+| Supervisor size | `28,849` bytes |
+| Supervisor SHA-256 | `86b37225ad7beeab7f29777f1d67c8287692c59ba5eaf542a9da7720d65cfd28` |
+
+Historical 23/07/2026 session artifacts:
+
+| Item | Size | SHA-256 |
+| --- | ---: | --- |
+| `p0_pi_window_probe.sh` | `8,089` bytes | `9bfb2da6ea8ee851942534bc0acf9b38736022625ad29312a3a953601d8183a4` |
+| `run_p0_pi_window_probe.sh` | `4,093` bytes | `c80e3745f5efa4a9d404792772a7c44bd7da51a283b85cc836e3f13b1be48ce3` |
+| `run_pi_live_window_phase.sh` | `4,862` bytes | `00de43ca98738f538d6ba52c92a94d207a590ec0429691c0aa4be4ad2ea76abc` |
+| `p2_xwininfo_checkpoint.sh` | `10,542` bytes | `292e21dd705ae47355531e403f2bd01aa3792e5c2dbf30241696305c0e9f337e` |
+
+These four files are not repository revisions. Their hashes are retained only to identify
+the prepared and executed evidence chain. Do not transfer or execute them for another
+Pi-window run.
 
 The helper retains its finite `120`-second evidence window and uses
 `LIVE_HOLD_AFTER_WINDOW=1` for the monitored demonstration hold. A transient MAVProxy
@@ -43,18 +60,32 @@ the Hailo runtime tree, and generated logs remain outside this repository.
 
 Direct helper calls default to `HAILO_LOCAL_DISPLAY=0` and retain `--no-display`.
 When local display is enabled, `HAILO_LOCAL_WINDOW_MODE` defaults to `resizable`.
-The tracked supervisor explicitly selects `HAILO_LOCAL_DISPLAY=1` and
-`HAILO_LOCAL_WINDOW_MODE=fullscreen`, enabling the Pi desktop Hailo window while
-retaining the same annotated ROS publisher for the workstation dashboard. In fullscreen
-mode, the wrapper waits for the first upstream `imshow` and `waitKey` cycle before
-requesting fullscreen, then reads the image rectangle after the next GUI cycle. Static
-tests cover this ordering, resizable and headless modes, rectangle evidence, and all
-three defensive fallback paths. An operator-run 22/07/2026 attempt observed the
-frame-gated Pi-local HighGUI `"Output"` window live, but its rendered image stopped
-enlarging beyond a ceiling while that Pi window continued to grow. This is independent of
-the workstation browser dashboard and its camera viewer. The only recorded post-request
-image rectangle was `0,0,400,300`; the wrapper sampled it once, so the later manual-resize
-ceiling dimensions remain unmeasured. Pi-local image scaling remains open.
+The tracked supervisor defaults to `HAILO_LOCAL_DISPLAY=1`,
+`HAILO_LOCAL_WINDOW_MODE=fullscreen`, and `HAILO_WINDOW_DIAG=0`, preserving the normal
+display path. Its tested `LIVE_PI_WINDOW_MODE` and `LIVE_PI_WINDOW_DIAG` selectors opt
+into the two measurement phases. Diagnostics add only read-only rectangle/property reads
+and log lines; they do not change `namedWindow`, `setWindowProperty`, `imshow`,
+`waitKey`, the annotated ROS publisher, or the fullscreen request. Resizable diagnostics
+sample every `30` callbacks using the current per-run checkpoint label. Fullscreen
+diagnostics sample `fs-early`, `fs+30`, and `fs+90` only after the fullscreen request
+succeeds. Rectangle, property, label-file, and label-decoding failures are reported as
+unavailable without stopping frame publication.
+
+These diagnostic selectors and reads remain in the current pre-trim tree only. They are
+not approved for further use and are scheduled for removal while the normal local-display
+path and Pi Desktop helper destination remain.
+
+In fullscreen mode, the wrapper waits for the first upstream `imshow` and `waitKey`
+cycle before requesting fullscreen, then reads the image rectangle after the next GUI
+cycle. Static tests cover this ordering, resizable and headless modes, exact
+diagnostics-off calls and logs, labelled/rate-limited diagnostics, delayed fullscreen
+samples, request-failure suppression, and defensive read failures. An operator-run
+22/07/2026 attempt observed the frame-gated Pi-local HighGUI `"Output"` window live, but
+its rendered image stopped enlarging beyond a ceiling while that Pi window continued to
+grow. This is independent of the workstation browser dashboard and its camera viewer.
+The only recorded post-request image rectangle was `0,0,400,300`; the wrapper sampled it
+once, so the later manual-resize ceiling dimensions remain unmeasured. Pi-local image
+scaling remains unmeasured and is parked by the 23/07/2026 closeout.
 
 On 17/07/2026, two runs from the clean, pushed workstation checkout on
 `IoT IMT Nord Europe` proved six-topic arrival and automatic rate measurement. Both
@@ -86,8 +117,53 @@ reached readiness, then was operator-interrupted during `live-window` before
 attempt does not accept retry/deadline timing or the normal completed-window/live-hold
 Pi-first lifecycle. The image inside the independent Pi-local HighGUI `"Output"` window
 scaled down and initially scaled up with that window, then stopped enlarging while the Pi
-window continued to grow. The workstation browser window is not the affected surface. A
-clean repeat remains required after the Pi-local scaling ceiling is diagnosed.
+window continued to grow. The workstation browser window is not the affected surface. At
+that close, a clean repeat was still required; the 23/07/2026 operator decision below
+supersedes it, and no further Pi-window repeat is planned.
+
+## 23/07/2026 Pi-window experiment closeout
+
+The environment probe passed, but the user-run resizable Phase R was partial and did not
+reach acceptance:
+
+- Workstation evidence:
+  `/home/ghostzero/live_dashboard_logs/live_dashboard_workstation_20260723_183748`.
+  Runtime preflight and service readiness passed. All six expected publishers became
+  discoverable at the end of the `360`-second arrival window, but less than the required
+  `60` seconds remained for six sequential samples. No arrival samples, automatic rates,
+  or `PI_DATA_ARRIVED=PASS` marker were produced. Workstation teardown passed after
+  operator Ctrl+C; the supervisor exited `status=1`, `failed_phase=arrival`, and
+  `cleanup_rc=0`.
+- Pi evidence directory:
+  `/home/imt-aqua-drone/hailo_coco_overlay_2026-07-10/logs/live_dashboard_20260723_184112`;
+  copied workstation path:
+  `/home/ghostzero/live_dashboard_logs/pi_copies/live_dashboard_20260723_184112`.
+  The copy contains `19` files and occupies `912K`; no remote-versus-local SHA-256
+  manifest comparison was run. MAVROS reached connected/disarmed state, telemetry passed,
+  and `PI_SOURCE_STACK_READY=PASS` was emitted. Supervisor snapshots reported `66 C`,
+  while `thermal_peak_mc.txt` records the more precise peak `67750` mC (`67.75 C`), below
+  the `80 C` abort.
+- The operator visually reproduced the symptom: the rendered image stopped enlarging
+  while the outer `"Output"` window continued to grow. The copied `hailo.log` contains
+  `151` successful inner-rectangle samples from callback `30` through `4530`: `24`
+  samples at `321x241`, then `127` samples at `640x480`. Every sample retained
+  `label=awaiting-checkpoint`, and no outer-window `xwininfo` capture exists. The inner
+  plateau is therefore measured, but the missing drag labels and outer geometry still
+  prevent a quantitative `KEEPRATIO`-versus-real-cap verdict.
+- Pi final verification exceeded `90` seconds during the battery sample. It did not emit
+  `PI_SOURCE_WINDOW=COMPLETE` or enter the normal live hold. The bounded battery echo was
+  killed at its deadline; the saved Hailo image, GPS, and IMU samples completed
+  immediately before the stop. Pi teardown passed; the helper exited `status=1`,
+  `failed_phase=live-window`, and `cleanup_rc=0`.
+
+The workstation arrival failure and Pi final-verification timeout are separate failures.
+The operator ended this feature's experiments: Phase R will not be repeated, Phase FS
+will not run, and Blocks B/C will not proceed. The measurement procedure below is
+historical only. The diagnostic-only code and matching runbook surface are scheduled for
+trim before the next live-dashboard work.
+
+The next live-dashboard run is held until that trim produces new tracked hashes. Do not
+deploy or execute the pre-trim hashes recorded above.
 
 ## Before starting
 
@@ -127,10 +203,13 @@ This preparation is not one of the two live commands. On the Pi, verify the inst
 helper before starting:
 
 ```bash
-cd ~/hailo_coco_overlay_2026-07-10
+H="$(readlink -f -- "$HOME")" || exit 1
+D="$(xdg-user-dir DESKTOP)" || exit 1
+D="$(readlink -f -- "$D")" || exit 1
+[ -n "$D" ] && [ -d "$D" ] && [ "$D" != "$H" ] || exit 1
 printf '%s  %s\n' \
-  '10bb75e453dd86cc68bd217a078f40e2b4318e324d89de35f274563955435e50' \
-  'pi_live_hailo_mavlink_dashboard.sh' | sha256sum -c -
+  '82e15bede13888fa33829ad5c16ddbcc23a3351a82996679fcc79ffb6fa9af07' \
+  "$D/pi_live_hailo_mavlink_dashboard.sh" | sha256sum -c -
 ```
 
 Continue when it prints `pi_live_hailo_mavlink_dashboard.sh: OK`. If it fails, transfer
@@ -138,18 +217,33 @@ only the helper from a workstation terminal:
 
 ```bash
 cd ~/seal_ws/src/uvautoboat
-echo '10bb75e453dd86cc68bd217a078f40e2b4318e324d89de35f274563955435e50  tools/pi_live_hailo_mavlink_dashboard.sh' \
-  | sha256sum -c -
+printf '%s  %s\n' \
+  '82e15bede13888fa33829ad5c16ddbcc23a3351a82996679fcc79ffb6fa9af07' \
+  tools/pi_live_hailo_mavlink_dashboard.sh | sha256sum -c -
 
 read -r -p 'Current Pi SSH endpoint (user@host): ' PI_SSH
 : "${PI_SSH:?Pi SSH endpoint is required}"
-ssh "$PI_SSH" 'mkdir -p ~/hailo_coco_overlay_2026-07-10'
+PI_DESKTOP="$(ssh "$PI_SSH" '
+  d="$(xdg-user-dir DESKTOP)" || exit 2
+  d="$(readlink -f -- "$d")" || exit 2
+  h="$(readlink -f -- "$HOME")" || exit 2
+  [ -n "$d" ] && [ -d "$d" ] && [ "$d" != "$h" ] || exit 2
+  printf "%s" "$d"
+')" || exit 1
 scp tools/pi_live_hailo_mavlink_dashboard.sh \
-  "${PI_SSH}:hailo_coco_overlay_2026-07-10/"
+  "${PI_SSH}:${PI_DESKTOP}/"
+ssh "$PI_SSH" "
+  cd '$PI_DESKTOP' &&
+  printf '%s  %s\n' \
+    '82e15bede13888fa33829ad5c16ddbcc23a3351a82996679fcc79ffb6fa9af07' \
+    pi_live_hailo_mavlink_dashboard.sh |
+  sha256sum -c -
+"
 ```
 
-Repeat the Pi checksum check after any transfer. Do not copy
-`live_dashboard_preflight.sh` to the Pi.
+Do not copy `live_dashboard_preflight.sh` to the Pi. The Hailo runtime, generated wrapper,
+and timestamped logs remain under `~/hailo_coco_overlay_2026-07-10`; only transferred
+operator helpers live on the Pi Desktop.
 
 ## Live command 1 - workstation supervisor
 
@@ -175,13 +269,19 @@ WORKSTATION_SERVICES=UP ... logs=/home/.../live_dashboard_workstation_...
 
 Leave W1 running. It prints one compound Pi command carrying the current workstation
 IPv4 address, selected SSID, helper checksum, `LIVE_HOLD_AFTER_WINDOW=1`, and
-`HAILO_LOCAL_DISPLAY=1 HAILO_LOCAL_WINDOW_MODE=fullscreen`.
+`HAILO_LOCAL_DISPLAY=1`. With no selector override, it carries
+`HAILO_LOCAL_WINDOW_MODE=fullscreen HAILO_WINDOW_DIAG=0`. The printed command resolves,
+checksums, and executes the helper from the Pi Desktop while retaining
+`~/hailo_coco_overlay_2026-07-10` as the runtime root.
 
 ## Live command 2 - Pi source stack
 
 Host: Pi. Terminal P1: new, foreground. Paste the complete compound command printed by
 W1, from the opening `(` through the closing `)`. Paste it as one block without editing
-or rewrapping individual lines.
+or rewrapping individual lines. If the Remmina clipboard cannot paste a multiline block,
+transfer a separately checksum-pinned phase runner to the Pi Desktop and type its short
+single-line invocation in P1; do not start the command through SSH because it must inherit
+the active desktop display.
 
 Before pasting, confirm the desktop display inherited by this terminal:
 
@@ -235,6 +335,128 @@ still stops after three observations omit `/rosapi/topics_for_type`, and it reje
 dashboard command service on the first snapshot where one appears. If the finite evidence
 window closes between observations, the service check moves to the final-verification
 phase instead of reporting an unobserved service loss.
+
+## Retired Pi-window measurement procedure - historical record
+
+Do not run Phase R or Phase FS. The commands below preserve the procedure prepared for the
+partial 23/07/2026 run; they are not an active test pipeline.
+
+This diagnostic mode was prepared to measure the Pi-local scaling question without
+changing the display path. It was gated on a read-only Pi environment probe reporting
+`P0_PROBE=OK` and review of its OpenCV version, GUI backend, API, display, and `xwininfo`
+readings. `P0_PROBE=HOLD`, `P0_PROBE=DEGRADED`, missing `xwininfo`, zero or multiple exact
+`"Output"` matches, or ambiguous geometry kept the measurement gate closed.
+
+Host: Pi. Terminal P0: active-desktop/Remmina, one-shot. After transferring and verifying
+the two P0 files above, run:
+
+```bash
+bash ~/Desktop/run_p0_pi_window_probe.sh
+```
+
+Require exactly one `P0_PROBE=OK` and `P0_RUNNER=OK`, then review the reported values.
+Do not run P0 over SSH.
+
+Use one fresh workstation/Pi lifecycle for each phase. Stop the Pi first and wait for
+`TEARDOWN=PASS` before stopping W1 or starting the next phase. The commands below put new
+workstation run directories under `~/live_dashboard_logs`, not on the Desktop; Pi runtime
+logs remain under the Hailo demo root.
+
+### Phase R - resizable drag matrix
+
+Host: workstation. Terminal W1-R: new, foreground. Working directory: repository root.
+
+```bash
+cd ~/seal_ws/src/uvautoboat
+LIVE_DASHBOARD_LOG_ROOT="$HOME/live_dashboard_logs" \
+  LIVE_PI_WINDOW_MODE=resizable LIVE_PI_WINDOW_DIAG=1 \
+  tools/live_dashboard_preflight.sh run
+```
+
+Host: Pi. Terminal P1-R: new active-desktop/Remmina terminal, foreground. Run the Pi
+command printed by W1-R, or type the short phase-runner command below using the
+workstation IPv4 shown by W1-R, not the Pi SSH address:
+
+```bash
+bash ~/Desktop/run_pi_live_window_phase.sh WORKSTATION_IPV4 \
+  resizable 'IoT IMT Nord Europe'
+```
+
+Require:
+
+```text
+HAILO_LOCAL_DISPLAY=ENABLED ... window_mode=resizable
+HAILO_WINDOW_DIAG=ENABLED ... label_file=/home/.../window_diag_label.txt evidence_log=/home/.../hailo.log
+PI_SOURCE_STACK_READY=PASS ...
+```
+
+Host: Pi. Terminal P2-R: separate active-desktop/Remmina terminal, one-shot checkpoints.
+Use the exact `label_file=` path printed by P1-R. The checkpoint command must use only
+`xwininfo`, identify exactly one X11 window named `"Output"`, record the selected X11
+window ID and the window-manager-dependent geometry semantics, and write a unique
+timestamped evidence file beside the label file. The
+[X.Org `xwininfo` manual](https://www.x.org/archive/X11R7.5/doc/man/man1/xwininfo.1.html)
+notes that its reported `-geometry` location depends on border/application/window-manager
+assumptions; preserve the raw `-stats` output.
+
+For every row below, use:
+
+```bash
+bash ~/Desktop/p2_xwininfo_checkpoint.sh \
+  /absolute/run-dir/window_diag_label.txt checkpoint-label
+```
+
+At each stable size, publish the checkpoint label and capture `xwininfo`, then keep the
+window unchanged for at least `5` seconds so a `30`-callback inner sample uses that label:
+
+| Order | Checkpoint label | Operator action |
+| --- | --- | --- |
+| 1 | `small-4x3-grow` | Set a small 4:3 window |
+| 2 | `medium-4x3-grow` | Grow proportionally to medium |
+| 3 | `large-4x3-grow` | Grow proportionally to large |
+| 4 | `medium-4x3-shrink` | Shrink proportionally to medium |
+| 5 | `small-4x3-shrink` | Shrink proportionally to small |
+| 6 | `wide-grow-x` | Grow only the horizontal axis |
+| 7 | `wide-shrink-x` | Shrink only the horizontal axis |
+| 8 | `tall-grow-y` | Grow only the vertical axis |
+| 9 | `tall-shrink-y` | Shrink only the vertical axis |
+
+Before teardown, confirm `hailo.log` contains a labelled
+`HAILO_WINDOW_DIAG=SAMPLE mode=resizable` line for every checkpoint. Any
+`label=UNAVAILABLE`, `rect=UNAVAILABLE`, property `UNAVAILABLE`, missing label, or missing
+outer checkpoint is a measurement HOLD.
+
+### Phase FS - separate fullscreen run
+
+After Phase R Pi-first teardown and W1-R teardown, start a fresh W1-FS:
+
+```bash
+cd ~/seal_ws/src/uvautoboat
+LIVE_DASHBOARD_LOG_ROOT="$HOME/live_dashboard_logs" \
+  LIVE_PI_WINDOW_MODE=fullscreen LIVE_PI_WINDOW_DIAG=1 \
+  tools/live_dashboard_preflight.sh run
+```
+
+Start the printed Pi command in a fresh P1-FS active-desktop terminal. Do not drag the
+window. The short-runner alternative uses the new W1-FS workstation IPv4:
+
+```bash
+bash ~/Desktop/run_pi_live_window_phase.sh WORKSTATION_IPV4 \
+  fullscreen 'IoT IMT Nord Europe'
+```
+
+The helper emits read-only inner samples labelled `fs-early`, `fs+30`, and `fs+90`; none
+may appear if the fullscreen request failed. After at least `10` seconds at steady state,
+use a separate P2-FS active-desktop terminal to capture one `fullscreen-steady`
+`xwininfo` checkpoint. Require all three inner samples, one unambiguous outer checkpoint,
+and no fallback or unavailable marker.
+
+Correlate each inner image-widget rectangle and property set with the corresponding
+selected X11 window geometry. If proportional 4:3 growth continues while single-axis
+growth holds only the constraining dimension, the result is expected `KEEPRATIO`
+letterboxing and there is no display defect or Block B change. Advance to Block B only if
+the measurements show a real cap. This measurement verdict remains separate from
+six-topic arrival/rates, browser visual acceptance, and Pi-first teardown.
 
 ## Workstation arrival and automatic rate evidence
 

@@ -47,6 +47,10 @@ require_literal "die 'HAILO_LOCAL_DISPLAY must be 0 or 1'"
 require_literal 'LOCAL_WINDOW_MODE="${HAILO_LOCAL_WINDOW_MODE:-resizable}"'
 require_literal '[[ "$LOCAL_WINDOW_MODE" =~ ^(resizable|fullscreen)$ ]]'
 require_literal "die 'HAILO_LOCAL_WINDOW_MODE must be resizable or fullscreen'"
+require_literal 'WINDOW_DIAG="${HAILO_WINDOW_DIAG:-0}"'
+require_literal 'WINDOW_DIAG_LABEL_FILE="$RUN_DIR/window_diag_label.txt"'
+require_literal '[[ "$WINDOW_DIAG" =~ ^[01]$ ]]'
+require_literal "die 'HAILO_WINDOW_DIAG must be 0 or 1'"
 require_literal 'FINAL_VERIFY_SECONDS="${LIVE_FINAL_VERIFY_SECONDS:-90}"'
 require_literal '[[ "$FINAL_VERIFY_SECONDS" =~ ^[1-9][0-9]*$ ]]'
 require_literal "die 'LIVE_FINAL_VERIFY_SECONDS must be a positive integer'"
@@ -273,6 +277,8 @@ grep -Fq '"${HAILO_DISPLAY_ARGS[@]}"' <<<"$HAILO_LAUNCH_BLOCK" \
   || fail 'Hailo launch still forces headless mode'
 
 require_literal '"HAILO_LOCAL_WINDOW_MODE=$LOCAL_WINDOW_MODE"'
+require_literal '"HAILO_WINDOW_DIAG=$WINDOW_DIAG"'
+require_literal '"HAILO_WINDOW_DIAG_LABEL_FILE=$WINDOW_DIAG_LABEL_FILE"'
 WINDOW_WRAPPER_SOURCE="$(awk '
   $0 == "window_name = \"Output\"" { capture = 1 }
   capture && $0 == "detector.visualize = publishing_visualize" { exit }
@@ -282,8 +288,12 @@ WINDOW_WRAPPER_SOURCE="$(awk '
   || fail 'local-window wrapper source was not extractable'
 
 WINDOW_BEHAVIOR_OUTPUT="$(python3 - "$WINDOW_WRAPPER_SOURCE" <<'PYTHON_WINDOW_TEST'
+import contextlib
+import io
 import os
+import re
 import sys
+import tempfile
 from types import SimpleNamespace
 
 source = sys.argv[1]
@@ -297,26 +307,52 @@ class FakeCv2:
     WINDOW_FULLSCREEN = 4
     COLOR_RGB2BGR = 5
     INTER_AREA = 6
+    WND_PROP_AUTOSIZE = 7
+    WND_PROP_ASPECT_RATIO = 8
 
-    def __init__(self, fail_at=None):
+    def __init__(self, mode, fail_at=None):
         self.calls = []
-        self.fail_at = fail_at
+        self.mode = mode
+        if fail_at is None:
+            self.fail_at = set()
+        elif isinstance(fail_at, str):
+            self.fail_at = {fail_at}
+        else:
+            self.fail_at = set(fail_at)
+
+    def should_fail(self, operation):
+        return operation in self.fail_at
 
     def namedWindow(self, name, flags):
         self.calls.append(("namedWindow", name, flags))
-        if self.fail_at == "namedWindow":
+        if self.should_fail("namedWindow"):
             raise RuntimeError("named-window-failed")
 
     def setWindowProperty(self, name, prop, value):
         self.calls.append(("setWindowProperty", name, prop, value))
-        if self.fail_at == "setWindowProperty":
+        if self.should_fail("setWindowProperty"):
             raise RuntimeError("fullscreen-failed")
 
     def getWindowImageRect(self, name):
         self.calls.append(("getWindowImageRect", name))
-        if self.fail_at == "getWindowImageRect":
+        if self.should_fail("getWindowImageRect"):
             raise RuntimeError("window-rect-failed")
         return (0, 0, 1920, 1080)
+
+    def getWindowProperty(self, name, prop):
+        self.calls.append(("getWindowProperty", name, prop))
+        if (
+            self.should_fail("getWindowProperty")
+            or self.should_fail(f"getWindowProperty:{prop}")
+        ):
+            raise RuntimeError(f"window-property-{prop}-failed")
+        if prop == self.WND_PROP_AUTOSIZE:
+            return 0.0
+        if prop == self.WND_PROP_FULLSCREEN:
+            return 1.0 if self.mode == "fullscreen" else 0.0
+        if prop == self.WND_PROP_ASPECT_RATIO:
+            return 0.0
+        raise AssertionError(f"unexpected window property: {prop}")
 
     def imshow(self, name, _frame):
         self.calls.append(("imshow", name))
@@ -388,48 +424,96 @@ class Settings:
         self.no_display = no_display
 
 
-def exercise(mode, fail_at=None, no_display=False):
-    fake_cv2 = FakeCv2(fail_at)
-    calls = fake_cv2.calls
-    publisher = FakePublisher(calls)
-    frame = FakeFrame()
-
-    def fake_original(*args):
-        calls.append(("original_visualize", args[1].no_display))
-        for _index in range(3):
-            shown_frame = args[3]()
-            if not args[1].no_display:
-                fake_cv2.imshow("Output", shown_frame)
-                fake_cv2.waitKey(1)
-        return "ORIGINAL_RESULT"
-
-    namespace = {
-        "cv2": fake_cv2,
-        "Image": FakeImage,
-        "node": FakeNode(),
-        "np": FakeNp(),
-        "os": os,
-        "original_visualize": fake_original,
-        "publisher": publisher,
-        "state": {"last_publish_ns": 0, "count": 0},
-        "stream_height": 240,
-        "period_ns": 100_000_000,
-        "time": FakeTime(),
-    }
-    os.environ["HAILO_LOCAL_WINDOW_MODE"] = mode
-    exec(source, namespace)
-    settings = Settings(no_display)
-    result = namespace["publishing_visualize"](
-        None, settings, None, lambda: frame
-    )
-    assert result == "ORIGINAL_RESULT"
-    assert sum(call[0] == "original_visualize" for call in calls) == 1
-    assert len(publisher.messages) == 3
-    assert publisher.messages[0].header.frame_id == "hailo_overlay"
-    return settings, calls
+def replace_label(path, label):
+    replacement = f"{path}.next"
+    if isinstance(label, bytes):
+        with open(replacement, "wb") as stream:
+            stream.write(label)
+    else:
+        with open(replacement, "w", encoding="utf-8") as stream:
+            stream.write(f"{label}\n")
+    os.replace(replacement, path)
 
 
-settings, calls = exercise("resizable")
+def exercise(
+    mode,
+    fail_at=None,
+    no_display=False,
+    diag=False,
+    frame_count=3,
+    label_schedule=None,
+):
+    with tempfile.TemporaryDirectory() as temp_dir:
+        label_file = os.path.join(temp_dir, "window_diag_label.txt")
+        schedule = dict(label_schedule or {1: "steady"})
+        replace_label(label_file, schedule.get(1, "steady"))
+
+        fake_cv2 = FakeCv2(mode, fail_at)
+        calls = fake_cv2.calls
+        publisher = FakePublisher(calls)
+        frame = FakeFrame()
+
+        def fake_original(*args):
+            calls.append(("original_visualize", args[1].no_display))
+            for callback_index in range(1, frame_count + 1):
+                if callback_index in schedule:
+                    replace_label(label_file, schedule[callback_index])
+                shown_frame = args[3]()
+                if not args[1].no_display:
+                    fake_cv2.imshow("Output", shown_frame)
+                    fake_cv2.waitKey(1)
+            return "ORIGINAL_RESULT"
+
+        namespace = {
+            "cv2": fake_cv2,
+            "Image": FakeImage,
+            "node": FakeNode(),
+            "np": FakeNp(),
+            "os": os,
+            "re": re,
+            "original_visualize": fake_original,
+            "publisher": publisher,
+            "state": {"last_publish_ns": 0, "count": 0},
+            "stream_height": 240,
+            "period_ns": 100_000_000,
+            "time": FakeTime(),
+        }
+        old_environment = {
+            name: os.environ.get(name)
+            for name in (
+                "HAILO_LOCAL_WINDOW_MODE",
+                "HAILO_WINDOW_DIAG",
+                "HAILO_WINDOW_DIAG_LABEL_FILE",
+            )
+        }
+        os.environ["HAILO_LOCAL_WINDOW_MODE"] = mode
+        os.environ["HAILO_WINDOW_DIAG"] = "1" if diag else "0"
+        os.environ["HAILO_WINDOW_DIAG_LABEL_FILE"] = label_file
+        output = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(output):
+                exec(source, namespace)
+                settings = Settings(no_display)
+                result = namespace["publishing_visualize"](
+                    None, settings, None, lambda: frame
+                )
+        finally:
+            for name, value in old_environment.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+
+        assert result == "ORIGINAL_RESULT"
+        assert sum(call[0] == "original_visualize" for call in calls) == 1
+        assert len(publisher.messages) == frame_count
+        assert publisher.messages[0].header.frame_id == "hailo_overlay"
+        return settings, calls, output.getvalue().splitlines()
+
+
+all_logs = []
+
+settings, calls, logs = exercise("resizable")
 assert settings.no_display is False
 assert calls == [
     ("namedWindow", "Output", 3),
@@ -444,8 +528,13 @@ assert calls == [
     ("imshow", "Output"),
     ("waitKey", 1),
 ]
+assert logs == [
+    "HAILO_LOCAL_WINDOW=READY mode=resizable name=Output",
+    "HAILO_ROS_FRAME count=1 size=320x240",
+]
+all_logs.extend(logs)
 
-settings, calls = exercise("fullscreen")
+settings, calls, logs = exercise("fullscreen")
 assert settings.no_display is False
 assert calls == [
     ("namedWindow", "Output", 3),
@@ -462,8 +551,17 @@ assert calls == [
     ("imshow", "Output"),
     ("waitKey", 1),
 ]
+assert logs == [
+    "HAILO_LOCAL_WINDOW=PENDING mode=fullscreen name=Output gate=first-imshow",
+    "HAILO_ROS_FRAME count=1 size=320x240",
+    (
+        "HAILO_LOCAL_WINDOW=READY mode=fullscreen name=Output "
+        "rect=0,0,1920,1080 source=getWindowImageRect"
+    ),
+]
+all_logs.extend(logs)
 
-settings, calls = exercise("fullscreen", no_display=True)
+settings, calls, logs = exercise("fullscreen", no_display=True)
 assert settings.no_display is True
 assert calls == [
     ("original_visualize", True),
@@ -471,8 +569,10 @@ assert calls == [
     ("publish", 2),
     ("publish", 3),
 ]
+assert logs == ["HAILO_ROS_FRAME count=1 size=320x240"]
+all_logs.extend(logs)
 
-settings, calls = exercise("fullscreen", "namedWindow")
+settings, calls, logs = exercise("fullscreen", "namedWindow")
 assert settings.no_display is True
 assert calls == [
     ("namedWindow", "Output", 3),
@@ -482,8 +582,16 @@ assert calls == [
     ("publish", 2),
     ("publish", 3),
 ]
+assert logs == [
+    (
+        "HAILO_LOCAL_WINDOW=FALLBACK_HEADLESS mode=fullscreen "
+        "stage=namedWindow error=RuntimeError"
+    ),
+    "HAILO_ROS_FRAME count=1 size=320x240",
+]
+all_logs.extend(logs)
 
-settings, calls = exercise("fullscreen", "setWindowProperty")
+settings, calls, logs = exercise("fullscreen", "setWindowProperty")
 assert settings.no_display is False
 assert calls == [
     ("namedWindow", "Output", 3),
@@ -499,8 +607,17 @@ assert calls == [
     ("imshow", "Output"),
     ("waitKey", 1),
 ]
+assert logs == [
+    "HAILO_LOCAL_WINDOW=PENDING mode=fullscreen name=Output gate=first-imshow",
+    "HAILO_ROS_FRAME count=1 size=320x240",
+    (
+        "HAILO_LOCAL_WINDOW=FALLBACK_RESIZABLE requested=fullscreen "
+        "error=RuntimeError"
+    ),
+]
+all_logs.extend(logs)
 
-settings, calls = exercise("fullscreen", "getWindowImageRect")
+settings, calls, logs = exercise("fullscreen", "getWindowImageRect")
 assert settings.no_display is False
 assert calls == [
     ("namedWindow", "Output", 3),
@@ -517,8 +634,187 @@ assert calls == [
     ("imshow", "Output"),
     ("waitKey", 1),
 ]
+assert logs == [
+    "HAILO_LOCAL_WINDOW=PENDING mode=fullscreen name=Output gate=first-imshow",
+    "HAILO_ROS_FRAME count=1 size=320x240",
+    (
+        "HAILO_LOCAL_WINDOW=EVIDENCE_UNAVAILABLE mode=fullscreen "
+        "name=Output stage=getWindowImageRect error=RuntimeError"
+    ),
+]
+all_logs.extend(logs)
+
+
+def diagnostic_reads(calls):
+    return [
+        call
+        for call in calls
+        if call[0] in ("getWindowImageRect", "getWindowProperty")
+    ]
+
+
+def diagnostic_samples(logs):
+    return [
+        line for line in logs if line.startswith("HAILO_WINDOW_DIAG=SAMPLE ")
+    ]
+
+
+def expected_read_set():
+    return [
+        ("getWindowImageRect", "Output"),
+        ("getWindowProperty", "Output", FakeCv2.WND_PROP_AUTOSIZE),
+        ("getWindowProperty", "Output", FakeCv2.WND_PROP_FULLSCREEN),
+        ("getWindowProperty", "Output", FakeCv2.WND_PROP_ASPECT_RATIO),
+    ]
+
+
+settings, calls, logs = exercise(
+    "resizable",
+    diag=True,
+    frame_count=95,
+    label_schedule={
+        1: "small-4x3",
+        31: "medium-4x3",
+        61: "large-4x3",
+    },
+)
+assert settings.no_display is False
+assert diagnostic_reads(calls) == expected_read_set() * 3
+assert sum(call[0] == "namedWindow" for call in calls) == 1
+assert sum(call[0] == "setWindowProperty" for call in calls) == 0
+assert sum(call[0] == "imshow" for call in calls) == 95
+assert sum(call[0] == "waitKey" for call in calls) == 95
+assert diagnostic_samples(logs) == [
+    (
+        "HAILO_WINDOW_DIAG=SAMPLE mode=resizable label=small-4x3 callback=30 "
+        "rect=0,0,1920,1080 autosize=0.0 fullscreen=0.0 aspect_ratio=0.0"
+    ),
+    (
+        "HAILO_WINDOW_DIAG=SAMPLE mode=resizable label=medium-4x3 callback=60 "
+        "rect=0,0,1920,1080 autosize=0.0 fullscreen=0.0 aspect_ratio=0.0"
+    ),
+    (
+        "HAILO_WINDOW_DIAG=SAMPLE mode=resizable label=large-4x3 callback=90 "
+        "rect=0,0,1920,1080 autosize=0.0 fullscreen=0.0 aspect_ratio=0.0"
+    ),
+]
+all_logs.extend(logs)
+
+settings, calls, logs = exercise(
+    "resizable",
+    fail_at="getWindowImageRect",
+    diag=True,
+    frame_count=30,
+    label_schedule={1: "rect-fail"},
+)
+assert settings.no_display is False
+assert diagnostic_reads(calls) == expected_read_set()
+assert sum(call[0] == "imshow" for call in calls) == 30
+assert sum(call[0] == "waitKey" for call in calls) == 30
+assert (
+    "HAILO_WINDOW_DIAG=ERROR mode=resizable label=rect-fail callback=30 "
+    "field=rect error=RuntimeError"
+) in logs
+assert (
+    "HAILO_WINDOW_DIAG=SAMPLE mode=resizable label=rect-fail callback=30 "
+    "rect=UNAVAILABLE autosize=0.0 fullscreen=0.0 aspect_ratio=0.0"
+) in logs
+all_logs.extend(logs)
+
+settings, calls, logs = exercise(
+    "resizable",
+    fail_at=f"getWindowProperty:{FakeCv2.WND_PROP_AUTOSIZE}",
+    diag=True,
+    frame_count=30,
+    label_schedule={1: "property-fail"},
+)
+assert settings.no_display is False
+assert diagnostic_reads(calls) == expected_read_set()
+assert sum(call[0] == "imshow" for call in calls) == 30
+assert sum(call[0] == "waitKey" for call in calls) == 30
+assert (
+    "HAILO_WINDOW_DIAG=ERROR mode=resizable label=property-fail callback=30 "
+    "field=autosize error=RuntimeError"
+) in logs
+assert (
+    "HAILO_WINDOW_DIAG=SAMPLE mode=resizable label=property-fail callback=30 "
+    "rect=0,0,1920,1080 autosize=UNAVAILABLE fullscreen=0.0 aspect_ratio=0.0"
+) in logs
+all_logs.extend(logs)
+
+settings, calls, logs = exercise(
+    "resizable",
+    diag=True,
+    frame_count=30,
+    label_schedule={1: b"\xff\n"},
+)
+assert settings.no_display is False
+assert diagnostic_reads(calls) == expected_read_set()
+assert sum(call[0] == "imshow" for call in calls) == 30
+assert sum(call[0] == "waitKey" for call in calls) == 30
+assert (
+    "HAILO_WINDOW_DIAG=ERROR mode=resizable label=UNAVAILABLE callback=30 "
+    "field=label error=UnicodeDecodeError"
+) in logs
+assert (
+    "HAILO_WINDOW_DIAG=SAMPLE mode=resizable label=UNAVAILABLE callback=30 "
+    "rect=0,0,1920,1080 autosize=0.0 fullscreen=0.0 aspect_ratio=0.0"
+) in logs
+all_logs.extend(logs)
+
+settings, calls, logs = exercise(
+    "fullscreen",
+    diag=True,
+    frame_count=92,
+    label_schedule={1: "ignored-in-fullscreen"},
+)
+assert settings.no_display is False
+assert diagnostic_reads(calls) == expected_read_set() * 3
+assert sum(call[0] == "namedWindow" for call in calls) == 1
+assert sum(call[0] == "setWindowProperty" for call in calls) == 1
+assert sum(call[0] == "imshow" for call in calls) == 92
+assert sum(call[0] == "waitKey" for call in calls) == 92
+assert diagnostic_samples(logs) == [
+    (
+        "HAILO_WINDOW_DIAG=SAMPLE mode=fullscreen label=fs-early callback=3 "
+        "rect=0,0,1920,1080 autosize=0.0 fullscreen=1.0 aspect_ratio=0.0"
+    ),
+    (
+        "HAILO_WINDOW_DIAG=SAMPLE mode=fullscreen label=fs+30 callback=32 "
+        "rect=0,0,1920,1080 autosize=0.0 fullscreen=1.0 aspect_ratio=0.0"
+    ),
+    (
+        "HAILO_WINDOW_DIAG=SAMPLE mode=fullscreen label=fs+90 callback=92 "
+        "rect=0,0,1920,1080 autosize=0.0 fullscreen=1.0 aspect_ratio=0.0"
+    ),
+]
+all_logs.extend(logs)
+
+settings, calls, logs = exercise(
+    "fullscreen",
+    fail_at="setWindowProperty",
+    diag=True,
+    frame_count=92,
+)
+assert settings.no_display is False
+assert sum(call[0] == "namedWindow" for call in calls) == 1
+assert sum(call[0] == "setWindowProperty" for call in calls) == 1
+assert sum(call[0] == "getWindowImageRect" for call in calls) == 0
+assert sum(call[0] == "getWindowProperty" for call in calls) == 0
+assert sum(call[0] == "imshow" for call in calls) == 92
+assert sum(call[0] == "waitKey" for call in calls) == 92
+assert diagnostic_samples(logs) == []
+assert not any("label=fs-" in line or "label=fs+" in line for line in logs)
+all_logs.extend(logs)
+
+for line in all_logs:
+    print(line)
 
 print("WINDOW_BEHAVIOR=PASS modes=3 fallback=headless+resizable evidence=rect published=18")
+print(
+    "WINDOW_DIAG_BEHAVIOR=PASS resizable_samples=3 fullscreen_samples=3 "
+    "fail_open=rect+property request_failure=quiet"
+)
 PYTHON_WINDOW_TEST
 )"
 grep -Fxq \
@@ -548,6 +844,10 @@ grep -Fxq \
   'HAILO_LOCAL_WINDOW=EVIDENCE_UNAVAILABLE mode=fullscreen name=Output stage=getWindowImageRect error=RuntimeError' \
   <<<"$WINDOW_BEHAVIOR_OUTPUT" \
   || fail 'fullscreen rectangle failure did not emit its evidence marker'
+grep -Fxq \
+  'WINDOW_DIAG_BEHAVIOR=PASS resizable_samples=3 fullscreen_samples=3 fail_open=rect+property request_failure=quiet' \
+  <<<"$WINDOW_BEHAVIOR_OUTPUT" \
+  || fail 'diagnostic local-window behavior contract did not pass'
 
 HEARTBEAT_FUNCTION="$(extract_function wait_for_mavproxy_heartbeat)"
 [ -n "$HEARTBEAT_FUNCTION" ] || fail 'heartbeat function was not extractable'
@@ -1536,6 +1836,15 @@ set -e
 grep -Fq 'HAILO_LOCAL_WINDOW_MODE must be resizable or fullscreen' \
   <<<"$INVALID_WINDOW_OUTPUT" \
   || fail 'invalid local-window mode did not fail at validation'
+
+set +e
+INVALID_WINDOW_DIAG_OUTPUT="$(HAILO_WINDOW_DIAG=2 "$HELPER" --preflight-only 2>&1)"
+INVALID_WINDOW_DIAG_RC=$?
+set -e
+[ "$INVALID_WINDOW_DIAG_RC" -ne 0 ] || fail 'invalid window diagnostic mode was accepted'
+grep -Fq 'HAILO_WINDOW_DIAG must be 0 or 1' \
+  <<<"$INVALID_WINDOW_DIAG_OUTPUT" \
+  || fail 'invalid window diagnostic mode did not fail at validation'
 
 set +e
 INVALID_FINAL_VERIFY_OUTPUT="$(LIVE_FINAL_VERIFY_SECONDS=0 "$HELPER" --preflight-only 2>&1)"

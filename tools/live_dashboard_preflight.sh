@@ -6,8 +6,10 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 DASHBOARD_DIR="$REPO_ROOT/web_dashboard/autoboat"
 HELPER="$SCRIPT_DIR/pi_live_hailo_mavlink_dashboard.sh"
-EXPECTED_HELPER_SHA256='10bb75e453dd86cc68bd217a078f40e2b4318e324d89de35f274563955435e50'
+EXPECTED_HELPER_SHA256='82e15bede13888fa33829ad5c16ddbcc23a3351a82996679fcc79ffb6fa9af07'
 EXPECTED_SSID="${LIVE_SSID:-IoT IMT Nord Europe}"
+PI_WINDOW_MODE="${LIVE_PI_WINDOW_MODE:-fullscreen}"
+PI_WINDOW_DIAG="${LIVE_PI_WINDOW_DIAG:-0}"
 ROS_SETUP='/opt/ros/jazzy/setup.bash'
 LIVE_DOMAIN_ID='12'
 WORKSTATION_LOG_ROOT="${LIVE_DASHBOARD_LOG_ROOT:-$HOME/Desktop}"
@@ -138,6 +140,13 @@ record_stop_trigger() {
 fail() {
   log_error "FAIL: $*"
   exit 1
+}
+
+validate_pi_window_selectors() {
+  [[ "$PI_WINDOW_MODE" =~ ^(resizable|fullscreen)$ ]] \
+    || fail 'LIVE_PI_WINDOW_MODE must be resizable or fullscreen'
+  [[ "$PI_WINDOW_DIAG" =~ ^[01]$ ]] \
+    || fail 'LIVE_PI_WINDOW_DIAG must be 0 or 1'
 }
 
 usage() {
@@ -274,6 +283,7 @@ run_workstation_static_gate() {
 run_workstation_runtime_preflight() {
   local command
 
+  validate_pi_window_selectors
   for command in awk bash curl date grep ip mkdir nmcli pgrep ps python3 \
     setsid sha256sum ss tee tr; do
     require_command "$command"
@@ -485,17 +495,27 @@ start_workstation_services() {
 }
 
 print_pi_command() {
-  printf '\nPi P1: paste this single compound command\n'
+  validate_pi_window_selectors
+  printf '\nPi P1: paste this single compound command'
+  printf ' (window_mode=%s diagnostics=%s)\n' "$PI_WINDOW_MODE" "$PI_WINDOW_DIAG"
   printf '(\n'
   printf '  set -euo pipefail\n'
-  printf '  cd ~/hailo_coco_overlay_2026-07-10\n'
-  printf "  printf '%%s  %%s\\n' '%s' 'pi_live_hailo_mavlink_dashboard.sh' | sha256sum -c -\n" \
+  printf '  PI_HOME="$(readlink -f -- "$HOME")" || { echo "home-resolve-failed"; exit 2; }\n'
+  printf '  { [ -n "$PI_HOME" ] && [ -d "$PI_HOME" ]; } || { echo "home-invalid"; exit 2; }\n'
+  printf '  PI_DESKTOP="$(xdg-user-dir DESKTOP)" || { echo "desktop-resolve-failed"; exit 2; }\n'
+  printf '  PI_DESKTOP="$(readlink -f -- "$PI_DESKTOP")" || { echo "desktop-canonicalize-failed"; exit 2; }\n'
+  printf '  { [ -n "$PI_DESKTOP" ] && [ -d "$PI_DESKTOP" ]; } || { echo "desktop-invalid"; exit 2; }\n'
+  printf '  [ "$PI_DESKTOP" != "$PI_HOME" ] || { echo "desktop-not-dedicated"; exit 2; }\n'
+  printf '  PI_RUNTIME_ROOT="$PI_HOME/hailo_coco_overlay_2026-07-10"\n'
+  printf '  PI_HELPER="$PI_DESKTOP/pi_live_hailo_mavlink_dashboard.sh"\n'
+  printf '  cd "$PI_RUNTIME_ROOT"\n'
+  printf "  printf '%%s  %%s\\\\n' '%s' \"\$PI_HELPER\" | sha256sum -c -\n" \
     "$EXPECTED_HELPER_SHA256"
-  printf '  chmod +x pi_live_hailo_mavlink_dashboard.sh\n'
+  printf '  chmod +x "$PI_HELPER"\n'
   printf "  printf 'PI_TEMP_START_MC='\n"
   printf '  cat /sys/class/thermal/thermal_zone0/temp\n'
-  printf '  exec env WORKSTATION_IP=%q LIVE_SSID=%q LIVE_HOLD_AFTER_WINDOW=1 HAILO_LOCAL_DISPLAY=1 HAILO_LOCAL_WINDOW_MODE=fullscreen ./pi_live_hailo_mavlink_dashboard.sh\n' \
-    "$WORKSTATION_IP" "$EXPECTED_SSID"
+  printf '  exec env WORKSTATION_IP=%q LIVE_SSID=%q LIVE_HOLD_AFTER_WINDOW=1 HAILO_DEMO_ROOT="$PI_RUNTIME_ROOT" HAILO_LOCAL_DISPLAY=1 HAILO_LOCAL_WINDOW_MODE=%q HAILO_WINDOW_DIAG=%q "$PI_HELPER"\n' \
+    "$WORKSTATION_IP" "$EXPECTED_SSID" "$PI_WINDOW_MODE" "$PI_WINDOW_DIAG"
   printf ')\n\n'
 }
 

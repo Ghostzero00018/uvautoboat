@@ -19,6 +19,7 @@ HOLD_AFTER_WINDOW="${LIVE_HOLD_AFTER_WINDOW:-0}"
 FINAL_VERIFY_SECONDS="${LIVE_FINAL_VERIFY_SECONDS:-90}"
 LOCAL_DISPLAY="${HAILO_LOCAL_DISPLAY:-0}"
 LOCAL_WINDOW_MODE="${HAILO_LOCAL_WINDOW_MODE:-resizable}"
+WINDOW_DIAG="${HAILO_WINDOW_DIAG:-0}"
 ABORT_MC="${HAILO_DEMO_ABORT_MC:-80000}"
 POLL_S="${LIVE_POLL_SECONDS:-2}"
 STREAM_HEIGHT="${HAILO_STREAM_HEIGHT:-240}"
@@ -34,6 +35,7 @@ IMAGE_TOPIC='/hailo/overlay/image_raw'
 
 RUN_ID="$(date +%Y%m%d_%H%M%S)"
 RUN_DIR="$ROOT/logs/live_dashboard_$RUN_ID"
+WINDOW_DIAG_LABEL_FILE="$RUN_DIR/window_diag_label.txt"
 HAILO_WRAPPER="$RUN_DIR/hailo_ros_wrapper.py"
 SAFETY_MONITOR="$RUN_DIR/dashboard_safety_monitor.py"
 THERMAL_WATCHDOG="$RUN_DIR/thermal_watchdog.sh"
@@ -1045,6 +1047,8 @@ esac
   || die 'HAILO_LOCAL_DISPLAY must be 0 or 1'
 [[ "$LOCAL_WINDOW_MODE" =~ ^(resizable|fullscreen)$ ]] \
   || die 'HAILO_LOCAL_WINDOW_MODE must be resizable or fullscreen'
+[[ "$WINDOW_DIAG" =~ ^[01]$ ]] \
+  || die 'HAILO_WINDOW_DIAG must be 0 or 1'
 [[ "$ABORT_MC" =~ ^[1-9][0-9]*$ ]] || die 'HAILO_DEMO_ABORT_MC must be a positive integer'
 [[ "$POLL_S" =~ ^[1-9][0-9]*$ ]] || die 'LIVE_POLL_SECONDS must be a positive integer'
 [[ "$STREAM_HEIGHT" =~ ^[1-9][0-9]*$ ]] || die 'HAILO_STREAM_HEIGHT must be a positive integer'
@@ -1060,6 +1064,11 @@ if [ "$PREFLIGHT_ONLY" -eq 0 ]; then
   if ! : >"$SUPERVISOR_LOG"; then
     SUPERVISOR_LOG=''
     die "cannot create Pi supervisor lifecycle log: $RUN_DIR/supervisor.log"
+  fi
+  if [ "$WINDOW_DIAG" -eq 1 ]; then
+    printf 'awaiting-checkpoint\n' >"$WINDOW_DIAG_LABEL_FILE" \
+      || die "cannot create window diagnostic label file: $WINDOW_DIAG_LABEL_FILE"
+    log "HAILO_WINDOW_DIAG=ENABLED cadence_callbacks=30 fullscreen_offsets=early,30,90 label_file=$WINDOW_DIAG_LABEL_FILE evidence_log=$HAILO_LOG"
   fi
   PEAK_TEMP=0
   trap cleanup EXIT
@@ -1213,10 +1222,15 @@ publisher = node.create_publisher(
 original_visualize = detector.visualize
 state = {"last_publish_ns": 0, "count": 0}
 window_name = "Output"
+window_diag_enabled = os.environ["HAILO_WINDOW_DIAG"] == "1"
+window_diag_label_file = os.environ["HAILO_WINDOW_DIAG_LABEL_FILE"]
+window_diag_cadence = 30
 window_state = {
     "callback_count": 0,
     "fullscreen_pending": False,
     "rect_pending": False,
+    "diag_callback_count": 0,
+    "fullscreen_request_callback": None,
 }
 
 
@@ -1258,6 +1272,126 @@ def configure_local_window(visualization_settings):
     )
 
 
+def read_window_diag_label(callback_count):
+    try:
+        with open(window_diag_label_file, encoding="utf-8") as stream:
+            raw_label = stream.read(66)
+    except (OSError, UnicodeError) as exc:
+        print(
+            "HAILO_WINDOW_DIAG=ERROR mode=resizable label=UNAVAILABLE "
+            f"callback={callback_count} field=label error={type(exc).__name__}",
+            flush=True,
+        )
+        return "UNAVAILABLE"
+
+    label = raw_label.rstrip("\n")
+    valid_label = (
+        raw_label in (label, f"{label}\n")
+        and 1 <= len(label) <= 64
+        and label.isascii()
+        and label[0].isalnum()
+        and all(character.isalnum() or character in "._-" for character in label)
+    )
+    if not valid_label:
+        print(
+            "HAILO_WINDOW_DIAG=ERROR mode=resizable label=UNAVAILABLE "
+            f"callback={callback_count} field=label error=InvalidLabel",
+            flush=True,
+        )
+        return "UNAVAILABLE"
+    return label
+
+
+def read_window_diag_field(mode, label, callback_count, field, reader):
+    try:
+        return reader()
+    except Exception as exc:
+        print(
+            f"HAILO_WINDOW_DIAG=ERROR mode={mode} label={label} "
+            f"callback={callback_count} field={field} "
+            f"error={type(exc).__name__}",
+            flush=True,
+        )
+        return "UNAVAILABLE"
+
+
+def emit_window_diag(label, rect_value=None, rect_error=None):
+    mode = os.environ["HAILO_LOCAL_WINDOW_MODE"]
+    callback_count = window_state["diag_callback_count"]
+    if mode == "resizable":
+        label = read_window_diag_label(callback_count)
+
+    if rect_error is not None:
+        print(
+            f"HAILO_WINDOW_DIAG=ERROR mode={mode} label={label} "
+            f"callback={callback_count} field=rect error={rect_error}",
+            flush=True,
+        )
+        rect = "UNAVAILABLE"
+    elif rect_value is not None:
+        rect = rect_value
+    else:
+        def read_rect():
+            x, y, width, height = cv2.getWindowImageRect(window_name)
+            return f"{x},{y},{width},{height}"
+
+        rect = read_window_diag_field(
+            mode,
+            label,
+            callback_count,
+            "rect",
+            read_rect,
+        )
+
+    autosize = read_window_diag_field(
+        mode,
+        label,
+        callback_count,
+        "autosize",
+        lambda: cv2.getWindowProperty(window_name, cv2.WND_PROP_AUTOSIZE),
+    )
+    fullscreen = read_window_diag_field(
+        mode,
+        label,
+        callback_count,
+        "fullscreen",
+        lambda: cv2.getWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN),
+    )
+    aspect_ratio = read_window_diag_field(
+        mode,
+        label,
+        callback_count,
+        "aspect_ratio",
+        lambda: cv2.getWindowProperty(window_name, cv2.WND_PROP_ASPECT_RATIO),
+    )
+    print(
+        f"HAILO_WINDOW_DIAG=SAMPLE mode={mode} label={label} "
+        f"callback={callback_count} rect={rect} autosize={autosize} "
+        f"fullscreen={fullscreen} aspect_ratio={aspect_ratio}",
+        flush=True,
+    )
+
+
+def advance_window_diagnostics(visualization_settings):
+    if not window_diag_enabled or visualization_settings.no_display:
+        return
+
+    window_state["diag_callback_count"] += 1
+    callback_count = window_state["diag_callback_count"]
+    mode = os.environ["HAILO_LOCAL_WINDOW_MODE"]
+    if mode == "resizable":
+        if callback_count % window_diag_cadence == 0:
+            emit_window_diag("checkpoint")
+        return
+
+    request_callback = window_state["fullscreen_request_callback"]
+    if request_callback is None:
+        return
+    offset = callback_count - request_callback
+    if offset in (30, 90):
+        emit_window_diag(f"fs+{offset}")
+
+
 def advance_fullscreen_gate(visualization_settings):
     if visualization_settings.no_display:
         return
@@ -1286,6 +1420,10 @@ def advance_fullscreen_gate(visualization_settings):
             return
         window_state["fullscreen_pending"] = False
         window_state["rect_pending"] = True
+        if window_diag_enabled:
+            window_state["fullscreen_request_callback"] = window_state[
+                "diag_callback_count"
+            ]
         return
 
     if window_state["callback_count"] < 3:
@@ -1299,12 +1437,21 @@ def advance_fullscreen_gate(visualization_settings):
             f"error={type(exc).__name__}",
             flush=True,
         )
+        if window_diag_enabled:
+            emit_window_diag(
+                "fs-early",
+                rect_value="UNAVAILABLE",
+                rect_error=type(exc).__name__,
+            )
     else:
+        rect = f"{x},{y},{width},{height}"
         print(
             f"HAILO_LOCAL_WINDOW=READY mode=fullscreen name={window_name} "
-            f"rect={x},{y},{width},{height} source=getWindowImageRect",
+            f"rect={rect} source=getWindowImageRect",
             flush=True,
         )
+        if window_diag_enabled:
+            emit_window_diag("fs-early", rect_value=rect)
     window_state["rect_pending"] = False
 
 
@@ -1319,6 +1466,7 @@ def publishing_visualize(
     configure_local_window(visualization_settings)
 
     def callback_and_publish(*args, **kwargs):
+        advance_window_diagnostics(visualization_settings)
         advance_fullscreen_gate(visualization_settings)
         annotated_rgb = callback(*args, **kwargs)
         now_ns = time.monotonic_ns()
@@ -1652,6 +1800,8 @@ HAILO_ENV=(
   "HAILO_STREAM_HEIGHT=$STREAM_HEIGHT"
   "HAILO_STREAM_FPS=$STREAM_FPS"
   "HAILO_LOCAL_WINDOW_MODE=$LOCAL_WINDOW_MODE"
+  "HAILO_WINDOW_DIAG=$WINDOW_DIAG"
+  "HAILO_WINDOW_DIAG_LABEL_FILE=$WINDOW_DIAG_LABEL_FILE"
 )
 check_temperature pre-hailo
 check_power pre-hailo
