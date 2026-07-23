@@ -362,3 +362,8 @@ pushed.
 **Next step:** Follow
 `working_diary/2026-07-24_friday_dashboard_outbound_information_and_window_diag_trim.md`.
 Start with its read-only state/source audit; do not resume Pi-window measurement.
+
+**Rename note (added 24/07/2026):** the 24/07 file above was renamed to
+`working_diary/2026-07-24_friday_window_trim_and_dashboard_motor_command_prep.md` after a
+24/07 rescope (window research plus the first dashboard-to-motor command prep). Follow
+that file.
