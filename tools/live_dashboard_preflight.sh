@@ -6,10 +6,9 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 DASHBOARD_DIR="$REPO_ROOT/web_dashboard/autoboat"
 HELPER="$SCRIPT_DIR/pi_live_hailo_mavlink_dashboard.sh"
-EXPECTED_HELPER_SHA256='82e15bede13888fa33829ad5c16ddbcc23a3351a82996679fcc79ffb6fa9af07'
+EXPECTED_HELPER_SHA256='3c1c9c274ed18c955669d32cd9e7d0f90a2999ec927be79bd06dfefebca53072'
 EXPECTED_SSID="${LIVE_SSID:-IoT IMT Nord Europe}"
 PI_WINDOW_MODE="${LIVE_PI_WINDOW_MODE:-fullscreen}"
-PI_WINDOW_DIAG="${LIVE_PI_WINDOW_DIAG:-0}"
 ROS_SETUP='/opt/ros/jazzy/setup.bash'
 LIVE_DOMAIN_ID='12'
 WORKSTATION_LOG_ROOT="${LIVE_DASHBOARD_LOG_ROOT:-$HOME/Desktop}"
@@ -145,8 +144,6 @@ fail() {
 validate_pi_window_selectors() {
   [[ "$PI_WINDOW_MODE" =~ ^(resizable|fullscreen)$ ]] \
     || fail 'LIVE_PI_WINDOW_MODE must be resizable or fullscreen'
-  [[ "$PI_WINDOW_DIAG" =~ ^[01]$ ]] \
-    || fail 'LIVE_PI_WINDOW_DIAG must be 0 or 1'
 }
 
 usage() {
@@ -497,7 +494,7 @@ start_workstation_services() {
 print_pi_command() {
   validate_pi_window_selectors
   printf '\nPi P1: paste this single compound command'
-  printf ' (window_mode=%s diagnostics=%s)\n' "$PI_WINDOW_MODE" "$PI_WINDOW_DIAG"
+  printf ' (window_mode=%s)\n' "$PI_WINDOW_MODE"
   printf '(\n'
   printf '  set -euo pipefail\n'
   printf '  PI_HOME="$(readlink -f -- "$HOME")" || { echo "home-resolve-failed"; exit 2; }\n'
@@ -514,8 +511,8 @@ print_pi_command() {
   printf '  chmod +x "$PI_HELPER"\n'
   printf "  printf 'PI_TEMP_START_MC='\n"
   printf '  cat /sys/class/thermal/thermal_zone0/temp\n'
-  printf '  exec env WORKSTATION_IP=%q LIVE_SSID=%q LIVE_HOLD_AFTER_WINDOW=1 HAILO_DEMO_ROOT="$PI_RUNTIME_ROOT" HAILO_LOCAL_DISPLAY=1 HAILO_LOCAL_WINDOW_MODE=%q HAILO_WINDOW_DIAG=%q "$PI_HELPER"\n' \
-    "$WORKSTATION_IP" "$EXPECTED_SSID" "$PI_WINDOW_MODE" "$PI_WINDOW_DIAG"
+  printf '  exec env WORKSTATION_IP=%q LIVE_SSID=%q LIVE_HOLD_AFTER_WINDOW=1 HAILO_DEMO_ROOT="$PI_RUNTIME_ROOT" HAILO_LOCAL_DISPLAY=1 HAILO_LOCAL_WINDOW_MODE=%q "$PI_HELPER"\n' \
+    "$WORKSTATION_IP" "$EXPECTED_SSID" "$PI_WINDOW_MODE"
   printf ')\n\n'
 }
 

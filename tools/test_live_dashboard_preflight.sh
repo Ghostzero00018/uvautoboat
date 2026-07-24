@@ -32,13 +32,11 @@ extract_function() {
 [ -r "$PREFLIGHT" ] || fail "preflight script missing: $PREFLIGHT"
 bash -n "$PREFLIGHT"
 
-require_literal "EXPECTED_HELPER_SHA256='82e15bede13888fa33829ad5c16ddbcc23a3351a82996679fcc79ffb6fa9af07'"
+require_literal "EXPECTED_HELPER_SHA256='3c1c9c274ed18c955669d32cd9e7d0f90a2999ec927be79bd06dfefebca53072'"
 require_literal 'EXPECTED_SSID="${LIVE_SSID:-IoT IMT Nord Europe}"'
 require_literal 'PI_WINDOW_MODE="${LIVE_PI_WINDOW_MODE:-fullscreen}"'
-require_literal 'PI_WINDOW_DIAG="${LIVE_PI_WINDOW_DIAG:-0}"'
 require_literal 'validate_pi_window_selectors() {'
 require_literal 'LIVE_PI_WINDOW_MODE must be resizable or fullscreen'
-require_literal 'LIVE_PI_WINDOW_DIAG must be 0 or 1'
 require_literal 'reject_conflicting_processes workstation "${WORKSTATION_CONFLICT_PATTERNS[@]}"'
 require_literal 'reject_conflicting_processes Pi "${PI_CONFLICT_PATTERNS[@]}"'
 require_literal 'pgrep -af -- "$pattern"'
@@ -84,7 +82,7 @@ PI_COMMAND_OUTPUT="$(bash -c '
 PI_COMMAND_BLOCK="$(sed -n '/^($/,/^)$/{p}' <<<"$PI_COMMAND_OUTPUT")"
 [ -n "$PI_COMMAND_BLOCK" ] || fail 'printed Pi command block missing'
 bash -n <<<"$PI_COMMAND_BLOCK"
-grep -Fq '82e15bede13888fa33829ad5c16ddbcc23a3351a82996679fcc79ffb6fa9af07' \
+grep -Fq '3c1c9c274ed18c955669d32cd9e7d0f90a2999ec927be79bd06dfefebca53072' \
   <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not verify the helper pin'
 grep -Fq 'LIVE_HOLD_AFTER_WINDOW=1' <<<"$PI_COMMAND_BLOCK" \
@@ -93,8 +91,6 @@ grep -Fq 'HAILO_LOCAL_DISPLAY=1' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not enable the Pi desktop Hailo window'
 grep -Fq 'HAILO_LOCAL_WINDOW_MODE=fullscreen' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not select fullscreen Hailo presentation'
-grep -Fq 'HAILO_WINDOW_DIAG=0' <<<"$PI_COMMAND_BLOCK" \
-  || fail 'default Pi command does not keep window diagnostics disabled'
 grep -Fq 'xdg-user-dir DESKTOP' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not resolve the Pi Desktop'
 grep -Fq '[ -n "$PI_HOME" ] && [ -d "$PI_HOME" ]' <<<"$PI_COMMAND_BLOCK" \
@@ -110,7 +106,7 @@ grep -Fq 'HAILO_DEMO_ROOT="$PI_RUNTIME_ROOT"' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not preserve the Hailo runtime root'
 grep -Fq '"$PI_HELPER"' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not execute the absolute Desktop helper'
-grep -Fq "\\n' '82e15bede13888fa33829ad5c16ddbcc23a3351a82996679fcc79ffb6fa9af07' \"\$PI_HELPER\" | sha256sum -c -" \
+grep -Fq "\\n' '3c1c9c274ed18c955669d32cd9e7d0f90a2999ec927be79bd06dfefebca53072' \"\$PI_HELPER\" | sha256sum -c -" \
   <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi checksum format contains a literal line break'
 ! grep -Fq './pi_live_hailo_mavlink_dashboard.sh' <<<"$PI_COMMAND_BLOCK" \
@@ -123,7 +119,6 @@ grep -Fq 'LIVE_SSID=IoT\ IMT\ Nord\ Europe' <<<"$PI_COMMAND_BLOCK" \
 PI_COMMAND_OVERRIDE_OUTPUT="$(
   LIVE_SSID="Test Lab's IoT" \
   LIVE_PI_WINDOW_MODE=resizable \
-  LIVE_PI_WINDOW_DIAG=1 \
   bash -c '
   source "$1"
   WORKSTATION_IP=192.0.2.10
@@ -136,34 +131,11 @@ grep -Fq "LIVE_SSID=$EXPECTED_OVERRIDE_QUOTED" <<<"$PI_COMMAND_OVERRIDE_BLOCK" \
   || fail 'printed Pi command did not shell-quote the SSID override'
 grep -Fq 'HAILO_LOCAL_WINDOW_MODE=resizable' <<<"$PI_COMMAND_OVERRIDE_BLOCK" \
   || fail 'printed Pi command did not carry the resizable selector'
-grep -Fq 'HAILO_WINDOW_DIAG=1' <<<"$PI_COMMAND_OVERRIDE_BLOCK" \
-  || fail 'printed Pi command did not enable diagnostics'
-
-PI_COMMAND_FULLSCREEN_DIAG_OUTPUT="$(
-  LIVE_PI_WINDOW_MODE=fullscreen \
-  LIVE_PI_WINDOW_DIAG=1 \
-  bash -c '
-  source "$1"
-  WORKSTATION_IP=192.0.2.11
-  print_pi_command
-' _ "$PREFLIGHT")"
-PI_COMMAND_FULLSCREEN_DIAG_BLOCK="$(
-  sed -n '/^($/,/^)$/{p}' <<<"$PI_COMMAND_FULLSCREEN_DIAG_OUTPUT"
-)"
-bash -n <<<"$PI_COMMAND_FULLSCREEN_DIAG_BLOCK"
-grep -Fq 'HAILO_LOCAL_WINDOW_MODE=fullscreen' \
-  <<<"$PI_COMMAND_FULLSCREEN_DIAG_BLOCK" \
-  || fail 'printed Pi command did not carry the fullscreen diagnostic selector'
-grep -Fq 'HAILO_WINDOW_DIAG=1' <<<"$PI_COMMAND_FULLSCREEN_DIAG_BLOCK" \
-  || fail 'printed fullscreen command did not enable diagnostics'
-
-for invalid_case in 'stretch:0:LIVE_PI_WINDOW_MODE' \
-  'fullscreen:2:LIVE_PI_WINDOW_DIAG'; do
-  IFS=: read -r bad_mode bad_diag expected_error <<<"$invalid_case"
+for invalid_case in 'stretch:LIVE_PI_WINDOW_MODE'; do
+  IFS=: read -r bad_mode expected_error <<<"$invalid_case"
   set +e
   INVALID_SELECTOR_OUTPUT="$(
     LIVE_PI_WINDOW_MODE="$bad_mode" \
-    LIVE_PI_WINDOW_DIAG="$bad_diag" \
     bash -c '
       source "$1"
       WORKSTATION_IP=192.0.2.12
@@ -180,7 +152,6 @@ for invalid_case in 'stretch:0:LIVE_PI_WINDOW_MODE' \
   set +e
   INVALID_RUNTIME_SELECTOR_OUTPUT="$(
     LIVE_PI_WINDOW_MODE="$bad_mode" \
-    LIVE_PI_WINDOW_DIAG="$bad_diag" \
     bash -c '
       source "$1"
       run_workstation_runtime_preflight

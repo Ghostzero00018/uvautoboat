@@ -379,13 +379,12 @@ The whole repo is expected to run on the Pi 5. Long-term (Phase 5.2+): QGC and t
 
 ## 🎯 Next Priorities
 
-1. **Trim the Pi-window diagnostics, then define a safe live dashboard outbound path**:
-   remove the measurement-only flag, labels, geometry/property samples, delayed
-   fullscreen samples, selectors, tests, and active runbook procedure while preserving
-   normal Pi-local display, one camera/inference/publisher path, and the Pi Desktop helper
-   destination. Then identify the exact information payload, recipient, transport,
-   rate/QoS, acknowledgement, timeout, and failure semantics before implementation. A
-   Pi-side ROS application and a low-level control box/FCU are different safety targets.
+1. **Live dashboard outbound command design path**:
+   design the next safe write-protocol contract now that Pi-window diagnostics have been
+   trimmed and normal Pi-local display is preserved. Define exact payload, recipient,
+   transport, rate/QoS, acknowledgement, timeout, and failure semantics before any
+   enabled-write implementation. A Pi-side ROS application and a low-level control
+   box/FCU are different safety targets.
    Keep `LIVE_MAVLINK_VIEW_ONLY=true` until a separately approved outbound contract
    exists; no actuator, arming, mode, thrust, mission, or direct serial/MAVLink write is
    implied.

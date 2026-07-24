@@ -2,7 +2,8 @@
 
 ## Status
 
-Prepared at EOD 23/07/2026; rescoped 23/07/2026 EOD. Not started. Two tracks. Track 1
+Prepared at EOD 23/07/2026; rescoped 23/07/2026 EOD. Track 1 window trim landed and
+validated (see Execution log); Track 2 not started. Two tracks. Track 1
 trims the Pi-window measurement instrumentation, then pursues the scaling question only
 through forum/documentation research plus at most one small standalone Pi helper. Track 2
 prepares the first dashboard-to-real-motor command: confirm the real motor path first,
@@ -200,8 +201,49 @@ mission, parameter, E-Stop-release, and any second motor stay out of this first 
 - No broad dashboard/Hailo refactor, package installation, live hardware run, commit, or
   push without separate approval.
 
+## Execution log - 24/07/2026
+
+Block A (read-only audit) and Block B (window trim) are complete and documentation is
+updated. The Pi-window measurement instrumentation added on 23/07/2026 is removed while the
+operational display path is unchanged.
+
+- **Trim landed.** Removed `HAILO_WINDOW_DIAG` with its validation and environment
+  propagation, the checkpoint-label file, the diagnostic state and functions
+  (`read_window_diag_label`, `read_window_diag_field`, `emit_window_diag`,
+  `advance_window_diagnostics`), the periodic and delayed rectangle/property sample
+  emitters, and the `LIVE_PI_WINDOW_DIAG` selector with its measurement-only preflight
+  cases. Retained the `HAILO_LOCAL_WINDOW_MODE` contract, the fullscreen gate and its
+  `setWindowProperty` activation, and the `HAILO_LOCAL_WINDOW` lifecycle markers.
+- **Post-trim revisions** (recomputed; pins aligned across the helper, the preflight
+  constant, the preflight tests, and the wiki manifest):
+
+  | Item | Size | SHA-256 |
+  | --- | ---: | --- |
+  | `tools/pi_live_hailo_mavlink_dashboard.sh` | `61,427` bytes | `3c1c9c274ed18c955669d32cd9e7d0f90a2999ec927be79bd06dfefebca53072` |
+  | `tools/live_dashboard_preflight.sh` | `28,647` bytes | `39406e88e182125d9c088be4f4fdece239529938009b82f3c85cb268f322a4c0` |
+
+- **Documentation.** `wiki/Live_Hailo_MAVLink_Dashboard_Testing.md` and `Board.md` updated:
+  the retired selectors are removed from active commands, a retired-measurement section is
+  kept for traceability, and the helper/supervisor size and SHA-256 manifest is refreshed.
+
+### Pipeline 1 - workstation preflight: PASS
+
+`tools/live_dashboard_preflight.sh workstation`, 24/07/2026:
+
+- helper lifecycle/local-window contract regression: PASS;
+- live-dashboard preflight contract regression: PASS (`cases=13`);
+- dashboard unit tests: `31` pass, `0` fail, `0` skipped;
+- helper checksum pin verified against the tracked value: `OK`;
+- `W1_PREFLIGHT=PASS tests=dashboard,helper,preflight ports=8002,8080,9090`.
+
+Workstation identity for the live run: `workstation_ipv4=10.120.2.243 dev=wlp147s0
+ssid=IoT IMT Nord Europe`; the Pi endpoint is `10.120.2.249` on the same subnet and SSID.
+This preflight started no live services.
+
 ## Next step
 
-Start Block A only: reconfirm state at `a2f5f5c`, then produce the exact window-trim list
-and the motor-path confirmation checklist. Do not edit code, run live hardware, or send
-any command until the next gate is approved.
+Blocks A and B are complete and the workstation preflight is green. Next is the user-run
+live dashboard run across the two terminals to validate the trimmed helper end to end
+under view-only, then Block C read-only motor-path confirmation. Do not send any vehicle
+command until Block C confirms a real path and the bench-safe, propellers-removed gate is
+separately approved.
