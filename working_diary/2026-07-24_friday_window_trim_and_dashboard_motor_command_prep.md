@@ -3,7 +3,9 @@
 ## Status
 
 Prepared at EOD 23/07/2026; rescoped 23/07/2026 EOD. Track 1 window trim landed and
-validated (see Execution log); Track 2 not started. Two tracks. Track 1
+validated (see Execution log); Track 2 reached Block C - no software path to a real motor,
+real FCU identified (Cube Orange+ / ArduRover 4.6.3), parked on a receive-only Pi-to-FCU
+serial link. Two tracks. Track 1
 trims the Pi-window measurement instrumentation, then pursues the scaling question only
 through forum/documentation research plus at most one small standalone Pi helper. Track 2
 prepares the first dashboard-to-real-motor command: confirm the real motor path first,
@@ -240,10 +242,100 @@ Workstation identity for the live run: `workstation_ipv4=10.120.2.243 dev=wlp147
 ssid=IoT IMT Nord Europe`; the Pi endpoint is `10.120.2.249` on the same subnet and SSID.
 This preflight started no live services.
 
+### Pipeline 2 - full live run: PASS
+
+`tools/live_dashboard_preflight.sh run` with the Pi helper launched on the Pi desktop,
+24/07/2026 (workstation run `live_dashboard_workstation_20260724_155258`, Pi run
+`live_dashboard_20260724_155331`):
+
+- `WORKSTATION_RUNTIME_PREFLIGHT=PASS`, `WORKSTATION_SERVICES=UP ports=8002,8080,9090`;
+- `PI_DATA_ARRIVED=PASS topics=6`; `W5_RATE_PROBES=PASS topics=6` (overlay ~7.5 Hz, the five
+  MAVROS telemetry topics ~1 Hz each);
+- Hailo overlay window visible on the Pi desktop; dashboard telemetry live and view-only;
+- ordered teardown: `WORKSTATION_TEARDOWN=PASS`, `SUPERVISOR_EXIT status=0`.
+
+The trimmed helper runs end to end. The Pi window defaults to fullscreen; the operator
+launcher now selects `HAILO_LOCAL_WINDOW_MODE=resizable` so the window can be resized on the
+Pi desktop (resizable keeps aspect ratio, so some letterboxing is expected and benign).
+
+### Block C - real command/motor path (read-only)
+
+No software path currently reaches a physical motor:
+
+- `/wamv/thrusters/{left,right}/thrust` (`std_msgs/Float64`, Newtons) is published by the
+  `heading_controller` node (`control` package) and consumed only by the VRX Gazebo thruster
+  plugin. It is a simulation topic; on real hardware nothing subscribes it to drive a motor.
+- The real-hardware translator in `launch/remap.launch.yaml` Layer B (`pkg: bridge`,
+  `low_level_bridge_node`) is an unbuilt stub; the `bridge` package does not exist and
+  `use_real_hardware:=true` aborts the launch.
+- MAVROS on the Pi runs a bounded telemetry allowlist (`sys_status`, `global_position`,
+  `imu`, `rc_io`); command/setpoint/actuator plugins are not loaded. It reads
+  state/GPS/IMU/battery/RC and asserts connected + disarmed.
+- The Pi safety monitor subscribes to all five command topics (`/planning/mission_command`,
+  `/planning/set_config`, `/planning/emergency_stop`, both `/wamv/thrusters/*`) and aborts the
+  run on any traffic, and on FCU arm/disconnect.
+- The dashboard guard `LIVE_MAVLINK_VIEW_ONLY=true` blocks every dashboard publish/service
+  call at the send boundary; there is no per-action allowlist.
+
+Per the Block C gate, with no real path confirmed, Block D stays design-only and Block E does
+not proceed.
+
+### Real FCU hardware (confirmed from stored ground-station telemetry)
+
+The vehicle flight controller was identified from stored QGroundControl/Mission Planner
+captures on the workstation (`~/Documents/QGroundControl/Telemetry/*.tlog`, 988 parameters):
+
+- FCU: `Cube Orange+` running `ArduRover 4.6.3`; `FRAME_CLASS=2` (boat, skid-steer),
+  `MAV_TYPE=11` surface boat.
+- Thruster outputs are the FCU servo rail, not `/wamv/thrusters`: LEFT = `SERVO3`
+  (`SERVO3_FUNCTION=73` ThrottleLeft), RIGHT = `SERVO1` (`SERVO1_FUNCTION=74` ThrottleRight);
+  both PWM 800-2200 us, neutral 800, not reversed. ESC = normal PWM (`MOT_PWM_TYPE=0`).
+- All flight modes = MANUAL (mode on RC ch8); `RCMAP_THROTTLE=3`
+  (RC3 min 1102 / trim 1515 / max 1927), steering on ch1.
+- Arming: `ARMING_REQUIRE=1` (must arm to output), `ARMING_CHECK=0`; the Cube hardware safety
+  switch (`BRD_SAFETY_DEFLT=1`) must be released before any output.
+- The Pi's `/dev/ttyAMA0` @57600 is the FCU's `SERIAL1` (`PROTOCOL=2` MAVLink2, `OPTIONS=0`,
+  flow control `BRD_SER1_RTSCTS=2`).
+
+The real single-motor command path is therefore an ArduRover servo output via the FCU (arm +
+MANUAL + RC/throttle, or a motor test), which requires arming - the stated non-goal and the
+Pi safety monitor's abort trigger.
+
+### Blocker - the Pi-to-FCU serial link is receive-only
+
+A read-only link check found the Pi can receive from the FCU but cannot send to it:
+
+- The Pi receives heartbeats and servo-output telemetry over `/dev/ttyAMA0`, but the FCU
+  returns nothing to anything the Pi sends: `param_request_read`, `MAV_CMD_REQUEST_MESSAGE`,
+  and `MAV_CMD_DO_MOTOR_TEST` all get zero `PARAM_VALUE`/`COMMAND_ACK` (tried broadcast and
+  component 1). A motor test left both servo channels at neutral 800.
+- Arming via Herelink succeeds, so the FCU accepts commands - only the Pi's transmit
+  direction is dead.
+- The FCU `SERIAL1` is configured to accept commands, and the Pi UART is correctly enabled
+  (Pi 5, `enable_uart=1`, `disable-bt`, `uart0` overlay, no serial console/getty on the port,
+  TX DMA allocated). The fault is downstream of both: most likely the physical
+  `Pi TXD (GPIO14) -> Cube SERIAL1 RX` wire is not connected (common in a telemetry-monitor
+  build), or `BRD_SER1_RTSCTS=2` flow control on a 3-wire link.
+
+This blocks any dashboard-to-FCU command over the Pi path regardless of software. The only
+working command path to the FCU today is the Herelink/ground station.
+
+### Decision at EOD 24/07/2026
+
+The first dashboard-to-real-motor command and the dashboard outbound-write feature are
+parked as-is. They are gated behind (a) a bidirectional Pi-to-FCU link - a wiring/parameter
+fix at the boat - and (b) the separate arming and propellers-removed bench-safe decision. No
+dashboard write path, view-only guard, or safety monitor was changed today. The window and
+telemetry stack is unaffected and verified (Pipeline 1 + Pipeline 2). Long operator commands
+were delivered to the Pi desktop as an scp'd launcher file (the workstation-to-Pi remote
+desktop clipboard was unreliable for large pastes).
+
 ## Next step
 
-Blocks A and B are complete and the workstation preflight is green. Next is the user-run
-live dashboard run across the two terminals to validate the trimmed helper end to end
-under view-only, then Block C read-only motor-path confirmation. Do not send any vehicle
-command until Block C confirms a real path and the bench-safe, propellers-removed gate is
+Blocks A-C are complete; the window/telemetry stack is trimmed, verified end to end, and
+committed. The dashboard-to-real-motor track is blocked on a receive-only Pi-to-FCU serial
+link. To unblock: confirm/repair the `Pi TXD (GPIO14) -> Cube SERIAL1 RX` wire and/or set
+`BRD_SER1_RTSCTS=0`, then re-check that the Pi can read a parameter back from the FCU. Do not
+enable any dashboard write path, arm the FCU, or run a real motor test until that link is
+bidirectional, Block D's design is reviewed, and the propellers-removed bench-safe gate is
 separately approved.
