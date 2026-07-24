@@ -66,7 +66,7 @@ Window outcome tracking remains through `HAILO_LOCAL_WINDOW` markers:
 `READY`, `FALLBACK_HEADLESS`, `FALLBACK_RESIZABLE`, and `EVIDENCE_UNAVAILABLE`.
 The removed measurement-only selectors are not part of current runtime commands.
 
-In fullscreen mode, the wrapper waits for the first upstream `imshow` and `waitKey` 
+In fullscreen mode, the wrapper waits for the first upstream `imshow` and `waitKey`
 cycle before requesting fullscreen, then reads the image rectangle after the next GUI
 cycle. Static tests cover this ordering, resizable/headless modes, marker transitions,
 callback-rate behavior, request-failure suppression, and defensive read failures. An

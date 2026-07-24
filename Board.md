@@ -56,6 +56,12 @@
 > (Herelink commands work) — so the dashboard-to-motor path is blocked at the link. The
 > motor / outbound-write track is parked pending that link and a separate bench-safe
 > arming decision.
+>
+> **Carried-forward known issue (top follow-up, 03/08/2026):** the supervisor's
+> `ros2 --no-daemon --spin-time 2` graph/source queries are slow and intermittently misreport -
+> the final-verification budget overran (worked around `90 -> 180 s`) and a live-hold check read
+> a false `publisher count 0` on `/mavros/imu/data` while telemetry was healthy. Harden those
+> queries next; see `working_diary/2026-08-03_monday_ros2_graph_query_hardening.md`.
 
 ---
 
@@ -483,7 +489,7 @@ Current position ──────>│  (in Planner)       │
 
 ## 📜 Acknowledgments
 
-**Document Version**: 9.43 | **Last Updated**: 24/07/2026
+**Document Version**: 9.44 | **Last Updated**: 24/07/2026
 
 **Maintained By**: AutoBoat Development Team
 

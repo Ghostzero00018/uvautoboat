@@ -351,13 +351,31 @@ keeping a bounded failure. The helper checksum was re-pinned across the prefligh
 preflight tests, and the wiki manifest; both test suites pass. A deeper follow-up - trimming or
 speeding up the graph-verification CLI cost - is left open.
 
+### Third full-stack run - final-verify fix confirmed; hold-monitor false-0 noted
+
+A third run at 18:42 (`live_dashboard_20260724_184228`) confirmed the budget fix: the Pi reached
+`PI_SOURCE_WINDOW=COMPLETE` with `final_verification=116s` (above the old 90 s, comfortably below
+the new 180 s) and entered `PI_SOURCE_HOLD=ACTIVE`; the workstation teardown was clean
+(`status=0`). Later in the hold the Pi self-stopped with `status=1` on `STOP: MAVROS source
+endpoint failed after 3 attempts: /mavros/imu/data (publisher count 0)`. Cross-checking
+mavros.log shows this is a graph-discovery FALSE-0, not a real IMU drop: MAVROS and the IMU stream
+were healthy throughout (no IMU error, `GP: No GPS fix` warnings continuing normally, MAVROS alive
+until the supervisor's own teardown SIGINT that fired after the stop decision). The hold-monitor's
+`require_mavros_source` publisher-count check (`ros2 topic info --no-daemon`) intermittently
+misread the count. This shares one root with the final-verification slowness: the
+`--no-daemon --spin-time 2` graph queries are slow and occasionally misreport - carried forward as
+the top follow-up for 03/08.
+
 ## Next step
 
-Blocks A-C are complete; the window/telemetry stack is trimmed, verified end to end, and
-committed (final-verification budget raised to 180 s after an intermittent end-of-window
-timeout, see above). The dashboard-to-real-motor track is blocked on a receive-only Pi-to-FCU serial
-link. To unblock: confirm/repair the `Pi TXD (GPIO14) -> Cube SERIAL1 RX` wire and/or set
-`BRD_SER1_RTSCTS=0`, then re-check that the Pi can read a parameter back from the FCU. Do not
-enable any dashboard write path, arm the FCU, or run a real motor test until that link is
-bidirectional, Block D's design is reviewed, and the propellers-removed bench-safe gate is
-separately approved.
+The window/telemetry stack is trimmed, verified across three full-stack runs, and committed.
+**Vacation 25/07-02/08/2026; next work day Monday 03/08/2026** - see
+`working_diary/2026-08-03_monday_ros2_graph_query_hardening.md`. The top carried-forward item is
+hardening the `ros2 ... --no-daemon --spin-time 2` graph queries, which underlie both the
+final-verification slowness (worked around with the 180 s budget) and the hold-monitor's false
+`publisher count 0` on `/mavros/imu/data`. The dashboard-to-real-motor track stays parked on the
+receive-only Pi-to-FCU serial link (Cube Orange+ / ArduRover; SERVO3 left / SERVO1 right); to
+unblock, confirm/repair the `Pi TXD (GPIO14) -> Cube SERIAL1 RX` wire and/or set
+`BRD_SER1_RTSCTS=0`, then re-check the Pi can read a parameter back from the FCU. Do not enable a
+dashboard write path, arm the FCU, or run a real motor test until that link is bidirectional,
+Block D's design is reviewed, and the propellers-removed bench-safe gate is separately approved.
