@@ -330,10 +330,32 @@ telemetry stack is unaffected and verified (Pipeline 1 + Pipeline 2). Long opera
 were delivered to the Pi desktop as an scp'd launcher file (the workstation-to-Pi remote
 desktop clipboard was unreliable for large pastes).
 
+### EOD full-stack re-run and final-verification budget fix
+
+A second full-stack run at 17:58 (`live_dashboard_workstation_20260724_175822`,
+`live_dashboard_20260724_175832`) brought the whole stack up cleanly - `COMMAND_SENTINEL=PASS`,
+`MAVROS_STATE=PASS connected=true armed=false`, `MAVROS_TELEMETRY=PASS`,
+`PI_SOURCE_STACK_READY=PASS`, and workstation `PI_DATA_ARRIVED=PASS` + `W5_RATE_PROBES=PASS` -
+but the Pi supervisor then exited `status=1` with `STOP: final verification exceeded 90s during
+IMU-sample`. MAVROS was healthy throughout (only benign `GP: No GPS fix` and the FCU
+`AUTOPILOT_VERSION` timeout); the IMU stream did not drop. The cause was the end-of-window
+final-verification budget: that phase runs a connected/disarmed check, a full graph verification
+(`ros2 ... --no-daemon --spin-time 2` queries), and five bounded topic echoes under one shared
+90-second wall-clock deadline, and the cumulative `ros2` CLI work intermittently exceeds it (the
+IMU echo was simply where the clock ran out). Same intermittent as the 23/07 run (battery sample
+that time), not a regression from the window trim.
+
+Fix applied: `FINAL_VERIFY_SECONDS` default raised from `90` to `180` seconds
+(`LIVE_FINAL_VERIFY_SECONDS` still overrides), giving headroom for the cumulative CLI cost while
+keeping a bounded failure. The helper checksum was re-pinned across the preflight constant, the
+preflight tests, and the wiki manifest; both test suites pass. A deeper follow-up - trimming or
+speeding up the graph-verification CLI cost - is left open.
+
 ## Next step
 
 Blocks A-C are complete; the window/telemetry stack is trimmed, verified end to end, and
-committed. The dashboard-to-real-motor track is blocked on a receive-only Pi-to-FCU serial
+committed (final-verification budget raised to 180 s after an intermittent end-of-window
+timeout, see above). The dashboard-to-real-motor track is blocked on a receive-only Pi-to-FCU serial
 link. To unblock: confirm/repair the `Pi TXD (GPIO14) -> Cube SERIAL1 RX` wire and/or set
 `BRD_SER1_RTSCTS=0`, then re-check that the Pi can read a parameter back from the FCU. Do not
 enable any dashboard write path, arm the FCU, or run a real motor test until that link is

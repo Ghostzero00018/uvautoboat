@@ -34,8 +34,8 @@ trim before the next live-dashboard work.
 | --- | --- |
 | Helper source | `tools/pi_live_hailo_mavlink_dashboard.sh` |
 | Helper Pi destination | resolved Pi Desktop: `$(xdg-user-dir DESKTOP)/pi_live_hailo_mavlink_dashboard.sh` |
-| Helper size | `61,427` bytes |
-| Helper SHA-256 | `3c1c9c274ed18c955669d32cd9e7d0f90a2999ec927be79bd06dfefebca53072` |
+| Helper size | `61,428` bytes |
+| Helper SHA-256 | `04ea4fe9b82ac7689a87ca90e2df58101589b38a3238d0643efbfbb01e3ccf1a` |
 | Workstation supervisor | `tools/live_dashboard_preflight.sh` |
 | Supervisor size | `28,647` bytes |
 | Supervisor SHA-256 | `39406e88e182125d9c088be4f4fdece239529938009b82f3c85cb268f322a4c0` |
@@ -181,7 +181,7 @@ The finite Pi source window internally gives every ROS graph-list/info query and
 topic sample the same absolute deadline. Graph commands and topic-echo process trees are
 hard-stopped at the remaining budget; topic echoes also retain their cooperative message
 wait, capped by that budget. Deadline exhaustion hands the interrupted phase to a separate
-`90`-second final verification, which repeats required workstation nodes, forbidden
+`180`-second final verification, which repeats required workstation nodes, forbidden
 services and subscribers, the single Hailo publisher, all five MAVROS source identities,
 fresh image and telemetry samples, connected/disarmed state, temperature, and power.
 Final-verification exhaustion is fail-closed and cannot emit the source-window completion
@@ -199,7 +199,7 @@ D="$(xdg-user-dir DESKTOP)" || exit 1
 D="$(readlink -f -- "$D")" || exit 1
 [ -n "$D" ] && [ -d "$D" ] && [ "$D" != "$H" ] || exit 1
 printf '%s  %s\n' \
-  '3c1c9c274ed18c955669d32cd9e7d0f90a2999ec927be79bd06dfefebca53072' \
+  '04ea4fe9b82ac7689a87ca90e2df58101589b38a3238d0643efbfbb01e3ccf1a' \
   "$D/pi_live_hailo_mavlink_dashboard.sh" | sha256sum -c -
 ```
 
@@ -209,7 +209,7 @@ only the helper from a workstation terminal:
 ```bash
 cd ~/seal_ws/src/uvautoboat
 printf '%s  %s\n' \
-  '3c1c9c274ed18c955669d32cd9e7d0f90a2999ec927be79bd06dfefebca53072' \
+  '04ea4fe9b82ac7689a87ca90e2df58101589b38a3238d0643efbfbb01e3ccf1a' \
   tools/pi_live_hailo_mavlink_dashboard.sh | sha256sum -c -
 
 read -r -p 'Current Pi SSH endpoint (user@host): ' PI_SSH
@@ -226,7 +226,7 @@ scp tools/pi_live_hailo_mavlink_dashboard.sh \
 ssh "$PI_SSH" "
   cd '$PI_DESKTOP' &&
   printf '%s  %s\n' \
-    '3c1c9c274ed18c955669d32cd9e7d0f90a2999ec927be79bd06dfefebca53072' \
+    '04ea4fe9b82ac7689a87ca90e2df58101589b38a3238d0643efbfbb01e3ccf1a' \
     pi_live_hailo_mavlink_dashboard.sh |
   sha256sum -c -
 "
@@ -487,8 +487,8 @@ a clean Pi-first operator stop even when both cleanup markers pass.
 The `monitored` field covers the finite evidence window and its shared absolute query
 deadline. `final_verification` covers the complete fail-closed graph, fresh image,
 telemetry, connected/disarmed-state, temperature, and power checks performed before
-completion, with a separate `90`-second absolute deadline. `elapsed` is their combined
-wall time. Any `STOP: final verification exceeded 90s during ...` marker fails the run;
+completion, with a separate `180`-second absolute deadline. `elapsed` is their combined
+wall time. Any `STOP: final verification exceeded 180s during ...` marker fails the run;
 `PI_SOURCE_WINDOW=COMPLETE` must not follow it.
 
 ## Temperatures and log copy-back

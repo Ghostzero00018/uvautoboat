@@ -47,7 +47,7 @@ require_literal "die 'HAILO_LOCAL_DISPLAY must be 0 or 1'"
 require_literal 'LOCAL_WINDOW_MODE="${HAILO_LOCAL_WINDOW_MODE:-resizable}"'
 require_literal '[[ "$LOCAL_WINDOW_MODE" =~ ^(resizable|fullscreen)$ ]]'
 require_literal "die 'HAILO_LOCAL_WINDOW_MODE must be resizable or fullscreen'"
-require_literal 'FINAL_VERIFY_SECONDS="${LIVE_FINAL_VERIFY_SECONDS:-90}"'
+require_literal 'FINAL_VERIFY_SECONDS="${LIVE_FINAL_VERIFY_SECONDS:-180}"'
 require_literal '[[ "$FINAL_VERIFY_SECONDS" =~ ^[1-9][0-9]*$ ]]'
 require_literal "die 'LIVE_FINAL_VERIFY_SECONDS must be a positive integer'"
 require_literal 'for command in fuser ss setsid iwgetid ip install ros2 timeout; do'

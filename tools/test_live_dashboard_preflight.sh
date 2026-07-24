@@ -32,7 +32,7 @@ extract_function() {
 [ -r "$PREFLIGHT" ] || fail "preflight script missing: $PREFLIGHT"
 bash -n "$PREFLIGHT"
 
-require_literal "EXPECTED_HELPER_SHA256='3c1c9c274ed18c955669d32cd9e7d0f90a2999ec927be79bd06dfefebca53072'"
+require_literal "EXPECTED_HELPER_SHA256='04ea4fe9b82ac7689a87ca90e2df58101589b38a3238d0643efbfbb01e3ccf1a'"
 require_literal 'EXPECTED_SSID="${LIVE_SSID:-IoT IMT Nord Europe}"'
 require_literal 'PI_WINDOW_MODE="${LIVE_PI_WINDOW_MODE:-fullscreen}"'
 require_literal 'validate_pi_window_selectors() {'
@@ -82,7 +82,7 @@ PI_COMMAND_OUTPUT="$(bash -c '
 PI_COMMAND_BLOCK="$(sed -n '/^($/,/^)$/{p}' <<<"$PI_COMMAND_OUTPUT")"
 [ -n "$PI_COMMAND_BLOCK" ] || fail 'printed Pi command block missing'
 bash -n <<<"$PI_COMMAND_BLOCK"
-grep -Fq '3c1c9c274ed18c955669d32cd9e7d0f90a2999ec927be79bd06dfefebca53072' \
+grep -Fq '04ea4fe9b82ac7689a87ca90e2df58101589b38a3238d0643efbfbb01e3ccf1a' \
   <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not verify the helper pin'
 grep -Fq 'LIVE_HOLD_AFTER_WINDOW=1' <<<"$PI_COMMAND_BLOCK" \
@@ -106,7 +106,7 @@ grep -Fq 'HAILO_DEMO_ROOT="$PI_RUNTIME_ROOT"' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not preserve the Hailo runtime root'
 grep -Fq '"$PI_HELPER"' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not execute the absolute Desktop helper'
-grep -Fq "\\n' '3c1c9c274ed18c955669d32cd9e7d0f90a2999ec927be79bd06dfefebca53072' \"\$PI_HELPER\" | sha256sum -c -" \
+grep -Fq "\\n' '04ea4fe9b82ac7689a87ca90e2df58101589b38a3238d0643efbfbb01e3ccf1a' \"\$PI_HELPER\" | sha256sum -c -" \
   <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi checksum format contains a literal line break'
 ! grep -Fq './pi_live_hailo_mavlink_dashboard.sh' <<<"$PI_COMMAND_BLOCK" \
