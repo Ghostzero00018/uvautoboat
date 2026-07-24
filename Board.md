@@ -8,7 +8,7 @@
 |---|---|
 | **Project** | AutoBoat Navigation System |
 | **Repository** | [Ghostzero00018/uvautoboat](https://github.com/Ghostzero00018/uvautoboat) |
-| **Last Updated** | 22/07/2026 |
+| **Last Updated** | 24/07/2026 |
 | **Status** | 🟢 Simulation ready (A\* path planning + one-click launcher + wiki docs + dashboard config system + MP/QGC install). First wet test completed 07/05/2026: boat survived float/manual-control bring-up, Herelink manual control works, QGC/MP MAVLink arm/disarm works. Herelink video A/B campus side verified 11/05/2026 — Linux QGC video works via the `Source = Herelink Hotspot` preset and `ffplay rtsp://<herelink-ip>:8554/fpv_stream` independently confirms the underlying LIVE555 H.264 stream; Linux MP video + arm/disarm also working after a host-local SkiaSharp 2.88.8 NuGet swap + `~/MissionPlanner/libdl.so` → `libdl.so.2` symlink (11/05/2026 late-day fix, reversible — see `wiki/Common_Issues.md` MP-Linux entry); GDAL/OGR/OSR Mono gaps from 24/04 remain (terrain / advanced geo-ref still degraded) but no longer block the video panel. Second-site (lake) retest deferred to next field session. **22/06/2026 update:** workstation on `IMT-Aquatic-drone` again reached the Herelink RTSP endpoint (`rtsp://192.168.43.1:8554/fpv_stream`, LIVE555 H.264 1920×1080@30); TCP was clean while UDP showed packet loss, but the current video source was a Pi desktop / `rqt_image_view` screen capture after starting the Pi camera node, not a direct camera feed. Treat this as transport reachability plus a current source-regression finding, not dashboard-camera integration evidence. Pi 5 MAVLink telemetry path proven 04/06/2026 (`/mavros/state connected: true` via MAVProxy → MAVROS on the reconfigured ArduPilot endpoint; GPS fix / EKF config still open). Pi 5 RealSense camera display in the workstation dashboard was proven 18/06/2026 over `IoT IMT Nord Europe` using a camera-only `424x240x15` profile; this is camera display only, not command/write validation. Local dashboard/planner → QGC visual mission bridge accepted 10-11/06/2026 (`tools/qgc_live_mission_bridge.py` over `127.0.0.1:14550`) and observed under a Herelink-hotspot mixed-topology setup 17/06/2026; visual-only — real-FCU upload, bidirectional sync, and command/write validation remain open. |
 
 > **15/07/2026 live update:** the workstation dashboard simultaneously displayed
@@ -40,6 +40,22 @@
 > The image inside the Pi-local HighGUI `"Output"` window resizes only up to a
 > ceiling while that Pi window continues growing. This is independent of the
 > workstation browser dashboard and moves to 23/07 diagnosis.
+>
+> **24/07/2026 live update:** the 23/07 Pi-window measurement instrumentation was
+> trimmed from the runtime and tests and committed (`3890564`); the operational display
+> path is unchanged and the operator launcher now defaults to a resizable window. Two
+> full-stack runs on `IoT IMT Nord Europe` reached six-topic arrival and automatic rates;
+> the first also completed the source-window / live-hold with clean Pi and workstation
+> teardown, while a later re-run brought the stack up but hit an intermittent end-of-window
+> final-verification timeout (cumulative `ros2` CLI cost, not a stack fault; budget raised
+> `90 → 180 s`, `0306310`). Read-only motor-path confirmation found no software path to a
+> real motor: `/wamv/thrusters/*` is the VRX sim topic, MAVROS is telemetry-only, and the
+> Layer B bridge is an unbuilt stub. The real FCU is a `Cube Orange+` running
+> `ArduRover 4.6.3` with thrusters on `SERVO3` (left) / `SERVO1` (right); the Pi-to-FCU
+> serial link is receive-only — the Pi reads telemetry but cannot command the FCU
+> (Herelink commands work) — so the dashboard-to-motor path is blocked at the link. The
+> motor / outbound-write track is parked pending that link and a separate bench-safe
+> arming decision.
 
 ---
 
@@ -467,7 +483,7 @@ Current position ──────>│  (in Planner)       │
 
 ## 📜 Acknowledgments
 
-**Document Version**: 9.42 | **Last Updated**: 17/07/2026
+**Document Version**: 9.43 | **Last Updated**: 24/07/2026
 
 **Maintained By**: AutoBoat Development Team
 
