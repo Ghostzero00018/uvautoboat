@@ -15,7 +15,12 @@
 Prepared at EOD 24/07/2026. Vacation 25/07 - 02/08/2026 (no work); resume Monday 03/08/2026. At
 prep, the window/telemetry stack is trimmed and verified across three full-stack runs (24/07),
 all committed and pushed to `origin/main`. The dashboard-to-real-motor track is parked on a
-hardware blocker (receive-only Pi-to-FCU serial link). No decisions were taken during the gap.
+hardware blocker (receive-only Pi-to-FCU serial link). One piece of vacation side-work landed on
+27/07: a C++ bridge reference (`ab16f15`) plus a runnable Python equivalent
+(`tools/servo_command_bridge.py`), both documentation/tooling only - no live run, no hardware,
+and no change to the dashboard, helpers, write guard, or safety monitor. See
+`working_diary/2026-07-27_monday_fcu_vrx_bridge_reference.md`. No other decisions were taken
+during the gap.
 
 ## Goals
 
@@ -78,6 +83,16 @@ Research-led only; add no instrumentation. Fold in any supervisor reply.
 At the boat: check the Pi TXD -> Cube SERIAL1 RX wire and/or set `BRD_SER1_RTSCTS=0`, then re-run
 `tx_probe.py` - success = a `FRAME_CLASS` value read back from the FCU. Only after the link is
 bidirectional does the motor track resume, still behind the propellers-removed bench gate.
+
+**Alternative that does not need the boat - SITL.** The 27/07 bridge reference and its Python
+equivalent are UDP-based, so against a simulated autopilot (SITL on localhost) nothing crosses
+the blocked serial link. Running `tools/servo_command_bridge.py` against SITL proves the
+autopilot-to-simulator command path (`SERVO_OUTPUT_RAW` -> `/wamv/thrusters/{left,right}/thrust`)
+while the wiring fix is pending. Caveats: it is source-verified only, not runtime-proven; it
+proves nothing about real motor output; keep `publish_sensors` off unless a hardware-in-the-loop
+session is approved; and because it publishes on protected command topics, run it in simulation
+on its own `ROS_DOMAIN_ID`, never alongside the live Pi stack. Full analysis in
+`working_diary/2026-07-27_monday_fcu_vrx_bridge_reference.md`.
 
 ## Non-goals
 
