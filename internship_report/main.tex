@@ -1,0 +1,1000 @@
+% =============================================================================
+%  Professional Thesis report - IMT Nord Europe (DNM)
+%
+%  Single-file framework, built for Overleaf: upload this file plus
+%  references.bib and any images. Nothing else is \input.
+%
+%  Structure and limits follow the supplied instructions
+%  "230614_FOR_DNM Professional Thesis Report Instructions.pdf", kept outside
+%  this repository.
+%
+%  DRAFT STATUS. Technical content in the Introduction, Section 2, and the
+%  Conclusion is drafted from the project's working diaries and dated plans
+%  (03/04/2026 to 03/08/2026) and preserves their verified / prepared / unrun
+%  distinctions.
+%  Company-specific and personal content (Section 1, Section 3, cover fields,
+%  acknowledgements) is left as TODO because it cannot be derived from the
+%  repository and must not be invented.
+%
+%  PRESENTATION SETTINGS ARE PROVISIONAL. The instructions defer layout to a
+%  separate document derived from experimental standard Z41 006, obtainable
+%  through IMT My Services. Confirm fonts, margins, and spacing against it
+%  before final submission. Erasmus+ does not prescribe a universal final-
+%  report font or page layout, so no generic Erasmus template is applied.
+%
+%  Navigate this file by searching for the "== " banners.
+% =============================================================================
+
+\documentclass[a4paper,12pt,oneside,openany]{report}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[french,english]{babel}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage[left=2.5cm,right=2.5cm,top=1.5cm,bottom=2cm]{geometry}
+
+\usepackage{graphicx}
+% Overleaf: keep images in a figures/ folder inside the project. Do not point
+% this at a sibling directory - those paths do not exist once uploaded.
+\graphicspath{{figures/}}
+
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{longtable}
+
+% Ragged-right column types. Narrow justified p{} columns force TeX to stretch
+% interword space, which is what produced every "Underfull \hbox" warning on the
+% first compile. Ragged-right removes the cause rather than tolerating it, and
+% reads better in narrow table cells.
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\usepackage{caption}
+\usepackage{chngcntr}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usepackage[nottoc]{tocbibind}
+\usepackage[hidelinks]{hyperref}
+
+% The instructions require figures and tables to carry UNIQUE ASCENDING ARABIC
+% numbers throughout, including in the appendices. The report class would
+% otherwise scope both counters to the chapter, producing "Table 0.1" in the
+% front matter and "Figure A.1" in the appendix - neither is Arabic-continuous.
+\counterwithout{figure}{chapter}
+\counterwithout{table}{chapter}
+
+% NOTE: these two lines only tell the caption package how to SPACE a caption.
+% They do not move it. Placement comes from where you write \caption:
+%   figure -> \caption AFTER \includegraphics  (caption below, as required)
+%   table  -> \caption BEFORE the tabular      (caption above, as required)
+\captionsetup[figure]{position=bottom}
+\captionsetup[table]{position=top}
+
+\setcounter{tocdepth}{2}
+\setcounter{secnumdepth}{3}
+\setlength{\emergencystretch}{2em}
+
+\newcommand{\ReportTodo}[1]{\textbf{TODO:} #1}
+
+% == FIGURE PLACEHOLDERS ======================================================
+% \PlaceholderFigure{label-suffix}{what the figure will show}{caption}
+% Draws a captioned, numbered, referenceable grey box so the document compiles
+% and the list of figures is correct before any image exists. Replace the box
+% with \includegraphics{...} as each image is produced; keep caption and label.
+% Caption sits AFTER the box, so it prints below the figure, as required.
+\newcommand{\PlaceholderFigure}[3]{%
+  \begin{figure}[tbp]
+    \centering
+    \fcolorbox{black!40}{black!5}{%
+      \begin{minipage}[c][0.22\textheight][c]{0.88\textwidth}
+        \centering
+        {\itshape\color{black!60} [FIGURE PLACEHOLDER]\par\medskip #2}
+      \end{minipage}}
+    \caption{#3}
+    \label{fig:#1}
+  \end{figure}}
+
+% == COVER FIELDS =============================================================
+% Required by the instructions: student name, graduating class, company name,
+% type of Professional Thesis, and a title or overview of the subject.
+\newcommand{\StudentName}{[Student name]}
+\newcommand{\GraduatingClass}{[Graduating class]}
+\newcommand{\CompanyName}{[Host institution]}
+\newcommand{\ThesisType}{DNM Professional Thesis}
+\newcommand{\ReportTitle}{Autonomous Surface Vehicle for Water-Quality Survey:
+  Simulation, Onboard Perception, and Field Bring-Up}
+\newcommand{\SubjectOverview}{Development and evidence-based evaluation of a ROS 2 navigation,
+  perception, and telemetry foundation for an autonomous surface vehicle}
+
+% Optional fields: keep only those approved for the final cover.
+\newcommand{\InstitutionName}{IMT Nord Europe}
+\newcommand{\CompanySupervisor}{[Company supervisor]}
+\newcommand{\AcademicSupervisor}{[Academic supervisor]}
+\newcommand{\ReportDate}{\today}
+
+% Set \reportconfidentialtrue ONLY after the host company or internship
+% supervisor confirms it. A confidential report is NOT submitted to
+% MyLearningSpace - see README.md for the separate delivery route.
+\newif\ifreportconfidential
+\reportconfidentialfalse
+
+\hypersetup{
+  pdftitle={\ReportTitle},
+  pdfauthor={\StudentName},
+  pdfsubject={Professional Thesis Report}
+}
+
+\begin{document}
+\selectlanguage{english}
+
+% == COVER PAGE ===============================================================
+\begin{titlepage}
+  \centering
+  {\Large \InstitutionName\par}
+  \vspace{1.5cm}
+  {\large \ThesisType\par}
+  \vspace{1cm}
+  {\Huge\bfseries \ReportTitle\par}
+  \vspace{0.8cm}
+  {\Large \SubjectOverview\par}
+  \vfill
+
+  \begin{tabular}{@{}ll@{}}
+    \textbf{Student:} & \StudentName \\
+    \textbf{Graduating class:} & \GraduatingClass \\
+    \textbf{Host institution:} & \CompanyName \\
+    \textbf{Company supervisor (optional):} & \CompanySupervisor \\
+    \textbf{Academic supervisor (optional):} & \AcademicSupervisor \\
+    \textbf{Date:} & \ReportDate
+  \end{tabular}
+
+  \ifreportconfidential
+    \vfill
+    {\Large\bfseries CONFIDENTIAL\par}
+  \fi
+\end{titlepage}
+
+\clearpage
+\pagenumbering{roman}
+
+% == ACKNOWLEDGEMENTS =========================================================
+\chapter*{Acknowledgements}
+\addcontentsline{toc}{chapter}{Acknowledgements}
+
+\ReportTodo{Thank the people and organizations that materially supported the internship and
+the Professional Thesis. Confirm names, roles, and preferred forms of address before
+submission.}
+
+% == CONTENTS AND LISTS =======================================================
+\tableofcontents
+\listoffigures
+\listoftables
+
+% == ENGLISH/FRENCH KEYWORD GLOSSARY ==========================================
+\chapter*{English/French Keyword Glossary}
+\addcontentsline{toc}{chapter}{English/French Keyword Glossary}
+
+\ReportTodo{Review the French equivalents marked ``confirm'' with a French-speaking supervisor
+before submission; the rest are standard.}
+
+Table~\ref{tab:glossary-en-fr} lists the English and French keywords used throughout the report.
+
+\begin{longtable}{@{}L{0.27\textwidth}L{0.30\textwidth}L{0.33\textwidth}@{}}
+  \caption{English/French glossary of the report's key words}\label{tab:glossary-en-fr}\\
+  \toprule
+  \textbf{English keyword} & \textbf{French keyword} & \textbf{Note} \\
+  \midrule
+  \endfirsthead
+  \caption[]{English/French glossary of the report's key words (continued)}\\
+  \toprule
+  \textbf{English keyword} & \textbf{French keyword} & \textbf{Note} \\
+  \midrule
+  \endhead
+  Unmanned surface vehicle (USV) & véhicule de surface autonome & --- \\
+  Digital twin & jumeau numérique & standard \\
+  Autonomous navigation & navigation autonome & --- \\
+  Obstacle avoidance & évitement d'obstacles & --- \\
+  Path planning & planification de trajectoire & --- \\
+  Waypoint & point de passage & --- \\
+  Coverage path & trajectoire de couverture (boustrophédon) & --- \\
+  Real-time factor & facteur temps réel & confirm; often left in English \\
+  Flight controller & contrôleur de vol / pilote automatique & --- \\
+  Telemetry & télémétrie & --- \\
+  Companion computer & ordinateur embarqué compagnon & confirm \\
+  Edge AI accelerator & accélérateur d'IA embarquée & confirm \\
+  Object detection & détection d'objets & --- \\
+  Water-quality monitoring & surveillance de la qualité de l'eau & --- \\
+  Cellular automaton & automate cellulaire & standard \\
+  \bottomrule
+\end{longtable}
+
+% == OVERALL PROJECT SCHEDULE =================================================
+\chapter*{Overall Project Schedule}
+\addcontentsline{toc}{chapter}{Overall Project Schedule}
+
+The schedule below covers recorded work from 03/04/2026 to 01/08/2026 and the prepared plan through
+03/08/2026. Phases are colour-coded by evidence state: \textbf{verified} work was executed and
+observed, while \textbf{prepared} work was built and source-checked but never run. The internship
+continued past the right-hand edge of the chart, so the schedule is a progress record rather than a
+completed plan.
+
+Figure~\ref{fig:gantt} summarizes the sequence and overlap of the recorded phases, while
+Table~\ref{tab:project-schedule} gives their exact dates and evidence states.
+
+\begin{figure}[tbp]
+  \centering
+  \begin{tikzpicture}[x=0.085cm, y=-0.62cm, font=\scriptsize]
+    % ---- month grid: day 0 = 03/04/2026 -------------------------------------
+    \foreach \dx/\m in {0/April, 28/May, 59/June, 89/July, 120/Aug.}{
+      \draw[black!20] (\dx,0.3) -- (\dx,15.0);
+      \node[anchor=south, black!65] at (\dx,0.3) {\m};
+    }
+    \draw[black!20] (122,0.3) -- (122,15.0);
+
+    % ---- bars: {row}{start-day}{end-day}{colour}{label} ---------------------
+    \def\gbar#1#2#3#4#5{%
+      \fill[#4, rounded corners=1pt] (#2,{#1-0.26}) rectangle (#3,{#1+0.26});
+      \node[anchor=east, black!85] at (-3,#1) {#5};}
+
+    \definecolor{cver}{RGB}{31,110,165}
+    \definecolor{cpre}{RGB}{214,158,46}
+
+    \gbar{1}{0}{6}{cver}{Code review + obstacle avoidance}
+    \gbar{2}{7}{12}{cver}{VRX LiDAR/TF fix}
+    \gbar{3}{13}{16}{cver}{Node rename + parameter sync}
+    \gbar{4}{17}{21}{cver}{Dead-code audit + hardening}
+    \gbar{5}{15}{21}{cpre}{Hardware-transition prep}
+    \gbar{6}{24}{27}{cver}{Presentation + scope lock}
+    \gbar{7}{31}{38}{cver}{RTF fix, CSP, first wet test}
+    \gbar{8}{38}{47}{cver}{Pi 5 bring-up + doc audit}
+    \gbar{9}{48}{56}{cpre}{Pi reflash + MAVROS install}
+    \gbar{10}{59}{77}{cver}{FCU telemetry + QGC bridge}
+    \gbar{11}{80}{88}{cver}{Onboard perception + thermal}
+    \gbar{12}{89}{98}{cver}{Hailo-8L bring-up}
+    \gbar{13}{101}{112}{cver}{Live view-only dashboard}
+    \gbar{14}{115}{122}{cpre}{FCU-to-VRX bridge + prep}
+
+    % ---- legend -------------------------------------------------------------
+    \fill[cver] (0,15.6) rectangle (7,16.0);
+    \node[anchor=west, black!85] at (9,15.8) {Verified};
+    \fill[cpre] (40,15.6) rectangle (47,16.0);
+    \node[anchor=west, black!85] at (49,15.8) {Prepared, not run};
+  \end{tikzpicture}
+  \caption{Overall project schedule, 03/04/2026 to 03/08/2026, colour-coded by evidence state.}
+  \label{fig:gantt}
+\end{figure}
+
+\begin{longtable}{@{}L{0.20\textwidth}L{0.44\textwidth}L{0.14\textwidth}@{}}
+  \caption{Overall Professional Thesis project schedule}\label{tab:project-schedule}\\
+  \toprule
+  \textbf{Period} & \textbf{Phase} & \textbf{State} \\
+  \midrule
+  \endfirsthead
+  \caption[]{Overall Professional Thesis project schedule (continued)}\\
+  \toprule
+  \textbf{Period} & \textbf{Phase} & \textbf{State} \\
+  \midrule
+  \endhead
+  03/04--09/04/2026 & Code review and obstacle-avoidance hardening & Verified \\
+  10/04--15/04/2026 & VRX LiDAR/TF fix and supervisor review & Verified \\
+  16/04--19/04/2026 & Node rename and parameter single-source sync & Verified \\
+  20/04--24/04/2026 & Dead-code audit and reliability hardening & Verified \\
+  18/04--24/04/2026 & Hardware-transition preparation (parallel) & Prepared \\
+  27/04--30/04/2026 & Presentation preparation and scope lock & Verified \\
+  04/05--11/05/2026 & Real-time-factor fix, CSP hardening, first wet test & Verified \\
+  11/05--20/05/2026 & Raspberry Pi 5 bring-up and documentation audit & Verified \\
+  21/05--29/05/2026 & Pi reflash, MAVROS install, endpoint gate & Prepared \\
+  01/06--19/06/2026 & Flight-controller telemetry and mission bridge & Verified \\
+  22/06--30/06/2026 & Onboard perception and thermal characterisation & Verified \\
+  01/07--10/07/2026 & Hailo-8L bring-up and detector recovery & Verified \\
+  13/07--24/07/2026 & Live detection overlay and view-only dashboard & Verified \\
+  27/07--03/08/2026 & Autopilot-to-simulator bridge and query hardening & Prepared \\
+  \bottomrule
+\end{longtable}
+
+An earlier project phase, from 25/11/2025 to 14/12/2025, established the initial architecture and
+autonomous-navigation baseline. It is recorded as context and is not counted as internship delivery.
+
+\ReportTodo{Add the post-03/08/2026 period once the internship closes.}
+
+\clearpage
+\pagenumbering{arabic}
+
+% Length target from the instructions: 40 pages +/- 5, EXCLUDING appendices,
+% including all text, figures, tables, and diagrams. The instructions do not
+% say whether front matter counts; confirm with the internship supervisor.
+
+% == INTRODUCTION =============================================================
+\chapter*{Introduction}
+\addcontentsline{toc}{chapter}{Introduction}
+
+\section*{Subject and problem statement}
+
+Monitoring water quality in ports, canals, and inland water bodies commonly depends on manual
+sampling at a limited set of locations. Published unmanned-surface-vehicle systems show that
+autonomous navigation, obstacle avoidance, water-quality sensing, sample collection, and remote
+operator displays can be integrated on one mobile platform~\cite{chang2021waterquality}. The
+engineering problem addressed by this Professional Thesis is the one that stands between that idea
+and a working system: building an autonomous navigation and perception stack that behaves
+predictably in simulation, and then transferring it onto real marine hardware without losing the
+guarantees established in simulation.
+
+\ReportTodo{Add why this problem matters specifically to the host institution --- the operational
+need, the users, and what existed before the project.}
+
+\section*{Professional Thesis objectives}
+
+The work was organised around four objectives:
+
+\begin{enumerate}
+  \item Make the simulated navigation stack reliable and measurable, so that behaviour can be
+        compared before and after a change rather than judged by eye.
+  \item Establish a verified telemetry link between a companion computer and the vessel's flight
+        controller, as the foundation of any later command capability.
+  \item Bring onboard perception up on an edge AI accelerator, and prove the detection path end to
+        end from camera to operator display.
+  \item Provide an operator-facing dashboard that presents live detection and vehicle telemetry
+        together, under an explicit read-only safety contract.
+\end{enumerate}
+
+A fifth, research-oriented objective --- water-quality sensor streaming, a cellular-automaton
+evolution model, and machine-learning trend detection --- was defined but is reported here as not
+started, for the reasons set out in the Conclusion.
+
+\section*{Monitoring and reporting plan}
+
+Work was tracked in a dated engineering diary covering 03/04/2026 to 03/08/2026, one file per
+working day, recording what was attempted, what was measured, and what remained open. Each
+significant change was verified before being recorded as complete, and every claim in this report
+is tagged by evidence state:
+
+\begin{itemize}
+  \item \textbf{Verified} --- executed and observed, with a measured result.
+  \item \textbf{Prepared} --- implemented and statically checked, but never executed.
+  \item \textbf{Unrun} --- planned, scaffolded, or blocked by an external dependency.
+\end{itemize}
+
+This distinction is used consistently and deliberately. Several parts of the system are complete in
+source but have never been run against real hardware, and presenting them as results would
+misrepresent the state of the project.
+
+\section*{Report structure}
+
+Section~\ref{chap:context} places the assignment in its institutional and sector context.
+Section~\ref{chap:project} presents the assignment itself, broken into five sub-projects, each
+following a diagnose--solve--operationalize--evaluate structure, and closes with the consolidated
+results. Section~\ref{chap:skills-career} assesses the skills developed and their relationship to a
+professional plan.
+
+% == SECTION 1 - CONTEXT ======================================================
+% Mandatory. MAXIMUM 5 PAGES.
+% Must not be filler, plagiarism of company documents, or reproduced website text.
+\chapter{Context and Institutional Expectations}
+\label{chap:context}
+
+\section{Host institution and wider sector}
+Within the wider sector, mobile robotic platforms offer spatially distributed measurements while
+also carrying the navigation, communications, and operator-interface functions needed to associate
+each observation with a location~\cite{chang2021waterquality}. This project addresses that enabling
+navigation, perception, telemetry, and operator-monitoring layer. Water-quality sensor streaming,
+spatio-temporal modelling, and trend detection remain future work rather than results of the present
+thesis.
+
+\ReportTodo{Present the institution without copying its website: its position, its activity in this
+sector, and how the autonomous-vehicle work fits its wider objectives. This cannot be drawn from
+the project repository and must be written from direct knowledge.}
+
+\PlaceholderFigure{org-context}{Position of the project's team or laboratory within the host
+institution, and its relationship to the wider autonomous-systems sector.}{Organisational context
+of the Professional Thesis assignment.}
+
+\section{Organization and working environment}
+\ReportTodo{Describe only the locations, organization, processes, and working methods needed to
+understand the assignment --- for example the balance between individual work and supervision, and
+the equipment and workshop access the project depended on.}
+
+\section{Strategic and technical challenges}
+
+The technical environment set three constraints that shaped every design decision, and these are
+evidenced by the project record.
+
+First, the vessel is a differential-thrust catamaran: it has no rudder, and all steering comes from
+commanding unequal power to left and right thrusters. Every navigation decision therefore resolves
+into a thrust pair, which makes the controller the single point through which all planning must
+pass.
+
+Second, the onboard computing budget is small. A Raspberry Pi 5 companion computer carries the
+high-level autonomy alongside a separate autopilot board, with a PCIe neural accelerator for
+inference. Thermal and power headroom are real limits rather than theoretical ones; undervoltage
+warnings and accelerator temperature were both monitored during live runs.
+
+Third, the operator link is shared and constrained. Manual control, telemetry, and video all pass
+through an integrated radio system, and the workstation, vessel, and radio do not always sit on the
+same network. Several field sessions were spent establishing which network could carry which
+traffic.
+
+\ReportTodo{Add the institution's own strategic framing --- the digital or ecological transition,
+research programme, or funding context this project sits inside.}
+
+\section{Project importance and institutional expectations}
+\ReportTodo{State what the institution expected from this Professional Thesis, what would count as
+success at the outset, and how that expectation was formalised.}
+
+\section{Personal assessment of the institution's SDRS policy}
+% Explicitly required by the instructions - do not drop this section.
+\ReportTodo{Give a substantiated personal opinion on the institution's sustainable-development and
+social-responsibility policy. Confirm the official terminology used locally, and support the
+assessment with what was observed during the internship rather than with published material.
+A defensible angle available here: the project's own environmental purpose --- water-quality
+monitoring --- against how sustainability is handled in day-to-day engineering practice.}
+
+% == SECTION 2 - PROJECT ======================================================
+% Mandatory. No page limit stated - this is the core of the report.
+\chapter{Objectives and Professional Thesis Project}
+\label{chap:project}
+
+\section{Mission, objectives, and expected value}
+
+The assignment was to advance an autonomous surface vehicle from a simulation-only prototype toward
+a field-capable system. The deliverables were a reliable simulated navigation stack, a verified
+telemetry path to the real vessel, onboard perception running on an edge accelerator, and an
+operator dashboard combining both. The value to the institution is a platform on which
+water-quality survey missions can later be built, together with a documented evidence trail
+showing exactly which capabilities are proven and which are not.
+
+Figure~\ref{fig:system-arch} summarizes the active ROS 2 data flow and its external interfaces.
+
+\PlaceholderFigure{system-arch}{ROS 2 node pipeline: sensors to perception to planning to control
+to differential thrust, with topic names on each arrow, the latched emergency-stop channel, and
+the two configuration services.}{System architecture of the autonomous navigation stack.}
+
+\section{Resources and constraints}
+
+The material resources were a simulation workstation with a discrete GPU, the vessel with its
+autopilot board and integrated radio, a companion computer with a neural accelerator and a depth
+camera, and access to open water for field tests. Human resources were the author, working with
+academic supervision and periodic review. The dominant constraints were not financial but
+practical: single-owner hardware devices that cannot be shared between processes, a thermal ceiling
+on the companion computer, a shared radio link, and field sessions that had to be scheduled and
+could not be repeated cheaply.
+
+Two constraints were treated as absolute safety boundaries throughout. No command was ever sent to
+a real motor, and no arming of the real vessel was attempted outside a restrained bench
+configuration. These were enforced in software, not only by convention, as described in
+Section~\ref{sec:sub-dashboard}.
+
+Figure~\ref{fig:deployment} separates the system components by host and communication boundary.
+
+\PlaceholderFigure{deployment}{Deployment topology: autopilot board, companion computer, integrated
+radio, and workstation, showing which wireless network carries which traffic and marking the
+receive-only serial link.}{Field deployment topology across the three wireless networks.}
+
+% ---------------------------------------------------------------------------
+\section{Sub-project 1: bounding detour-waypoint growth in obstacle avoidance}
+\label{sec:sub-avoidance}
+
+\subsection{Diagnose}
+
+During simulated missions the vehicle inserted more than 300 detour waypoints on encountering an
+obstacle and still failed to bypass it; a separate planning run grew the waypoint list from 203 to
+over 303 entries. Analysis identified seven contributing defects across two nodes. On the planner
+side, the obstacle callback reset its ``detour inserted'' flag whenever obstacles momentarily
+cleared between scans, permitting immediate re-insertion; there was no cumulative cap and no
+cooldown; the insertion routine always chose the left side without checking clearance; and no path
+validated that the detour point was itself clear. On the controller side, the maximum avoidance
+turn was limited to 20 degrees, the escape manoeuvre always turned left, and a replanning method
+was called but never defined, producing a silent failure during high-urgency encounters.
+
+\subsection{Solve}
+
+The chosen approach bounded growth rather than redesigning the planner, on the reasoning that an
+unbounded feedback loop is a correctness fault and should be fixed as such before any behavioural
+improvement is attempted. The premature flag reset was removed; a counter capping detours at three
+per waypoint and a five-second cooldown were added; a clearance validator was introduced that tries
+the chosen side, then the opposite side, then skips the waypoint; and the side is now selected from
+measured left and right clearance instead of a fixed preference. The missing replanning method was
+defined, the maximum avoidance turn was raised from 20 to 45 degrees scaled by urgency, and the
+escape manoeuvre now turns toward the side with greater measured clearance. A burst-skip mechanism
+was added so that a long linear obstacle such as a pier produces one skip past the blocked stretch
+rather than three detours per waypoint.
+
+\subsection{Operationalize}
+
+All three detour insertion paths were made consistently capped, including one that previously had
+no cap at all, and code defaults were synchronised with the launch configuration. The new avoidance
+limit was added to the automated health-check script so that a regression would be caught by the
+routine monitoring run rather than by observation. Dashboard tuning presets and the corresponding
+interface defaults were re-synchronised, so that applying a preset could no longer silently
+override the new values. Dead code found in the same pass was removed.
+
+\subsection{Evaluate}
+
+The post-change health check returned a full pass with no failures or warnings. An open-water
+mission completed 18 waypoints in 4.9 minutes, with the obstacle encountered at approximately
+5.6~m, urgency peaking at 97~\%, two detours inserted, no runtime error, and the total waypoint
+count remaining at 18. A pier scenario completed in 9.5 minutes with the count bounded at 17 rather
+than exceeding 300. The record is explicit that the problem was bounded rather than solved: the
+vehicle still does not bypass long piers smoothly, and pier and bank stuck-behaviour remained the
+top open navigation issue at the end of the period.
+
+Figure~\ref{fig:detour-growth} contrasts the original feedback growth with the bounded result.
+
+\PlaceholderFigure{detour-growth}{Detour-waypoint count before and after the fix: unbounded growth
+past 300 insertions, against the bounded post-fix behaviour of 18 and 17 waypoints.}{Detour
+waypoint growth before and after bounding.}
+
+% ---------------------------------------------------------------------------
+\section{Sub-project 2: root-causing the simulation real-time-factor throttle}
+\label{sec:sub-rtf}
+
+\subsection{Diagnose}
+
+The simulation ran at roughly one fifth of real time, which slowed every test and made
+hardware-versus-simulation comparison unreliable. Baseline measurement recorded the LiDAR point
+cloud at 2.48~Hz against a 10~Hz nominal rate, and the simulation clock at 80.9~Hz against a 250~Hz
+nominal, giving a real-time factor of 0.32. The LiDAR shortfall was proportionally worse than the
+overall ratio, which pointed at the GPU-bound raycasting sensor rather than at a general CPU
+shortage. The prior working hypothesis, a graphics-library fallback, was disproven: the discrete
+GPU driver loaded cleanly, but the distribution's default hybrid-graphics mode meant the launcher
+never requested offload, so the simulator rendered on the integrated GPU.
+
+\subsection{Solve}
+
+Five ways of applying the offload were compared: a per-invocation environment prefix, a system-wide
+switch, unconditional baking of the offload variables into the launcher, automatic detection of a
+discrete GPU, and an opt-in launcher flag. Unconditional baking was rejected because it would force
+the variables onto hosts with no discrete GPU, notably the companion computer; automatic detection
+was rejected as less predictable for a reader of the script. The opt-in flag was chosen on the
+reasoning that on the companion computer an accidental invocation then fails visibly at graphics
+context creation rather than degrading silently --- a failure mode preferred deliberately.
+
+\subsection{Operationalize}
+
+The flag shipped together with a launcher signal-handling fix, so that the script no longer survived
+an interrupt. The troubleshooting documentation was rewritten as a three-step diagnostic flow
+carrying the measured before-and-after figures and a hybrid-graphics-only caveat, retaining the
+manual environment-prefix form as a fallback for one-off launches. The flag was then surfaced in
+five user-facing documents, because a reader following the main guide would otherwise land in
+integrated-GPU mode by default.
+
+\subsection{Evaluate}
+
+Two measured runs were compared against the baseline. Standalone simulation reached LiDAR 8.95~Hz,
+clock 195.9~Hz and a real-time factor of 0.78; the full launcher reached LiDAR 6.8~Hz, clock
+219.7~Hz, factor 0.88, and a 44-second launch time. This is a 2.7-fold improvement in
+full-launcher LiDAR rate and 2.4 to 2.7-fold in real-time factor. Workstation thermals during the
+accelerated run stayed well below the throttle ceiling. A secondary contribution from CPU frequency
+governance was estimated at a further 10 to 15~\% but was never measured, and is reported as an
+estimate only.
+
+Figure~\ref{fig:rtf-improvement} compares the measured real-time factor and LiDAR rate across the
+recorded graphics configurations.
+
+\PlaceholderFigure{rtf-improvement}{Simulation performance across three configurations: integrated
+GPU baseline, discrete standalone, and discrete full launcher, plotting LiDAR rate against the
+10~Hz nominal and real-time factor against 1.0.}{Simulation performance before and after the
+graphics-offload fix.}
+
+% ---------------------------------------------------------------------------
+\section{Sub-project 3: establishing a telemetry link to the flight controller}
+\label{sec:sub-telemetry}
+
+\subsection{Diagnose}
+
+At the start of June no usable communication endpoint existed on the companion computer. A serial
+sweep found only a debug-class device, with none of the expected serial or USB device nodes and no
+network listener on any of the standard ports. Three independent tools --- the middleware bridge, a
+protocol router, and a direct protocol script --- were then used as cross-checks at three baud
+rates. All three opened the port and all three received nothing; a raw dump of the device showed
+zero bytes. Since a baud mismatch normally produces garbled bytes rather than silence, the fault was
+reasoned to be physical or configuration-side rather than a software fault in the bridge. A
+candidate service was removed and the machine rebooted with no change, retiring it as an
+explanation and leaving the platform's serial-port mapping as the leading suspect.
+
+\subsection{Solve}
+
+Candidate endpoint classes were enumerated and scored on available evidence: USB, unusable because
+no device ever enumerated; network, unusable because listeners opened but no source was confirmed;
+and a hardware serial connection to the general-purpose header requiring a platform-specific
+configuration change. The third branch was confirmed by a supervisor-supplied photograph showing the
+protocol router attached to the expected device at 57\,600 baud and reporting a detected vehicle. A
+second architectural choice followed: binding the middleware bridge directly to the serial port, or
+letting the router own the serial link and redistribute over the local network. The redistribution
+topology was selected because a single serial owner can feed the bridge plus optional inspection
+tools without device contention.
+
+\subsection{Operationalize}
+
+The proven topology is the protocol router as sole owner of the serial device, redistributing to two
+local network ports: one consumed by the middleware bridge, the other reserved strictly for direct
+inspection scripts and never for the bridge. A shared domain identifier was required in every
+terminal on both machines and was later pinned into the shell profile on each. Monitoring used a
+kernel-log undervoltage check before and after each run, a connection-state polling loop as the
+session gate, and a best-effort delivery profile on sensor telemetry. The gate rule was written
+explicitly, and is the methodological point of this sub-project: advertised topics never count as
+success, only a confirmed connection state does.
+
+\subsection{Evaluate}
+
+The pass condition was reached on 04/06/2026 with the link reporting connected, disarmed, and in
+hold mode, and first samples arriving on the inertial, position, battery, and radio-input topics. A
+clean graph capture the following day contained 144 typed topics, of which 136 belonged to the
+bridge. A re-check on 19/06/2026 after a package synchronisation passed with no regression. Three
+limitations are preserved in the record: satellite positioning remained at no-fix throughout;
+targeted request-and-response paths timed out, so the command and write path is explicitly
+unvalidated; and a combined camera-plus-telemetry run was power-limited under repeated undervoltage
+warnings.
+
+Figure~\ref{fig:telemetry-chain} traces the verified read path from the flight controller to the
+observed middleware topics.
+
+\PlaceholderFigure{telemetry-chain}{Telemetry chain from flight controller to middleware topics:
+controller telemetry port, companion-computer serial device, protocol router as sole owner, local
+network redistribution, and the resulting topic namespace, annotated with the connection gate and
+marking the write path unvalidated.}{Verified telemetry chain from the flight controller.}
+
+% ---------------------------------------------------------------------------
+\section{Sub-project 4: live detection overlay and telemetry in one dashboard}
+\label{sec:sub-dashboard}
+
+\subsection{Diagnose}
+
+Three gaps blocked a combined live view. The inference runner was an external process that owned the
+camera device directly and wrote annotated frames to a file only, with no topic and no network
+output, whereas the dashboard camera panel is a plain image element fed by a streaming server. The
+depth camera is single-owner, so the camera driver and the inference runner cannot co-run, meaning
+annotated frames had to originate inside the runner. The dashboard also subscribed only to
+simulation topics and had no inertial panel, so the originally written acceptance criterion had to
+be replaced. Operationally, early runs were launched by hand across many terminals and left no
+same-run evidence: observations were real but produced no completion or teardown markers.
+
+\subsection{Solve}
+
+Five transport options were compared for the video path. A thin publishing node inside the runner,
+emitting the annotated frame on a standard image topic, was chosen because it matches the
+dashboard's existing topic-discovery filter with no dashboard edit, reuses the already-proven
+cross-host transport, and exposes no new unauthenticated port on the vessel. Serving a stream
+directly from the companion computer was rejected because it requires editing a hard-coded host and
+opens an unauthenticated port; a streaming-protocol option was rejected because it needs a transcode
+hop the image element cannot render. For telemetry, an external read-only relay onto the dashboard's
+existing topics was preferred, with the thrust and command direction deliberately left unmapped. For
+lifecycle, the existing preflight script was extended with a supervisor mode rather than writing a
+new supervisor, and a hold-never-abandon failure model was chosen over exiting and leaving orphaned
+processes.
+
+\subsection{Operationalize}
+
+The stack was reduced to two operational commands: a foreground workstation supervisor that runs a
+preflight, starts each service in its own process group with external logs, prints one
+checksum-pinned copy-paste command for the vessel, blocks on a six-topic arrival gate, runs rate
+probes automatically, supervises, and tears down in reverse order; and a vessel-side helper owning
+the serial device, the router, the bridge, the inference runner, and the camera. Safety and evidence
+were built into the contract rather than left to discipline: a view-only flag blocks every dashboard
+publish and service call at the send boundary; a safety monitor subscribes to all five protected
+command topics and aborts the run on any traffic or on arm or disconnect; a one-second thermal
+watchdog aborts at a fixed ceiling; binary and helper checksums are verified at launch; and a
+durable per-run log records phase, first stop trigger, and final status.
+
+\subsection{Evaluate}
+
+Two bounded runs on 17/07/2026 proved the combined path: all six expected topics arrived after 248
+and 260 seconds, the detection overlay sustained 7.40 and 7.50~Hz with five telemetry topics at
+approximately 1.00~Hz, the link reported connected and disarmed, both command sentinels closed with
+zero messages on all five protected topics, and thermal peaks stayed below the abort ceiling.
+Operator visual acceptance passed for both runs and is reported separately from the rate evidence. A
+later run reached the arrival gate in 111 seconds, and a dual-output run showed the annotated view
+simultaneously on the vessel display and the workstation dashboard with at least 2\,800 annotated
+publications. Open items are recorded explicitly: a strict shutdown ordering was not achieved and
+its cause remains open; endurance acceptance and post-teardown thermal behaviour remain open; and no
+dashboard-to-controller write path was ever exercised.
+
+The browser-facing path uses the rosbridge JSON interface~\cite{rosbridge}.
+Figure~\ref{fig:live-dataflow} distinguishes the live view-only data path from the protected command
+topics.
+
+\PlaceholderFigure{live-dataflow}{Data paths of the live view-only test: camera to accelerator to
+image topic to streaming server to browser, alongside controller to router to bridge to dashboard
+telemetry panels, with the view-only guard and command sentinel drawn as the safety
+boundary.}{Data paths and safety boundary of the live view-only test.}
+
+% ---------------------------------------------------------------------------
+\section{Sub-project 5: confirming and routing around the command path}
+\label{sec:sub-command}
+
+\subsection{Diagnose}
+
+A read-only audit established that no software path currently reaches a physical motor. The thrust
+topics are published by the heading controller and consumed only by the simulator plugin; on real
+hardware nothing subscribes to them. The real-hardware translator in the launch configuration is an
+unbuilt stub, and requesting real hardware aborts the launch. The middleware bridge runs a bounded
+telemetry allowlist with no command, setpoint, or actuator plugins loaded, and the dashboard
+view-only guard blocks every publish at the send boundary. A separate link probe then found that the
+companion computer can receive from the controller but cannot transmit to it: parameter reads and
+command requests returned no acknowledgement, a motor test left both servo channels at neutral,
+while arming from the handheld ground station succeeded.
+
+\subsection{Solve}
+
+The real vehicle interface was identified from stored ground-station telemetry rather than assumed:
+the thruster outputs sit on the servo rail with a known channel and function mapping, a PWM range of
+800 to 2200 with neutral at 800, and arming required together with a hardware safety switch. The
+conclusion recorded was that the only real command path requires arming, which is a stated non-goal
+and a safety-monitor abort trigger. Two hardware suspects were named without being asserted as
+causes: an unconnected transmit line, or flow control on a three-wire link. A route around the
+blocker was then identified: a network-based bridge means that against a simulated autopilot on the
+loopback interface nothing crosses the blocked serial link, making the autopilot-to-simulator
+command path developable while the wiring fix is pending.
+
+\subsection{Operationalize}
+
+A reference implementation was reviewed and four adaptation issues found, the most serious being a
+neutral-point assumption that, applied unchanged to this vessel, would drive the simulator at
+roughly 80~\% forward while the autopilot commanded stop. A runnable equivalent was then written as
+a single standalone file requiring no new package, with deliberate safety-driven differences: it
+identifies as an onboard controller and never impersonates the vehicle, decodes this vessel's real
+channel mapping and PWM range, publishes the project's own thrust topics, keeps sensor injection
+toward the autopilot disabled by default because transmitting into a real controller is a write, and
+uses bounded receive with clean shutdown. Its boundary is documented: it publishes on topics the
+safety monitor treats as protected, so it must run in simulation on an isolated domain and never
+beside the live vessel stack.
+
+\subsection{Evaluate}
+
+No live motor command was sent, and no dashboard write path, view-only guard, or safety monitor was
+changed. The bridge is source-verified and harness-tested only. A local harness with synthetic
+protocol input verified the safety lifecycle: interrupt, termination, and repeated signals each
+exited cleanly and published a trailing zero on both thrust topics after held non-zero samples, and
+configuration validation rejected non-finite or non-positive thrust limits, duplicate channels, and
+an out-of-range neutral value. The integrated simulated-autopilot run is recorded as \textbf{not
+run}, the PWM starting values are provisional rather than confirmed, and the installation and launch
+commands are labelled untested. The track is parked behind two explicit gates: a bidirectional link,
+with success defined as reading a parameter back from the controller, and a separate
+propellers-removed bench-safety decision.
+
+% ---------------------------------------------------------------------------
+\section{Autonomy, responsibility, and decision-making}
+Three technical decisions demonstrate initiative in the recorded work. The obstacle-avoidance
+feedback loop was bounded before further behavioural tuning (Section~\ref{sec:sub-avoidance});
+three of five data-transport options were rejected because they weakened safety or maintainability
+(Section~\ref{sec:sub-dashboard}); and telemetry acceptance was defined by observed runtime
+messages rather than advertised topic names (Section~\ref{sec:sub-telemetry}). Hardware-facing
+work remained approval-gated.
+
+\ReportTodo{State which of these decisions were made independently and which were validated with a
+supervisor, then describe the corresponding level of responsibility.}
+
+\section{Consolidated results and company benefits}
+
+Table~\ref{tab:indicators} consolidates the measured indicators. Every value is quoted as recorded
+at the time of measurement, and each is tagged by evidence state.
+
+\begin{table}[tbp]
+  \caption{Consolidated performance indicators.}
+  \label{tab:indicators}
+  \centering
+  \small
+  \begin{tabularx}{\textwidth}{@{}L{0.30\textwidth}YL{0.11\textwidth}@{}}
+    \toprule
+    \textbf{Indicator} & \textbf{Measured value} & \textbf{State} \\
+    \midrule
+    Detour-waypoint growth & Before: over 300 inserted. After: 18 waypoints in 4.9~min (open
+      water), 17 (pier scenario) & Verified \\
+    Automated health check & 49 runtime checks; 49 pass idle, 41 pass and 8 tuned active, 0 fail
+      & Verified \\
+    Simulation real-time factor & 0.32 to 0.88; LiDAR 2.48 to 6.8~Hz; clock 80.9 to 219.7~Hz
+      & Verified \\
+    Perception publish rate & 20.000~Hz mean over 2\,353 samples in 120~s, no sustained dropouts
+      & Verified \\
+    Simulated mission completion & 16 of 16 waypoints, 405~s simulated time & Verified \\
+    Web security hardening & 0 policy violations across 11 interactive paths, 2 browsers; injected
+      payloads rendered as literal text & Verified \\
+    Cross-machine discovery & 162 messages delivered; latency 7.89 to 11.8~ms & Verified \\
+    Telemetry link gate & Connected, disarmed, hold mode; 136 bridge topics on the shared domain
+      & Verified \\
+    Mission bridge to ground station & 7 mission items served and rendered without file import;
+      15 of 15 unit tests pass & Verified \\
+    Accelerator runtime & 293 frames at 58.22~FPS; 287 frames at 57.29~FPS on an independent boot
+      & Verified \\
+    Host-side decode contract & Same-engine isolation: box error 0.0~px, class error
+      $1.178\times10^{-7}$ & Verified \\
+    Live combined overlay run & Overlay 7.40 and 7.50~Hz; telemetry near 1.00~Hz; 0 messages on all
+      five protected command topics & Verified \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+One negative result belongs beside the table, because omitting it would misrepresent the state of
+perception. The custom detector fires on none of the 50 available saved frames at the working
+confidence threshold, including on its own training images, with a confidence ceiling near 0.003.
+The underlying cause is a dataset problem rather than a pipeline problem: the baseline dataset holds
+nine labelled instances of a single class, with four declared classes carrying no examples at all.
+The inference pipeline itself is proven, since the host-side decode contract matches to within
+$1.178\times10^{-7}$ and a stock model produces correct overlays at full frame rate.
+
+Figure~\ref{fig:detector-collapse} summarizes the detector collapse across thresholds and data
+splits.
+
+\PlaceholderFigure{detector-collapse}{Detection count and maximum confidence at three thresholds
+for the validation split against the held-out split, annotated with the training and held-out
+scores and the resolution sweep.}{Held-out firing collapse in the detector training smoke test.}
+
+Figure~\ref{fig:dashboard} identifies the operator-facing elements exercised during the bounded
+view-only runs.
+
+\PlaceholderFigure{dashboard}{The operator dashboard in use: mission control, map, live camera
+panel, and health-check stream, with the emergency-stop badge and configuration
+panels.}{Operator dashboard during a live view-only run.}
+
+The technical benefit is a reproducible near-real-time simulation baseline, a verified read path
+from the flight controller, and bounded operation of the combined overlay and dashboard under an
+enforced view-only contract. Open limitations are attached to explicit acceptance gates, so later
+work can start from observed evidence rather than assumed capability. Command-path acceptance,
+detector recovery, and full lifecycle endurance remain open.
+
+\ReportTodo{Relate these capabilities to the institution's own priorities and quantify their
+operational value using information supplied by the host team.}
+
+% == SECTION 3 - SKILLS AND CAREER ============================================
+% Mandatory. MAXIMUM 5 PAGES.
+\chapter{Skills Development and Professional Future}
+\label{chap:skills-career}
+
+\section{Skills assessment}
+\ReportTodo{Assess the skills developed using the IMT Nord Europe engineering skills toolkit, naming
+the toolkit's own competence categories. Support each with evidence from
+Section~\ref{chap:project}. The record supports at least: systematic fault diagnosis under
+uncertainty; designing for verifiability rather than for demonstration; and safety-boundary design
+in a system able to move physical hardware.}
+
+\section{Functional and managerial observations}
+\ReportTodo{Analyze relationships between teams, distribution of roles, management, working
+conditions, safety practice, sustainable development, social responsibility, communication, and
+institutional culture, based on what was observed rather than on published material.}
+
+\section{Development needs and further training}
+Two technical development priorities follow directly from the recorded blockers. First, the
+held-out detector collapse shows a need for stronger dataset design, annotation quality control,
+and validation methodology. Second, the receive-only serial link shows a need for deeper
+embedded-hardware bring-up skills, including signal-level diagnosis and flight-controller serial
+configuration.
+
+\ReportTodo{State the personal training plan for these priorities and whether further formal study
+is intended.}
+
+\section{Professional objectives}
+\ReportTodo{Connect the experience to the sector, target roles, and the next career step, and
+explain how this project supports that transition.}
+
+% == CONCLUSION ===============================================================
+\chapter*{Conclusion}
+\addcontentsline{toc}{chapter}{Conclusion}
+
+The problem set at the outset was to move an autonomous surface vehicle from a simulation prototype
+toward a field-capable system without losing, in the transfer, the guarantees established in
+simulation. Against that problem the outcome is partial and asymmetric, and it is worth stating
+precisely which way.
+
+The simulation stack and the read side of the real system are proven. Obstacle-avoidance growth is
+bounded and regression-guarded; simulation runs near real time after the graphics-offload fix; a
+full mission completes; perception publishes at a stable rate; the web interface has no policy
+violations; a telemetry link to the real flight controller reaches a confirmed connected state and
+sustains 136 topics; the neural accelerator runs at full frame rate with a decode contract matching
+to within $1.178\times10^{-7}$; and two bounded live runs displayed detection overlay and vehicle
+telemetry together in a browser under an enforced read-only contract.
+
+The write side is not proven, and no amount of prepared work changes that. The link from companion
+computer to flight controller is confirmed receive-only, so no actuator, arming, mode, or thrust
+command has ever been attempted; the two hardware suspects remain suspects rather than diagnosed
+causes. The autopilot-to-simulator bridge is source-verified and harness-tested for safe teardown,
+but its integrated run has not been performed. The hardware translator package does not exist. The
+custom detector does not fire, and the cause is an insufficient dataset rather than a pipeline
+fault. The entire research layer --- sensor streaming, the evolution model, and trend detection ---
+is not started. There has been no autonomous on-water run; the single field session was a
+manual-control float test.
+
+The principal professional lesson concerns evidence rather than technique. Several times during the
+period a component was complete in source and felt finished, and each time the discipline that
+mattered was refusing to record it as a result until it had been run and observed --- and, more
+than once, discovering on running it that the confident version had been wrong. The habit of
+separating verified from prepared from unrun, and of writing acceptance criteria that cannot pass
+vacuously, was the most transferable thing built during this Professional Thesis.
+
+\ReportTodo{Close with a short forward statement once the internship ends: what was completed after
+03/08/2026, and what is handed over.}
+
+% == TECHNICAL GLOSSARY =======================================================
+\chapter*{Technical Glossary}
+\addcontentsline{toc}{chapter}{Technical Glossary}
+
+Table~\ref{tab:technical-glossary} defines the technical terms and acronyms used in the report.
+
+\begin{longtable}{@{}L{0.25\textwidth}L{0.67\textwidth}@{}}
+  \caption{Technical glossary}\label{tab:technical-glossary}\\
+  \toprule
+  \textbf{Term or acronym} & \textbf{Definition in this report} \\
+  \midrule
+  \endfirsthead
+  \caption[]{Technical glossary (continued)}\\
+  \toprule
+  \textbf{Term or acronym} & \textbf{Definition in this report} \\
+  \midrule
+  \endhead
+  USV & Unmanned surface vehicle: an uncrewed boat operating on the water surface. \\
+  ROS 2 & The robotics middleware used throughout~\cite{macenski2022ros2}; a \emph{node} is one
+    process, a \emph{topic} a named typed message channel. \\
+  DDS / domain ID & The peer-to-peer discovery layer beneath ROS 2, and the numeric namespace that
+    isolates one system's traffic on a shared network. \\
+  QoS & Per-topic delivery policy; incompatible publisher and subscriber settings exchange nothing,
+    silently. \\
+  VRX / WAM-V & The maritime simulation suite~\cite{bingham2019vrx} and the catamaran-style vessel
+    it simulates, running on Gazebo~\cite{gazebo}. \\
+  Real-time factor & Ratio of simulated to wall-clock time; every simulator-measured rate must be
+    qualified by it. \\
+  LiDAR / point cloud & Laser range sensor producing roughly 30\,000 3D points per scan. \\
+  Differential thrust & Steering by unequal left and right thruster power rather than by rudder;
+    the vessel's only steering mechanism. \\
+  Emergency stop & A latched Boolean on a dedicated reliable-delivery topic, subscribed
+    independently by planner and controller. \\
+  MAVLink & The binary protocol~\cite{mavlink} spoken between autopilots, ground stations, and
+    companion computers; bridged into ROS 2 by MAVROS~\cite{mavros}. \\
+  Flight controller & The autopilot board driving the thrusters, running ArduPilot's rover
+    firmware~\cite{ardupilot}; distinct from the companion computer. \\
+  Companion computer & The onboard general-purpose Linux computer running high-level autonomy
+    alongside the autopilot. \\
+  Edge AI accelerator & The onboard neural inference device~\cite{hailo}; its binary format exposes
+    raw outputs with no embedded post-processing. \\
+  Object detection & Locating and classifying objects in an image, here with a single-stage
+    detector family~\cite{ultralytics}. \\
+  Software in the loop & Running real autopilot firmware as a simulated vehicle on an ordinary
+    computer, over network sockets rather than a serial link. \\
+  Digital twin & The simulator kept aligned with the real vessel by streamed telemetry. \\
+  Cellular automaton & A grid model in which each cell's next state depends on its neighbours;
+    planned, not implemented. \\
+  \bottomrule
+\end{longtable}
+
+% == INFORMATION SOURCES ======================================================
+% Every non-original figure or table must cite its source from here.
+\bibliographystyle{plain}
+\bibliography{references}
+
+\ReportTodo{Before final submission, verify and add primary references for the path-planning and
+detector methods where they are discussed, and ensure every non-original illustration cites its
+source.}
+
+% == APPENDICES ===============================================================
+% Appendices are EXCLUDED from the 40-page count and must be numbered.
+\appendix
+
+\chapter{Terminology Appendix}
+\label{app:terminology}
+
+Because this report is written in English, this appendix provides French equivalents for specialized
+terms needed to interpret the technical discussion.
+
+Table~\ref{tab:terminology} records the corresponding English and French terminology.
+
+\begin{longtable}{@{}L{0.28\textwidth}L{0.28\textwidth}L{0.36\textwidth}@{}}
+  \caption{Terminology appendix: specialized terms and translations}\label{tab:terminology}\\
+  \toprule
+  \textbf{Report term} & \textbf{Translation} & \textbf{Usage note} \\
+  \midrule
+  \endfirsthead
+  \caption[]{Terminology appendix (continued)}\\
+  \toprule
+  \textbf{Report term} & \textbf{Translation} & \textbf{Usage note} \\
+  \midrule
+  \endhead
+  Unmanned surface vehicle (USV) & véhicule de surface autonome &
+    Autonomous boat operating at the water surface. \\
+  Digital twin & jumeau numérique &
+    Simulation aligned with the physical vessel through telemetry. \\
+  Telemetry & télémétrie &
+    Status data received from the flight controller. \\
+  Object detection & détection d'objets &
+    Image-based localization and classification of objects. \\
+  \bottomrule
+\end{longtable}
+
+\end{document}

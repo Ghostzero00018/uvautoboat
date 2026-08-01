@@ -1,0 +1,130 @@
+% =============================================================================
+% Information sources for the Professional Thesis report.
+%
+% Every non-original figure or table MUST cite its source from here; the
+% instructions state that failing to do so counts as plagiarism.
+%
+% The academic entries below were verified against the publishers' metadata.
+% Software and documentation entries are cited by URL; update their version and
+% access-date fields to match what was actually used.
+%
+% Cite with \cite{key}. Uncited entries do not appear in the bibliography.
+% =============================================================================
+
+% --- Middleware and simulation ----------------------------------------------
+
+@article{macenski2022ros2,
+  author  = {Macenski, Steven and Foote, Tully and Gerkey, Brian and
+             Lalancette, Chris and Woodall, William},
+  title   = {Robot Operating System 2: Design, architecture, and uses in the wild},
+  journal = {Science Robotics},
+  volume  = {7},
+  number  = {66},
+  pages   = {eabm6074},
+  year    = {2022},
+  doi     = {10.1126/scirobotics.abm6074},
+  note    = {DOI: \url{https://doi.org/10.1126/scirobotics.abm6074}}
+}
+
+@inproceedings{bingham2019vrx,
+  author    = {Bingham, Brian and Ag{\"u}ero, Carlos and McCarrin, Michael and
+               Klamo, Joseph and Malia, Joshua and Allen, Kevin and Lum, Tyler and
+               Rawson, Marshall and Waqar, Rumman},
+  title     = {Toward Maritime Robotic Simulation in {Gazebo}},
+  booktitle = {Proceedings of MTS/IEEE OCEANS Conference},
+  address   = {Seattle, WA},
+  month     = oct,
+  year      = {2019},
+  pages     = {1--10},
+  doi       = {10.23919/OCEANS40490.2019.8962724},
+  note      = {DOI: \url{https://doi.org/10.23919/OCEANS40490.2019.8962724}}
+}
+
+@article{chang2021waterquality,
+  author  = {Chang, Hsing-Cheng and Hsu, Yu-Liang and Hung, San-Shan and
+             Ou, Guan-Ru and Wu, Jia-Ron and Hsu, Chuan},
+  title   = {Autonomous Water Quality Monitoring and Water Surface Cleaning
+             for Unmanned Surface Vehicle},
+  journal = {Sensors},
+  volume  = {21},
+  number  = {4},
+  pages   = {1102},
+  year    = {2021},
+  doi     = {10.3390/s21041102},
+  url     = {https://doi.org/10.3390/s21041102},
+  note    = {DOI: \url{https://doi.org/10.3390/s21041102}}
+}
+
+@misc{gazebo,
+  title        = {Gazebo: open source robotics simulator},
+  author       = {{Open Robotics}},
+  howpublished = {\url{https://gazebosim.org/}},
+  note         = {Gazebo Harmonic used in the simulation stack; accessed 01/08/2026},
+  urldate      = {2026-08-01}
+}
+
+% --- Autopilot, protocol, and ground station --------------------------------
+
+@misc{ardupilot,
+  title        = {{ArduPilot} autopilot software suite},
+  author       = {{ArduPilot Development Team}},
+  howpublished = {\url{https://ardupilot.org/}},
+  note         = {ArduRover 4.6.3 used on the vessel; accessed 01/08/2026},
+  urldate      = {2026-08-01}
+}
+
+@misc{mavlink,
+  title        = {{MAVLink} micro air vehicle communication protocol},
+  author       = {{MAVLink Development Team}},
+  howpublished = {\url{https://mavlink.io/}},
+  note         = {Accessed 01/08/2026},
+  urldate      = {2026-08-01}
+}
+
+@misc{mavros,
+  key          = {MAVROS},
+  title        = {{MAVROS}: {MAVLink} extendable communication node for {ROS}},
+  howpublished = {\url{https://github.com/mavlink/mavros}},
+  note         = {Accessed 01/08/2026},
+  urldate      = {2026-08-01}
+}
+
+% --- Onboard perception ------------------------------------------------------
+
+@misc{hailo,
+  title        = {{Hailo-8L} edge {AI} accelerator and {HailoRT} runtime},
+  author       = {{Hailo Technologies}},
+  howpublished = {\url{https://hailo.ai/}},
+  note         = {HailoRT 4.24.0 used on the companion computer; accessed 01/08/2026},
+  urldate      = {2026-08-01}
+}
+
+@misc{ultralytics,
+  title        = {{Ultralytics YOLO}},
+  author       = {{Ultralytics}},
+  howpublished = {\url{https://docs.ultralytics.com/}},
+  note         = {Accessed 01/08/2026},
+  urldate      = {2026-08-01}
+}
+
+% --- Operator interface ------------------------------------------------------
+
+@misc{rosbridge,
+  key          = {rosbridge_suite},
+  title        = {{rosbridge\_suite}: a {JSON} interface to {ROS}},
+  howpublished = {\url{https://github.com/RobotWebTools/rosbridge_suite}},
+  note         = {Accessed 01/08/2026},
+  urldate      = {2026-08-01}
+}
+
+% =============================================================================
+% CANDIDATE ACADEMIC SOURCES: verify full bibliographic details before citing.
+% These are prompts rather than entries, so they cannot be cited accidentally:
+%
+% - Koenig and Howard, "Design and use paradigms for Gazebo, an open-source
+%   multi-robot simulator", IROS 2004.
+% - Redmon, Divvala, Girshick and Farhadi, "You Only Look Once: Unified,
+%   Real-Time Object Detection", CVPR 2016.
+% - A* search: Hart, Nilsson and Raphael, IEEE Trans. Systems Science and
+%   Cybernetics, 1968.
+% =============================================================================
