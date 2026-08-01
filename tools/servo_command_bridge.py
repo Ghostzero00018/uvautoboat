@@ -3,23 +3,26 @@
 
 Purpose
 -------
-Bridge MAVLink and ROS 2 over UDP, in both directions:
+This node contains three distinct MAVLink/ROS 2 paths over UDP:
 
-  inbound   FCU/SITL  --SERVO_OUTPUT_RAW-->  /wamv/thrusters/{left,right}/thrust
-                                             (and optionally /cmd_vel)
-  outbound  /gps/fix, /imu/data  --GLOBAL_POSITION_INT, ATTITUDE-->  FCU/SITL
-            plus a 1 Hz HEARTBEAT
+* Supported inbound path: FCU/SITL ``SERVO_OUTPUT_RAW`` messages drive
+  /wamv/thrusters/{left,right}/thrust (and optionally /cmd_vel).
+* Unconditional outbound heartbeat: a 1 Hz HEARTBEAT is sent to the configured
+  MAVLink output. Nothing in Monday's topology binds that output, so the
+  heartbeat is unconsumed there.
+* Optional outbound sensor injection: the /gps/fix and /imu/data path exists but
+  is unsupported, unvalidated, and disabled by default. Keep
+  publish_sensors:=false for Monday.
 
-The inbound direction is the point of the exercise: the autopilot computes its
-servo outputs and those drive the simulated thrusters. The outbound direction is
-the hardware/software-in-the-loop return path that feeds the autopilot its
-sensors.
+The supported inbound path is the point of the exercise: the autopilot computes
+its servo outputs and those drive the simulated thrusters.
 
 Transport is UDP, exactly like the C++ reference. It therefore does NOT depend on
 the Pi's serial link to the flight controller, which is currently receive-only.
-Against a simulated autopilot (SITL on localhost) this bridge is fully usable
-today; against the real flight controller the traffic still has to cross that
-serial link, so the hardware blocker still applies there.
+Against a simulated autopilot (SITL on localhost) this bridge is prepared for a
+first gated run but remains NOT RUN; against the real flight controller the
+traffic still has to cross that serial link, so the hardware blocker still
+applies there.
 
 Differences from the C++ reference (deliberate)
 -----------------------------------------------
@@ -29,15 +32,15 @@ Differences from the C++ reference (deliberate)
   convention for a companion computer and avoids impersonating the vehicle.
 * Default component id is the standard onboard-computer id rather than an ad-hoc
   value, so the node cannot be mistaken for the autopilot on the same system id.
-* Servo decoding uses this vehicle's real mapping: LEFT = SERVO3, RIGHT = SERVO1,
-  PWM range 800-2200 with 800 as neutral. The reference hard-codes servo1/servo2
-  and a 1500-neutral assumption, which does not match this boat.
+* Servo decoding defaults to LEFT = SERVO3 and RIGHT = SERVO1. PWM normalisation
+  uses a provisional SITL starting profile (1100/1500/1900) that must be
+  confirmed from the parameter listing; the real boat's 800/800/2200 profile
+  remains available through explicit parameter overrides.
 * Thrust is published on the project's own VRX topics
   (/wamv/thrusters/{left,right}/thrust, Float64 newtons). /cmd_vel is optional and
   off by default.
-* Sensor injection towards the autopilot is OFF by default; enable it explicitly
-  with publish_sensors:=true. Sending sensor data into a real flight controller is
-  a write, and stays behind the project's normal approval.
+* Outbound GPS/IMU injection towards the autopilot is unsupported and not
+  validated for the Monday SITL-to-VRX path. Keep publish_sensors:=false.
 * The receive loop uses a bounded wait and shuts down cleanly instead of blocking
   forever on a socket that is closed underneath it.
 
@@ -46,33 +49,61 @@ Safety
 * This node only drives the SIMULATOR. It never commands a real motor, never
   arms, and sends no COMMAND_LONG / actuator / RC-override message.
 * It publishes on /wamv/thrusters/*, which the Pi safety monitor treats as
-  protected command topics: running this bridge while the live Pi stack is up
-  will correctly abort that run. Use it in simulation, ideally on its own
-  ROS_DOMAIN_ID.
-* publish_sensors:=true transmits to the autopilot. Leave it false unless a
-  hardware/software-in-the-loop session has been approved.
+  protected command topics. If this bridge and the live Pi helper are discoverable
+  in the same ROS domain, the helper will abort on the first protected thrust
+  message. Monday must keep the Pi stack down and use a separate explicitly
+  isolated ROS_DOMAIN_ID.
+* Outbound GPS/IMU injection is outside the supported Monday path. Keep
+  publish_sensors:=false; do not enable it for this run.
 
 Usage
 -----
-    python3 tools/servo_command_bridge.py
+Start SITL with an explicit MAVProxy output for this node; the receive endpoint
+does not initiate a connection:
+
+    --out=udp:127.0.0.1:14555
+
+At the MAVProxy prompt, inspect all channel functions before starting the bridge:
+
+    param show SERVO*_FUNCTION
+    param show SERVO*_MIN
+    param show SERVO*_TRIM
+    param show SERVO*_MAX
+
+Select ``left_servo_channel`` and ``right_servo_channel`` from the observed
+assignments rather than assuming fixed channel numbers. Replace the example
+channel and PWM values below with the confirmed values.
+
+Use the same isolated domain for VRX and every bridge/query terminal. Start VRX
+alone rather than the complete live-boat launch, then run:
+
+    export ROS_DOMAIN_ID=42
     python3 tools/servo_command_bridge.py --ros-args \
-        -p udp_send_port:=14551 -p udp_recv_port:=14555 \
-        -p publish_sensors:=true -p publish_cmd_vel:=true
+        -p left_servo_channel:=3 -p right_servo_channel:=1 \
+        -p pwm_min:=1100 -p pwm_neutral:=1500 -p pwm_max:=1900 \
+        -p max_thrust:=800.0 -p publish_sensors:=false
+
+The decimal in ``800.0`` is required by the declared ROS parameter type. To use
+the real boat's PWM profile after confirming its servo assignments, also pass:
+
+    -p pwm_min:=800 -p pwm_neutral:=800 -p pwm_max:=2200
 
 Requires rclpy and pymavlink (already used by tools/qgc_live_mission_bridge.py).
 """
 
 import math
+import signal
 import socket
 import threading
+import time
 
-import rclpy
 from geometry_msgs.msg import Twist
+from pymavlink import mavutil
+import rclpy
 from rclpy.node import Node
+from rclpy.signals import SignalHandlerOptions
 from sensor_msgs.msg import Imu, NavSatFix
 from std_msgs.msg import Float64
-
-from pymavlink import mavutil
 
 # MAVLink identity constants (avoids importing the dialect module directly).
 MAV_TYPE_ONBOARD_CONTROLLER = 18
@@ -94,13 +125,13 @@ class ServoCommandBridge(Node):
         self.udp_send_port = self.declare_parameter('udp_send_port', 14551).value
         self.udp_recv_port = self.declare_parameter('udp_recv_port', 14555).value
 
-        # --- Servo -> thrust mapping (this vehicle) -----------------------
+        # --- Servo -> thrust mapping --------------------------------------
         self.left_channel = self.declare_parameter('left_servo_channel', 3).value
         self.right_channel = self.declare_parameter('right_servo_channel', 1).value
-        self.pwm_min = self.declare_parameter('pwm_min', 800).value
-        self.pwm_neutral = self.declare_parameter('pwm_neutral', 800).value
-        self.pwm_max = self.declare_parameter('pwm_max', 2200).value
-        self.max_thrust = self.declare_parameter('max_thrust', 100.0).value
+        self.pwm_min = self.declare_parameter('pwm_min', 1100).value
+        self.pwm_neutral = self.declare_parameter('pwm_neutral', 1500).value
+        self.pwm_max = self.declare_parameter('pwm_max', 1900).value
+        self.max_thrust = self.declare_parameter('max_thrust', 800.0).value
 
         # --- Direction switches -------------------------------------------
         self.publish_sensors = self.declare_parameter('publish_sensors', False).value
@@ -115,8 +146,16 @@ class ServoCommandBridge(Node):
         right_topic = self.declare_parameter(
             'right_thrust_topic', '/wamv/thrusters/right/thrust').value
 
+        if not 1 <= self.left_channel <= 16 or not 1 <= self.right_channel <= 16:
+            raise ValueError('servo channels must be in the MAVLink range 1..16')
+        if self.left_channel == self.right_channel:
+            raise ValueError('left and right servo channels must be distinct')
         if self.pwm_max <= self.pwm_min:
             raise ValueError('pwm_max must be greater than pwm_min')
+        if not self.pwm_min <= self.pwm_neutral <= self.pwm_max:
+            raise ValueError('pwm_neutral must be between pwm_min and pwm_max')
+        if not math.isfinite(self.max_thrust) or self.max_thrust <= 0.0:
+            raise ValueError('max_thrust must be finite and greater than zero')
 
         # --- MAVLink endpoints ---------------------------------------------
         self.mav_out = mavutil.mavlink_connection(
@@ -141,11 +180,13 @@ class ServoCommandBridge(Node):
         # --- Receive thread ---------------------------------------------------
         self._running = threading.Event()
         self._running.set()
+        self._publish_lock = threading.Lock()
+        self._start_lock = threading.Lock()
+        self._servo_frame_seen = False
         self._min_sensor_gap = 1.0 / self.sensor_rate_hz if self.sensor_rate_hz > 0 else 0.0
         self._last_gps_sent = 0.0
         self._last_imu_sent = 0.0
-        self.recv_thread = threading.Thread(target=self.recv_loop, daemon=True)
-        self.recv_thread.start()
+        self.recv_thread = None
 
         self.get_logger().info(
             f'bridge up: recv udp:{self.udp_recv_port} -> {left_topic} / {right_topic}; '
@@ -259,21 +300,31 @@ class ServoCommandBridge(Node):
     # Inbound: MAVLink -> ROS
     # ------------------------------------------------------------------
 
+    def start(self):
+        """Start MAVLink reception once construction is fully protected."""
+        with self._start_lock:
+            if self.recv_thread is not None:
+                return
+            self.recv_thread = threading.Thread(target=self.recv_loop, daemon=True)
+            self.recv_thread.start()
+
     def recv_loop(self):
         while self._running.is_set():
             try:
                 msg = self.mav_in.recv_match(blocking=True, timeout=0.5)
-            except Exception as exc:  # socket closed during shutdown
-                if self._running.is_set():
-                    self.get_logger().warning(f'receive failed: {exc}')
-                return
-            if msg is None:
-                continue
-            msg_type = msg.get_type()
-            if msg_type == 'SERVO_OUTPUT_RAW':
-                self.handle_servo_output(msg)
-            elif msg_type == 'COMMAND_LONG':
-                self.get_logger().info(f'received COMMAND_LONG: {msg.command}')
+                if msg is None:
+                    continue
+                msg_type = msg.get_type()
+                if msg_type == 'SERVO_OUTPUT_RAW':
+                    self.handle_servo_output(msg)
+                elif msg_type == 'COMMAND_LONG':
+                    self.get_logger().info(f'received COMMAND_LONG: {msg.command}')
+            except Exception as exc:
+                if not self._running.is_set():
+                    break
+                self.get_logger().warning(
+                    f'MAVLink receive/decode/publish failed: {exc}',
+                    throttle_duration_sec=5.0)
 
     def handle_servo_output(self, msg):
         left_pwm = getattr(msg, f'servo{self.left_channel}_raw', 0)
@@ -286,14 +337,29 @@ class ServoCommandBridge(Node):
         left_msg.data = left_norm * self.max_thrust
         right_msg = Float64()
         right_msg.data = right_norm * self.max_thrust
-        self.pub_left.publish(left_msg)
-        self.pub_right.publish(right_msg)
 
-        if self.pub_cmd_vel is not None:
-            cmd = Twist()
-            cmd.linear.x = (left_norm + right_norm) / 2.0
-            cmd.angular.z = (right_norm - left_norm) / 2.0
-            self.pub_cmd_vel.publish(cmd)
+        diagnostic = (
+            f'SERVO_OUTPUT_RAW: left SERVO{self.left_channel} {left_pwm} -> '
+            f'{left_norm:+.3f} -> {left_msg.data:+.1f} N; '
+            f'right SERVO{self.right_channel} {right_pwm} -> '
+            f'{right_norm:+.3f} -> {right_msg.data:+.1f} N')
+        if not self._servo_frame_seen:
+            self.get_logger().info(diagnostic, once=True)
+            self._servo_frame_seen = True
+        else:
+            self.get_logger().info(diagnostic, throttle_duration_sec=5.0)
+
+        with self._publish_lock:
+            if not self._running.is_set():
+                return
+            self.pub_left.publish(left_msg)
+            self.pub_right.publish(right_msg)
+
+            if self.pub_cmd_vel is not None:
+                cmd = Twist()
+                cmd.linear.x = (left_norm + right_norm) / 2.0
+                cmd.angular.z = (right_norm - left_norm) / 2.0
+                self.pub_cmd_vel.publish(cmd)
 
     # ------------------------------------------------------------------
     # Shutdown
@@ -301,24 +367,55 @@ class ServoCommandBridge(Node):
 
     def stop(self):
         self._running.clear()
+
+        zero_commands = [
+            ('left thrust', self.pub_left, Float64()),
+            ('right thrust', self.pub_right, Float64()),
+        ]
+        if self.pub_cmd_vel is not None:
+            zero_commands.append(('cmd_vel', self.pub_cmd_vel, Twist()))
+
+        stop_failures = []
+        with self._publish_lock:
+            for label, publisher, message in zero_commands:
+                try:
+                    publisher.publish(message)
+                except Exception as exc:
+                    stop_failures.append(f'{label}: {exc}')
+        if stop_failures:
+            self.get_logger().warning(
+                'failed to publish one or more stop commands: ' + '; '.join(stop_failures))
+
         for conn in (self.mav_in, self.mav_out):
             try:
                 conn.close()
             except Exception:
                 pass
-        if self.recv_thread.is_alive():
-            self.recv_thread.join(timeout=2.0)
+        recv_thread = self.recv_thread
+        if recv_thread is not None and recv_thread.is_alive():
+            recv_thread.join(timeout=2.0)
 
 
 def main(args=None):
-    rclpy.init(args=args)
+    signal.signal(signal.SIGTERM, signal.default_int_handler)
+    rclpy.init(args=args, signal_handler_options=SignalHandlerOptions.NO)
     node = ServoCommandBridge()
     try:
-        rclpy.spin(node)
+        node.start()
+        while rclpy.ok():
+            rclpy.spin_once(node, timeout_sec=0.1)
     except KeyboardInterrupt:
         pass
     finally:
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
         node.stop()
+        flush_deadline = time.monotonic() + 0.5
+        while rclpy.ok():
+            remaining = flush_deadline - time.monotonic()
+            if remaining <= 0.0:
+                break
+            rclpy.spin_once(node, timeout_sec=min(0.1, remaining))
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()

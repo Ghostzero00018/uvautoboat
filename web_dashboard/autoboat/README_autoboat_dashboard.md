@@ -244,7 +244,7 @@ Start, Resume, Go Home, Reset, and Emergency Stop prompt a confirmation before a
 
 | Topic                          | Data                                 |
 | ------------------------------ | ------------------------------------ |
-| `/wamv/sensors/gps/gps/fix`    | GPS position                         |
+| `/mavros/global_position/raw/fix` | GPS position in the temporary live MAVLink view |
 | `/planning/mission_status`     | State, waypoint, progress            |
 | `/planning/waypoints`          | Waypoint list for map                |
 | `/planning/current_target`     | Current navigation target            |
@@ -255,6 +255,10 @@ Start, Resume, Go Home, Reset, and Emergency Stop prompt a confirmation before a
 | `/wamv/thrusters/left/thrust`  | Left thruster command feedback       |
 | `/wamv/thrusters/right/thrust` | Right thruster command feedback      |
 
+The current temporary view-only build does not subscribe to the VRX simulation GPS
+topic. Simulation GPS and map updates require restoring that subscription in a
+simulation build.
+
 ### Published (Write)
 
 | Topic                      | Data                                           |
@@ -262,8 +266,8 @@ Start, Resume, Go Home, Reset, and Emergency Stop prompt a confirmation before a
 | `/planning/set_config`      | Parameter updates (JSON)                       |
 | `/planning/mission_command` | Mission commands (start, resume, go_home, etc.) |
 | `/planning/emergency_stop`  | Safety-critical E-Stop (latched Bool)          |
-| `/wamv/thrusters/left/thrust`  | Manual left thruster command                 |
-| `/wamv/thrusters/right/thrust` | Manual right thruster command                |
+| `/wamv/thrusters/left/thrust`  | E-Stop zero-thrust command (`0.0` only; blocked while `LIVE_MAVLINK_VIEW_ONLY=true`) |
+| `/wamv/thrusters/right/thrust` | E-Stop zero-thrust command (`0.0` only; blocked while `LIVE_MAVLINK_VIEW_ONLY=true`) |
 
 ### Called (Service Clients)
 
@@ -346,4 +350,4 @@ Part of the uvautoboat project — Apache License 2.0.
 
 Built with [roslibjs](http://robotwebtools.org/), [Leaflet.js](https://leafletjs.com/), [OpenStreetMap](https://www.openstreetmap.org/).
 
-Last updated: 17/07/2026
+Last updated: 01/08/2026

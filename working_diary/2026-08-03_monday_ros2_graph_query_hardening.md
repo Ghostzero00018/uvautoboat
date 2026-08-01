@@ -2,25 +2,30 @@
 
 > **START HERE - carried-forward known issue.** The live-dashboard supervisor
 > (`tools/pi_live_hailo_mavlink_dashboard.sh`) drives its graph and source checks with
-> `ros2 ... --no-daemon --spin-time 2` queries. These are slow and intermittently misreport,
-> and they caused two separate flaky failures on 24/07/2026: (1) the end-of-window final
-> verification cumulatively overran its budget (worked around by raising `FINAL_VERIFY_SECONDS`
-> 90 -> 180 s in `0306310`); (2) the live-hold `require_mavros_source` publisher-count check read
-> a FALSE `publisher count 0` on `/mavros/imu/data` while MAVROS/IMU were provably healthy,
-> self-stopping the hold with `status=1`. Both share one root. Hardening these queries is the main
-> task for this day.
+> `ros2 ... --no-daemon --spin-time 2` queries. These are slow and can intermittently misreport.
+> On 24/07/2026, the live-hold `require_mavros_source` check read a FALSE `publisher count 0` on
+> `/mavros/imu/data` while MAVROS/IMU were provably healthy, self-stopping the hold with
+> `status=1`. A separate final-verification run cumulatively overran its budget; that sequence
+> includes `bounded_topic_echo`, which invokes `ros2 topic echo` directly rather than the graph
+> wrapper. Its root cause remains open and must not be conflated with the false graph result.
+> Hardening the graph/source queries is the main task for this day, with final-verification timing
+> retained as separate evidence.
 
 ## Status
 
-Prepared at EOD 24/07/2026. Vacation 25/07 - 02/08/2026 (no work); resume Monday 03/08/2026. At
-prep, the window/telemetry stack is trimmed and verified across three full-stack runs (24/07),
-all committed and pushed to `origin/main`. The dashboard-to-real-motor track is parked on a
-hardware blocker (receive-only Pi-to-FCU serial link). One piece of vacation side-work landed on
-27/07: a C++ bridge reference (`ab16f15`) plus a runnable Python equivalent
-(`tools/servo_command_bridge.py`), both documentation/tooling only - no live run, no hardware,
-and no change to the dashboard, helpers, write guard, or safety monitor. See
-`working_diary/2026-07-27_monday_fcu_vrx_bridge_reference.md`. No other decisions were taken
-during the gap.
+Prepared initially at EOD 24/07/2026 for the planned vacation interval 25/07 - 02/08/2026 and
+resumption on Monday 03/08/2026. At that preparation point, the window/telemetry stack was trimmed
+and verified across three full-stack runs on 24/07, all committed and pushed to `origin/main`. The
+dashboard-to-real-motor track remains parked on a hardware blocker (receive-only Pi-to-FCU serial
+link). Side-work recorded on 27/07 added a C++ bridge reference (`ab16f15`) plus a runnable Python
+equivalent (`tools/servo_command_bridge.py`); see
+`working_diary/2026-07-27_monday_fcu_vrx_bridge_reference.md`.
+
+Forward update on 01/08/2026: the Python bridge defaults, validation, logging, teardown lifecycle,
+and this runbook were revised for the workstation-only SITL path. A local harness with synthetic
+MAVLink input verified the bounded process-level safety evidence recorded below. The integrated
+ArduRover SITL + VRX run remains **NOT RUN**, and no real FCU, motor, dashboard helper, write guard,
+or safety-monitor behaviour was exercised or changed by that preparation.
 
 ## Goals
 
@@ -38,13 +43,15 @@ during the gap.
 
 ## Evidence carried forward
 
-- **Graph-query root cause.** `require_mavros_source`, `final_graph_verification`, and
-  `bounded_topic_echo` in `tools/pi_live_hailo_mavlink_dashboard.sh` all go through
-  `ros2_graph_query` / `ros2_graph_query_before`, i.e. `ros2 ... --no-daemon --spin-time 2`. 24/07
-  evidence: run `live_dashboard_20260724_175832` failed final-verify at ~90 s during the IMU
-  sample; run `live_dashboard_20260724_184228` recorded `final_verification=116s` (passed under
-  the new 180 s budget) then hit the hold-monitor false `publisher count 0` on `/mavros/imu/data`
-  while mavros.log showed IMU healthy. Logs copied under `~/Desktop/test_logs_folder/`.
+- **Two distinct 24/07 failures.** `require_mavros_source` and the graph/source portions of
+  `final_graph_verification` use `ros2_graph_query` / `ros2_graph_query_before`, i.e.
+  `ros2 ... --no-daemon --spin-time 2`. `bounded_topic_echo` instead invokes `ros2 topic echo`
+  directly. Run `live_dashboard_20260724_175832` failed final verification at ~90 s during the IMU
+  sample; its cumulative timing root cause remains open. Run `live_dashboard_20260724_184228`
+  recorded `final_verification=116s` (passed under the new 180 s budget), then the hold monitor read
+  a false `publisher count 0` on `/mavros/imu/data` while `mavros.log` showed IMU healthy. The latter
+  is direct graph-query evidence; do not assign the earlier overrun the same root without further
+  log evidence. Logs are copied under `~/Desktop/test_logs_folder/`.
 - **FCU hardware (from QGC tlogs, no Pi contact).** `Cube Orange+` running `ArduRover 4.6.3`,
   `FRAME_CLASS=2` boat/skid-steer. Thrusters on the FCU servo rail: LEFT = `SERVO3`
   (`SERVO3_FUNCTION=73`), RIGHT = `SERVO1` (`SERVO1_FUNCTION=74`), PWM 800-2200 neutral 800.
@@ -69,8 +76,11 @@ Read-only first: confirm from the 24/07 logs whether the misreads track DDS/disc
 Then take the smallest robust change - options to weigh: (a) use the ros2 daemon for these
 queries instead of `--no-daemon`; (b) verify source presence via a short real `rclpy`
 subscription instead of `ros2 topic info`; (c) add tolerance / more retries. Any helper edit
-re-pins the checksum across the preflight constant, both preflight-test literals, and the wiki
-manifest, and must keep both suites green (`bash tools/test_pi_live_hailo_mavlink_dashboard.sh`,
+or supervisor edit requires recomputing the changed artifact's SHA-256 and byte size after the
+edit, then propagating every current helper/supervisor hash and size pin across the preflight
+constant, focused regression assertions, and wiki manifest. Enumerate all tracked occurrences;
+do not assume a fixed count. Keep the supervisor-hash assertion and both focused suites green
+(`bash tools/test_pi_live_hailo_mavlink_dashboard.sh`,
 `bash tools/test_live_dashboard_preflight.sh`). Verify with a fresh full-stack run that reaches a
 clean `PI_SUPERVISOR_EXIT status=0` after an operator Ctrl+C.
 
@@ -80,19 +90,318 @@ Research-led only; add no instrumentation. Fold in any supervisor reply.
 
 ### Task 3 - Pi-to-FCU (if time)
 
-At the boat: check the Pi TXD -> Cube SERIAL1 RX wire and/or set `BRD_SER1_RTSCTS=0`, then re-run
-`tx_probe.py` - success = a `FRAME_CLASS` value read back from the FCU. Only after the link is
-bidirectional does the motor track resume, still behind the propellers-removed bench gate.
+Default scope at the boat is inspect-only. Power the boat fully off before inspecting the Pi TXD ->
+Cube SERIAL1 RX wiring, and do not alter it during this block. For a powered parameter inspection,
+read back and retain the current `BRD_SER1_RTSCTS` value before proposing any change. The missing
+TXD connection and an incompatible flow-control setting remain suspects, not established causes.
+
+Any wiring change, `BRD_SER1_RTSCTS` change, or `tx_probe.py` run requires a separate explicit
+approval for a propellers-removed, restrained bench block. In that approved block, power off before
+touching wiring, preserve the original wiring and parameter value for rollback, change only one
+suspect at a time, and read the parameter back after a write. `tx_probe.py` remains a
+workstation-side probe run from `cd ~`. Restore the recorded original parameter and wiring after a
+failed test or before closing the block unless the user explicitly accepts the new state. Success
+is a `FRAME_CLASS` value read back from the FCU. Only after the link is bidirectional does the motor
+track resume, still behind its own propellers-removed bench gate.
 
 **Alternative that does not need the boat - SITL.** The 27/07 bridge reference and its Python
 equivalent are UDP-based, so against a simulated autopilot (SITL on localhost) nothing crosses
 the blocked serial link. Running `tools/servo_command_bridge.py` against SITL proves the
 autopilot-to-simulator command path (`SERVO_OUTPUT_RAW` -> `/wamv/thrusters/{left,right}/thrust`)
-while the wiring fix is pending. Caveats: it is source-verified only, not runtime-proven; it
-proves nothing about real motor output; keep `publish_sensors` off unless a hardware-in-the-loop
-session is approved; and because it publishes on protected command topics, run it in simulation
-on its own `ROS_DOMAIN_ID`, never alongside the live Pi stack. Full analysis in
+while the wiring fix is pending. The local process-level safety checks below do not prove the
+integrated ArduRover SITL + VRX path or real motor output. For this run, `publish_sensors` must
+remain `false`; outbound sensor injection is not validated and remains outside scope. Because the
+bridge publishes on protected command topics, run it in simulation on its own `ROS_DOMAIN_ID`,
+never alongside the live Pi stack. Full analysis in
 `working_diary/2026-07-27_monday_fcu_vrx_bridge_reference.md`.
+
+#### SITL bridge safety gate (required before the first run)
+
+The bridge safety lifecycle has been exercised locally against the actual Python file with
+synthetic MAVLink input. SIGINT, SIGTERM, and repeated-signal teardown each exited `0` and
+published a new trailing `0.0` after held non-zero samples on both thrust topics. Parameter
+validation rejected non-finite or non-positive thrust, duplicate servo channels, and a neutral
+value outside the PWM range. Python syntax passed; the two existing import-order lint findings
+are unchanged and deferred.
+
+The integrated ArduRover SITL + VRX sequence below remains prepared but **NOT RUN**. It is a
+user-run workstation test, and every existing inspection and live gate below still applies.
+ArduPilot SITL is a prerequisite; treat it as missing until the executable and MAVProxy checks
+below pass.
+
+Forward correction for 03/08/2026: the bridge defaults now use a provisional SITL starting profile
+of `1100/1500/1900`, pending the parameter inspection below. The real-boat `800/800/2200` profile
+must be supplied as explicit runtime configuration, and left/right servo output channels remain
+inspection-gated in both environments.
+
+The official installation commands below are **UNTESTED on this workstation** and require network
+access plus package installation. Run them only if `~/ardupilot` is still absent:
+
+```bash
+cd ~
+git clone --recurse-submodules https://github.com/ArduPilot/ardupilot.git
+cd ~/ardupilot
+Tools/environment_install/install-prereqs-ubuntu.sh -y
+source ~/.profile
+test -x "$HOME/ardupilot/Tools/autotest/sim_vehicle.py"
+command -v mavproxy.py
+```
+
+Whether ArduPilot was already present or newly installed, retain its exact revision and MAVProxy
+version before starting T1:
+
+```bash
+git -C "$HOME/ardupilot" rev-parse HEAD
+mavproxy.py --version
+```
+
+**Host + terminals:** workstation only. Use one new or idle one-shot setup terminal S0, then five
+new or idle foreground terminals: T1 for VRX, T2 for SITL/MAVProxy, T3 for the bridge, and
+T4-L/T4-R for continuous left/right thrust observation. T1, T2, T3, T4-L, and T4-R remain
+foreground until the ordered stop phase. Do not start the live Pi stack or
+`launch_autoboat_complete.sh`; `tools/pi_live_hailo_mavlink_dashboard.sh` deliberately aborts when
+either VRX thrust topic appears in its ROS domain.
+
+**cwd + env:** run this exact setup first in S0 and then in every foreground terminal before its
+terminal-specific command. Domain `42` is the proposed isolated test domain; if its bounded
+occupancy gate below is not clean, choose another domain and replace `42` consistently in S0 and
+all five foreground terminals.
+
+```bash
+cd /home/ghostzero/seal_ws/src/uvautoboat
+source /opt/ros/jazzy/setup.bash
+source /home/ghostzero/seal_ws/install/setup.bash
+export ROS_DOMAIN_ID=42
+printf 'ROS_DOMAIN_ID=%s\n' "$ROS_DOMAIN_ID"
+```
+
+In S0, before launching any foreground process, create one unique evidence directory. Plain
+`mkdir` is intentional: a timestamp collision aborts instead of reusing an existing directory.
+
+```bash
+SITL_RUN_DIR="/tmp/uvautoboat_sitl_d${ROS_DOMAIN_ID}_$(date +%Y%m%d_%H%M%S)"
+if ! mkdir -- "$SITL_RUN_DIR"; then
+  printf 'ABORT: SITL_RUN_DIR already exists: %s\n' "$SITL_RUN_DIR" >&2
+  exit 1
+fi
+printf 'export SITL_RUN_DIR=%q\n' "$SITL_RUN_DIR"
+```
+
+Copy the exact printed `export SITL_RUN_DIR=...` line into T1, T2, T3, T4-L, and T4-R after each
+terminal's cwd/environment setup. Do not reconstruct the value and do not run `mkdir` again. In
+each foreground terminal, `test -d "$SITL_RUN_DIR"` must pass before its terminal-specific command.
+
+Still in S0, take two bounded daemonless graph snapshots, separated by a short discovery wait:
+
+```bash
+DOMAIN_GATE_STATUS="${SITL_RUN_DIR}/domain_preflight_status.log"
+for snapshot in 1 2; do
+  for entity in node topic; do
+    evidence="${SITL_RUN_DIR}/domain_${ROS_DOMAIN_ID}_${snapshot}_${entity}.log"
+    timeout 8s ros2 "$entity" list --no-daemon --spin-time 2 >"$evidence" 2>&1
+    status=$?
+    if [ "$status" -ne 0 ]; then
+      printf 'DOMAIN_PREFLIGHT=ABORT snapshot=%s entity=%s status=%s evidence=%s\n' \
+        "$snapshot" "$entity" "$status" "$evidence" | tee -a "$DOMAIN_GATE_STATUS"
+      cat "$evidence"
+      exit 1
+    fi
+    if [ -s "$evidence" ]; then
+      printf 'DOMAIN_PREFLIGHT=ABORT snapshot=%s entity=%s reason=output evidence=%s\n' \
+        "$snapshot" "$entity" "$evidence" | tee -a "$DOMAIN_GATE_STATUS"
+      cat "$evidence"
+      exit 1
+    fi
+  done
+  if [ "$snapshot" -eq 1 ]; then
+    sleep 3
+  fi
+done
+printf 'DOMAIN_PREFLIGHT=BOUNDED_EMPTY domain=%s\n' "$ROS_DOMAIN_ID" | \
+  tee -a "$DOMAIN_GATE_STATUS"
+```
+
+Any node/topic output, timeout, or command error aborts before T1. Paste back the status line and
+named evidence file, choose another domain, create a new timestamped `SITL_RUN_DIR`, and rerun the
+entire gate. Two empty snapshots are only a bounded preflight observation; they cannot prove that a
+late participant will not join the domain.
+
+Every retry is a new run. Complete the prior ordered or FAIL process cleanup and the stale
+process/listener checks below, then create a new directory in S0. Never reuse, truncate, or
+overwrite a previous run directory or its logs.
+
+**Prereqs + stop conditions:** confirm VRX is the only ROS simulation stack, no live Pi/dashboard
+session is running, the Cube and real motors are not involved, and the ArduPilot checks above pass.
+The first/reset SITL run uses `-w`; omit `-w` on later runs so parameters are not silently reset.
+
+Before T3 launch, run both checks in T3. Both must print no matches:
+
+```bash
+pgrep -af servo_command_bridge
+ss -lunp | grep 14555
+```
+
+If either command prints a process or listener, abort the launch and paste back that output for a
+cleanup handoff. Do not start another bridge or bind another UDP listener until the leftover owner
+has been identified and stopped deliberately.
+
+T1, start VRX alone. This command is also **UNTESTED on this workstation**:
+
+```bash
+ros2 launch vrx_gz competition.launch.py world:=sydney_regatta
+```
+
+T2, start Rover SITL and explicitly route MAVLink to the bridge's UDP listener:
+
+```bash
+cd /home/ghostzero/ardupilot
+./Tools/autotest/sim_vehicle.py -v Rover -f rover -w --out=udp:127.0.0.1:14555
+```
+
+Before starting T3, enter these commands at the T2 MAVProxy prompt and retain their complete
+output:
+
+```text
+param show SERVO*_FUNCTION
+param show SERVO*_MIN
+param show SERVO*_TRIM
+param show SERVO*_MAX
+```
+
+Do not require a reset `-f rover -w` instance to arrive with functions `73/74` on channels `3/1`.
+Inspect the complete listing, then explicitly set or confirm one unique SITL output with
+`FUNCTION=73` for left and one unique output with `FUNCTION=74` for right. Re-run the listing after
+any `param set` and record the actual output channel numbers. If either function is absent,
+duplicated, assigned ambiguously, or associated with a disabled/inert output, stop instead of
+guessing. The selected left/right outputs must have identical MIN/TRIM/MAX triplets. If their
+triplets differ, stop: the bridge exposes one shared PWM profile and cannot represent asymmetric
+rails. If their shared triplet differs from the provisional `1100/1500/1900` starting profile,
+replace `pwm_min`, `pwm_neutral`, and `pwm_max` in the T3 bridge command with that shared observed
+triplet, then recheck the mapping math before proceeding. The `rc 3` and `rc 1` commands below are
+RC inputs and do not prove that servo output channels `3/1` are correct.
+
+T4-L and T4-R, start the observers before T3 and leave them running through bridge Ctrl+C:
+
+```bash
+# T4-L
+ros2 topic echo /wamv/thrusters/left/thrust | \
+  tee "${SITL_RUN_DIR}/sitl_bridge_left_thrust.log"
+```
+
+```bash
+# T4-R
+ros2 topic echo /wamv/thrusters/right/thrust | \
+  tee "${SITL_RUN_DIR}/sitl_bridge_right_thrust.log"
+```
+
+T3, start the bridge with the inspected channel/PWM values explicit; `max_thrust` intentionally
+uses the source-verified `800.0` default:
+
+```bash
+set -o pipefail
+python3 tools/servo_command_bridge.py --ros-args \
+  -p udp_recv_port:=14555 \
+  -p left_servo_channel:=3 \
+  -p right_servo_channel:=1 \
+  -p pwm_min:=1100 \
+  -p pwm_neutral:=1500 \
+  -p pwm_max:=1900 \
+  -p publish_sensors:=false \
+  2>&1 | tee "${SITL_RUN_DIR}/sitl_servo_command_bridge.log"
+BRIDGE_EXIT=${PIPESTATUS[0]}
+printf 'BRIDGE_EXIT=%s\n' "$BRIDGE_EXIT" | \
+  tee -a "${SITL_RUN_DIR}/sitl_servo_command_bridge.log"
+```
+
+The channel values `3/1` in this command are allowed only if the parameter evidence confirms that
+exact left/right mapping. Otherwise replace them with the two uniquely confirmed SITL servo output
+channels before running T3.
+
+The source-verified bridge default `max_thrust=800.0` matches `SAFE_THRUST`. With the confirmed
+`1100/1500/1900` profile, PWM `1700` and `1300` should therefore publish `+400.0 N` and `-400.0 N`
+respectively. Keep `publish_sensors=false`: sensor publication is outside this test.
+
+The first decoded-frame log must show raw left/right PWM, normalised values, and published newtons.
+If no decoded frame appears, stop and diagnose the T2 `--out=udp:127.0.0.1:14555` route rather than
+treating it as a VRX failure. Record the actual `SERVO_OUTPUT_RAW` arrival rate before proposing any
+watchdog. At the T2 MAVProxy prompt, the following rate commands are **UNTESTED on this
+workstation**; use `help messagerate` first and retain the raw status output:
+
+```text
+module load messagerate
+help messagerate
+messagerate status
+```
+
+After the mapping proof and before Ctrl+C, exercise the simulated command path deliberately. Enter
+one command at a time at the T2 MAVProxy prompt, wait for the corresponding T4-L and T4-R samples,
+then continue. Those topic samples are the per-step command evidence; the bridge's 5 s throttled log
+cannot acknowledge a short phase reliably.
+
+```text
+mode MANUAL
+arm throttle
+rc 3 1700
+rc 1 1700
+rc 3 1300
+rc 3 1700
+```
+
+The last command restores channel 3 to `1700` while channel 1 remains at `1700`. Hold both
+non-neutral inputs, and confirm both T4 observers retain non-zero samples, through bridge Ctrl+C.
+If either T4 observer reads `0.0`, reduce the steering offset, for example with `rc 1 1600`, until
+both observers show non-zero thrust; only then issue Ctrl+C. This is a skid-mixer saturation
+contingency, not a proven current output.
+
+Before `arm throttle`, confirm this is the isolated SITL process and both observed thrust values are
+zero. Abort immediately if arming affects anything outside SITL, a command changes the wrong
+thruster, left/right are swapped, a sign is unexpected, conversion exceeds the configured limit,
+or either observer stops updating. The abort sequence at the MAVProxy prompt is `rc 3 1500`, then
+`rc 1 1500`, then `disarm`; allow at most 5 s for both observed thrust values to return to zero. If
+either observer has stopped or both zeros are not visible within that bound, record a FAIL and use
+the bounded failure cleanup below. Do not wait indefinitely or continue to the next exercise
+command after an abort condition.
+
+**Run + stop:** with the final confirmed non-neutral RC values that produced non-zero samples on
+both T4 observers still held, press Ctrl+C in T3 first while both observers remain active. Teardown
+starts a bounded observation window: allow at most 5 s for each thrust-topic record to show its held
+non-zero sample followed immediately by a new `0.0` sample associated with bridge Ctrl+C. The topic
+records decide teardown PASS. A merely final, startup, or pre-existing zero is not evidence of safe
+teardown. A missing shutdown zero, no held non-zero sample on either topic, a stopped observer, or a
+bridge exception fails the gate. A gap in the bridge's throttled decoded-frame logs is a fault only
+when the T4 topic samples also stop during the exercise.
+
+Record separately whether the WAM-V visibly stops or coasts after both topic zeros. Continued motion
+after confirmed zero commands does not fail bridge teardown; it is VRX dynamics evidence for later
+review, not proof that thrust remained commanded.
+
+If an observer stops or either new zero is missing after 5 s, declare FAIL and perform bounded
+cleanup instead of waiting for an unreachable PASS condition. At the T2 MAVProxy prompt, immediately
+enter `rc 3 1500`, `rc 1 1500`, and `disarm`. If either topic may still hold non-zero thrust or its
+state is unknown, press Ctrl+C in T1 next to stop VRX. Preserve the existing
+`${SITL_RUN_DIR}/sitl_bridge_left_thrust.log` and
+`${SITL_RUN_DIR}/sitl_bridge_right_thrust.log` files without truncating or overwriting them. Then
+stop T3 if it is still running, followed by T4-L, T4-R, T2, and any remaining T1 process. This
+cleanup limits the failed state; it does not convert the result to PASS.
+
+After both Ctrl+C-associated zero samples are captured, enter the cleanup commands at the T2
+MAVProxy prompt:
+
+```text
+rc 3 1500
+rc 1 1500
+disarm
+```
+
+Then press Ctrl+C in T4-L, T4-R, T2, and finally T1.
+
+**After:** paste back the ArduPilot HEAD SHA, MAVProxy version, complete servo function/range
+listings, confirmed left/right output mapping, bridge startup plus first/throttled conversion logs,
+raw message-rate output, left/right topic samples covering the deliberate non-zero exercise and
+bridge Ctrl+C zero, bridge exit status, and the operator observation of whether VRX stopped or
+coasted. Include the exact absolute `${SITL_RUN_DIR}` value and preserve that complete directory as
+the evidence bundle. Do not choose a watchdog interval or advance this track until that evidence is
+reviewed.
 
 ## Non-goals
 

@@ -1,3 +1,7 @@
+// Reference only: this file is not built or executed.
+// Its servo channels, neutral point, and scaling are not authoritative.
+// Use tools/servo_command_bridge.py and working_diary/2026-08-03_monday_ros2_graph_query_hardening.md.
+
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/nav_sat_fix.hpp"
 #include "sensor_msgs/msg/imu.hpp"

@@ -23,12 +23,10 @@ the retained `pi` wrapper mode is not part of this procedure.
 
 ## Current tracked revisions
 
-The repository copies below identify the uncommitted pre-trim revision used on
-23/07/2026. Only the tracked Pi helper was copied from the repository; the partial
-measurement also used separately checksum-pinned, untracked P0, phase-runner, and
-`xwininfo` checkpoint helpers on the Pi Desktop. This revision is retained for
-traceability, is not approved for another Pi-window experiment, and is scheduled for
-trim before the next live-dashboard work.
+The repository artifacts below identify the current post-trim revisions pinned on
+24/07/2026. The tracked Pi helper is copied to the Pi Desktop; the workstation supervisor
+remains workstation-only. Separately pinned historical session artifacts are retained
+below only for traceability.
 
 | Item | Value |
 | --- | --- |
@@ -38,7 +36,7 @@ trim before the next live-dashboard work.
 | Helper SHA-256 | `04ea4fe9b82ac7689a87ca90e2df58101589b38a3238d0643efbfbb01e3ccf1a` |
 | Workstation supervisor | `tools/live_dashboard_preflight.sh` |
 | Supervisor size | `28,647` bytes |
-| Supervisor SHA-256 | `39406e88e182125d9c088be4f4fdece239529938009b82f3c85cb268f322a4c0` |
+| Supervisor SHA-256 | `3d28a71181bff5d33f0ff7f037996bf5bb5f3dcf55d1960cc39272c29dd0e4f0` |
 
 Historical 23/07/2026 session artifacts:
 
@@ -153,8 +151,9 @@ will not run, and Blocks B/C will not proceed. The measurement procedure below i
 historical only. The diagnostic-only code and matching runbook surface are scheduled for
 trim before the next live-dashboard work.
 
-The next live-dashboard run is held until that trim produces new tracked hashes. Do not
-deploy or execute the pre-trim hashes recorded above.
+The trim is complete; use only the current tracked revisions in the active manifest above.
+Do not deploy or execute any hash from the separate historical 23/07/2026 session-artifact
+table.
 
 ## Before starting
 

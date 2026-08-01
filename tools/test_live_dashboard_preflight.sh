@@ -4,6 +4,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PREFLIGHT="${1:-$SCRIPT_DIR/live_dashboard_preflight.sh}"
+WIKI="$SCRIPT_DIR/../wiki/Live_Hailo_MAVLink_Dashboard_Testing.md"
+EXPECTED_PREFLIGHT_SHA256='3d28a71181bff5d33f0ff7f037996bf5bb5f3dcf55d1960cc39272c29dd0e4f0'
 CASE_COUNT=0
 
 fail() {
@@ -30,7 +32,15 @@ extract_function() {
 }
 
 [ -r "$PREFLIGHT" ] || fail "preflight script missing: $PREFLIGHT"
+[ -r "$WIKI" ] || fail "live-dashboard runbook missing: $WIKI"
 bash -n "$PREFLIGHT"
+
+ACTUAL_PREFLIGHT_SHA256="$(sha256sum "$PREFLIGHT" | awk '{print $1}')"
+[ "$ACTUAL_PREFLIGHT_SHA256" = "$EXPECTED_PREFLIGHT_SHA256" ] \
+  || fail "preflight checksum changed: $ACTUAL_PREFLIGHT_SHA256"
+grep -Fqx -- \
+  "| Supervisor SHA-256 | \`$EXPECTED_PREFLIGHT_SHA256\` |" "$WIKI" \
+  || fail 'live-dashboard runbook supervisor checksum is stale'
 
 require_literal "EXPECTED_HELPER_SHA256='04ea4fe9b82ac7689a87ca90e2df58101589b38a3238d0643efbfbb01e3ccf1a'"
 require_literal 'EXPECTED_SSID="${LIVE_SSID:-IoT IMT Nord Europe}"'

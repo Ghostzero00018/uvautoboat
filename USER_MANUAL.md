@@ -318,7 +318,11 @@ The WAM-V uses two independent thrusters:
 | Turn Left | +200 | +500 | Gradual left |
 | Spin Left | -500 | +500 | Rotate in place |
 
-**Thrust Range:** -1000 to +1000 Newtons
+**Shipped navigation and FCU-to-VRX bridge range:** -800 to +800 N per thruster.
+Navigation uses the `SAFE_THRUST = 800 N` operational clamp, and the bridge defaults
+to `max_thrust = 800 N`. Keyboard teleoperation starts at the same limit and can be
+increased to 1000 N. The separate `MAX_THRUST = 2000 N` constant is a hardware cap,
+not the normal emitted range.
 
 ### PID Control
 
@@ -616,7 +620,7 @@ Detailed ROS 2 topic connections between the modular nodes:
             ┌─────────────┴─────────────┐
             ▼                           ▼
     Left Thruster              Right Thruster
-    (-1000 to +1000)           (-1000 to +1000)
+      (-800 to +800 N)           (-800 to +800 N)
 ```
 
 ### Continuous Obstacle Avoidance Loop
@@ -685,8 +689,8 @@ The obstacle avoidance runs **continuously** - not as a one-time decision. The b
 
 | Topic | Type | Description |
 | :------ | :----- | :------------ |
-| `/wamv/thrusters/left/thrust` | `Float64` | Left thruster (-1000 to +1000 N) |
-| `/wamv/thrusters/right/thrust` | `Float64` | Right thruster (-1000 to +1000 N) |
+| `/wamv/thrusters/left/thrust` | `Float64` | Left command; no intrinsic message-level range |
+| `/wamv/thrusters/right/thrust` | `Float64` | Right command; no intrinsic message-level range |
 
 #### Dashboard Topics
 
@@ -1185,7 +1189,7 @@ Interrupts:
 | **WebSocket Latency** | < 50 ms | rosbridge to dashboard |
 | **Obstacle Detection Range** | 2.2–100 m | Configurable via `min_range`/`max_range` |
 | **Waypoint Arrival Tolerance** | 3.5 m | Default `waypoint_tolerance` |
-| **Thrust Range** | -1000 to +1000 N | Per thruster |
+| **Navigation Thrust Range** | -800 to +800 N | Per thruster; `SAFE_THRUST` operational clamp |
 
 ### GPS Navigation
 
