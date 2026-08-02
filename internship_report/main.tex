@@ -12,9 +12,9 @@
 %  Conclusion is drafted from the project's working diaries and dated plans
 %  (03/04/2026 to 03/08/2026) and preserves their verified / prepared / unrun
 %  distinctions.
-%  Company-specific and personal content (Section 1, Section 3, cover fields,
-%  acknowledgements) is left as TODO because it cannot be derived from the
-%  repository and must not be invented.
+%  Personal content in Section 3, the cover fields, and the acknowledgements
+%  is left as TODO because it cannot be derived from the repository and must
+%  not be invented.
 %
 %  PRESENTATION SETTINGS ARE PROVISIONAL. The instructions defer layout to a
 %  separate document derived from experimental standard Z41 006, obtainable
@@ -55,7 +55,30 @@
 \usepackage{xcolor}
 \usepackage{tikz}
 \usepackage[nottoc]{tocbibind}
+% Allow long bibliography URLs to break at additional safe points.
+\usepackage{xurl}
 \usepackage[hidelinks]{hyperref}
+
+% Shared visual language for report-native system diagrams. These styles use
+% base TikZ only so the Overleaf project needs no additional libraries.
+\tikzset{
+  reportbox/.style={draw=black!55, rounded corners=2pt, align=center,
+    fill=black!4, minimum height=0.9cm, inner sep=4pt,
+    font=\sffamily\footnotesize},
+  reportprimary/.style={reportbox, draw=blue!65!black, fill=blue!9},
+  reportcontext/.style={reportbox, draw=black!40, fill=black!3},
+  reportsafety/.style={reportbox, draw=red!65!black, fill=red!6},
+  reportpending/.style={reportbox, draw=orange!75!black, fill=orange!10,
+    dashed},
+  reportflow/.style={->, thick, draw=blue!65!black},
+  reportlink/.style={<->, thick, draw=blue!65!black},
+  reporthierarchy/.style={thick, draw=black!60},
+  reportopen/.style={->, thick, dashed, draw=red!70!black},
+  reportalignment/.style={thick, dashed, draw=blue!60!black},
+  reportboundary/.style={thick, dashed, draw=red!70!black},
+  reportlabel/.style={font=\sffamily\scriptsize, align=center,
+    fill=white, inner sep=1.5pt}
+}
 
 % The instructions require figures and tables to carry UNIQUE ASCENDING ARABIC
 % numbers throughout, including in the appendices. The report class would
@@ -100,7 +123,7 @@
 % type of Professional Thesis, and a title or overview of the subject.
 \newcommand{\StudentName}{[Student name]}
 \newcommand{\GraduatingClass}{[Graduating class]}
-\newcommand{\CompanyName}{[Host institution]}
+\newcommand{\CompanyName}{IMT Nord Europe}
 \newcommand{\ThesisType}{DNM Professional Thesis}
 \newcommand{\ReportTitle}{Autonomous Surface Vehicle for Water-Quality Survey:
   Simulation, Onboard Perception, and Field Bring-Up}
@@ -320,8 +343,11 @@ and a working system: building an autonomous navigation and perception stack tha
 predictably in simulation, and then transferring it onto real marine hardware without losing the
 guarantees established in simulation.
 
-\ReportTodo{Add why this problem matters specifically to the host institution --- the operational
-need, the users, and what existed before the project.}
+This problem is directly relevant to the host institution because CERI SN studies the full digital
+chain from data acquisition and processing to decision-making. In this project, dependable
+navigation, communication, and operator monitoring are not secondary functions: they are the
+foundation required before measurements collected on the water can support a credible digital
+twin~\cite{imtneCeriSn}.
 
 \section*{Professional Thesis objectives}
 
@@ -338,9 +364,10 @@ The work was organised around four objectives:
         together, under an explicit read-only safety contract.
 \end{enumerate}
 
-A fifth, research-oriented objective --- water-quality sensor streaming, a cellular-automaton
-evolution model, and machine-learning trend detection --- was defined but is reported here as not
-started, for the reasons set out in the Conclusion.
+A fifth, research-oriented objective covered water-quality sensor streaming, a cellular-automaton
+model of pollutant evolution, and machine-learning trend detection. Its modelling component was
+prototyped and is reported in Section~\ref{sec:sub-ca}; its integration components are reported as
+unstarted, for the reasons set out in the Conclusion.
 
 \section*{Monitoring and reporting plan}
 
@@ -362,7 +389,7 @@ misrepresent the state of the project.
 \section*{Report structure}
 
 Section~\ref{chap:context} places the assignment in its institutional and sector context.
-Section~\ref{chap:project} presents the assignment itself, broken into five sub-projects, each
+Section~\ref{chap:project} presents the assignment itself, broken into six sub-projects, each
 following a diagnose--solve--operationalize--evaluate structure, and closes with the consolidated
 results. Section~\ref{chap:skills-career} assesses the skills developed and their relationship to a
 professional plan.
@@ -374,25 +401,112 @@ professional plan.
 \label{chap:context}
 
 \section{Host institution and wider sector}
+IMT Nord Europe was the host institution for this internship. It is a public higher-education and
+research institution within Institut Mines-T\'el\'ecom, under the authority of the French ministry
+responsible for the economy, and a partner of Universit\'e de Lille~\cite{imtneOverview}. I worked
+there as a research intern in the \emph{Centre d'Enseignement, de Recherche et d'Innovation
+Syst\`emes Num\'eriques} (CERI SN), the school's Digital Systems research centre.
+
+CERI SN takes a data-centred approach extending from acquisition and processing to
+decision-making. Its research is organised around Autonomous and Resilient Systems; Human,
+Interaction, Data Ecosystem; and Modelling and Control of Complex Systems. In practical
+terms, this internship lay between the first and third areas: it combined a distributed robotic
+platform and its communication architecture with modelling and decision-support methods for
+water-quality monitoring~\cite{imtneCeriSn}.
+
+The assignment also sits within a regional water-quality agenda. In 2022, only 24\% of regional
+water bodies were reported to be in good ecological condition~\cite{ceser2022water}. The CPER ECRIN
+programme and the associated VERD-Eau, CASTREau, and CAP'Eau initiatives promote robotic solutions
+for adaptive monitoring of water resources. The Professional Thesis was framed as a six-month final
+Master's project involving IMT Nord Europe and IMT Mines Al\`es, building on earlier IMT Nord Europe
+work that integrated ROS, VRX, and mission-planning tools for water-quality studies with aquatic
+drones~\cite{internshipBrief2026}.
+
 Within the wider sector, mobile robotic platforms offer spatially distributed measurements while
 also carrying the navigation, communications, and operator-interface functions needed to associate
 each observation with a location~\cite{chang2021waterquality}. This project addresses that enabling
-navigation, perception, telemetry, and operator-monitoring layer. Water-quality sensor streaming,
-spatio-temporal modelling, and trend detection remain future work rather than results of the present
-thesis.
+navigation, perception, telemetry, and operator-monitoring layer. Spatio-temporal modelling was
+prototyped in isolation (Section~\ref{sec:sub-ca}); live sensor streaming, field-data validation,
+and operational mapping remain future work rather than results of the present thesis.
 
-\ReportTodo{Present the institution without copying its website: its position, its activity in this
-sector, and how the autonomous-vehicle work fits its wider objectives. This cannot be drawn from
-the project repository and must be written from direct knowledge.}
+Figure~\ref{fig:org-context} separates the school's formal CERI structure from the published
+research themes within CERI SN and shows the internship's thematic alignment.
 
-\PlaceholderFigure{org-context}{Position of the project's team or laboratory within the host
-institution, and its relationship to the wider autonomous-systems sector.}{Organisational context
-of the Professional Thesis assignment.}
+\begin{figure}[tbp]
+  \centering
+  \resizebox{\textwidth}{!}{%
+    \begin{tikzpicture}[x=1cm,y=1cm]
+      \node[reportprimary, text width=4.1cm] (imt) at (0,6.1)
+        {IMT Nord Europe};
+
+      \node[reportcontext, text width=3.4cm] (energy) at (-5.2,4.2)
+        {CERI Energy and Environment};
+      \node[reportprimary, text width=3.8cm] (digital) at (0,4.2)
+        {CERI Digital Systems\\(CERI SN)};
+      \node[reportcontext, text width=3.4cm] (materials) at (5.2,4.2)
+        {CERI Materials and Processes};
+
+      \draw[reporthierarchy] (imt.south) -- (0,5.25) -- (-5.2,5.25)
+        -- (energy.north);
+      \draw[reporthierarchy] (imt.south) -- (digital.north);
+      \draw[reporthierarchy] (imt.south) -- (0,5.25) -- (5.2,5.25)
+        -- (materials.north);
+
+      \node[reportlabel, text width=3.4cm] (themegroup) at (0,3.15)
+        {Published CERI SN research themes};
+      \draw[reportalignment] (digital.south) -- (themegroup.north);
+
+      \node[reportprimary, text width=3.7cm] (autonomous) at (-5.2,1.6)
+        {Autonomous and Resilient Systems};
+      \node[reportcontext, text width=3.7cm] (human) at (0,1.6)
+        {Human, Interaction, Data Ecosystem};
+      \node[reportprimary, text width=3.9cm] (modelling) at (5.2,1.6)
+        {Modelling and Control of Complex Systems};
+
+      \draw[reportalignment] (themegroup.south) -- (0,2.65) -- (-5.2,2.65)
+        -- (autonomous.north);
+      \draw[reportalignment] (themegroup.south) -- (human.north);
+      \draw[reportalignment] (themegroup.south) -- (0,2.65) -- (5.2,2.65)
+        -- (modelling.north);
+
+      \node[reportprimary, text width=5.5cm, minimum height=1.15cm]
+        (internship) at (0,-0.65)
+        {Research internship\\Autonomous surface vehicle and water-quality
+        digital-twin foundations};
+      \draw[reportalignment] (internship.north west) -- (autonomous.south)
+        node[reportlabel, midway, sloped, above] {thematic alignment};
+      \draw[reportalignment] (internship.north east) -- (modelling.south)
+        node[reportlabel, midway, sloped, above] {thematic alignment};
+    \end{tikzpicture}}
+  \caption{Formal CERI context and thematic alignment of the Professional Thesis within CERI SN.}
+  \label{fig:org-context}
+\end{figure}
 
 \section{Organization and working environment}
-\ReportTodo{Describe only the locations, organization, processes, and working methods needed to
-understand the assignment --- for example the balance between individual work and supervision, and
-the equipment and workshop access the project depended on.}
+CERI SN combines teaching, research, and innovation rather than operating as a product-development
+department. Its stated remit covers applied research across a broad range of technology-readiness
+levels, supported by engineers and technicians who help research projects progress toward practical
+demonstrators~\cite{imtneCeriSn}. My placement followed that research logic: implementation was
+paired with controlled experiments, dated evidence, and explicit limits on what each result proved.
+This explains why the report treats an unsuccessful or incomplete test as a result when it narrows a
+technical uncertainty.
+
+The placement was based at the school's Lahure site in Douai (764 Boulevard Lahure, 59500 Douai).
+
+Supervision followed two complementary rhythms. Group meetings brought my supervisors together with
+their doctoral students and other academic staff to review internship progress, so design decisions
+were regularly exposed to people working on adjacent research problems rather than reviewed in
+isolation; the questions raised there were often about evidence and method rather than about
+implementation detail. These alternated with one-to-one discussions on specific technical points.
+On several occasions a supervisor took part in a live test directly, which shortened the interval
+between observing a behaviour and agreeing on what it meant --- particularly valuable for field
+sessions, which are expensive to repeat.
+
+Equipment access was not a limiting factor at any stage: the vessel, the flight controller, the
+companion computer with its accelerator and camera, and the simulation workstation were all
+available when needed. The constraints that shaped the work were therefore technical and
+procedural --- single-owner devices, thermal headroom, a shared radio link, and the safety gates
+described in Chapter~\ref{chap:project} --- rather than material.
 
 \section{Strategic and technical challenges}
 
@@ -414,20 +528,46 @@ through an integrated radio system, and the workstation, vessel, and radio do no
 same network. Several field sessions were spent establishing which network could carry which
 traffic.
 
-\ReportTodo{Add the institution's own strategic framing --- the digital or ecological transition,
-research programme, or funding context this project sits inside.}
+These constraints connect directly to the centre's institutional purpose. CERI SN positions its
+work around digital, industrial, energy, ecological, and urban transitions, while following data
+from collection to decision. IMT Nord Europe's DD\&RS reporting also identifies CAP-Eau, within CPER
+ECRIN, as research contributing to the goal of clean water through sensor-equipped aquatic drones
+and dynamic water-quality mapping~\cite{imtneCeriSn,imtne2024ddrsReport}.
 
 \section{Project importance and institutional expectations}
-\ReportTodo{State what the institution expected from this Professional Thesis, what would count as
-success at the outset, and how that expectation was formalised.}
+The original brief expected a digital twin that would integrate real drone data through ROS,
+simulate the evolution of water-quality parameters with a cellular automaton, display the result as
+a map, and validate that map against existing regional datasets. Prediction and anomaly detection
+were optional if time allowed~\cite{internshipBrief2026}. The work completed during the internship
+did not satisfy that full definition. Instead, it established and measured several prerequisites,
+including the simulator, telemetry, onboard perception, operator interface, and a standalone
+pollutant-model prototype. The distinction between those delivered foundations and the uncompleted
+integration is therefore central to the evaluation in Section~\ref{chap:project}.
 
 \section{Personal assessment of the institution's SDRS policy}
 % Explicitly required by the instructions - do not drop this section.
-\ReportTodo{Give a substantiated personal opinion on the institution's sustainable-development and
-social-responsibility policy. Confirm the official terminology used locally, and support the
-assessment with what was observed during the internship rather than with published material.
-A defensible angle available here: the project's own environmental purpose --- water-quality
-monitoring --- against how sustainability is handled in day-to-day engineering practice.}
+IMT Nord Europe uses the term \emph{D\'eveloppement Durable et Responsabilit\'e Soci\'etale}
+(DD\&RS). The school has held the national higher-education DD\&RS label since 2016 and announced its
+renewal for the maximum four-year period on 11/06/2024. The assessment covers strategy and
+governance, teaching and training, research and innovation, environmental management, and social
+policy. These commitments are organised through the 2023--2027 strategy ``Agir pour un avenir
+\'eco-responsable'', a DD\&RS master plan, and annual
+reporting~\cite{imtne2024ddrs,imtne2024ddrsReport}.
+
+From my perspective, the strongest aspect of this policy is the connection between institutional
+commitments and research subjects. CAP-Eau and this internship do not use sustainability merely as
+background language: they address the concrete problem of collecting better evidence about water
+quality. The project also encouraged a responsible engineering approach in which safety limits,
+negative results, and untested capabilities were made visible instead of being hidden behind a
+demonstration.
+
+My assessment remains qualified. An environmental objective is not, by itself, an environmental
+result. The internship produced a modelling prototype and much of the enabling robotic stack, but
+it did not deliver a live water-quality map or validate one with field measurements. Nor does one
+research placement provide enough evidence to judge procurement, travel, campus operations,
+equality policy, or working conditions across the whole institution. I therefore see a credible and
+well-structured DD\&RS framework with a clear connection to the research topic, while limiting my
+judgement of its wider day-to-day effectiveness to what I actually observed.
 
 % == SECTION 2 - PROJECT ======================================================
 % Mandatory. No page limit stated - this is the core of the report.
@@ -445,9 +585,91 @@ showing exactly which capabilities are proven and which are not.
 
 Figure~\ref{fig:system-arch} summarizes the active ROS 2 data flow and its external interfaces.
 
-\PlaceholderFigure{system-arch}{ROS 2 node pipeline: sensors to perception to planning to control
-to differential thrust, with topic names on each arrow, the latched emergency-stop channel, and
-the two configuration services.}{System architecture of the autonomous navigation stack.}
+\begin{figure}[tbp]
+  \centering
+  \resizebox{\textwidth}{!}{%
+    \begin{tikzpicture}[x=1cm,y=1cm]
+      \node[reportcontext, text width=2.4cm] (gps) at (-6.3,3.7)
+        {GPS\\\texttt{NavSatFix}};
+      \node[reportcontext, text width=2.4cm] (imu) at (-0.7,3.7)
+        {IMU\\\texttt{Imu}};
+      \node[reportcontext, text width=2.4cm] (lidar) at (5.3,3.7)
+        {3D LiDAR\\\texttt{PointCloud2}};
+
+      \node[reportprimary, text width=3.1cm] (perception) at (5.3,1.5)
+        {\texttt{lidar\_perception}\\Obstacle detection};
+      \node[reportprimary, text width=3.1cm] (planner) at (-2.4,0)
+        {\texttt{waypoint\_planner}\\Mission and detour planning};
+      \node[reportprimary, text width=3.1cm] (controller) at (2.4,0)
+        {{\scriptsize\texttt{heading\_controller}}\\PID and avoidance control};
+      \node[reportcontext, text width=3cm] (gazebo) at (6.4,-2.1)
+        {Gazebo thruster plugins\\Left and right thrust};
+      \node[reportcontext, text width=2.8cm] (dashboard) at (-6.5,-2.1)
+        {Dashboard\\Mission controls and configuration};
+      \node[reportcontext, text width=2.8cm] (cli) at (-6.5,-4.1)
+        {CLI\\Services and configuration};
+      \node[reportsafety, text width=4cm] (estop) at (-1.0,-2.1)
+        {Safety bus\\{\scriptsize\texttt{/planning/emergency\_stop}}};
+      \node[reportcontext, text width=6cm, minimum height=1.25cm]
+        (configbus) at (0.7,-4.1)
+        {Configuration bus\\\texttt{/planning/set\_config}\\
+        {\scriptsize Subscribers: \texttt{waypoint\_planner},
+        \texttt{heading\_controller},\\\texttt{lidar\_perception}}};
+
+      \draw[reportflow] (lidar.south) -- (perception.north);
+      \node[reportlabel] at (6.9,2.6)
+        {\texttt{/wamv/sensors/lidars/}\\\texttt{lidar\_wamv\_sensor/points}};
+
+      \draw[reportflow] (gps.south) -- (-6.3,1.15) -- (planner.north west);
+      \node[reportlabel] at (-5.2,1.55)
+        {\texttt{/wamv/sensors/gps/gps/fix}};
+
+      \draw[reportflow] (imu.south) -- (-0.7,1.25) -- (controller.north west);
+      \node[reportlabel] at (0.4,1.65)
+        {\texttt{/wamv/sensors/imu/imu/data}};
+
+      \draw[reportflow] (perception.west) -- (planner.north east);
+      \draw[reportflow] (perception.south west) -- (controller.north east);
+      \node[reportlabel] at (2.5,2.05)
+        {\texttt{/perception/obstacle\_info}};
+
+      \draw[reportflow] (planner.east) -- (controller.west)
+        node[reportlabel, midway, above]
+        {\texttt{/planning/current\_target}};
+      \draw[reportflow] (controller.south west) -- (1.2,-1.15) -- (-1.2,-1.15)
+        -- (planner.south east)
+        node[reportlabel, pos=0.45, below]
+        {\texttt{/planning/detour\_request}};
+
+      \draw[reportflow] (controller.east) -- (gazebo.north west)
+        node[reportlabel, midway, above, sloped]
+        {\texttt{/wamv/thrusters/\{left,right\}/thrust}};
+
+      \draw[reportflow] (dashboard.north) -- (-6.5,-0.5) -- (planner.west);
+      \node[reportlabel] at (-5.3,-0.35)
+        {mission command\\stop / generate services};
+      \draw[reportflow] (dashboard.east) -- (estop.west)
+        node[reportlabel, midway, above] {dashboard publishes};
+      \draw[reportflow] (cli.north east) to[bend left=12]
+        node[reportlabel, midway, below] {CLI publishes} (estop.south west);
+      \draw[reportflow] (estop.north west) -- (-1.7,-1.15) -- (planner.south)
+        node[reportlabel, pos=0.72, left] {planner subscribes};
+      \draw[reportflow] (estop.north east) -- (2.4,-1.55) -- (controller.south)
+        node[reportlabel, pos=0.7, right] {controller subscribes};
+
+      \draw[reportflow] (dashboard.south) -- (-6.5,-3.2) -- (-2.4,-3.2)
+        -- (configbus.north west)
+        node[reportlabel, pos=0.55, above] {dashboard publishes};
+      \draw[reportflow] (cli.east) -- (configbus.west)
+        node[reportlabel, midway, above] {CLI publishes};
+      \draw[reportflow] (configbus.north) -- (0.7,-3.1) -- (2.4,-3.1)
+        -- (controller.south);
+      \draw[reportflow] (configbus.east) -- (8.6,-4.1) -- (8.6,1.5)
+        -- (perception.east);
+    \end{tikzpicture}}
+  \caption{System architecture of the autonomous navigation stack.}
+  \label{fig:system-arch}
+\end{figure}
 
 \section{Resources and constraints}
 
@@ -466,9 +688,45 @@ Section~\ref{sec:sub-dashboard}.
 
 Figure~\ref{fig:deployment} separates the system components by host and communication boundary.
 
-\PlaceholderFigure{deployment}{Deployment topology: autopilot board, companion computer, integrated
-radio, and workstation, showing which wireless network carries which traffic and marking the
-receive-only serial link.}{Field deployment topology across the three wireless networks.}
+\begin{figure}[tbp]
+  \centering
+  \resizebox{\textwidth}{!}{%
+    \begin{tikzpicture}[x=1cm,y=1cm]
+      \node[reportprimary, text width=3cm] (fcu) at (-6,1)
+        {Flight controller\\ArduRover 4.6.3};
+      \node[reportprimary, text width=3.1cm] (pi) at (-1.4,1)
+        {Raspberry Pi 5\\MAVProxy, MAVROS, Hailo};
+      \node[reportprimary, text width=3.3cm] (workstation) at (5.2,1)
+        {Workstation\\ROS 2, dashboard, simulation};
+      \node[reportcontext, text width=4.2cm] (herelink) at (-4.5,-2.5)
+        {Herelink system\\Access point serving SSID
+        \texttt{IMT-Aquatic-drone}\\Manual control and video};
+      \node[reportcontext, text width=5.2cm] (networknote) at (3.1,-2.5)
+        {Separately observed Wi-Fi context\\\texttt{IoT IMT Nord Europe}\\
+        QGC's \texttt{Herelink Hotspot} is a video-source preset, not another
+        network; tests were bounded, not one simultaneous topology};
+
+      \draw[reportflow] (fcu.east) -- (pi.west)
+        node[reportlabel, midway, above]
+        {\texttt{/dev/ttyAMA0}, 57,600 baud\\telemetry received};
+      \draw[reportopen] (pi.south west) -- (-3.2,-0.25) -- (fcu.south east)
+        node[reportlabel, midway, below]
+        {requests unanswered; write path unvalidated};
+
+      \draw[reportlink] (pi.east) -- (workstation.west)
+        node[reportlabel, midway, above]
+        {ROS 2 / DDS over active test Wi-Fi};
+      \draw[reportlink] (fcu.south) -- (herelink.north west)
+        node[reportlabel, midway, left]
+        {MAVLink and manual control\\verified independently};
+      \draw[reportlink] (herelink.east) -- (workstation.south west)
+        node[reportlabel, midway, below, sloped]
+        {QGC / Mission Planner / RTSP\\over \texttt{IMT-Aquatic-drone}};
+      \draw[reporthierarchy, dashed] (networknote.north) -- (workstation.south);
+    \end{tikzpicture}}
+  \caption{Field deployment topology and separately observed communication boundaries.}
+  \label{fig:deployment}
+\end{figure}
 
 % ---------------------------------------------------------------------------
 \section{Sub-project 1: bounding detour-waypoint growth in obstacle avoidance}
@@ -627,12 +885,55 @@ unvalidated; and a combined camera-plus-telemetry run was power-limited under re
 warnings.
 
 Figure~\ref{fig:telemetry-chain} traces the verified read path from the flight controller to the
-observed middleware topics.
+observed middleware topics and separates it from the direct-inspection output.
 
-\PlaceholderFigure{telemetry-chain}{Telemetry chain from flight controller to middleware topics:
-controller telemetry port, companion-computer serial device, protocol router as sole owner, local
-network redistribution, and the resulting topic namespace, annotated with the connection gate and
-marking the write path unvalidated.}{Verified telemetry chain from the flight controller.}
+\begin{figure}[tbp]
+  \centering
+  \resizebox{\textwidth}{!}{%
+    \begin{tikzpicture}[x=1cm,y=1cm]
+      \node[reportprimary, text width=2.6cm] (fcu) at (-6,0)
+        {Flight controller\\ArduPilot telemetry};
+      \node[reportprimary, text width=2.7cm] (mavproxy) at (-2.5,0)
+        {MAVProxy\\Sole serial owner};
+      \node[reportprimary, text width=2.5cm] (mavros) at (1,1.4)
+        {MAVROS\\Minimal plugin set};
+      \node[reportprimary, text width=3cm] (topics) at (4.4,1.4)
+        {ROS 2 telemetry\\\texttt{/mavros/*}};
+      \node[reportcontext, text width=3cm] (consumers) at (7.8,1.4)
+        {ROS 2 consumers\\Dashboard and topic monitors};
+      \node[reportcontext, text width=3.3cm] (inspection) at (1,-1.5)
+        {Direct MAVLink inspection\\Dedicated scripts; no ROS 2 conversion};
+
+      \draw[reportflow] (fcu.east) -- (mavproxy.west)
+        node[reportlabel, midway, above]
+        {\texttt{/dev/ttyAMA0}\\57,600 baud};
+      \draw[reportflow] (mavproxy.north east) -- (mavros.west)
+        node[reportlabel, midway, above]
+        {UDP \texttt{127.0.0.1:14550}};
+      \draw[reportflow] (mavproxy.south east) -- (inspection.west)
+        node[reportlabel, midway, below]
+        {UDP \texttt{127.0.0.1:14551}};
+      \draw[reportflow] (mavros.east) -- (topics.west)
+        node[reportlabel, midway, above]
+        {state, IMU, GPS, battery, RC};
+      \draw[reportflow] (topics.east) -- (consumers.west)
+        node[reportlabel, midway, above]
+        {ROS 2 DDS\\shared domain};
+
+      \draw[reportopen] (mavproxy.north) -- (-2.5,2.7) -- (-6,2.7)
+        -- (fcu.north)
+        node[reportlabel, midway, above]
+        {parameter and command requests unanswered};
+
+      \node[reportcontext, text width=7cm] (gate) at (4.4,-3.5)
+        {Acceptance gate: \texttt{/mavros/state} reported
+        \texttt{connected=true}, \texttt{armed=false}, mode \texttt{HOLD}.\\
+        Topic advertisement alone was not accepted as connection evidence.};
+      \draw[reporthierarchy, dashed] (topics.south) -- (gate.north);
+    \end{tikzpicture}}
+  \caption{Verified telemetry chain and MAVProxy's isolated inspection fanout.}
+  \label{fig:telemetry-chain}
+\end{figure}
 
 % ---------------------------------------------------------------------------
 \section{Sub-project 4: live detection overlay and telemetry in one dashboard}
@@ -693,10 +994,58 @@ The browser-facing path uses the rosbridge JSON interface~\cite{rosbridge}.
 Figure~\ref{fig:live-dataflow} distinguishes the live view-only data path from the protected command
 topics.
 
-\PlaceholderFigure{live-dataflow}{Data paths of the live view-only test: camera to accelerator to
-image topic to streaming server to browser, alongside controller to router to bridge to dashboard
-telemetry panels, with the view-only guard and command sentinel drawn as the safety
-boundary.}{Data paths and safety boundary of the live view-only test.}
+\begin{figure}[tbp]
+  \centering
+  \resizebox{\textwidth}{!}{%
+    \begin{tikzpicture}[x=1cm,y=1cm]
+      \node[reportprimary, text width=2.2cm] (camera) at (-7,2.4)
+        {RealSense\\RGB frames};
+      \node[reportprimary, text width=2.2cm] (hailo) at (-4.2,2.4)
+        {Hailo-8L\\Inference runner};
+      \node[reportprimary, text width=2.8cm] (overlay) at (-1.1,2.4)
+        {Annotated image\\\texttt{/hailo/overlay/}\\\texttt{image\_raw}};
+      \node[reportprimary, text width=2.5cm] (ddsimage) at (2,2.4)
+        {ROS 2 / DDS\\Cross-host image};
+      \node[reportprimary, text width=2.6cm] (video) at (5,2.4)
+        {\texttt{web\_video}\\\texttt{\_server}\\MJPEG stream};
+
+      \node[reportprimary, text width=2.2cm] (fcu) at (-7,-0.6)
+        {Flight controller\\Telemetry};
+      \node[reportprimary, text width=2.2cm] (mavproxy) at (-4.2,-0.6)
+        {MAVProxy\\Serial router};
+      \node[reportprimary, text width=2.2cm] (mavros) at (-1.4,-0.6)
+        {MAVROS\\ROS bridge};
+      \node[reportprimary, text width=2.7cm] (telemetry) at (1.6,-0.6)
+        {Five telemetry topics\\ROS 2 / DDS};
+      \node[reportprimary, text width=2.5cm] (rosbridge) at (4.7,-0.6)
+        {\texttt{rosbridge}\\JSON / WebSocket};
+
+      \node[reportcontext, text width=2.8cm, minimum height=2.9cm]
+        (browser) at (8,0.9)
+        {Operator browser\\Camera panel\\Telemetry panels};
+
+      \draw[reportflow] (camera.east) -- (hailo.west);
+      \draw[reportflow] (hailo.east) -- (overlay.west);
+      \draw[reportflow] (overlay.east) -- (ddsimage.west);
+      \draw[reportflow] (ddsimage.east) -- (video.west);
+      \draw[reportflow] (video.east) -- (browser.north west);
+
+      \draw[reportflow] (fcu.east) -- (mavproxy.west);
+      \draw[reportflow] (mavproxy.east) -- (mavros.west);
+      \draw[reportflow] (mavros.east) -- (telemetry.west);
+      \draw[reportflow] (telemetry.east) -- (rosbridge.west);
+      \draw[reportflow] (rosbridge.east) -- (browser.south west);
+
+      \draw[reportboundary] (-7.9,-2.25) -- (9.2,-2.25)
+        node[reportlabel, midway, above]
+        {Outbound command boundary: browser-to-controller publishing disabled};
+      \node[reportsafety, text width=10.5cm] (safety) at (0.6,-3.45)
+        {\texttt{LIVE\_MAVLINK\_VIEW\_ONLY=true}\\
+        Command sentinel monitored five protected topics; accepted runs recorded zero messages.};
+    \end{tikzpicture}}
+  \caption{Data paths and safety boundary of the live view-only test.}
+  \label{fig:live-dataflow}
+\end{figure}
 
 % ---------------------------------------------------------------------------
 \section{Sub-project 5: confirming and routing around the command path}
@@ -753,6 +1102,56 @@ with success defined as reading a parameter back from the controller, and a sepa
 propellers-removed bench-safety decision.
 
 % ---------------------------------------------------------------------------
+\section{Sub-project 6: modelling pollutant evolution with a cellular automaton}
+\label{sec:sub-ca}
+
+\subsection{Diagnose}
+
+A digital twin of a water body must describe how a pollutant field evolves between measurements. A
+survey vessel samples a small number of points along its trajectory, so the twin has to reconstruct
+a continuous field from sparse, unevenly distributed observations, and to do so with physical
+parameters that are not known in advance for a given site. The modelling question was therefore
+twofold: whether a tractable grid model could reproduce plausible pollutant transport, and whether
+its governing parameters could be recovered from the kind of sparse sampling a drone actually
+produces.
+
+\subsection{Solve}
+
+A cellular-automaton formulation was selected, in which each cell's next state depends on its
+neighbours. The model combines neighbourhood-based diffusion, wind and current advection,
+evaporation, deposition at the shoreline, and one or more pollution sources, with optional
+asynchronous cell activation. Parameter recovery was posed as Bayesian inference and solved with a
+Metropolis--Hastings Markov-chain Monte Carlo sampler over the diffusion coefficient, the two wind
+components, the evaporation probability, and the source position and intensity. Gaussian-process
+reconstruction was used to interpolate the field between sparse sensing points.
+
+\subsection{Operationalize}
+
+The model was exercised through eight experiment groups, each isolating one factor: parameter
+sensitivity, Moore against von Neumann neighbourhoods at matched effective diffusion,
+constant against periodic and random wind fields, single against multiple sources, grid-resolution
+effects on accuracy and cost, a quantitative validation framework built on a reference field,
+MCMC parameter recovery as a function of sensor density, and source tracing. Metrics included plume
+circularity error, centroid displacement, and root-mean-square error against the reference field.
+
+\subsection{Evaluate}
+
+The MCMC run converged to a final root-mean-square error of $0.0063$ with a mean acceptance rate of
+$53.3\,\%$, recovering a diffusion coefficient of $0.0361$, wind components of $0.0024$ and
+$0.0017$, an evaporation probability of $0.00268$, and a source at grid position $[50, 54]$ with
+intensity $0.837$. The boundary of this result must be stated plainly: every experiment ran on
+synthetic reference fields generated by the model itself. No field measurement was ingested, the
+model was never connected to the ROS 2 stack or to a live sensor stream, and no operational
+water-quality map was produced. What is demonstrated is that the formulation is tractable and that
+its parameters are recoverable from sparse sampling under controlled conditions --- a necessary
+precondition for the digital twin, not the digital twin itself.
+
+Figure~\ref{fig:ca-mcmc} compares the reconstructed field with its synthetic reference.
+
+\PlaceholderFigure{ca-mcmc}{Reference and reconstructed pollutant fields side by side, with the MCMC
+parameter traces and acceptance rate over the sampled chain.}{Cellular-automaton pollutant field and
+MCMC parameter recovery against a synthetic reference.}
+
 \section{Autonomy, responsibility, and decision-making}
 Three technical decisions demonstrate initiative in the recorded work. The obstacle-avoidance
 feedback loop was bounded before further behavioural tuning (Section~\ref{sec:sub-avoidance});
@@ -800,6 +1199,8 @@ at the time of measurement, and each is tagged by evidence state.
       $1.178\times10^{-7}$ & Verified \\
     Live combined overlay run & Overlay 7.40 and 7.50~Hz; telemetry near 1.00~Hz; 0 messages on all
       five protected command topics & Verified \\
+    Pollutant-model parameter recovery & MCMC final RMSE 0.0063, mean acceptance 53.3\%; synthetic
+      reference field only & Verified \\
     \bottomrule
   \end{tabularx}
 \end{table}
@@ -832,8 +1233,12 @@ enforced view-only contract. Open limitations are attached to explicit acceptanc
 work can start from observed evidence rather than assumed capability. Command-path acceptance,
 detector recovery, and full lifecycle endurance remain open.
 
-\ReportTodo{Relate these capabilities to the institution's own priorities and quantify their
-operational value using information supplied by the host team.}
+For CERI SN, these capabilities form an enabling path from data acquisition to decision support:
+the vessel and telemetry provide the acquisition layer, the simulation and pollutant prototype
+provide modelling tools, and the dashboard provides an operator-facing view. Their current value is
+therefore a reproducible research base rather than a completed environmental-monitoring service.
+No reduction in sampling cost, response time, or environmental impact is claimed because the live
+water-quality workflow was not completed~\cite{imtneCeriSn}.
 
 % == SECTION 3 - SKILLS AND CAREER ============================================
 % Mandatory. MAXIMUM 5 PAGES.
@@ -883,14 +1288,17 @@ sustains 136 topics; the neural accelerator runs at full frame rate with a decod
 to within $1.178\times10^{-7}$; and two bounded live runs displayed detection overlay and vehicle
 telemetry together in a browser under an enforced read-only contract.
 
-The write side is not proven, and no amount of prepared work changes that. The link from companion
-computer to flight controller is confirmed receive-only, so no actuator, arming, mode, or thrust
-command has ever been attempted; the two hardware suspects remain suspects rather than diagnosed
-causes. The autopilot-to-simulator bridge is source-verified and harness-tested for safe teardown,
+The write side is not proven, and no amount of prepared work changes that. The companion computer
+received telemetry, but no successful companion-computer-origin actuator, arming, mode, or thrust
+command was demonstrated, and no companion-origin command reached a motor. The attempted motor-test
+request and the separately observed handheld-ground-station arming do not establish that companion
+write path; the two hardware suspects remain suspects rather than diagnosed causes. The
+autopilot-to-simulator bridge is source-verified and harness-tested for safe teardown,
 but its integrated run has not been performed. The hardware translator package does not exist. The
 custom detector does not fire, and the cause is an insufficient dataset rather than a pipeline
-fault. The entire research layer --- sensor streaming, the evolution model, and trend detection ---
-is not started. There has been no autonomous on-water run; the single field session was a
+fault. Of the research layer, only the standalone modelling
+prototype was completed; live sensor streaming, field-data validation, operational mapping, and
+machine-learning trend detection are unstarted. There has been no autonomous on-water run; the single field session was a
 manual-control float test.
 
 The principal professional lesson concerns evidence rather than technique. Several times during the
@@ -934,8 +1342,8 @@ Table~\ref{tab:technical-glossary} defines the technical terms and acronyms used
   LiDAR / point cloud & Laser range sensor producing roughly 30\,000 3D points per scan. \\
   Differential thrust & Steering by unequal left and right thruster power rather than by rudder;
     the vessel's only steering mechanism. \\
-  Emergency stop & A latched Boolean on a dedicated reliable-delivery topic, subscribed
-    independently by planner and controller. \\
+  Emergency stop & A dedicated reliable-delivery Boolean topic; a received \texttt{true}
+    independently latches the stop state in the planner and controller. \\
   MAVLink & The binary protocol~\cite{mavlink} spoken between autopilots, ground stations, and
     companion computers; bridged into ROS 2 by MAVROS~\cite{mavros}. \\
   Flight controller & The autopilot board driving the thrusters, running ArduPilot's rover
@@ -950,14 +1358,17 @@ Table~\ref{tab:technical-glossary} defines the technical terms and acronyms used
     computer, over network sockets rather than a serial link. \\
   Digital twin & The simulator kept aligned with the real vessel by streamed telemetry. \\
   Cellular automaton & A grid model in which each cell's next state depends on its neighbours;
-    planned, not implemented. \\
+    here prototyped on synthetic data, not yet driven by live measurements. \\
   \bottomrule
 \end{longtable}
 
 % == INFORMATION SOURCES ======================================================
 % Every non-original figure or table must cite its source from here.
+\begingroup
+\raggedright
 \bibliographystyle{plain}
 \bibliography{references}
+\endgroup
 
 \ReportTodo{Before final submission, verify and add primary references for the path-planning and
 detector methods where they are discussed, and ensure every non-original illustration cites its
