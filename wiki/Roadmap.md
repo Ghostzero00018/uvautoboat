@@ -147,12 +147,12 @@ Status row in §3 Phase 5 status table now records Path A landed 05/05/2026 and 
 | Simulation (VRX, `sydney_regatta_DEFAULT` world) | ✅ |
 | Safety (latched E-Stop, `std_srvs/Trigger` ACK services) | ✅ |
 
-### Research layers — not yet started
+### Research layers — current bounded status
 
 | Layer | Status |
 |:------|:------:|
 | Water-quality sensor streaming (ROS topic contract) | ❌ |
-| Cellular-automata spatio-temporal model | ❌ |
+| Cellular-automata spatio-temporal model | Synthetic CA/MCMC prototype completed and evidenced externally (final RMSE 0.0063; mean acceptance 53.3%). ROS 2, field-data, and operational digital-twin integration remain not started. |
 | Water-quality map visualization in dashboard | ❌ |
 | Real probe integration | ❌ (blocked on hardware) |
 | Regional dataset validation | ❌ removed from scope 30/04/2026 — accessible regional historical data insufficient; replaced by same-day cross-validation. See §1.1 + §6 Phase E. |
