@@ -704,3 +704,144 @@ count-zero to identity-unknown to accepted sequence to choose and test the small
 mechanism that preserves MAVROS publisher identity and fail-closed behaviour. More retries or a
 wider timeout alone are not a correctness fix. Tasks 2 and 3 remain parked, and no second live run
 is justified before that decision and its focused regression test.
+
+## Second Block C baseline repeat and held design (03/08/2026)
+
+A second view-only full-stack run repeated the current implementation before any graph-query design
+change. It ran from the clean pushed revision `7ace80b` with the same checksum-matched Pi helper:
+
+- Pi copy: `/home/ghostzero/Desktop/test_logs_folder/live_dashboard_20260803_155656`
+- workstation source: `/home/ghostzero/Desktop/live_dashboard_workstation_20260803_155634`
+
+The Pi directory was copied back with preserved timestamps. No source-versus-copy checksum
+comparison was captured, so the copy is not claimed as independently checksum-matched.
+
+The automated path passed again. The workstation reached
+`PI_DATA_ARRIVED=PASS topics=6 elapsed=261s` and `W5_RATE_PROBES=PASS`. Its six ten-second samples
+were:
+
+| Topic | Messages | Mean rate |
+| --- | ---: | ---: |
+| `/hailo/overlay/image_raw` | `74` | `7.47 Hz` |
+| `/mavros/state` | `10` | `1.00 Hz` |
+| `/mavros/global_position/raw/fix` | `10` | `1.00 Hz` |
+| `/mavros/imu/data` | `10` | `1.00 Hz` |
+| `/mavros/battery` | `10` | `1.00 Hz` |
+| `/mavros/rc/in` | `10` | `1.00 Hz` |
+
+The Pi completed the finite window with:
+
+```text
+PI_SOURCE_WINDOW=COMPLETE target=120s monitored=120s final_verification=120s elapsed=240s peak=66C
+```
+
+The independent watchdog peak was `68300` mC. The operator recorded `55100` mC before launch and
+`59500` mC after teardown. The annotated Pi window, dashboard camera, and five read-only MAVROS
+badges were visually good. No dashboard write controls were visible or tested. No arming, motor
+command, write-path validation, or safety bypass occurred.
+
+### Repeat query evidence
+
+Three non-verifying headers occurred in three episodes. Each was a successful query with
+`query_rc=0` and `verdict=publisher count 0`; no identity-unknown observation and no
+`MAVROS_SOURCE_PROBE` record occurred.
+
+| Context and timestamp | Topic | Observation | Bounded outcome |
+| --- | --- | --- | --- |
+| finite final verification `16:04:11.707` | `/mavros/rc/in` | attempt 1: count `0` | Silent attempt 2 accepted; final verification completed. |
+| live hold `16:08:26.912` | `/mavros/rc/in` | attempt 1: count `0` | Silent attempt 2 accepted; monitoring continued. |
+| live hold `16:12:09.768` | `/mavros/battery` | attempt 1: count `0` | Recovery is unproven because the operator stop followed before another durable query result. |
+
+The first episode occurred after the 120-second monitored interval, inside the finite final graph
+verification, although the supervisor phase label remained `live-window` until completion. The
+third evidence header preceded the Pi stop by about `10.59 s`. That interval is consistent with
+either a silent successful second attempt or an interrupt before the second attempt resolved. The
+pending-failure latch rises only when attempt 3 is known non-verifying, so the clean operator-stop
+exit cannot distinguish those cases.
+
+Across the two 03/08 runs, the current daemonless query path therefore produced `14`
+non-verifying headers across `11` episodes: `12` count-zero readings, `2` identity-unknown
+readings, every one with `query_rc=0`, and no live terminal probe. The repeat reduced final
+verification from `125 s` to `120 s`, workstation arrival from `285 s` to `261 s`, and independent
+thermal peak from `69400` mC to `68300` mC. One repeat does not establish a performance or thermal
+trend, and neither duration isolates the cost of an individual graph query.
+
+This repeat strengthens the recurrence finding without changing its boundary. Fresh daemonless
+queries can return incomplete publisher views while the stack remains accepted on a later attempt.
+It does not prove publisher continuity at each exact count-zero instant, identify the lower
+DDS/RMW/network trigger, retroactively prove the writer state during `184228`, or close the separate
+`175832` timing cause.
+
+### Lifecycle and terminal observations
+
+The operator closed the web dashboard first, then signalled P1, then W1. The ROS bridge client
+disconnected at `1785766329.102837`, the final battery evidence began `0.666 s` later, and the MJPEG
+stream was removed at `1785766330.015325`. P1 was signalled at `1785766340.358451`, about `11.26 s`
+after the browser disconnect, and W1 was signalled at `1785766356.413215`, about `16.05 s` after
+P1. Pi-first and workstation-second shutdown passed, but browser-last ordering did not. Visual
+acceptance applies to the interval before the browser was closed.
+
+The Pi produced:
+
+```text
+TEARDOWN=PASS
+PI_SUPERVISOR_EXIT status=0 trigger=signal signal=INT stop_phase=live-hold failed_phase=none cleanup_rc=0
+```
+
+The workstation produced:
+
+```text
+WORKSTATION_TEARDOWN=PASS
+SUPERVISOR_EXIT status=0 trigger=signal signal=INT stop_phase=supervision failed_phase=none cleanup_rc=0
+```
+
+W1 visually showed the P1 command block again late in the session. The durable workstation log
+contains only one `SUPERVISOR_PHASE=pi-command` record and the implementation calls
+`print_pi_command` once, before arrival monitoring. The observation is therefore not attributed to
+a second supervisor emission; terminal echo, pasted input, or scrollback remains outside the
+preserved log evidence.
+
+### Held single-participant design
+
+No implementation is approved yet. The held design keeps `require_mavros_source` as the verdict
+owner and replaces only its graph-query seam with a view that is disabled by default or serves one
+cached result per topic when enabled. The planned probe uses one run-owned participant to answer all
+five source topics from one accumulated view, while preserving publisher GID and node identity,
+strict count `1`, the identity-unknown retry, foreign-publisher rejection, deadline return `75`, the
+pending-failure latch, and the existing terminal verdict text.
+
+The cache must be filesystem-backed under `$RUN_DIR` and published by atomic replacement because
+the query runs inside command substitution; Bash variable updates made there would not survive in
+the caller. A consumed topic entry forces a new probe, retaining per-topic retry semantics. The
+corrected process bounds are:
+
+- happy path: one probe for five topics instead of five CLI processes;
+- one problematic topic: at most three probes;
+- per-phase worst case: up to `11` probes (`1 + (2 * 5)`) instead of `15` CLI processes.
+
+The worst-case reduction is marginal; the expected benefit is concentrated in the common five-to-one
+case. This remains a bounded mitigation, not a proven correction of the unidentified lower trigger.
+Reduced final-verification time is a falsifiable prediction, not a result.
+
+The held bounds are an external hard maximum of `6 s`, a shorter internal completion deadline,
+parent-deadline clamping with teardown and serialization headroom, and a synchronous invocation that
+is never registered as a managed child. One `MAVROS_SOURCE_PROBE_RUN` summary is planned per probe;
+verbatim per-topic output remains quiet on complete success and is retained for incomplete or failed
+views. Probe startup or exceptions must fail closed.
+
+Characterization tests are required before enabling the view in either five-topic pre-readiness
+sequence. Further red-first coverage must pin flag-off byte compatibility, deadline-zero failure
+mapping, atomic-cache partial publication, no managed-child registration, the actual `11`-probe
+worst-case bound, and equality of all three source-topic declarations. The existing
+`/mavros/_NODE_NAME_UNKNOWN_` acceptance behaviour remains characterized rather than changed in this
+round.
+
+After implementation and offline verification, the live comparison criterion is at least three
+runs with zero count-zero and zero identity-unknown records, compared with the current baseline of
+`14` non-verifying readings across `11` episodes. Meeting that criterion would support the
+mitigation; it would not prove the discovery race impossible.
+
+**Next step:** keep graph code closed until a separate implementation approval. The unrelated
+SITL-to-VRX accessory scripts are also deferred until the installed ArduPilot revision and its servo
+mapping have been inspected. The immediate workstation prerequisite is safe disk headroom before a
+separately approved ArduPilot clone and prerequisite install.
