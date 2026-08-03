@@ -766,6 +766,10 @@ BOUNDED_ECHO_FUNCTION="$(extract_function bounded_topic_echo)"
 [ -n "$BOUNDED_ECHO_FUNCTION" ] || fail 'bounded topic-echo function was not extractable'
 MAVROS_SOURCE_FUNCTION="$(extract_function require_mavros_source)"
 [ -n "$MAVROS_SOURCE_FUNCTION" ] || fail 'MAVROS-source function was not extractable'
+SOURCE_PROBE_FUNCTION="$(extract_function probe_mavros_source_dataplane)"
+[ -n "$SOURCE_PROBE_FUNCTION" ] || fail 'MAVROS-source data-plane probe was not extractable'
+INTERRUPT_FUNCTION="$(extract_function on_interrupt)"
+[ -n "$INTERRUPT_FUNCTION" ] || fail 'interrupt handler was not extractable'
 SERVICE_TRACE="$(mktemp)"
 GRAPH_TRACE="$(mktemp)"
 trap 'rm -f "$PASS_LOG" "$FAIL_LOG" "$ORDER_LOG" "$LATE_LOG" "$SERVICE_TRACE" "$GRAPH_TRACE"' EXIT
@@ -955,6 +959,309 @@ grep -Fxq \
   || fail 'MAVROS-source deadline exhaustion was retried'
 [ -z "$MAVROS_SOURCE_DEADLINE_OUTPUT" ] \
   || fail "MAVROS-source deadline path ran an unexpected guard: $MAVROS_SOURCE_DEADLINE_OUTPUT"
+
+: >"$GRAPH_TRACE"
+set +e
+MAVROS_SOURCE_EVIDENCE_OUTPUT="$(bash -c '
+  eval "$1"
+  TRACE="$2"
+  ros2_graph_query_before() {
+    printf "query:%s\n" "$*" >>"$TRACE"
+    printf "Type: sensor_msgs/msg/Imu\n"
+    printf "Publisher count: 0\n"
+    printf "Subscription count: 1\n"
+    return 0
+  }
+  check_command_sentinel() { printf "sentinel\n" >>"$TRACE"; }
+  sleep() { printf "sleep:%s\n" "$1" >>"$TRACE"; }
+  log_error() { printf "EVIDENCE %s\n" "$*"; }
+  probe_mavros_source_dataplane() { printf "PROBE %s\n" "$*"; }
+  die() { printf "DIE: %s\n" "$*"; exit 17; }
+  require_mavros_source /mavros/imu/data 0
+' _ "$MAVROS_SOURCE_FUNCTION" "$GRAPH_TRACE" 2>&1)"
+MAVROS_SOURCE_EVIDENCE_RC=$?
+set -e
+[ "$MAVROS_SOURCE_EVIDENCE_RC" -eq 17 ] \
+  || fail 'zero-publisher MAVROS source did not reach the terminal verdict'
+grep -Fxq \
+  'DIE: MAVROS source endpoint failed after 3 attempts: /mavros/imu/data (publisher count 0)' \
+  <<<"$MAVROS_SOURCE_EVIDENCE_OUTPUT" \
+  || fail 'terminal MAVROS-source verdict text changed'
+[ "$(grep -Fc 'query:' "$GRAPH_TRACE")" -eq 3 ] \
+  || fail 'zero-publisher MAVROS source did not retry exactly three times'
+[ "$(grep -Fc 'sentinel' "$GRAPH_TRACE")" -eq 3 ] \
+  || fail 'zero-publisher MAVROS source skipped the command sentinel'
+[ "$(grep -Fc 'sleep:1' "$GRAPH_TRACE")" -eq 2 ] \
+  || fail 'zero-publisher MAVROS source did not back off between attempts'
+for attempt_index in 1 2 3; do
+  grep -Fq \
+    "EVIDENCE MAVROS_SOURCE_EVIDENCE topic=/mavros/imu/data attempt=$attempt_index" \
+    <<<"$MAVROS_SOURCE_EVIDENCE_OUTPUT" \
+    || fail "zero-publisher MAVROS source did not record attempt $attempt_index evidence"
+done
+[ "$(grep -Fc 'raw: Publisher count: 0' <<<"$MAVROS_SOURCE_EVIDENCE_OUTPUT")" -eq 3 ] \
+  || fail 'zero-publisher MAVROS source discarded the raw query body'
+[ "$(grep -Fc 'PROBE /mavros/imu/data' <<<"$MAVROS_SOURCE_EVIDENCE_OUTPUT")" -eq 1 ] \
+  || fail 'zero-publisher MAVROS source did not run exactly one bounded data-plane probe'
+
+: >"$GRAPH_TRACE"
+set +e
+MAVROS_SOURCE_RECOVERY_OUTPUT="$(bash -c '
+  eval "$1"
+  TRACE="$2"
+  ros2_graph_query_before() {
+    printf "query:%s\n" "$*" >>"$TRACE"
+    printf "Type: sensor_msgs/msg/Imu\n"
+    if [ "$(grep -Fc "query:" "$TRACE")" -eq 1 ]; then
+      printf "Publisher count: 0\n"
+      return 0
+    fi
+    printf "Publisher count: 1\n"
+    printf "Node name: mavros\n"
+    printf "Node namespace: /\n"
+    printf "Endpoint type: PUBLISHER\n"
+    return 0
+  }
+  check_command_sentinel() { printf "sentinel\n" >>"$TRACE"; }
+  sleep() { printf "sleep:%s\n" "$1" >>"$TRACE"; }
+  log_error() { printf "EVIDENCE %s\n" "$*"; }
+  probe_mavros_source_dataplane() { printf "UNEXPECTED_PROBE\n"; }
+  die() { printf "DIE: %s\n" "$*"; exit 17; }
+  require_mavros_source /mavros/imu/data 0
+' _ "$MAVROS_SOURCE_FUNCTION" "$GRAPH_TRACE" 2>&1)"
+MAVROS_SOURCE_RECOVERY_RC=$?
+set -e
+[ "$MAVROS_SOURCE_RECOVERY_RC" -eq 0 ] \
+  || fail 'MAVROS source did not recover after a transient zero-publisher reading'
+[ "$(grep -Fc 'query:' "$GRAPH_TRACE")" -eq 2 ] \
+  || fail 'recovering MAVROS source did not stop querying once verified'
+[ "$(grep -Fc 'sleep:1' "$GRAPH_TRACE")" -eq 1 ] \
+  || fail 'recovering MAVROS source did not back off exactly once'
+! grep -Fq 'UNEXPECTED_PROBE' <<<"$MAVROS_SOURCE_RECOVERY_OUTPUT" \
+  || fail 'recovering MAVROS source ran the failure-path data-plane probe'
+
+: >"$GRAPH_TRACE"
+set +e
+MAVROS_SOURCE_PROBE_HANDOFF="$(bash -c '
+  eval "$1"
+  TRACE="$2"
+  SECONDS=0
+  ros2_graph_query_before() {
+    printf "Publisher count: 0\n"
+    return 0
+  }
+  check_command_sentinel() { :; }
+  sleep() { :; }
+  log_error() { :; }
+  probe_mavros_source_dataplane() { printf "PROBE_ARGS:%s\n" "$*" >>"$TRACE"; }
+  die() { exit 17; }
+  require_mavros_source /mavros/imu/data 20
+' _ "$MAVROS_SOURCE_FUNCTION" "$GRAPH_TRACE" 2>&1)"
+MAVROS_SOURCE_PROBE_HANDOFF_RC=$?
+set -e
+[ "$MAVROS_SOURCE_PROBE_HANDOFF_RC" -eq 17 ] \
+  || fail 'finite-deadline MAVROS source did not reach the terminal verdict'
+grep -Fxq 'PROBE_ARGS:/mavros/imu/data 20' "$GRAPH_TRACE" \
+  || fail 'MAVROS source did not hand the parent deadline to the data-plane probe'
+
+: >"$GRAPH_TRACE"
+set +e
+SOURCE_PROBE_BOUNDED_OUTPUT="$(bash -c '
+  eval "$1"
+  TRACE="$2"
+  SECONDS=10
+  log_error() { printf "PROBE %s\n" "$*"; }
+  timeout() {
+    printf "timeout:%s\n" "$*" >>"$TRACE"
+    printf "header:\n  frame_id: base_link\n"
+    return 137
+  }
+  probe_mavros_source_dataplane /mavros/imu/data 12
+  printf "probe_returned=%s\n" "$?"
+' _ "$SOURCE_PROBE_FUNCTION" "$GRAPH_TRACE" 2>&1)"
+set -e
+grep -Fxq 'probe_returned=0' <<<"$SOURCE_PROBE_BOUNDED_OUTPUT" \
+  || fail 'data-plane probe did not stay neutral after a SIGKILL result'
+grep -Fxq \
+  'timeout:--signal=KILL 2s ros2 topic echo --once --timeout 2 --no-arr --qos-reliability best_effort --qos-history keep_last --qos-depth 10 /mavros/imu/data sensor_msgs/msg/Imu' \
+  "$GRAPH_TRACE" \
+  || fail 'data-plane probe did not clamp its hard bound to the remaining parent budget'
+grep -Fq 'PROBE MAVROS_SOURCE_PROBE topic=/mavros/imu/data type=sensor_msgs/msg/Imu bound=2s probe_rc=137' \
+  <<<"$SOURCE_PROBE_BOUNDED_OUTPUT" \
+  || fail 'data-plane probe did not record its bound and result'
+[ "$(grep -Fc 'raw: ' <<<"$SOURCE_PROBE_BOUNDED_OUTPUT")" -eq 2 ] \
+  || fail 'data-plane probe did not record one prefixed line per output line'
+
+: >"$GRAPH_TRACE"
+set +e
+SOURCE_PROBE_EXHAUSTED_OUTPUT="$(bash -c '
+  eval "$1"
+  TRACE="$2"
+  SECONDS=12
+  log_error() { printf "PROBE %s\n" "$*"; }
+  timeout() { printf "UNEXPECTED_PROBE_LAUNCH\n" >>"$TRACE"; return 0; }
+  probe_mavros_source_dataplane /mavros/imu/data 12
+  printf "probe_returned=%s\n" "$?"
+' _ "$SOURCE_PROBE_FUNCTION" "$GRAPH_TRACE" 2>&1)"
+set -e
+grep -Fxq 'probe_returned=0' <<<"$SOURCE_PROBE_EXHAUSTED_OUTPUT" \
+  || fail 'exhausted-deadline data-plane probe did not stay neutral'
+grep -Fq 'PROBE MAVROS_SOURCE_PROBE topic=/mavros/imu/data result=SKIPPED reason=deadline-exhausted' \
+  <<<"$SOURCE_PROBE_EXHAUSTED_OUTPUT" \
+  || fail 'exhausted-deadline data-plane probe did not record the skip'
+[ ! -s "$GRAPH_TRACE" ] \
+  || fail 'data-plane probe launched after the parent deadline was exhausted'
+
+: >"$GRAPH_TRACE"
+set +e
+SOURCE_PROBE_UNBOUNDED_OUTPUT="$(bash -c '
+  eval "$1"
+  TRACE="$2"
+  SECONDS=900
+  log_error() { printf "PROBE %s\n" "$*"; }
+  timeout() {
+    printf "timeout:%s\n" "$*" >>"$TRACE"
+    return 0
+  }
+  probe_mavros_source_dataplane /mavros/imu/data 0
+  printf "probe_returned=%s\n" "$?"
+' _ "$SOURCE_PROBE_FUNCTION" "$GRAPH_TRACE" 2>&1)"
+set -e
+grep -Fxq 'probe_returned=0' <<<"$SOURCE_PROBE_UNBOUNDED_OUTPUT" \
+  || fail 'hold-mode data-plane probe did not stay neutral'
+grep -Fq -- '--signal=KILL 5s ros2 topic echo --once --timeout 5 ' "$GRAPH_TRACE" \
+  || fail 'hold-mode data-plane probe did not keep its own finite hard bound'
+grep -Fq 'PROBE MAVROS_SOURCE_PROBE topic=/mavros/imu/data raw: <no probe output>' \
+  <<<"$SOURCE_PROBE_UNBOUNDED_OUTPUT" \
+  || fail 'data-plane probe did not record an empty result explicitly'
+
+set +e
+SOURCE_DEADLINE_ATTRIBUTION_OUTPUT="$(bash -c '
+  eval "$1"
+  SECONDS=0
+  ros2_graph_query_before() {
+    printf "Publisher count: 0\n"
+    return 0
+  }
+  check_command_sentinel() { :; }
+  sleep() { :; }
+  log_error() { :; }
+  probe_mavros_source_dataplane() { SECONDS=20; }
+  die() { printf "DIE: %s\n" "$*"; exit 17; }
+  require_mavros_source /mavros/imu/data 20
+  printf "source_returned=%s\n" "$?"
+' _ "$MAVROS_SOURCE_FUNCTION" 2>&1)"
+set -e
+grep -Fxq 'source_returned=75' <<<"$SOURCE_DEADLINE_ATTRIBUTION_OUTPUT" \
+  || fail 'a probe that consumed the parent budget was not reported as deadline exhaustion'
+! grep -Fq 'DIE:' <<<"$SOURCE_DEADLINE_ATTRIBUTION_OUTPUT" \
+  || fail 'deadline exhaustion after the data-plane probe was reported as a content failure'
+
+set +e
+INTERRUPT_PENDING_OUTPUT="$(bash -c '
+  eval "$1"
+  record_stop_trigger() { :; }
+  log() { printf "LOG %s\n" "$*"; }
+  LIFECYCLE_TRANSITION_ACTIVE=0
+  SOURCE_FAILURE_PENDING=1
+  HOLD_ACTIVE=1
+  WINDOW_COMPLETE=1
+  STOP_REQUESTED=0
+  on_interrupt
+  printf "interrupt_returned=%s\n" "$?"
+' _ "$INTERRUPT_FUNCTION" 2>&1)"
+set -e
+grep -Fxq 'interrupt_returned=0' <<<"$INTERRUPT_PENDING_OUTPUT" \
+  || fail 'interrupt during a pending source failure exited instead of deferring'
+! grep -Fq 'PI_SOURCE_HOLD=STOP operator-requested' <<<"$INTERRUPT_PENDING_OUTPUT" \
+  || fail 'interrupt during a pending source failure was recorded as an operator stop'
+
+set +e
+INTERRUPT_CLEAN_OUTPUT="$(bash -c '
+  eval "$1"
+  record_stop_trigger() { :; }
+  log() { printf "LOG %s\n" "$*"; }
+  LIFECYCLE_TRANSITION_ACTIVE=0
+  SOURCE_FAILURE_PENDING=0
+  HOLD_ACTIVE=1
+  WINDOW_COMPLETE=1
+  STOP_REQUESTED=0
+  on_interrupt
+  printf "interrupt_returned=%s\n" "$?"
+' _ "$INTERRUPT_FUNCTION" 2>&1)"
+INTERRUPT_CLEAN_RC=$?
+set -e
+[ "$INTERRUPT_CLEAN_RC" -eq 0 ] \
+  || fail 'operator hold stop no longer exits cleanly'
+grep -Fq 'PI_SOURCE_HOLD=STOP operator-requested' <<<"$INTERRUPT_CLEAN_OUTPUT" \
+  || fail 'operator hold stop no longer records its marker'
+! grep -Fq 'interrupt_returned=' <<<"$INTERRUPT_CLEAN_OUTPUT" \
+  || fail 'operator hold stop returned instead of exiting'
+
+run_third_attempt_interrupt() {
+  local trigger="$1"
+  bash -c '
+    eval "$1"
+    eval "$2"
+    TRIGGER="$3"
+    SECONDS=0
+    LIFECYCLE_TRANSITION_ACTIVE=0
+    SOURCE_FAILURE_PENDING=0
+    HOLD_ACTIVE=1
+    WINDOW_COMPLETE=1
+    STOP_REQUESTED=0
+    SENTINEL_CALLS=0
+    record_stop_trigger() { :; }
+    log() { printf "LOG %s\n" "$*"; }
+    log_error() {
+      printf "LOG %s\n" "$*"
+      if [ "$TRIGGER" = evidence ]; then
+        case "$*" in
+          *"attempt=3 query_rc"*) on_interrupt ;;
+        esac
+      fi
+    }
+    ros2_graph_query_before() { printf "Publisher count: 0\n"; return 0; }
+    sleep() { :; }
+    probe_mavros_source_dataplane() { :; }
+    check_command_sentinel() {
+      SENTINEL_CALLS=$((SENTINEL_CALLS + 1))
+      printf "SENTINEL pending=%s\n" "$SOURCE_FAILURE_PENDING"
+      if [ "$TRIGGER" = sentinel ] && [ "$SENTINEL_CALLS" -eq 3 ]; then
+        on_interrupt
+      fi
+    }
+    die() { printf "DIE: %s\n" "$*"; exit 1; }
+    require_mavros_source /mavros/imu/data 0
+    printf "source_returned=%s\n" "$?"
+  ' _ "$MAVROS_SOURCE_FUNCTION" "$INTERRUPT_FUNCTION" "$trigger" 2>&1
+}
+
+for interrupt_trigger in evidence sentinel; do
+  set +e
+  THIRD_ATTEMPT_OUTPUT="$(run_third_attempt_interrupt "$interrupt_trigger")"
+  THIRD_ATTEMPT_RC=$?
+  set -e
+  [ "$THIRD_ATTEMPT_RC" -eq 1 ] \
+    || fail "interrupt during $interrupt_trigger work on attempt 3 did not fail closed"
+  grep -Fq \
+    'DIE: MAVROS source endpoint failed after 3 attempts: /mavros/imu/data (publisher count 0)' \
+    <<<"$THIRD_ATTEMPT_OUTPUT" \
+    || fail "interrupt during $interrupt_trigger work on attempt 3 suppressed the content verdict"
+  grep -Fq 'interrupt deferred until the pending source failure is reported' \
+    <<<"$THIRD_ATTEMPT_OUTPUT" \
+    || fail "interrupt during $interrupt_trigger work on attempt 3 was not deferred"
+  ! grep -Fq 'PI_SOURCE_HOLD=STOP operator-requested' <<<"$THIRD_ATTEMPT_OUTPUT" \
+    || fail "interrupt during $interrupt_trigger work on attempt 3 exited as an operator stop"
+done
+
+set +e
+THIRD_ATTEMPT_LATCH_ORDER="$(run_third_attempt_interrupt none)"
+set -e
+[ "$(grep -c '^SENTINEL pending=1$' <<<"$THIRD_ATTEMPT_LATCH_ORDER")" -eq 1 ] \
+  || fail 'the pending-failure latch was not raised before the attempt-3 sentinel check'
+[ "$(grep -c '^SENTINEL pending=0$' <<<"$THIRD_ATTEMPT_LATCH_ORDER")" -eq 2 ] \
+  || fail 'the pending-failure latch was raised before the third attempt was known'
 
 : >"$GRAPH_TRACE"
 set +e

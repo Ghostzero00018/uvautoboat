@@ -8,7 +8,7 @@
 |---|---|
 | **Project** | AutoBoat Navigation System |
 | **Repository** | [Ghostzero00018/uvautoboat](https://github.com/Ghostzero00018/uvautoboat) |
-| **Last Updated** | 01/08/2026 |
+| **Last Updated** | 03/08/2026 |
 | **Status** | 🟢 Simulation ready (A\* path planning + one-click launcher + wiki docs + dashboard config system + MP/QGC install). First wet test completed 07/05/2026: boat survived float/manual-control bring-up, Herelink manual control works, QGC/MP MAVLink arm/disarm works. Herelink video A/B campus side verified 11/05/2026 — Linux QGC video works via the `Source = Herelink Hotspot` preset and `ffplay rtsp://<herelink-ip>:8554/fpv_stream` independently confirms the underlying LIVE555 H.264 stream; Linux MP video + arm/disarm also working after a host-local SkiaSharp 2.88.8 NuGet swap + `~/MissionPlanner/libdl.so` → `libdl.so.2` symlink (11/05/2026 late-day fix, reversible — see `wiki/Common_Issues.md` MP-Linux entry); GDAL/OGR/OSR Mono gaps from 24/04 remain (terrain / advanced geo-ref still degraded) but no longer block the video panel. Second-site (lake) retest deferred to next field session. **22/06/2026 update:** workstation on `IMT-Aquatic-drone` again reached the Herelink RTSP endpoint (`rtsp://192.168.43.1:8554/fpv_stream`, LIVE555 H.264 1920×1080@30); TCP was clean while UDP showed packet loss, but the current video source was a Pi desktop / `rqt_image_view` screen capture after starting the Pi camera node, not a direct camera feed. Treat this as transport reachability plus a current source-regression finding, not dashboard-camera integration evidence. Pi 5 MAVLink telemetry path proven 04/06/2026 (`/mavros/state connected: true` via MAVProxy → MAVROS on the reconfigured ArduPilot endpoint; GPS fix / EKF config still open). Pi 5 RealSense camera display in the workstation dashboard was proven 18/06/2026 over `IoT IMT Nord Europe` using a camera-only `424x240x15` profile; this is camera display only, not command/write validation. Local dashboard/planner → QGC visual mission bridge accepted 10-11/06/2026 (`tools/qgc_live_mission_bridge.py` over `127.0.0.1:14550`) and observed under a Herelink-hotspot mixed-topology setup 17/06/2026; visual-only — real-FCU upload, bidirectional sync, and command/write validation remain open. |
 
 > **15/07/2026 live update:** the workstation dashboard simultaneously displayed
@@ -69,12 +69,18 @@
 > `tools/pi_live_hailo_mavlink_dashboard.sh`; a separate simulator-only runner may be considered
 > only after Monday's evidence is reviewed.
 >
-> **Carried-forward known issue (top follow-up, 03/08/2026):** the supervisor's
-> `ros2 --no-daemon --spin-time 2` graph/source queries intermittently misreport: a live-hold
-> check read a false `publisher count 0` on `/mavros/imu/data` while telemetry was healthy.
-> Separately, cumulative final verification exceeded its `90 s` budget during sequential
-> bounded topic sampling and was worked around with `180 s`. Diagnose both paths before
-> selecting the smallest fix; see
+> **Carried-forward known issue (top follow-up, 03/08/2026):** two distinct 24/07 failures,
+> confirmed separate. A live-hold `require_mavros_source` check ended the run after a successful
+> `ros2 --no-daemon --spin-time 2` query reported `publisher count 0` on `/mavros/imu/data`;
+> whether an IMU publisher actually existed at that moment is **not** established, because the hold
+> never samples that topic and `mavros.log` records no periodic IMU activity. Separately, cumulative
+> final verification exceeded its `90 s` budget. That overrun is consistent with the cost of the
+> serialized daemonless graph queries; no fault was identified, and the logs carry no per-query
+> timing that could exclude one. It was mitigated with `180 s`. As of 03/08/2026 the source-failure
+> path records attempt-indexed raw query evidence and runs one bounded data-plane probe. The path as
+> a whole remains fail-closed; the probe itself is verdict-neutral, its result recorded but never
+> consulted. The discriminator only becomes available if the zero-publisher condition recurs - a
+> clean run does not supply it. No fix has been selected. See
 > `working_diary/2026-08-03_monday_ros2_graph_query_hardening.md`.
 
 ---
@@ -416,13 +422,18 @@ The whole repo is expected to run on the Pi 5. Long-term (Phase 5.2+): QGC and t
 ## 🎯 Next Priorities
 
 1. **Live-dashboard graph-query hardening (03/08/2026 START HERE)**:
-   fix the reproduced false-zero behaviour in the supervisor's
-   `ros2 --no-daemon --spin-time 2` graph/source queries and diagnose the separate
-   cumulative final-verification overrun. The 24/07 runs showed a false
-   `publisher count 0` while MAVROS telemetry remained healthy; final verification
-   also exceeded its budget during sequential bounded topic sampling. Do not assume
-   one root cause: trace both paths before selecting the smallest robust change.
-   Verify the result through a clean `PI_SUPERVISOR_EXIT status=0` full-stack run.
+   the two 24/07 failures are confirmed separate. A live-hold check ended a run after a
+   successful `ros2 --no-daemon --spin-time 2` query reported `publisher count 0` on
+   `/mavros/imu/data`; whether a publisher existed at that moment is not established, so
+   no root cause is claimed and no fix has been selected. Final verification separately
+   exceeded its `90 s` budget, consistent with cumulative daemonless query cost, and was
+   mitigated with `180 s`. As of 03/08/2026 the source-failure path records attempt-indexed
+   raw query evidence and runs one bounded data-plane probe; the path stays fail-closed while
+   the probe itself is verdict-neutral. Next is a clean `PI_SUPERVISOR_EXIT status=0`
+   full-stack run to deploy that build, which confirms the diagnostics do not disturb a
+   healthy stack but supplies no discriminator on its own - that needs a recurrence of the
+   zero-publisher condition. Only then choose between the ROS 2 daemon and a short
+   subscription probe.
 2. **Live dashboard outbound command design path**:
    design the next safe write-protocol contract now that Pi-window diagnostics have been
    trimmed and normal Pi-local display is preserved. Define exact payload, recipient,
@@ -511,7 +522,7 @@ Current position ──────>│  (in Planner)       │
 
 ## 📜 Acknowledgments
 
-**Document Version**: 9.46 | **Last Updated**: 01/08/2026
+**Document Version**: 9.47 | **Last Updated**: 03/08/2026
 
 **Maintained By**: AutoBoat Development Team
 

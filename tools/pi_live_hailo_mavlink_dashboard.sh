@@ -71,6 +71,7 @@ WINDOW_MONITOR_END_SECONDS=0
 HOLD_ACTIVE=0
 LIFECYCLE_TRANSITION_ACTIVE=0
 STOP_REQUESTED=0
+SOURCE_FAILURE_PENDING=0
 SUPERVISOR_LOG=''
 SUPERVISOR_PHASE='initialization'
 SUPERVISOR_STOP_TRIGGER='none'
@@ -290,6 +291,11 @@ on_interrupt() {
   if [ "$LIFECYCLE_TRANSITION_ACTIVE" -eq 1 ]; then
     STOP_REQUESTED=1
     log 'interrupt deferred until lifecycle markers complete'
+    return 0
+  fi
+  if [ "$SOURCE_FAILURE_PENDING" -eq 1 ]; then
+    STOP_REQUESTED=1
+    log 'interrupt deferred until the pending source failure is reported'
     return 0
   fi
   if [ "$HOLD_ACTIVE" -eq 1 ]; then
@@ -564,9 +570,43 @@ reject_command_services() {
   die 'workstation rosapi topics_for_type service is not visible from the Pi'
 }
 
+probe_mavros_source_dataplane() {
+  local topic="$1" deadline="${2:-0}" probe_seconds=5
+  local message_type probe_rc=0 probe_output='' probe_line remaining
+  case "$topic" in
+    /mavros/imu/data) message_type='sensor_msgs/msg/Imu' ;;
+    *)
+      log_error "MAVROS_SOURCE_PROBE topic=$topic result=SKIPPED reason=no-declared-type"
+      return 0
+      ;;
+  esac
+  if [ "$deadline" -ne 0 ]; then
+    remaining=$((deadline - SECONDS))
+    if [ "$remaining" -le 0 ]; then
+      log_error "MAVROS_SOURCE_PROBE topic=$topic result=SKIPPED reason=deadline-exhausted"
+      return 0
+    fi
+    [ "$remaining" -ge "$probe_seconds" ] || probe_seconds="$remaining"
+  fi
+  probe_output="$(timeout --signal=KILL "${probe_seconds}s" \
+    ros2 topic echo --once --timeout "$probe_seconds" --no-arr \
+    --qos-reliability best_effort --qos-history keep_last --qos-depth 10 \
+    "$topic" "$message_type" 2>&1)" || probe_rc=$?
+  log_error "MAVROS_SOURCE_PROBE topic=$topic type=$message_type bound=${probe_seconds}s probe_rc=$probe_rc"
+  if [ -n "$probe_output" ]; then
+    while IFS= read -r probe_line; do
+      log_error "MAVROS_SOURCE_PROBE topic=$topic raw: $probe_line"
+    done <<<"$probe_output"
+  else
+    log_error "MAVROS_SOURCE_PROBE topic=$topic raw: <no probe output>"
+  fi
+  return 0
+}
+
 require_mavros_source() {
   local topic="$1" deadline="${2:-0}"
   local attempt info count nodes node identity_unknown last='query failed' query_rc
+  local evidence_line
   for attempt in 1 2 3; do
     info=''
     nodes=''
@@ -574,7 +614,10 @@ require_mavros_source() {
     query_rc=0
     info="$(ros2_graph_query_before "$deadline" topic info --verbose --no-daemon --spin-time 2 "$topic")" \
       || query_rc=$?
-    [ "$query_rc" -ne 75 ] || return 75
+    if [ "$query_rc" -eq 75 ]; then
+      SOURCE_FAILURE_PENDING=0
+      return 75
+    fi
     if [ "$query_rc" -eq 0 ]; then
       count="$(awk -F': ' '/^Publisher count:/{print $2}' <<<"$info")"
       last="publisher count ${count:-UNKNOWN}"
@@ -604,12 +647,27 @@ require_mavros_source() {
         fi
       fi
     fi
+    [ "$attempt" -ne 3 ] || SOURCE_FAILURE_PENDING=1
+    log_error "MAVROS_SOURCE_EVIDENCE topic=$topic attempt=$attempt query_rc=$query_rc verdict=$last"
+    if [ -n "$info" ]; then
+      while IFS= read -r evidence_line; do
+        log_error "MAVROS_SOURCE_EVIDENCE topic=$topic attempt=$attempt raw: $evidence_line"
+      done <<<"$info"
+    else
+      log_error "MAVROS_SOURCE_EVIDENCE topic=$topic attempt=$attempt raw: <no query output>"
+    fi
     if [ "$deadline" -ne 0 ] && [ "$SECONDS" -ge "$deadline" ]; then
+      SOURCE_FAILURE_PENDING=0
       return 75
     fi
     check_command_sentinel
     [ "$attempt" -eq 3 ] || sleep 1
   done
+  probe_mavros_source_dataplane "$topic" "$deadline"
+  if [ "$deadline" -ne 0 ] && [ "$SECONDS" -ge "$deadline" ]; then
+    SOURCE_FAILURE_PENDING=0
+    return 75
+  fi
   die "MAVROS source endpoint failed after 3 attempts: $topic ($last)"
 }
 

@@ -5,7 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PREFLIGHT="${1:-$SCRIPT_DIR/live_dashboard_preflight.sh}"
 WIKI="$SCRIPT_DIR/../wiki/Live_Hailo_MAVLink_Dashboard_Testing.md"
-EXPECTED_PREFLIGHT_SHA256='3d28a71181bff5d33f0ff7f037996bf5bb5f3dcf55d1960cc39272c29dd0e4f0'
+EXPECTED_PREFLIGHT_SHA256='72adfb125533e6b456583c563e5a47716b5514bbd649fa465a06ec5f142dbe2d'
 CASE_COUNT=0
 
 fail() {
@@ -42,7 +42,7 @@ grep -Fqx -- \
   "| Supervisor SHA-256 | \`$EXPECTED_PREFLIGHT_SHA256\` |" "$WIKI" \
   || fail 'live-dashboard runbook supervisor checksum is stale'
 
-require_literal "EXPECTED_HELPER_SHA256='04ea4fe9b82ac7689a87ca90e2df58101589b38a3238d0643efbfbb01e3ccf1a'"
+require_literal "EXPECTED_HELPER_SHA256='124d674f89efcee46a24d9bfa11b227324aa0dae292c666993df2a0a687fae98'"
 require_literal 'EXPECTED_SSID="${LIVE_SSID:-IoT IMT Nord Europe}"'
 require_literal 'PI_WINDOW_MODE="${LIVE_PI_WINDOW_MODE:-fullscreen}"'
 require_literal 'validate_pi_window_selectors() {'
@@ -92,7 +92,7 @@ PI_COMMAND_OUTPUT="$(bash -c '
 PI_COMMAND_BLOCK="$(sed -n '/^($/,/^)$/{p}' <<<"$PI_COMMAND_OUTPUT")"
 [ -n "$PI_COMMAND_BLOCK" ] || fail 'printed Pi command block missing'
 bash -n <<<"$PI_COMMAND_BLOCK"
-grep -Fq '04ea4fe9b82ac7689a87ca90e2df58101589b38a3238d0643efbfbb01e3ccf1a' \
+grep -Fq '124d674f89efcee46a24d9bfa11b227324aa0dae292c666993df2a0a687fae98' \
   <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not verify the helper pin'
 grep -Fq 'LIVE_HOLD_AFTER_WINDOW=1' <<<"$PI_COMMAND_BLOCK" \
@@ -116,7 +116,7 @@ grep -Fq 'HAILO_DEMO_ROOT="$PI_RUNTIME_ROOT"' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not preserve the Hailo runtime root'
 grep -Fq '"$PI_HELPER"' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not execute the absolute Desktop helper'
-grep -Fq "\\n' '04ea4fe9b82ac7689a87ca90e2df58101589b38a3238d0643efbfbb01e3ccf1a' \"\$PI_HELPER\" | sha256sum -c -" \
+grep -Fq "\\n' '124d674f89efcee46a24d9bfa11b227324aa0dae292c666993df2a0a687fae98' \"\$PI_HELPER\" | sha256sum -c -" \
   <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi checksum format contains a literal line break'
 ! grep -Fq './pi_live_hailo_mavlink_dashboard.sh' <<<"$PI_COMMAND_BLOCK" \

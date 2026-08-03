@@ -10,6 +10,13 @@
 > wrapper. Its root cause remains open and must not be conflated with the false graph result.
 > Hardening the graph/source queries is the main task for this day, with final-verification timing
 > retained as separate evidence.
+>
+> **Forward correction, 03/08/2026.** The separation above is confirmed. The final-verification
+> overrun is consistent with the cumulative cost of the serialized daemonless queries; no fault was
+> identified, but the logs carry no per-query timing, so a contributing fault cannot be excluded.
+> The wording "a FALSE `publisher count 0`" overstates what the logs support: the reading is
+> established, its falsity is not. See the Block A and Block B1 sections below, which supersede this
+> note where they differ.
 
 ## Status
 
@@ -403,6 +410,157 @@ coasted. Include the exact absolute `${SITL_RUN_DIR}` value and preserve that co
 the evidence bundle. Do not choose a watchdog interval or advance this track until that evidence is
 reviewed.
 
+## Block A - read-only incident separation (03/08/2026)
+
+The two 24/07 failures are confirmed distinct, on structural grounds rather than message text.
+Every helper line number in this section refers to the revisions the runs actually executed -
+`3890564` for `175832` and `0306310` for `184228`, which share identical line numbering - and not to
+the current file, whose numbering shifted when the Block B1 diagnostics were added.
+Different die sites (`tools/pi_live_hailo_mavlink_dashboard.sh:443-444` rc-75 sentinel versus
+`:613` content verdict), different phases (`stop_phase=live-window` versus `stop_phase=live-hold`),
+and mutually exclusive branches: in live-hold the deadline is literally `0`, so `:607` cannot fire
+and `:388-389` has no `return 75` - the path that ended `175832` is unreachable in `184228`.
+Helper provenance confirms the split: `175832` logged `helper_sha256=3c1c9c27...` (commit `3890564`)
+and `184228` logged `04ea4fe9...` (commit `0306310`). The only difference between those revisions is
+the `FINAL_VERIFY_SECONDS` default.
+
+**Run `live_dashboard_20260724_175832` - budget exhaustion.** The 78.9539 s figure is a bracket
+between two echo sample stamps (`mavros_state.yaml` 1784909046.853379190 to `hailo_image.yaml`
+1784909125.807284586); it bounds the enclosed work as a whole, not graph-query time alone. Fourteen
+is the minimum *logical* query count - `ros2_graph_query_before` retries on non-zero rc, and
+`require_publisher_count` and `reject_command_services` add their own attempt loops, so the real
+process count may be higher. The derived 5.64 s is therefore an average, not a per-query ceiling.
+`mavros_imu.yaml` holds no message, only the shell banner recording that the IMU echo was launched
+and SIGKILLed, so that checkpoint names where the clock expired rather than a failing IMU.
+`mavros_battery.yaml` and `mavros_rc.yaml` are pre-window stale, confirming the battery, RC and
+final-verdict steps never ran. The 90 to 180 s change at `0306310` is a mitigation, not a
+correctness fix; nothing about the query mechanism changed.
+`tools/test_pi_live_hailo_mavlink_dashboard.sh:50` is a literal contract assertion on the constant's
+spelling, not a behavioural regression test.
+
+**Run `live_dashboard_20260724_184228` - unresolved.** At least one successful (rc 0) query reported
+zero publishers on `/mavros/imu/data`. Because `last` is initialised once at `:569` and the
+surrounding guard only updates it when the query succeeded, the preserved text pins the most recent
+*successful* observation, not necessarily the final attempt. Whether an IMU writer actually existed
+at that moment remains unknown: the hold never echoes that topic, and `mavros.log` carries no
+periodic IMU record, so it can show neither publication nor loss. The earlier note that `mavros.log`
+showed IMU healthy is withdrawn - the nearest line at 1784912120.953798782 proves only that the
+process and its `global_position` callback were alive.
+
+## Block B1 - diagnostic hardening (03/08/2026)
+
+Scope was deliberately narrowed to observability. **No correctness claim is made, and no root cause
+for `184228` is asserted.** The change is intended to capture evidence that would narrow the next
+occurrence; it does not guarantee the next occurrence will be decidable.
+
+Written test-first: a red observability case in
+`tools/test_pi_live_hailo_mavlink_dashboard.sh` drives `require_mavros_source` with a stubbed query
+that returns success while reporting `Publisher count: 0`. Against the previous helper its first
+failure was the attempt-1 evidence assertion; the assertions ordered before it - terminal return
+code, byte-exact verdict text, and the 3/3/2 query, sentinel and back-off counts - all held. Because
+the suite stops at the first failure, the later raw-output and probe assertions were not reached on
+that run, so the red result establishes those earlier contracts and the missing attempt-1 evidence
+only. A companion case pins recovery after a transient zero reading so the retry path cannot regress
+silently.
+
+Helper changes, both confined to the failure path:
+
+- `require_mavros_source` now emits attempt-indexed evidence for every attempt that did not verify,
+  one prefixed record per line of raw query output, so a line-oriented log stays parseable.
+- A dedicated `probe_mavros_source_dataplane` runs once immediately before the terminal verdict,
+  with its own external `timeout --signal=KILL` bound, an explicit message type and an explicit QoS
+  profile. It always returns 0 and its result is recorded but never consulted.
+
+The terminal verdict text, at `:613` in the pre-Block-B1 helper, is byte-identical to before and is
+asserted as such by the suite rather than by line number. Acceptance, exit status and the
+foreign-publisher rejection are unchanged; that rejection exits earlier and never reaches either
+addition. Both focused suites pass
+(`bash tools/test_pi_live_hailo_mavlink_dashboard.sh`, `bash tools/test_live_dashboard_preflight.sh`).
+
+Note for future edits: pin enforcement is uneven. `tools/test_live_dashboard_preflight.sh:38-43`
+computes the real digest of `tools/live_dashboard_preflight.sh` and cross-checks the runbook
+supervisor row, so supervisor drift does fail the suite. The helper pin has no such check: `:45`,
+`:95` and `:119` only assert that the expected text appears, and the comparison against the real
+helper happens during a live preflight. Helper pins must therefore be recomputed by hand after any
+edit, and a green suite is not evidence that they are current.
+
+Current pins after this change:
+
+| File | Size | SHA-256 |
+| --- | --- | --- |
+| `tools/pi_live_hailo_mavlink_dashboard.sh` | `63,625` bytes | `124d674f89efcee46a24d9bfa11b227324aa0dae292c666993df2a0a687fae98` |
+| `tools/live_dashboard_preflight.sh` | `28,647` bytes | `72adfb125533e6b456583c563e5a47716b5514bbd649fa465a06ec5f142dbe2d` |
+
+Twelve occurrences were updated: eight helper-hash, two cascading supervisor-hash, and the two wiki
+size fields. The supervisor byte size is unchanged because the replacement digest is the same length.
+The 24/07 pin rows remain as recorded on that date.
+
+Not done in this block: no query-collapse refactor, no Pi command, no hardware contact, and no live
+run. The choice between using the ROS 2 daemon and probing with a short subscription is still open
+and is deliberately left until the new evidence exists.
+
+## Block B1 correction (03/08/2026)
+
+Review of the first B1 attempt found a deadline regression, corrected before acceptance.
+
+The probe took a fixed five-second bound and ignored the caller's deadline. Because
+`require_mavros_source` is also called with a finite deadline from `final_graph_verification`, the
+probe could run past that deadline and let the terminal content verdict fire where deadline
+exhaustion should have been reported instead, and it could extend the final-verification budget. A
+no-ROS reproduction with a one-second remaining budget crossed the deadline.
+
+The earlier statement that the probe "runs only on the terminal-failure path, so it cannot inflate
+the final-verification budget" was wrong: that path is reachable from inside final verification.
+
+`probe_mavros_source_dataplane` now takes the deadline, skips with a recorded reason when the budget
+is already exhausted, and otherwise clamps its own hard bound to the remaining budget, matching the
+clamp already used by `bounded_topic_echo`. With no deadline, as in live-hold, it keeps its own
+five-second bound.
+
+The first attempt also stubbed the probe in every test, so its real arguments were unverified. The
+probe is now exercised directly with `timeout` stubbed instead, covering the clamped bound, the
+explicit message type and QoS flags, one prefixed record per output line, neutrality after a SIGKILL
+result, and the skip when the deadline is exhausted. A further case asserts that
+`require_mavros_source` hands its deadline to the probe.
+
+A second review round found two fail-closed seams, both reproduced before being fixed.
+
+The first was attribution. Even with the clamp, the terminal verdict fired without rechecking the
+deadline, so a probe that finished exactly at the deadline reported a content failure where deadline
+exhaustion should have been reported. `require_mavros_source` now rechecks after the probe and
+returns the deadline code instead, leaving the content verdict for the case where budget remains.
+
+The second was interrupt handling. During the monitored hold, an operator Ctrl+C arriving while the
+failure probe was running reached the hold-stop branch of the interrupt handler, which exits `0`.
+A known source failure could therefore have been published as `PI_SUPERVISOR_EXIT status=0`. A
+pending-failure flag is now raised for the window between the third failed attempt and the verdict,
+and the handler defers on it exactly as it already defers during lifecycle transitions, so the
+verdict is still recorded and the run exits non-zero. An operator stop with no failure pending keeps
+its previous behaviour, which is asserted separately so the deferral cannot silently swallow a real
+stop request.
+
+A third review round found that the pending-failure latch was raised too late. It was set only after
+the third attempt's evidence records and command-sentinel check had already run, leaving that
+interval unprotected: an interrupt arriving there still saw no pending failure and exited the hold
+cleanly, publishing a known failure as a clean stop. The latch is now raised as soon as the third
+attempt is known not to have verified, ahead of any evidence or sentinel work, and it is cleared on
+every deadline return so an expired budget is still reported as exhaustion.
+
+The handler tests from the previous round set the flag by hand, so they asserted the handler's
+contract but could not detect this ordering. Two integrated cases now drive the real interrupt
+handler from inside the third attempt, once from its first evidence record and once from its
+sentinel check, and require the non-zero content verdict in both. A third case pins the ordering
+directly by observing the flag at each sentinel call and requiring it raised on the third attempt
+only. That case detects a latch that is missing or raised too late; it would not detect one moved
+earlier within the third attempt, ahead of the query itself. The source placement is correct, so
+this is a coverage limitation rather than an open defect.
+
+Known limitation, not expanded in this block: when a graph query fails outright rather than
+returning a zero count, the durable record shows `<no query output>`. The query wrapper writes the
+underlying error to standard error while the caller captures standard output only, so that text does
+not reach `supervisor.log`. This does not affect capture of the successful-query, zero-count case
+that motivated the block, but it means a hard query failure is recorded by its return code alone.
+
 ## Non-goals
 
 - No arming a real vehicle, no real motor command, no dashboard write path, and no bypass of
@@ -415,3 +573,18 @@ reviewed.
 Start Task 1 (graph-query hardening): read the 24/07 logs, pick the smallest robust change,
 re-pin and keep both test suites green, and verify with a full-stack run reaching a clean
 `status=0`. Tasks 2 and 3 only if time allows and only under their gates.
+
+## Next step update (03/08/2026)
+
+Superseding the entry above, which was written before the day started. Blocks A and B1 are
+complete. The helper records attempt-indexed evidence and one bounded data-plane probe on the
+`require_mavros_source` failure path, both suites pass, and all twelve pin occurrences are current.
+
+Next is a full-stack run reaching a clean `PI_SUPERVISOR_EXIT status=0` after an operator Ctrl+C,
+which also deploys the re-pinned helper to the Pi. That run deploys the build but does not by itself
+answer the still-open question in `184228`. The discriminator only becomes available if the
+zero-publisher condition recurs: a clean run proves the diagnostics do not disturb a healthy stack,
+and nothing more. On a recurrence the records carry the raw query body per attempt and whether a
+bounded post-query probe captured a message on `/mavros/imu/data`. Whether that settles the question
+still depends on what the probe returns, so the daemon-versus-subscription-probe choice stays open
+until such a recurrence has been captured. Tasks 2 and 3 remain gated as written above.
