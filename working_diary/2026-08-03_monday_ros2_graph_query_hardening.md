@@ -588,3 +588,119 @@ and nothing more. On a recurrence the records carry the raw query body per attem
 bounded post-query probe captured a message on `/mavros/imu/data`. Whether that settles the question
 still depends on what the probe returns, so the daemon-versus-subscription-probe choice stays open
 until such a recurrence has been captured. Tasks 2 and 3 remain gated as written above.
+
+## Block C - user-run live recurrence and acceptance (03/08/2026)
+
+Block C ran against landed commit `bfaf969`. The Pi's initial helper copy failed the expected
+checksum, so the workstation copy was rechecked and transferred once. The Pi then verified the
+current helper SHA-256
+`124d674f89efcee46a24d9bfa11b227324aa0dae292c666993df2a0a687fae98` before launch.
+The preserved evidence is:
+
+- Pi copy: `/home/ghostzero/Desktop/test_logs_folder/live_dashboard_20260803_114802`
+- workstation source: `/home/ghostzero/Desktop/live_dashboard_workstation_20260803_114713`
+
+The copied Pi files are present and readable. No source-versus-copy checksum comparison was
+captured, so the copy is not claimed as independently checksum-matched.
+
+The automated lifecycle passed. The Pi reached `MAVROS_STATE=PASS connected=true armed=false`,
+`MAVROS_TELEMETRY=PASS`, and `PI_SOURCE_STACK_READY=PASS`. The workstation reached
+`PI_DATA_ARRIVED=PASS topics=6 elapsed=285s` and `W5_RATE_PROBES=PASS`. Its six ten-second samples
+were:
+
+| Topic | Messages | Mean rate |
+| --- | ---: | ---: |
+| `/hailo/overlay/image_raw` | `73` | `7.40 Hz` |
+| `/mavros/state` | `10` | `1.00 Hz` |
+| `/mavros/global_position/raw/fix` | `10` | `1.00 Hz` |
+| `/mavros/imu/data` | `10` | `1.00 Hz` |
+| `/mavros/battery` | `10` | `1.01 Hz` |
+| `/mavros/rc/in` | `10` | `0.96 Hz` |
+
+The Pi reported:
+
+```text
+PI_SOURCE_WINDOW=COMPLETE target=120s monitored=120s final_verification=125s elapsed=245s peak=67C
+```
+
+It then entered the monitored hold. The operator observed a good live annotated camera and five
+good MAVROS badges; write controls were neither visible nor tested. After the 12:00:53 browser
+reload, `web_video_server.log` records one stream request at
+`1785751253.754448` and its removal at `1785751969.655791`, with no intervening second request.
+The ROS bridge likewise held one client subscribed to all five MAVROS topics until
+`1785751968.844735`.
+
+The independent watchdog peak was `69400` mC; the operator console recorded `58950` mC before
+launch and `57850` mC after teardown. No thermal abort occurred. The command sentinel remained
+quiet and the FCU remained observed-disarmed.
+
+Supervisor shutdown ordering passed: the operator signalled P1 first at `1785751970.855767`, and
+the Pi produced:
+
+```text
+TEARDOWN=PASS
+PI_SUPERVISOR_EXIT status=0 trigger=signal signal=INT stop_phase=live-hold failed_phase=none cleanup_rc=0
+```
+
+W1 was signalled later at `1785752042.275249` and produced:
+
+```text
+WORKSTATION_TEARDOWN=PASS
+SUPERVISOR_EXIT status=0 trigger=signal signal=INT stop_phase=supervision failed_phase=none cleanup_rc=0
+```
+
+The browser stream ended about 1.2 s before the P1 signal, so the requested browser-last close
+order was not preserved. This bounded ordering deviation does not change the captured query
+evidence or either supervisor's status, but strict browser-last acceptance is not claimed.
+
+### Captured graph-query recurrence
+
+Eleven non-verifying evidence headers occurred across eight source-check episodes. Every query had
+`query_rc=0`: these were successful commands returning incomplete content, not command failures or
+timeouts. Successful source checks are intentionally silent in the helper.
+
+| Phase and time | Topic | Non-verifying observations | Bounded outcome |
+| --- | --- | --- | --- |
+| live-window `11:53:47.093` | `/mavros/state` | attempt 1: count `0` | The finite window may have recovered or returned its deadline code; final verification later accepted the source. |
+| live-hold `12:00:00.287` | `/mavros/imu/data` | attempt 1: count `0` | Silent attempt 2 accepted before the next phase record. |
+| live-hold `12:03:44.464` | `/mavros/state` | attempt 1: count `0`; attempt 2: count `1`, identity unknown | Silent attempt 3 accepted. |
+| live-hold `12:04:08.610` | `/mavros/imu/data` | attempts 1 and 2: count `0` | Silent attempt 3 accepted. |
+| live-hold `12:04:27.045` | `/mavros/battery` | attempt 1: count `0` | Silent attempt 2 accepted. |
+| live-hold `12:08:17.749` | `/mavros/battery` | attempt 1: count `0`; attempt 2: count `1`, identity unknown | Silent attempt 3 accepted. |
+| live-hold `12:10:02.828` | `/mavros/global_position/raw/fix` | attempt 1: count `0` | Silent attempt 2 accepted. |
+| live-hold `12:11:44.555` | `/mavros/global_position/raw/fix` | attempt 1: count `0` | Silent attempt 2 accepted. |
+
+The zero-count bodies still contained the topic type and one or more subscriptions. The state and
+battery sequences then exposed a publisher endpoint with `_NODE_NAME_UNKNOWN_` and
+`_NODE_NAMESPACE_UNKNOWN_` before the following attempt accepted its MAVROS identity. Those
+partially identified endpoints carried the same publisher GIDs that W5 had recorded for the fully
+identified `/mavros/sys` publishers. The helper launches a fresh
+`ros2 topic info --verbose --no-daemon --spin-time 2` process for every attempt, so this run
+confirms transiently incomplete per-process graph snapshots as the proximate query defect.
+
+The evidence disfavors a persistent or MAVROS-wide source loss in this run: all seven live-hold
+episodes recovered within the existing three attempts, the MAVROS process group stayed alive, the
+ROS bridge subscriptions remained active, and the operator observed live badges. It does not prove
+publisher continuity at each exact zero-count instant. W5's direct IMU rate ended before the two
+hold-time IMU readings, the preserved direct IMU sample is from `11:55:58`, and no hold-time direct
+IMU sample was taken.
+
+No `MAVROS_SOURCE_PROBE` record exists because no live-hold call exhausted all three attempts.
+Therefore the terminal probe remains tested but not live-exercised. The evidence does not isolate
+the lower DDS, RMW, Wi-Fi, or interface-level trigger. The historical `184228` failure is now
+strongly consistent with this confirmed mechanism, but the run cannot retroactively establish that
+its writer existed at the exact failure instant.
+
+The separate `175832` timing issue also remains bounded. This run's final verification took
+`125 s`, which passed the current `180 s` limit but would exceed the former `90 s` budget. That
+corroborates the budget insufficiency without isolating any per-query duration or lower timing
+fault; timeout widening remains mitigation, not a correctness fix.
+
+No arming, motor command, dashboard write path, safety bypass, Task 2 window-sizing change, or
+Task 3 Pi-to-FCU work occurred.
+
+**Next step:** Task 1 remains active under a separate code-edit gate. Use the captured
+count-zero to identity-unknown to accepted sequence to choose and test the smallest bounded query
+mechanism that preserves MAVROS publisher identity and fail-closed behaviour. More retries or a
+wider timeout alone are not a correctness fix. Tasks 2 and 3 remain parked, and no second live run
+is justified before that decision and its focused regression test.

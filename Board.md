@@ -70,17 +70,22 @@
 > only after Monday's evidence is reviewed.
 >
 > **Carried-forward known issue (top follow-up, 03/08/2026):** two distinct 24/07 failures,
-> confirmed separate. A live-hold `require_mavros_source` check ended the run after a successful
-> `ros2 --no-daemon --spin-time 2` query reported `publisher count 0` on `/mavros/imu/data`;
-> whether an IMU publisher actually existed at that moment is **not** established, because the hold
-> never samples that topic and `mavros.log` records no periodic IMU activity. Separately, cumulative
-> final verification exceeded its `90 s` budget. That overrun is consistent with the cost of the
-> serialized daemonless graph queries; no fault was identified, and the logs carry no per-query
-> timing that could exclude one. It was mitigated with `180 s`. As of 03/08/2026 the source-failure
-> path records attempt-indexed raw query evidence and runs one bounded data-plane probe. The path as
-> a whole remains fail-closed; the probe itself is verdict-neutral, its result recorded but never
-> consulted. The discriminator only becomes available if the zero-publisher condition recurs - a
-> clean run does not supply it. No fix has been selected. See
+> confirmed separate. The 03/08 live run **confirmed the proximate mechanism**: a fresh
+> `ros2 topic info --verbose --no-daemon --spin-time 2` process can return a successful but
+> transiently incomplete graph snapshot. Eleven non-verifying readings across eight source-check
+> episodes all had `query_rc=0`, and two of them progressed from `publisher count 0` to a publisher
+> endpoint carrying `_NODE_NAME_UNKNOWN_` to accepted MAVROS identity, with the partially identified
+> endpoints holding the same publisher GIDs as the fully identified ones. Every live-hold episode
+> recovered within the existing three attempts. This makes the 24/07 `184228` failure **strongly
+> consistent** with a confirmed mechanism, but does not retroactively prove that its writer existed
+> at that exact instant. The lower DDS, RMW, Wi-Fi and interface-level trigger is still unidentified,
+> and no correctness fix has been selected. Separately and still unresolved, the `175832` overrun is
+> consistent with the cost of the serialized daemonless queries; no fault was identified, and the
+> logs carry no per-query timing that could exclude one. It was mitigated with `180 s`; the 03/08 run
+> took `125 s`, corroborating that the former `90 s` budget was insufficient without isolating any
+> per-query duration. The source-failure path records attempt-indexed raw query evidence and runs one
+> bounded data-plane probe; the path as a whole is fail-closed while the probe itself is
+> verdict-neutral, its result recorded but never consulted. See
 > `working_diary/2026-08-03_monday_ros2_graph_query_hardening.md`.
 
 ---
@@ -422,18 +427,20 @@ The whole repo is expected to run on the Pi 5. Long-term (Phase 5.2+): QGC and t
 ## 🎯 Next Priorities
 
 1. **Live-dashboard graph-query hardening (03/08/2026 START HERE)**:
-   the two 24/07 failures are confirmed separate. A live-hold check ended a run after a
-   successful `ros2 --no-daemon --spin-time 2` query reported `publisher count 0` on
-   `/mavros/imu/data`; whether a publisher existed at that moment is not established, so
-   no root cause is claimed and no fix has been selected. Final verification separately
-   exceeded its `90 s` budget, consistent with cumulative daemonless query cost, and was
-   mitigated with `180 s`. As of 03/08/2026 the source-failure path records attempt-indexed
-   raw query evidence and runs one bounded data-plane probe; the path stays fail-closed while
-   the probe itself is verdict-neutral. Next is a clean `PI_SUPERVISOR_EXIT status=0`
-   full-stack run to deploy that build, which confirms the diagnostics do not disturb a
-   healthy stack but supplies no discriminator on its own - that needs a recurrence of the
-   zero-publisher condition. Only then choose between the ROS 2 daemon and a short
-   subscription probe.
+   the two 24/07 failures are confirmed separate, and the 03/08 live run confirmed the
+   proximate mechanism - a fresh daemonless `ros2 topic info --verbose` process can return a
+   successful but transiently incomplete graph snapshot. That makes `184228` strongly
+   consistent with a confirmed mechanism rather than retroactively proven, leaves the lower
+   DDS/RMW/network trigger unidentified, and leaves `175832` separate and unresolved. No
+   correctness fix has been selected; more retries or a wider spin time are mitigation, not a
+   fix, and `ros2cli/node/direct.py` always spins the full requested duration.
+   The next gated step is a **design** decision, not an edit: one bounded, run-owned graph
+   participant per verification phase, answering all five source topics from a single
+   accumulated discovery view. It would preserve endpoint GID and node identity, keep no
+   daemon state alive between phases, and leave the fail-closed deadlines and verdict in the
+   helper. Its falsifiable prediction is that final verification drops well below the `125 s`
+   this run measured - a prediction to test, not an established result. That design and its
+   focused regression test need their own approval before any edit.
 2. **Live dashboard outbound command design path**:
    design the next safe write-protocol contract now that Pi-window diagnostics have been
    trimmed and normal Pi-local display is preserved. Define exact payload, recipient,
@@ -522,7 +529,7 @@ Current position ──────>│  (in Planner)       │
 
 ## 📜 Acknowledgments
 
-**Document Version**: 9.47 | **Last Updated**: 03/08/2026
+**Document Version**: 9.48 | **Last Updated**: 03/08/2026
 
 **Maintained By**: AutoBoat Development Team
 
