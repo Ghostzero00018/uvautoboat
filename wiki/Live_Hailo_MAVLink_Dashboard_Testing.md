@@ -23,20 +23,22 @@ the retained `pi` wrapper mode is not part of this procedure.
 
 ## Current tracked revisions
 
-The repository artifacts below identify the current revisions, pinned on 03/08/2026 after the
-MAVROS-source failure-path diagnostics were added. The tracked Pi helper is copied to the Pi
-Desktop; the workstation supervisor remains workstation-only. Separately pinned historical session
+The repository artifacts below identify the current revisions, pinned on 04/08/2026 after the
+batched MAVROS-source view was added behind a default-off flag. The tracked Pi helper is the copy
+that must be transferred to the Pi Desktop before a run; a previously transferred copy is stale
+until its hash is checked against the value below. The workstation supervisor remains
+workstation-only. Separately pinned historical session
 artifacts are retained below only for traceability.
 
 | Item | Value |
 | --- | --- |
 | Helper source | `tools/pi_live_hailo_mavlink_dashboard.sh` |
 | Helper Pi destination | resolved Pi Desktop: `$(xdg-user-dir DESKTOP)/pi_live_hailo_mavlink_dashboard.sh` |
-| Helper size | `63,625` bytes |
-| Helper SHA-256 | `124d674f89efcee46a24d9bfa11b227324aa0dae292c666993df2a0a687fae98` |
+| Helper size | `71,501` bytes |
+| Helper SHA-256 | `31bcee05d3d664d4b825648cfac1edd2c116becd1da87108113f1de89d1f56aa` |
 | Workstation supervisor | `tools/live_dashboard_preflight.sh` |
 | Supervisor size | `28,647` bytes |
-| Supervisor SHA-256 | `72adfb125533e6b456583c563e5a47716b5514bbd649fa465a06ec5f142dbe2d` |
+| Supervisor SHA-256 | `958000f4fdae071a2f24a4864d81f88ed885bb8ed1ad71b6ed60eda3111a6877` |
 
 Historical 23/07/2026 session artifacts:
 
@@ -198,7 +200,7 @@ D="$(xdg-user-dir DESKTOP)" || exit 1
 D="$(readlink -f -- "$D")" || exit 1
 [ -n "$D" ] && [ -d "$D" ] && [ "$D" != "$H" ] || exit 1
 printf '%s  %s\n' \
-  '124d674f89efcee46a24d9bfa11b227324aa0dae292c666993df2a0a687fae98' \
+  '31bcee05d3d664d4b825648cfac1edd2c116becd1da87108113f1de89d1f56aa' \
   "$D/pi_live_hailo_mavlink_dashboard.sh" | sha256sum -c -
 ```
 
@@ -208,7 +210,7 @@ only the helper from a workstation terminal:
 ```bash
 cd ~/seal_ws/src/uvautoboat
 printf '%s  %s\n' \
-  '124d674f89efcee46a24d9bfa11b227324aa0dae292c666993df2a0a687fae98' \
+  '31bcee05d3d664d4b825648cfac1edd2c116becd1da87108113f1de89d1f56aa' \
   tools/pi_live_hailo_mavlink_dashboard.sh | sha256sum -c -
 
 read -r -p 'Current Pi SSH endpoint (user@host): ' PI_SSH
@@ -225,7 +227,7 @@ scp tools/pi_live_hailo_mavlink_dashboard.sh \
 ssh "$PI_SSH" "
   cd '$PI_DESKTOP' &&
   printf '%s  %s\n' \
-    '124d674f89efcee46a24d9bfa11b227324aa0dae292c666993df2a0a687fae98' \
+    '31bcee05d3d664d4b825648cfac1edd2c116becd1da87108113f1de89d1f56aa' \
     pi_live_hailo_mavlink_dashboard.sh |
   sha256sum -c -
 "
