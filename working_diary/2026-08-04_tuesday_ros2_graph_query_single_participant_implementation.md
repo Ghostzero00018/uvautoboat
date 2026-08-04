@@ -918,3 +918,62 @@ planning: a control that varies between `2` and `11` readings per run cannot be
 distinguished from a modest improvement using three enabled runs. Any reduction
 observed tomorrow inside that range is not evidence of a fix, and the comparison
 design has to acknowledge it rather than report a difference of means.
+
+## Documentation pass and day close (04/08/2026)
+
+After the canary figures were extracted, a staleness pass across tracked prose
+found that the two lifecycle items obtained on 03/08/2026 and repeated today -
+a normal Pi-first operator shutdown and post-teardown temperature - were still
+recorded as open in six places. The mismatch flagged in this diary's own
+pre-diary section is therefore now closed, along with five further instances it
+did not name.
+
+Corrected: `Board.md` (the carried-forward known-issue blockquote and the
+supervisor task row), `wiki/Roadmap.md`, `wiki/Home.md`,
+`wiki/Hailo_COCO_Overlay_Demo.md`, `wiki/Hailo_HAT_Workstream.md`, and
+`web_dashboard/autoboat/README_autoboat_dashboard.md`. Browser-last ordering is
+named in each as the lifecycle item that genuinely remains open.
+
+Also corrected: the superseded "no correctness fix has been selected" wording in
+`Board.md`; the three-run comparison target, replaced by the control-variance
+statement; `Board.md` date and version stamps; `wiki/Home.md` and `USER_MANUAL.md`
+stamps, anchored to their last substantive edit rather than today's date.
+
+`wiki/Roadmap.md` had carried nothing since 17/07/2026. Its supervisor status
+row, the §3 summary, and the Blockers evidence boundary now run through
+04/08/2026, and a revision-log entry records the refresh. Sessions between
+22/07/2026 and 24/07/2026 are recorded in `Board.md` and the working diaries and
+were deliberately not restated there.
+
+`wiki/Live_Hailo_MAVLink_Dashboard_Testing.md` gained a "Batched MAVROS source
+view" section. The three new environment variables had existed only in `Board.md`
+and these diaries, so an operator following the tracked procedure had no way to
+learn the flag existed or how to read a `MAVROS_SOURCE_PROBE_RUN` result.
+
+Three of this diary's own sections were relabelled. Each recorded the pins as
+they stood at that gate, but three were titled "Final pins" while further
+revisions followed; only the last set is final.
+
+### Commits
+
+| Commit | Content |
+| --- | --- |
+| `63d6e9a` | batched MAVROS source view, its coverage, and the pin cascade |
+| `c8a0ecd` | implementation record, pins, corrected statuses |
+| `12bcc6a` | canary results, superseded statuses, 05/08 plan |
+| `3bfcdde` | superseded lifecycle status across the wiki and `Board.md` |
+
+`HEAD == main == origin/main == 3bfcdde` with divergence `0/0`. Both focused
+suites pass, `git diff --check` is clean, and the production pins are unchanged
+from the values recorded above.
+
+### Day close
+
+Nothing runs overnight. Both supervisors exited `status=0` with clean teardown,
+the workstation run directory is at
+`~/Desktop/live_dashboard_workstation_20260804_172253`, the Pi run directory is
+preserved on the Pi and copied to `~/Desktop/pi_run_evidence/`, and no run
+evidence was placed inside the repository.
+
+One documentation gap is left open deliberately: `wiki/Roadmap.md` still has no
+entries for the sessions between 22/07/2026 and 24/07/2026.

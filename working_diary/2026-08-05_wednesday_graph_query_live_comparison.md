@@ -8,8 +8,12 @@
 
 ## Starting state
 
-- Clean `main` at the 04/08/2026 documentation commit; `63d6e9a` carries the
-  batched source view.
+- Clean `main` at `3bfcdde`, the last of four 04/08/2026 commits: `63d6e9a`
+  carries the batched source view, `c8a0ecd`, `12bcc6a` and `3bfcdde` the
+  documentation.
+- Operator reference for the flag and the probe budget is the "Batched MAVROS
+  source view" section of
+  [Live_Hailo_MAVLink_Dashboard_Testing](Live_Hailo_MAVLink_Dashboard_Testing).
 - Pi helper `31bcee05d3d664d4b825648cfac1edd2c116becd1da87108113f1de89d1f56aa`,
   `71,501` bytes, already on the Pi Desktop and verified there. No re-transfer
   unless the helper changes.
