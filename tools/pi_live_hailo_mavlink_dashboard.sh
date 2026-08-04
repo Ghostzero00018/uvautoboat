@@ -18,6 +18,9 @@ RUN_SECONDS="${LIVE_RUN_SECONDS:-120}"
 HOLD_AFTER_WINDOW="${LIVE_HOLD_AFTER_WINDOW:-0}"
 FINAL_VERIFY_SECONDS="${LIVE_FINAL_VERIFY_SECONDS:-180}"
 LOCAL_DISPLAY="${HAILO_LOCAL_DISPLAY:-0}"
+MAVROS_SOURCE_BATCH="${LIVE_MAVROS_SOURCE_BATCH:-0}"
+PROBE_MAX_SECONDS="${LIVE_PROBE_MAX_SECONDS:-6}"
+PROBE_STARTUP_RESERVE="${LIVE_PROBE_STARTUP_RESERVE:-3}"
 LOCAL_WINDOW_MODE="${HAILO_LOCAL_WINDOW_MODE:-resizable}"
 ABORT_MC="${HAILO_DEMO_ABORT_MC:-80000}"
 POLL_S="${LIVE_POLL_SECONDS:-2}"
@@ -37,6 +40,7 @@ RUN_DIR="$ROOT/logs/live_dashboard_$RUN_ID"
 HAILO_WRAPPER="$RUN_DIR/hailo_ros_wrapper.py"
 SAFETY_MONITOR="$RUN_DIR/dashboard_safety_monitor.py"
 THERMAL_WATCHDOG="$RUN_DIR/thermal_watchdog.sh"
+MAVROS_SOURCE_PROBE="$RUN_DIR/mavros_source_probe.py"
 MAVPROXY_LOG="$RUN_DIR/mavproxy.log"
 MAVROS_LOG="$RUN_DIR/mavros.log"
 MAVROS_PLUGINLISTS="$RUN_DIR/mavros_dashboard_plugins.yaml"
@@ -603,6 +607,178 @@ probe_mavros_source_dataplane() {
   return 0
 }
 
+declare -a MAVROS_SOURCE_TOPICS=(
+  /mavros/state
+  /mavros/global_position/raw/fix
+  /mavros/imu/data
+  /mavros/battery
+  /mavros/rc/in
+)
+
+mavros_source_topic_block() {
+  awk -v want="TOPIC: $2" '
+    $0 == want { capture = 1; next }
+    /^TOPIC: / { capture = 0 }
+    capture { print }
+  ' "$1"
+}
+
+mavros_source_valid_block() {
+  local block="$1" count
+  [ "$(grep -c '^Publisher count: ' <<<"$block")" -eq 1 ] || return 1
+  count="$(awk -F': ' '/^Publisher count: /{print $2; exit}' <<<"$block")"
+  [[ "$count" =~ ^[0-9]+$ ]] || return 1
+  [ "$count" -gt 0 ] || return 0
+  [ "$(grep -c '^Endpoint type: PUBLISHER$' <<<"$block")" -ge 1 ] || return 1
+  grep -q '^Node name: ' <<<"$block" || return 1
+  grep -q '^Node namespace: ' <<<"$block" || return 1
+  grep -q '^GID: ' <<<"$block" || return 1
+  return 0
+}
+
+mavros_source_probe_diagnostics() {
+  local stdout_file="$1" stderr_file="$2" line stream
+  for stream in "$stdout_file" "$stderr_file"; do
+    if [ -s "$stream" ]; then
+      while IFS= read -r line; do
+        log_error "MAVROS_SOURCE_PROBE_RUN raw: $line"
+      done <"$stream"
+    fi
+  done
+  if [ ! -s "$stdout_file" ] && [ ! -s "$stderr_file" ]; then
+    log_error 'MAVROS_SOURCE_PROBE_RUN raw: <no probe output>'
+  fi
+}
+
+mavros_source_probe_generation() {
+  local deadline="${1:-0}" bound="$PROBE_MAX_SECONDS" settle remaining rc=0
+  local dir="$RUN_DIR/source_view" out err staged topic block
+  if [ "$deadline" -ne 0 ]; then
+    remaining=$((deadline - SECONDS))
+    if [ "$remaining" -le 1 ]; then
+      log_error 'MAVROS_SOURCE_PROBE_RUN result=SKIPPED reason=deadline-exhausted'
+      return 75
+    fi
+    [ "$remaining" -gt "$bound" ] || bound=$((remaining - 1))
+  fi
+  # The outer bound covers interpreter start, "import rclpy", participant
+  # creation, discovery, serialization and teardown. Only what is left after the
+  # startup reserve may be spent spinning, so a slow host loses discovery time
+  # rather than overrunning the bound.
+  settle=$((bound - PROBE_STARTUP_RESERVE))
+  [ "$settle" -ge 1 ] || settle=1
+  if ! mkdir -p "$dir"; then
+    log_error 'MAVROS_SOURCE_PROBE_RUN result=FAILED reason=cache-unavailable'
+    return 1
+  fi
+  out="$dir/probe.out"
+  err="$dir/probe.err"
+  : >"$out"
+  : >"$err"
+  timeout --signal=KILL "${bound}s" \
+    python3 "${MAVROS_SOURCE_PROBE:-$RUN_DIR/mavros_source_probe.py}" \
+    "$settle" "${MAVROS_SOURCE_TOPICS[@]}" \
+    >"$out" 2>"$err" || rc=$?
+  if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+    log_error "MAVROS_SOURCE_PROBE_RUN result=TIMEOUT bound=${bound}s probe_rc=$rc"
+    mavros_source_probe_diagnostics "$out" "$err"
+    # The probe bound is always strictly below the remaining parent budget, so
+    # its own timeout is a content failure, not deadline exhaustion. Reporting
+    # 75 here would truncate the window and abort final verification early.
+    if [ "$deadline" -ne 0 ] && [ "$SECONDS" -ge "$deadline" ]; then
+      return 75
+    fi
+    return 1
+  fi
+  if [ "$rc" -ne 0 ]; then
+    log_error "MAVROS_SOURCE_PROBE_RUN result=FAILED bound=${bound}s probe_rc=$rc"
+    mavros_source_probe_diagnostics "$out" "$err"
+    return 1
+  fi
+  for topic in "${MAVROS_SOURCE_TOPICS[@]}"; do
+    block="$(mavros_source_topic_block "$out" "$topic")"
+    if ! mavros_source_valid_block "$block"; then
+      log_error "MAVROS_SOURCE_PROBE_RUN result=INCOMPLETE bound=${bound}s topic=$topic"
+      mavros_source_probe_diagnostics "$out" "$err"
+      return 1
+    fi
+  done
+  staged="$dir/pending.$$"
+  if ! cp "$out" "$staged"; then
+    rm -f "$staged"
+    log_error 'MAVROS_SOURCE_PROBE_RUN result=FAILED reason=staging'
+    return 1
+  fi
+  if ! mv -f "$staged" "$dir/pending"; then
+    rm -f "$staged"
+    log_error 'MAVROS_SOURCE_PROBE_RUN result=FAILED reason=publication'
+    return 1
+  fi
+  log_error "MAVROS_SOURCE_PROBE_RUN result=OK bound=${bound}s settle=${settle}s reserve=${PROBE_STARTUP_RESERVE}s topics=${#MAVROS_SOURCE_TOPICS[@]}"
+  return 0
+}
+
+mavros_source_consume_topic() {
+  local pending="$1" topic="$2" tmp="$1.consume.$$"
+  if ! awk -v want="TOPIC: $topic" '
+      $0 == want { skip = 1; next }
+      /^TOPIC: / { skip = 0 }
+      !skip { print }
+    ' "$pending" >"$tmp"; then
+    rm -f "$tmp"
+    return 1
+  fi
+  if ! mv -f "$tmp" "$pending"; then
+    rm -f "$tmp"
+    return 1
+  fi
+  return 0
+}
+
+mavros_source_probe_selftest() {
+  local deadline="${1:-0}"
+  [ "${MAVROS_SOURCE_BATCH:-0}" -eq 1 ] || return 0
+  mavros_source_probe_generation "$deadline" || return 1
+  # The self-test proves the probe runs; it must not leave a pre-window
+  # generation that a later in-window check could serve as fresh evidence.
+  rm -f "$RUN_DIR/source_view/pending" || return 1
+  return 0
+}
+
+mavros_source_view() {
+  local deadline="${1:-0}" topic="$2" pending block rc=0
+  if [ "${MAVROS_SOURCE_BATCH:-0}" -eq 0 ]; then
+    ros2_graph_query_before "$deadline" topic info --verbose --no-daemon --spin-time 2 "$topic"
+    return $?
+  fi
+  pending="$RUN_DIR/source_view/pending"
+  # Any non-zero return discards the generation. A published generation that is
+  # not served here would otherwise survive the phase boundary and let a later
+  # check certify graph evidence gathered before that boundary.
+  if [ ! -s "$pending" ] || ! grep -Fxq "TOPIC: $topic" "$pending"; then
+    mavros_source_probe_generation "$deadline" || rc=$?
+    if [ "$rc" -ne 0 ]; then
+      rm -f "$pending"
+      return "$rc"
+    fi
+  fi
+  if [ "$deadline" -ne 0 ] && [ "$SECONDS" -ge "$deadline" ]; then
+    rm -f "$pending"
+    return 75
+  fi
+  block="$(mavros_source_topic_block "$pending" "$topic")"
+  if ! mavros_source_valid_block "$block"; then
+    rm -f "$pending"
+    return 1
+  fi
+  if ! mavros_source_consume_topic "$pending" "$topic"; then
+    rm -f "$pending"
+    return 1
+  fi
+  printf '%s\n' "$block"
+  return 0
+}
+
 require_mavros_source() {
   local topic="$1" deadline="${2:-0}"
   local attempt info count nodes node identity_unknown last='query failed' query_rc
@@ -612,7 +788,7 @@ require_mavros_source() {
     nodes=''
     identity_unknown=0
     query_rc=0
-    info="$(ros2_graph_query_before "$deadline" topic info --verbose --no-daemon --spin-time 2 "$topic")" \
+    info="$(mavros_source_view "$deadline" "$topic")" \
       || query_rc=$?
     if [ "$query_rc" -eq 75 ]; then
       SOURCE_FAILURE_PENDING=0
@@ -1101,6 +1277,14 @@ esac
   || die 'LIVE_FINAL_VERIFY_SECONDS must be a positive integer'
 [[ "$LOCAL_DISPLAY" =~ ^[01]$ ]] \
   || die 'HAILO_LOCAL_DISPLAY must be 0 or 1'
+[[ "$MAVROS_SOURCE_BATCH" =~ ^[01]$ ]] \
+  || die 'LIVE_MAVROS_SOURCE_BATCH must be 0 or 1'
+[[ "$PROBE_MAX_SECONDS" =~ ^[1-9][0-9]*$ ]] \
+  || die 'LIVE_PROBE_MAX_SECONDS must be a positive integer'
+[[ "$PROBE_STARTUP_RESERVE" =~ ^[1-9][0-9]*$ ]] \
+  || die 'LIVE_PROBE_STARTUP_RESERVE must be a positive integer'
+[ "$PROBE_MAX_SECONDS" -gt "$PROBE_STARTUP_RESERVE" ] \
+  || die 'LIVE_PROBE_MAX_SECONDS must exceed LIVE_PROBE_STARTUP_RESERVE'
 [[ "$LOCAL_WINDOW_MODE" =~ ^(resizable|fullscreen)$ ]] \
   || die 'HAILO_LOCAL_WINDOW_MODE must be resizable or fullscreen'
 [[ "$ABORT_MC" =~ ^[1-9][0-9]*$ ]] || die 'HAILO_DEMO_ABORT_MC must be a positive integer'
@@ -1232,6 +1416,63 @@ BAD_TEMP_READS=0
 POWER_TELEMETRY_AVAILABLE=0
 POWER_UNAVAILABLE_REPORTED=0
 check_power initial
+
+cat >"$MAVROS_SOURCE_PROBE" <<'PYTHON_SOURCE_PROBE'
+import sys
+import time
+
+import rclpy
+
+POLL_SECONDS = 0.1
+
+
+def gather(node, topics):
+    reading = {}
+    for topic in topics:
+        reading[topic] = (
+            node.count_publishers(topic),
+            list(node.get_publishers_info_by_topic(topic)),
+        )
+    return reading
+
+
+def settled(reading):
+    for count, endpoints in reading.values():
+        if count < 1 or not endpoints:
+            return False
+    return True
+
+
+def main(argv):
+    settle = float(argv[0])
+    topics = argv[1:]
+    rclpy.init(args=None)
+    node = rclpy.create_node('_live_dashboard_graph_probe')
+    limit = time.monotonic() + settle
+    reading = {}
+    try:
+        while True:
+            rclpy.spin_once(node, timeout_sec=POLL_SECONDS)
+            reading = gather(node, topics)
+            if settled(reading):
+                break
+            if time.monotonic() >= limit:
+                break
+        for topic in topics:
+            count, endpoints = reading[topic]
+            sys.stdout.write('TOPIC: %s\n' % topic)
+            sys.stdout.write('Publisher count: %d\n' % count)
+            for endpoint in endpoints:
+                sys.stdout.write('%s\n' % endpoint)
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))
+PYTHON_SOURCE_PROBE
 
 cat >"$HAILO_WRAPPER" <<'PYTHON_HAILO'
 #!/usr/bin/env python3
@@ -1775,6 +2016,8 @@ set_supervisor_phase live-window
 log "PI_SOURCE_STACK_READY=PASS mavros_topics=$MAVROS_TOPIC_COUNT image_topic=$IMAGE_TOPIC"
 log "dashboard: hard-refresh; camera=$IMAGE_TOPIC; native MAVROS panel reads five topics directly"
 log 'scope: Pi source readiness only; GPS no-fix is valid telemetry and must not be misread as transport loss'
+
+mavros_source_probe_selftest 0 || die 'batched MAVROS source probe self-test failed'
 
 WINDOW_START_SECONDS=$SECONDS
 DEADLINE=$((WINDOW_START_SECONDS + RUN_SECONDS))

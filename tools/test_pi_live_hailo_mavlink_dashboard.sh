@@ -764,7 +764,24 @@ GRAPH_WRAPPER_FUNCTION="$(extract_function ros2_graph_query)"
 [ -n "$GRAPH_WRAPPER_FUNCTION" ] || fail 'unbounded graph-query wrapper was not extractable'
 BOUNDED_ECHO_FUNCTION="$(extract_function bounded_topic_echo)"
 [ -n "$BOUNDED_ECHO_FUNCTION" ] || fail 'bounded topic-echo function was not extractable'
-MAVROS_SOURCE_FUNCTION="$(extract_function require_mavros_source)"
+# The consumer now reads through the source view, so every sandbox that
+# evaluates it must carry the view family too. With the batch flag off the view
+# delegates to ros2_graph_query_before, so the existing stubs still apply.
+SOURCE_VIEW_PREAMBLE="$(sed -n '/^PROBE_MAX_SECONDS=/p' "$HELPER")
+$(sed -n '/^PROBE_STARTUP_RESERVE=/p' "$HELPER")
+$(sed -n '/^declare -a MAVROS_SOURCE_TOPICS=(/,/^)$/p' "$HELPER")
+$(extract_function mavros_source_topic_block)
+$(extract_function mavros_source_valid_block)
+$(extract_function mavros_source_probe_diagnostics)
+$(extract_function mavros_source_probe_generation)
+$(extract_function mavros_source_consume_topic)
+$(extract_function mavros_source_view)"
+[ -n "$(sed -n '/^PROBE_MAX_SECONDS=/p' "$HELPER")" ] \
+  || fail 'the probe hard bound was not extractable'
+[ -n "$(sed -n '/^PROBE_STARTUP_RESERVE=/p' "$HELPER")" ] \
+  || fail 'the probe startup reserve was not extractable'
+MAVROS_SOURCE_FUNCTION="$(extract_function require_mavros_source)
+$SOURCE_VIEW_PREAMBLE"
 [ -n "$MAVROS_SOURCE_FUNCTION" ] || fail 'MAVROS-source function was not extractable'
 SOURCE_PROBE_FUNCTION="$(extract_function probe_mavros_source_dataplane)"
 [ -n "$SOURCE_PROBE_FUNCTION" ] || fail 'MAVROS-source data-plane probe was not extractable'
@@ -1047,6 +1064,7 @@ MAVROS_SOURCE_PROBE_HANDOFF="$(bash -c '
   TRACE="$2"
   SECONDS=0
   ros2_graph_query_before() {
+    printf "query\n" >>"$TRACE"
     printf "Publisher count: 0\n"
     return 0
   }
@@ -1061,6 +1079,8 @@ MAVROS_SOURCE_PROBE_HANDOFF_RC=$?
 set -e
 [ "$MAVROS_SOURCE_PROBE_HANDOFF_RC" -eq 17 ] \
   || fail 'finite-deadline MAVROS source did not reach the terminal verdict'
+[ "$(grep -Fxc 'query' "$GRAPH_TRACE")" -eq 3 ] \
+  || fail 'the probe-handoff case did not reach its query stub, so its result is vacuous'
 grep -Fxq 'PROBE_ARGS:/mavros/imu/data 20' "$GRAPH_TRACE" \
   || fail 'MAVROS source did not hand the parent deadline to the data-plane probe'
 
@@ -1136,10 +1156,13 @@ grep -Fq 'PROBE MAVROS_SOURCE_PROBE topic=/mavros/imu/data raw: <no probe output
   || fail 'data-plane probe did not record an empty result explicitly'
 
 set +e
+: >"$GRAPH_TRACE"
 SOURCE_DEADLINE_ATTRIBUTION_OUTPUT="$(bash -c '
   eval "$1"
+  TRACE="$2"
   SECONDS=0
   ros2_graph_query_before() {
+    printf "query\n" >>"$TRACE"
     printf "Publisher count: 0\n"
     return 0
   }
@@ -1150,8 +1173,10 @@ SOURCE_DEADLINE_ATTRIBUTION_OUTPUT="$(bash -c '
   die() { printf "DIE: %s\n" "$*"; exit 17; }
   require_mavros_source /mavros/imu/data 20
   printf "source_returned=%s\n" "$?"
-' _ "$MAVROS_SOURCE_FUNCTION" 2>&1)"
+' _ "$MAVROS_SOURCE_FUNCTION" "$GRAPH_TRACE" 2>&1)"
 set -e
+[ "$(grep -Fxc 'query' "$GRAPH_TRACE")" -eq 3 ] \
+  || fail 'the deadline-attribution case did not reach its query stub, so its result is vacuous'
 grep -Fxq 'source_returned=75' <<<"$SOURCE_DEADLINE_ATTRIBUTION_OUTPUT" \
   || fail 'a probe that consumed the parent budget was not reported as deadline exhaustion'
 ! grep -Fq 'DIE:' <<<"$SOURCE_DEADLINE_ATTRIBUTION_OUTPUT" \
@@ -1262,6 +1287,264 @@ set -e
   || fail 'the pending-failure latch was not raised before the attempt-3 sentinel check'
 [ "$(grep -c '^SENTINEL pending=0$' <<<"$THIRD_ATTEMPT_LATCH_ORDER")" -eq 2 ] \
   || fail 'the pending-failure latch was raised before the third attempt was known'
+
+# The MAVROS-source consumer reads its endpoint evidence through one query call.
+# The guards below pin today's argument vector, body forwarding, stream
+# separation, status classes, and identity decisions so that replacing that call
+# cannot silently change what the consumer sees. The argument vector is recorded
+# one positional argument per line, with its count, so that argument boundaries
+# are compared rather than a flattened string; every attempt's forwarded body is
+# compared as ordered consumer-visible text; and the two streams are captured and
+# compared separately. Command substitution and the reconstruction below strip
+# trailing newlines, so these guards do not compare raw standard-output bytes.
+SEAM_QUERY_BODY="$(printf '%s\n' \
+  'Type: mavros_msgs/msg/State' \
+  'Publisher count: 0' \
+  '  Reliability: RELIABLE' \
+  'Subscription count: 1')"
+
+run_seam_cli_characterization() {
+  bash -c '
+    eval "$1"
+    TRACE="$2"
+    BODY="$3"
+    ros2_graph_query_before() {
+      printf "argc:%s\n" "$#" >>"$TRACE"
+      printf "argv:%s\n" "$@" >>"$TRACE"
+      printf "SEAM_STDERR_MARKER\n" >&2
+      printf "%s\n" "$BODY"
+      return 0
+    }
+    check_command_sentinel() { :; }
+    sleep() { :; }
+    log_error() { printf "EVIDENCE %s\n" "$*"; }
+    probe_mavros_source_dataplane() { :; }
+    die() { printf "DIE: %s\n" "$*"; exit 17; }
+    require_mavros_source /mavros/state 0
+  ' _ "$MAVROS_SOURCE_FUNCTION" "$GRAPH_TRACE" "$SEAM_QUERY_BODY"
+}
+
+: >"$GRAPH_TRACE"
+set +e
+SEAM_CLI_STDOUT="$(run_seam_cli_characterization 2>/dev/null)"
+SEAM_CLI_CONTRACT_RC=$?
+set -e
+SEAM_CLI_ARGV="$(<"$GRAPH_TRACE")"
+SEAM_CLI_STDERR="$(run_seam_cli_characterization 2>&1 1>/dev/null || true)"
+[ "$SEAM_CLI_CONTRACT_RC" -eq 17 ] \
+  || fail 'the characterized MAVROS-source seam did not reach the terminal verdict'
+
+SEAM_ATTEMPT_ARGV="$(printf '%s\n' \
+  'argc:8' \
+  'argv:0' \
+  'argv:topic' \
+  'argv:info' \
+  'argv:--verbose' \
+  'argv:--no-daemon' \
+  'argv:--spin-time' \
+  'argv:2' \
+  'argv:/mavros/state')"
+[ "$SEAM_CLI_ARGV" = "$(printf '%s\n%s\n%s' \
+  "$SEAM_ATTEMPT_ARGV" "$SEAM_ATTEMPT_ARGV" "$SEAM_ATTEMPT_ARGV")" ] \
+  || fail 'the MAVROS-source query argument vector, argument count, or attempt count changed'
+
+for seam_body_attempt in 1 2 3; do
+  SEAM_CAPTURED_BODY="$(awk \
+    -v prefix="EVIDENCE MAVROS_SOURCE_EVIDENCE topic=/mavros/state attempt=$seam_body_attempt raw: " '
+    index($0, prefix) == 1 { print substr($0, length(prefix) + 1) }
+  ' <<<"$SEAM_CLI_STDOUT")"
+  [ "$SEAM_CAPTURED_BODY" = "$SEAM_QUERY_BODY" ] \
+    || fail "the MAVROS-source seam no longer forwards the attempt $seam_body_attempt query body as ordered consumer-visible text"
+done
+
+[ "$SEAM_CLI_STDERR" = "$(printf '%s\n%s\n%s' \
+  'SEAM_STDERR_MARKER' 'SEAM_STDERR_MARKER' 'SEAM_STDERR_MARKER')" ] \
+  || fail 'the MAVROS-source query standard-error stream changed'
+! grep -Fq 'SEAM_STDERR_MARKER' <<<"$SEAM_CLI_STDOUT" \
+  || fail 'the MAVROS-source seam captured standard error into the query body'
+grep -Fxq \
+  'DIE: MAVROS source endpoint failed after 3 attempts: /mavros/state (publisher count 0)' \
+  <<<"$SEAM_CLI_STDOUT" \
+  || fail 'the characterized MAVROS-source terminal verdict text changed'
+
+: >"$GRAPH_TRACE"
+set +e
+SEAM_STATUS_OUTPUT="$(bash -c '
+  eval "$1"
+  TRACE="$2"
+  ros2_graph_query_before() {
+    printf "query:%s\n" "$*" >>"$TRACE"
+    printf "Publisher count: 1\n"
+    printf "Node name: mavros\n"
+    printf "Node namespace: /\n"
+    printf "Endpoint type: PUBLISHER\n"
+    return 42
+  }
+  check_command_sentinel() { :; }
+  sleep() { :; }
+  log_error() { printf "EVIDENCE %s\n" "$*"; }
+  probe_mavros_source_dataplane() { :; }
+  die() { printf "DIE: %s\n" "$*"; exit 17; }
+  require_mavros_source /mavros/state 0
+' _ "$MAVROS_SOURCE_FUNCTION" "$GRAPH_TRACE" 2>&1)"
+SEAM_STATUS_RC=$?
+set -e
+[ "$SEAM_STATUS_RC" -eq 17 ] \
+  || fail 'a non-zero non-75 query status no longer fails closed'
+[ "$(grep -Fc 'query:' "$GRAPH_TRACE")" -eq 3 ] \
+  || fail 'a non-zero non-75 query status changed the retry count'
+for seam_status_attempt in 1 2 3; do
+  grep -Fq \
+    "EVIDENCE MAVROS_SOURCE_EVIDENCE topic=/mavros/state attempt=$seam_status_attempt query_rc=42 verdict=query failed" \
+    <<<"$SEAM_STATUS_OUTPUT" \
+    || fail "a non-zero non-75 query status is no longer reported verbatim on attempt $seam_status_attempt"
+done
+[ "$(grep -Fc 'raw: Publisher count: 1' <<<"$SEAM_STATUS_OUTPUT")" -eq 3 ] \
+  || fail 'a non-zero non-75 query status stopped recording the raw query body'
+grep -Fxq \
+  'DIE: MAVROS source endpoint failed after 3 attempts: /mavros/state (query failed)' \
+  <<<"$SEAM_STATUS_OUTPUT" \
+  || fail 'a non-zero non-75 query status no longer reports a failed query'
+
+: >"$GRAPH_TRACE"
+set +e
+SEAM_NAMESPACED_UNKNOWN_OUTPUT="$(bash -c '
+  eval "$1"
+  TRACE="$2"
+  ros2_graph_query_before() {
+    printf "query:%s\n" "$*" >>"$TRACE"
+    printf "Publisher count: 1\n"
+    printf "Node name: _NODE_NAME_UNKNOWN_\n"
+    printf "Node namespace: /mavros\n"
+    printf "Endpoint type: PUBLISHER\n"
+    return 0
+  }
+  check_command_sentinel() { :; }
+  sleep() { printf "UNEXPECTED_SLEEP\n"; }
+  log_error() { printf "EVIDENCE %s\n" "$*"; }
+  probe_mavros_source_dataplane() { printf "UNEXPECTED_PROBE\n"; }
+  die() { printf "DIE: %s\n" "$*"; exit 17; }
+  require_mavros_source /mavros/state 0
+  printf "source_returned=%s\n" "$?"
+' _ "$MAVROS_SOURCE_FUNCTION" "$GRAPH_TRACE" 2>&1)"
+set -e
+grep -Fxq 'source_returned=0' <<<"$SEAM_NAMESPACED_UNKNOWN_OUTPUT" \
+  || fail 'a MAVROS-namespaced unknown node name is no longer accepted on the first attempt'
+[ "$(grep -Fc 'query:' "$GRAPH_TRACE")" -eq 1 ] \
+  || fail 'a MAVROS-namespaced unknown node name was retried'
+! grep -Eq 'UNEXPECTED_SLEEP|UNEXPECTED_PROBE|^DIE:' <<<"$SEAM_NAMESPACED_UNKNOWN_OUTPUT" \
+  || fail 'a MAVROS-namespaced unknown node name took a failure path'
+
+run_unknown_identity_case() {
+  local node_name="$1" node_namespace="$2"
+  : >"$GRAPH_TRACE"
+  bash -c '
+    eval "$1"
+    TRACE="$2"
+    NODE_NAME="$3"
+    NODE_NAMESPACE="$4"
+    ros2_graph_query_before() {
+      printf "query:%s\n" "$*" >>"$TRACE"
+      printf "Publisher count: 1\n"
+      printf "Node name: %s\n" "$NODE_NAME"
+      printf "Node namespace: %s\n" "$NODE_NAMESPACE"
+      printf "Endpoint type: PUBLISHER\n"
+      return 0
+    }
+    check_command_sentinel() { :; }
+    sleep() { printf "backoff\n" >>"$TRACE"; }
+    log_error() { printf "EVIDENCE %s\n" "$*"; }
+    probe_mavros_source_dataplane() { printf "PROBE\n"; }
+    die() { printf "DIE: %s\n" "$*"; exit 17; }
+    require_mavros_source /mavros/state 0
+  ' _ "$MAVROS_SOURCE_FUNCTION" "$GRAPH_TRACE" "$node_name" "$node_namespace" 2>&1
+}
+
+while read -r unknown_node_name unknown_node_namespace; do
+  set +e
+  UNKNOWN_IDENTITY_OUTPUT="$(run_unknown_identity_case \
+    "$unknown_node_name" "$unknown_node_namespace")"
+  UNKNOWN_IDENTITY_RC=$?
+  set -e
+  [ "$UNKNOWN_IDENTITY_RC" -eq 17 ] \
+    || fail "an unresolved publisher identity ($unknown_node_name in $unknown_node_namespace) no longer fails closed"
+  [ "$(grep -Fc 'query:' "$GRAPH_TRACE")" -eq 3 ] \
+    || fail "an unresolved publisher identity ($unknown_node_name in $unknown_node_namespace) changed its retry count"
+  [ "$(grep -Fxc 'backoff' "$GRAPH_TRACE")" -eq 2 ] \
+    || fail "an unresolved publisher identity ($unknown_node_name in $unknown_node_namespace) changed its back-off count"
+  grep -Fxq \
+    'DIE: MAVROS source endpoint failed after 3 attempts: /mavros/state (publisher identity temporarily unknown)' \
+    <<<"$UNKNOWN_IDENTITY_OUTPUT" \
+    || fail "an unresolved publisher identity ($unknown_node_name in $unknown_node_namespace) changed its terminal verdict"
+  [ "$(grep -Fxc 'PROBE' <<<"$UNKNOWN_IDENTITY_OUTPUT")" -eq 1 ] \
+    || fail "an unresolved publisher identity ($unknown_node_name in $unknown_node_namespace) skipped the data-plane probe"
+done <<'UNKNOWN_IDENTITY_CASES'
+_NODE_NAME_UNKNOWN_ /
+mavros _NODE_NAMESPACE_UNKNOWN_
+UNKNOWN_IDENTITY_CASES
+
+: >"$GRAPH_TRACE"
+set +e
+SEAM_FOREIGN_PUBLISHER_OUTPUT="$(bash -c '
+  eval "$1"
+  TRACE="$2"
+  ros2_graph_query_before() {
+    printf "query:%s\n" "$*" >>"$TRACE"
+    printf "Publisher count: 1\n"
+    printf "Node name: rosbridge_websocket\n"
+    printf "Node namespace: /\n"
+    printf "Endpoint type: PUBLISHER\n"
+    return 0
+  }
+  check_command_sentinel() { :; }
+  sleep() { printf "UNEXPECTED_SLEEP\n"; }
+  log_error() { printf "EVIDENCE %s\n" "$*"; }
+  probe_mavros_source_dataplane() { printf "UNEXPECTED_PROBE\n"; }
+  die() { printf "DIE: %s\n" "$*"; exit 17; }
+  require_mavros_source /mavros/state 0
+' _ "$MAVROS_SOURCE_FUNCTION" "$GRAPH_TRACE" 2>&1)"
+SEAM_FOREIGN_PUBLISHER_RC=$?
+set -e
+[ "$SEAM_FOREIGN_PUBLISHER_RC" -eq 17 ] \
+  || fail 'a foreign MAVROS-source publisher no longer fails closed'
+grep -Fxq 'DIE: unexpected publisher on /mavros/state: /rosbridge_websocket' \
+  <<<"$SEAM_FOREIGN_PUBLISHER_OUTPUT" \
+  || fail 'a foreign MAVROS-source publisher changed its rejection text'
+[ "$(grep -Fc 'query:' "$GRAPH_TRACE")" -eq 1 ] \
+  || fail 'a foreign MAVROS-source publisher was retried instead of rejected immediately'
+! grep -Eq 'UNEXPECTED_SLEEP|UNEXPECTED_PROBE' <<<"$SEAM_FOREIGN_PUBLISHER_OUTPUT" \
+  || fail 'a foreign MAVROS-source publisher took the retry or probe path'
+
+: >"$GRAPH_TRACE"
+set +e
+SEAM_NO_PUBLISHER_BLOCK_OUTPUT="$(bash -c '
+  eval "$1"
+  TRACE="$2"
+  ros2_graph_query_before() {
+    printf "query:%s\n" "$*" >>"$TRACE"
+    printf "Publisher count: 1\n"
+    printf "Node name: mavros\n"
+    printf "Node namespace: /\n"
+    printf "Endpoint type: SUBSCRIPTION\n"
+    return 0
+  }
+  check_command_sentinel() { :; }
+  sleep() { :; }
+  log_error() { printf "EVIDENCE %s\n" "$*"; }
+  probe_mavros_source_dataplane() { :; }
+  die() { printf "DIE: %s\n" "$*"; exit 17; }
+  require_mavros_source /mavros/state 0
+' _ "$MAVROS_SOURCE_FUNCTION" "$GRAPH_TRACE" 2>&1)"
+SEAM_NO_PUBLISHER_BLOCK_RC=$?
+set -e
+[ "$SEAM_NO_PUBLISHER_BLOCK_RC" -eq 17 ] \
+  || fail 'a counted publisher without a publisher endpoint block no longer fails closed'
+[ "$(grep -Fc 'query:' "$GRAPH_TRACE")" -eq 3 ] \
+  || fail 'a counted publisher without a publisher endpoint block changed its retry count'
+grep -Fxq \
+  'DIE: MAVROS source endpoint failed after 3 attempts: /mavros/state (publisher identity unavailable)' \
+  <<<"$SEAM_NO_PUBLISHER_BLOCK_OUTPUT" \
+  || fail 'a counted publisher without a publisher endpoint block changed its terminal verdict'
 
 : >"$GRAPH_TRACE"
 set +e
@@ -1735,6 +2018,140 @@ require_trace_count 1 source:/mavros/rc/in
 require_trace_count 1 state:live-hold
 require_trace_count 1 power:live-hold
 
+# Four invocation groups read the same five MAVROS source topics: the two
+# top-level pre-readiness groups, final_graph_verification, and monitor phase
+# three. The guards below pin one canonical order for all four, the absence of a
+# deadline argument in the two top-level groups, and their surrounding anchors.
+MAVROS_SOURCE_TOPIC_ORDER="$(printf '%s\n' \
+  /mavros/state \
+  /mavros/global_position/raw/fix \
+  /mavros/imu/data \
+  /mavros/battery \
+  /mavros/rc/in)"
+
+extract_source_group() {
+  awk '
+    /for source_topic in \\$/ { capture = 1; next }
+    capture {
+      line = $0
+      sub(/^[[:space:]]+/, "", line)
+      sub(/[[:space:]]*\\$/, "", line)
+      if (line ~ /; do$/) {
+        sub(/; do$/, "", line)
+        print line
+        exit
+      }
+      print line
+    }
+  ' <<<"$1"
+}
+
+# Every line mentioning the consumer is pinned in order, complete except for
+# leading whitespace, so a new call site, a renamed handler, an added prefix such
+# as a wrapper command, or an indirect reference that spells the name changes
+# this set. A call reached through a variable that never spells the name cannot
+# be detected from the source text.
+[ "$(grep -c '^require_mavros_source() {$' "$HELPER")" -eq 1 ] \
+  || fail 'the MAVROS-source consumer no longer has exactly one definition'
+[ "$(grep -F 'require_mavros_source' "$HELPER" | sed 's/^[[:space:]]*//')" = "$(printf '%s\n' \
+  'require_mavros_source() {' \
+  'require_mavros_source "$source_topic" "$deadline" || result=$?' \
+  'require_mavros_source "$source_topic" "$deadline" || phase_rc=$?' \
+  'require_mavros_source /mavros/state' \
+  'require_mavros_source /mavros/global_position/raw/fix' \
+  'require_mavros_source /mavros/imu/data' \
+  'require_mavros_source /mavros/battery' \
+  'require_mavros_source /mavros/rc/in' \
+  'require_mavros_source /mavros/state' \
+  'require_mavros_source /mavros/global_position/raw/fix' \
+  'require_mavros_source /mavros/imu/data' \
+  'require_mavros_source /mavros/battery' \
+  'require_mavros_source /mavros/rc/in')" ] \
+  || fail 'the MAVROS-source consumer gained, lost, or reshaped a reference'
+
+mapfile -t PRE_READINESS_SOURCE_LINES < <(grep -n '^require_mavros_source ' "$HELPER" | cut -d: -f1)
+[ "${#PRE_READINESS_SOURCE_LINES[@]}" -eq 10 ] \
+  || fail "expected two five-topic pre-readiness groups, found ${#PRE_READINESS_SOURCE_LINES[@]} top-level source checks"
+
+for group_offset in 0 5; do
+  GROUP_START="${PRE_READINESS_SOURCE_LINES[$group_offset]}"
+  GROUP_END="${PRE_READINESS_SOURCE_LINES[$((group_offset + 4))]}"
+  [ "$((GROUP_END - GROUP_START))" -eq 4 ] \
+    || fail "the pre-readiness source group at line $GROUP_START is not five contiguous checks"
+  GROUP_LINES="$(sed -n "${GROUP_START},${GROUP_END}p" "$HELPER")"
+  [ "$(awk 'NF != 2 { unexpected++ } END { print unexpected + 0 }' <<<"$GROUP_LINES")" -eq 0 ] \
+    || fail "the pre-readiness source group at line $GROUP_START no longer runs without a deadline argument"
+  [ "$(awk '{ print $2 }' <<<"$GROUP_LINES")" = "$MAVROS_SOURCE_TOPIC_ORDER" ] \
+    || fail "the pre-readiness source group at line $GROUP_START changed topic membership or order"
+done
+
+[ "$(sed -n "$((PRE_READINESS_SOURCE_LINES[4] + 1))p" "$HELPER")" \
+  = "log 'MAVROS_TELEMETRY=PASS state,GPS,IMU,battery,RC sampled from one MAVROS publisher each'" ] \
+  || fail 'the telemetry pre-readiness source group no longer precedes the telemetry pass marker'
+[ "$(sed -n "$((PRE_READINESS_SOURCE_LINES[5] - 1))p" "$HELPER")" \
+  = 'require_connected_disarmed_state pre-ready' ] \
+  || fail 'the post-Hailo-readiness source group no longer follows the pre-ready connection check'
+
+[ "$(extract_source_group "$FINAL_GRAPH_FUNCTION")" = "$MAVROS_SOURCE_TOPIC_ORDER" ] \
+  || fail 'final graph verification changed its source topic membership or order'
+[ "$(extract_source_group "$MONITOR_FUNCTION")" = "$MAVROS_SOURCE_TOPIC_ORDER" ] \
+  || fail 'the hold monitor changed its source topic membership or order'
+
+: >"$MONITOR_TRACE"
+set +e
+bash -c '
+  eval "$1"
+  set -euo pipefail
+  TRACE="$2"
+  log() { :; }
+  die() { exit 17; }
+  check_command_sentinel() { :; }
+  check_thermal_watchdog() { :; }
+  require_group_alive() { :; }
+  check_temperature() { :; }
+  graph_nodes() { printf "nodes\n"; }
+  reject_forbidden_nodes() { :; }
+  require_workstation_nodes() { :; }
+  reject_command_services() { :; }
+  reject_unexpected_command_subscribers() { :; }
+  require_publisher_count() { :; }
+  require_mavros_source() { printf "source:%s:%s\n" "$1" "$2" >>"$TRACE"; }
+  require_connected_disarmed_state() { :; }
+  check_power() { :; }
+  SLEEP_COUNT=0
+  SECONDS=0
+  sleep() {
+    SLEEP_COUNT=$((SLEEP_COUNT + 1))
+    SECONDS=$((SECONDS + 1))
+    [ "$SLEEP_COUNT" -lt 4 ] || exit 23
+  }
+  POLL_S=1
+  HOLD_START_SECONDS=0
+  MAVPROXY_PID=11
+  MAVPROXY_PGID=11
+  MAVPROXY_LOG=mavproxy.log
+  MAVROS_PID=12
+  MAVROS_PGID=12
+  MAVROS_LOG=mavros.log
+  HAILO_PID=13
+  HAILO_PGID=13
+  HAILO_LOG=hailo.log
+  IMAGE_TOPIC=/hailo/overlay/image_raw
+  monitor_live_stack live-window 77
+' _ "$MONITOR_FUNCTION" "$MONITOR_TRACE"
+MONITOR_SOURCE_ORDER_RC=$?
+set -e
+[ "$MONITOR_SOURCE_ORDER_RC" -eq 23 ] \
+  || fail "the monitor source-order harness exited $MONITOR_SOURCE_ORDER_RC instead of test stop 23"
+EXPECTED_MONITOR_SOURCE_TRACE="$(printf 'source:%s:77\n' \
+  /mavros/state \
+  /mavros/global_position/raw/fix \
+  /mavros/imu/data \
+  /mavros/battery \
+  /mavros/rc/in)"
+[ "$(<"$MONITOR_TRACE")" = "$EXPECTED_MONITOR_SOURCE_TRACE" ] \
+  || fail 'monitor phase three changed its source order or stopped forwarding the phase deadline'
+
 INTERRUPT_FUNCTION="$(extract_function on_interrupt)"
 set +e
 PRE_WINDOW_OUTPUT="$(bash -c '
@@ -1948,5 +2365,960 @@ set -e
 grep -Fq 'LIVE_FINAL_VERIFY_SECONDS must be a positive integer' \
   <<<"$INVALID_FINAL_VERIFY_OUTPUT" \
   || fail 'invalid final-verification deadline did not fail at validation'
+
+set +e
+INVALID_SOURCE_BATCH_OUTPUT="$(LIVE_MAVROS_SOURCE_BATCH=2 "$HELPER" --preflight-only 2>&1)"
+INVALID_SOURCE_BATCH_RC=$?
+set -e
+[ "$INVALID_SOURCE_BATCH_RC" -ne 0 ] || fail 'invalid batched-source flag was accepted'
+grep -Fq 'LIVE_MAVROS_SOURCE_BATCH must be 0 or 1' \
+  <<<"$INVALID_SOURCE_BATCH_OUTPUT" \
+  || fail 'invalid batched-source flag did not fail at validation'
+
+set +e
+INVALID_PROBE_BOUND_OUTPUT="$(LIVE_PROBE_MAX_SECONDS=0 "$HELPER" --preflight-only 2>&1)"
+INVALID_PROBE_BOUND_RC=$?
+set -e
+[ "$INVALID_PROBE_BOUND_RC" -ne 0 ] || fail 'invalid probe hard bound was accepted'
+grep -Fq 'LIVE_PROBE_MAX_SECONDS must be a positive integer' \
+  <<<"$INVALID_PROBE_BOUND_OUTPUT" \
+  || fail 'invalid probe hard bound did not fail at validation'
+
+set +e
+INVALID_PROBE_RESERVE_OUTPUT="$(LIVE_PROBE_STARTUP_RESERVE=x "$HELPER" --preflight-only 2>&1)"
+INVALID_PROBE_RESERVE_RC=$?
+set -e
+[ "$INVALID_PROBE_RESERVE_RC" -ne 0 ] || fail 'invalid probe startup reserve was accepted'
+grep -Fq 'LIVE_PROBE_STARTUP_RESERVE must be a positive integer' \
+  <<<"$INVALID_PROBE_RESERVE_OUTPUT" \
+  || fail 'invalid probe startup reserve did not fail at validation'
+
+set +e
+INVALID_PROBE_SPLIT_OUTPUT="$(LIVE_PROBE_MAX_SECONDS=3 LIVE_PROBE_STARTUP_RESERVE=3 \
+  "$HELPER" --preflight-only 2>&1)"
+INVALID_PROBE_SPLIT_RC=$?
+set -e
+[ "$INVALID_PROBE_SPLIT_RC" -ne 0 ] || fail 'a probe budget with no spin time was accepted'
+grep -Fq 'LIVE_PROBE_MAX_SECONDS must exceed LIVE_PROBE_STARTUP_RESERVE' \
+  <<<"$INVALID_PROBE_SPLIT_OUTPUT" \
+  || fail 'a probe budget with no spin time did not fail at validation'
+
+# ---------------------------------------------------------------------------
+# Defect cases for the batched MAVROS source view.
+#
+# Each was written and observed failing on its own before the implementation
+# existed. They now run unconditionally.
+#
+# Interface these cases pin:
+#   mavros_source_view <deadline> <topic>
+#     - with MAVROS_SOURCE_BATCH=0, delegates to ros2_graph_query_before with
+#       the exact argument vector and forwards the complete raw CLI streams and
+#       status unchanged
+#     - with MAVROS_SOURCE_BATCH=1, prints exactly the synthesized
+#       "Publisher count: <n>" line followed by the verbatim publisher endpoint
+#       blocks for that topic, and nothing else; it does not reproduce the rest
+#       of "ros2 topic info --verbose"
+#     - returns 0 on a successful serve, 75 on parent-deadline exhaustion, and
+#       1 fail closed
+#   mavros_source_probe_program prints the probe program; it takes the topic
+#     list as arguments and emits per-topic blocks introduced by "TOPIC: <topic>"
+#   mavros_source_probe_selftest runs one bounded probe before the live window
+#   the probe runs synchronously through "timeout --signal=KILL <bound>s ..."
+#   PROBE_MAX_SECONDS is 6; the cache lives under $RUN_DIR
+# ---------------------------------------------------------------------------
+# Every source-view case below runs unconditionally. The temporary selector that
+# allowed each case to be observed failing on its own has been removed; this
+# wrapper only carries the case name for readability.
+source_view_case() {
+  return 0
+}
+
+SOURCE_VIEW_FUNCTION="$SOURCE_VIEW_PREAMBLE"
+SOURCE_PROBE_PROGRAM="$(sed -n '/^cat >"\$MAVROS_SOURCE_PROBE" <<.PYTHON_SOURCE_PROBE.$/,/^PYTHON_SOURCE_PROBE$/p' "$HELPER" | sed '1d;$d')"
+SOURCE_SELFTEST_FUNCTION="$SOURCE_VIEW_PREAMBLE
+$(extract_function mavros_source_probe_selftest)"
+SOURCE_VIEW_TEST_DIR="$(mktemp -d)"
+trap 'rm -f "$PASS_LOG" "$FAIL_LOG" "$ORDER_LOG" "$LATE_LOG" "$SERVICE_TRACE" "$GRAPH_TRACE" "$MONITOR_TRACE"; rm -rf "$SOURCE_VIEW_TEST_DIR"' EXIT
+
+# Each case and each scenario within a case gets its own run directory, so no
+# cache entry can leak from one into the next once they run unconditionally.
+source_run_dir() {
+  local dir="$SOURCE_VIEW_TEST_DIR/$1"
+  rm -rf "$dir"
+  mkdir -p "$dir"
+  printf '%s\n' "$dir"
+}
+
+# One publisher endpoint block, shaped like str(TopicEndpointInfo).
+source_topic_payload() {
+  local count="$1" gid="$2"
+  printf 'Publisher count: %s\n' "$count"
+  printf 'Node name: mavros\n'
+  printf 'Node namespace: /\n'
+  printf 'Topic type: mavros_msgs/msg/Probe\n'
+  printf 'Topic type hash: RIHS01_%s\n' "$gid"
+  printf 'Endpoint type: PUBLISHER\n'
+  printf 'GID: %s\n' "$gid"
+  printf 'QoS profile:\n'
+  printf '  Reliability: RELIABLE\n'
+  printf '  History (Depth): KEEP_LAST (10)\n'
+}
+
+source_topic_block() {
+  printf 'TOPIC: %s\n' "$1"
+  shift
+  source_topic_payload "$@"
+}
+
+SOURCE_TOPIC_GIDS='/mavros/state:01.01
+/mavros/global_position/raw/fix:02.02
+/mavros/imu/data:03.03
+/mavros/battery:04.04
+/mavros/rc/in:05.05'
+
+source_gid_for() {
+  awk -F: -v topic="$1" '$1 == topic { print $2 }' <<<"$SOURCE_TOPIC_GIDS"
+}
+
+# A complete generation: all five topics, each with its own identity.
+source_complete_stream() {
+  local override_topic="${1:-}" override_count="${2:-}" entry topic gid count
+  while IFS=: read -r topic gid; do
+    count=1
+    [ "$topic" != "$override_topic" ] || count="$override_count"
+    source_topic_block "$topic" "$count" "$gid"
+  done <<<"$SOURCE_TOPIC_GIDS"
+}
+
+SOURCE_PROBE_STREAM="$(source_complete_stream)"
+
+# Complete-looking but structurally invalid: every topic present, every block
+# claiming one publisher, none carrying an endpoint record.
+SOURCE_MALFORMED_STREAM="$(while IFS=: read -r malformed_topic malformed_gid; do
+  printf 'TOPIC: %s\n' "$malformed_topic"
+  printf 'Publisher count: 1\n'
+  printf 'not an endpoint record\n'
+done <<<"$SOURCE_TOPIC_GIDS")"
+
+if source_view_case flag-off-delegation; then
+  # The disabled path hands over the exact argument vector and returns the
+  # query's own status, with both streams preserved as raw bytes.
+  DELEGATION_DIR="$(source_run_dir flag-off-delegation)"
+  printf 'Type: mavros_msgs/msg/State\nPublisher count: 0\n  Reliability: RELIABLE\n' \
+    >"$DELEGATION_DIR/expected_stdout"
+  printf 'DELEGATED_STDERR\n' >"$DELEGATION_DIR/expected_stderr"
+  set +e
+  bash -c '
+    eval "$1"
+    TRACE="$2"
+    BODY="$3"
+    ros2_graph_query_before() {
+      printf "argc:%s\n" "$#" >>"$TRACE"
+      printf "argv:%s\n" "$@" >>"$TRACE"
+      printf "DELEGATED_STDERR\n" >&2
+      cat "$BODY"
+      return 42
+    }
+    MAVROS_SOURCE_BATCH=0
+    mavros_source_view 0 /mavros/state
+  ' _ "$SOURCE_VIEW_FUNCTION" "$DELEGATION_DIR/argv" "$DELEGATION_DIR/expected_stdout" \
+    >"$DELEGATION_DIR/stdout" 2>"$DELEGATION_DIR/stderr"
+  DELEGATION_RC=$?
+  set -e
+  [ "$DELEGATION_RC" -eq 42 ] \
+    || fail "flag-off delegation returned $DELEGATION_RC instead of the query status 42"
+  [ "$(<"$DELEGATION_DIR/argv")" = "$(printf '%s\n' \
+    'argc:8' 'argv:0' 'argv:topic' 'argv:info' 'argv:--verbose' \
+    'argv:--no-daemon' 'argv:--spin-time' 'argv:2' 'argv:/mavros/state')" ] \
+    || fail 'flag-off delegation changed the argument vector or its boundaries'
+  cmp -s "$DELEGATION_DIR/stdout" "$DELEGATION_DIR/expected_stdout" \
+    || fail 'flag-off delegation did not forward standard output as raw bytes'
+  cmp -s "$DELEGATION_DIR/stderr" "$DELEGATION_DIR/expected_stderr" \
+    || fail 'flag-off delegation did not keep standard error separate and unmodified'
+fi
+
+if source_view_case enabled-payload-routing; then
+  # Every topic is served its own block, exactly: one count line, the verbatim
+  # publisher endpoint block including identity, type, hash, GID and QoS, no
+  # stream header, and nothing borrowed from another topic.
+  ROUTING_DIR="$(source_run_dir enabled-payload-routing)"
+  while IFS=: read -r routing_topic routing_gid; do
+    set +e
+    ROUTING_OUTPUT="$(bash -c '
+      eval "$1"
+      STREAM="$2"
+      RUN_DIR="$3"
+      timeout() { printf "%s\n" "$STREAM"; return 0; }
+      log_error() { :; }
+      MAVROS_SOURCE_BATCH=1
+      mavros_source_view 0 "$4"
+    ' _ "$SOURCE_VIEW_FUNCTION" "$SOURCE_PROBE_STREAM" "$ROUTING_DIR" "$routing_topic")"
+    ROUTING_RC=$?
+    set -e
+    [ "$ROUTING_RC" -eq 0 ] \
+      || fail "a successful serve of $routing_topic returned $ROUTING_RC instead of 0"
+    [ "$ROUTING_OUTPUT" = "$(source_topic_payload 1 "$routing_gid")" ] \
+      || fail "the batched view did not serve $routing_topic its own verbatim endpoint block"
+    [ "$(grep -Fc 'Publisher count:' <<<"$ROUTING_OUTPUT")" -eq 1 ] \
+      || fail "the batched view did not emit exactly one publisher-count line for $routing_topic"
+    ! grep -Fq 'TOPIC:' <<<"$ROUTING_OUTPUT" \
+      || fail "the batched view leaked a stream header into the $routing_topic payload"
+  done <<<"$SOURCE_TOPIC_GIDS"
+fi
+
+if source_view_case discriminating-count-api; then
+  # The count comes from count_publishers, not the endpoint-list length, so a
+  # deliberate disagreement inside a complete generation must survive.
+  COUNT_DIR="$(source_run_dir discriminating-count-api)"
+  set +e
+  COUNT_API_OUTPUT="$(bash -c '
+    eval "$1"
+    STREAM="$2"
+    RUN_DIR="$3"
+    timeout() { printf "%s\n" "$STREAM"; return 0; }
+    log_error() { :; }
+    MAVROS_SOURCE_BATCH=1
+    mavros_source_view 0 /mavros/state
+  ' _ "$SOURCE_VIEW_FUNCTION" "$(source_complete_stream /mavros/state 3)" "$COUNT_DIR")"
+  COUNT_API_RC=$?
+  set -e
+  [ "$COUNT_API_RC" -eq 0 ] \
+    || fail "a successful serve returned $COUNT_API_RC instead of 0"
+  grep -Fxq 'Publisher count: 3' <<<"$COUNT_API_OUTPUT" \
+    || fail 'the batched view did not report the publisher count from count_publishers'
+  [ "$(grep -Fc 'Endpoint type: PUBLISHER' <<<"$COUNT_API_OUTPUT")" -eq 1 ] \
+    || fail 'the batched view did not report the endpoint list independently of the count'
+fi
+
+if source_view_case one-participant-five-topics; then
+  # Five ordered topics are served from a single probe run.
+  SHARED_DIR="$(source_run_dir one-participant-five-topics)"
+  set +e
+  FIVE_TOPIC_OUTPUT="$(bash -c '
+    eval "$1"
+    STREAM="$2"
+    RUN_DIR="$3"
+    RUNS="$4"
+    timeout() { printf "run\n" >>"$RUNS"; printf "%s\n" "$STREAM"; return 0; }
+    log_error() { :; }
+    MAVROS_SOURCE_BATCH=1
+    for view_topic in \
+      /mavros/state /mavros/global_position/raw/fix /mavros/imu/data \
+      /mavros/battery /mavros/rc/in; do
+      mavros_source_view 0 "$view_topic" >/dev/null
+      printf "serve:%s:%s\n" "$view_topic" "$?"
+    done
+  ' _ "$SOURCE_VIEW_FUNCTION" "$SOURCE_PROBE_STREAM" "$SHARED_DIR" \
+    "$SHARED_DIR/runs" 2>&1)"
+  set -e
+  [ "$(grep -Fxc 'run' "$SHARED_DIR/runs")" -eq 1 ] \
+    || fail 'five source topics did not share one probe run'
+  for view_topic in \
+    /mavros/state /mavros/global_position/raw/fix /mavros/imu/data \
+    /mavros/battery /mavros/rc/in; do
+    grep -Fxq "serve:$view_topic:0" <<<"$FIVE_TOPIC_OUTPUT" \
+      || fail "the batched view did not serve $view_topic successfully from the shared run"
+  done
+fi
+
+if source_view_case consumed-entry-refresh; then
+  # Each topic entry is consumed once, so a repeat read re-runs the probe and
+  # still succeeds.
+  REFRESH_DIR="$(source_run_dir consumed-entry-refresh)"
+  set +e
+  REFRESH_OUTPUT="$(bash -c '
+    eval "$1"
+    STREAM="$2"
+    RUN_DIR="$3"
+    RUNS="$4"
+    timeout() { printf "run\n" >>"$RUNS"; printf "%s\n" "$STREAM"; return 0; }
+    log_error() { :; }
+    MAVROS_SOURCE_BATCH=1
+    mavros_source_view 0 /mavros/state >/dev/null
+    printf "first=%s\n" "$?"
+    mavros_source_view 0 /mavros/state >/dev/null
+    printf "second=%s\n" "$?"
+  ' _ "$SOURCE_VIEW_FUNCTION" "$SOURCE_PROBE_STREAM" "$REFRESH_DIR" \
+    "$REFRESH_DIR/runs" 2>&1)"
+  set -e
+  [ "$(grep -Fxc 'run' "$REFRESH_DIR/runs")" -eq 2 ] \
+    || fail 'a consumed topic entry did not force a fresh probe run'
+  grep -Fxq 'first=0' <<<"$REFRESH_OUTPUT" \
+    || fail 'the first read of a consumed-entry case did not succeed'
+  grep -Fxq 'second=0' <<<"$REFRESH_OUTPUT" \
+    || fail 'the refreshed read of a consumed-entry case did not succeed'
+fi
+
+if source_view_case execution-bounds-clean-phase; then
+  # One run serves a clean phase, and every serve succeeds.
+  CLEAN_DIR="$(source_run_dir execution-bounds-clean-phase)"
+  set +e
+  CLEAN_OUTPUT="$(bash -c '
+    eval "$1"
+    STREAM="$2"
+    RUN_DIR="$3"
+    RUNS="$4"
+    timeout() { printf "run\n" >>"$RUNS"; printf "%s\n" "$STREAM"; return 0; }
+    log_error() { :; }
+    MAVROS_SOURCE_BATCH=1
+    for view_topic in \
+      /mavros/state /mavros/global_position/raw/fix /mavros/imu/data \
+      /mavros/battery /mavros/rc/in; do
+      mavros_source_view 0 "$view_topic" >/dev/null
+      printf "serve:%s\n" "$?"
+    done
+  ' _ "$SOURCE_VIEW_FUNCTION" "$SOURCE_PROBE_STREAM" "$CLEAN_DIR" \
+    "$CLEAN_DIR/runs" 2>&1)"
+  set -e
+  [ "$(grep -Fxc 'run' "$CLEAN_DIR/runs")" -eq 1 ] \
+    || fail 'a clean phase did not stay within one probe run'
+  [ "$(grep -Fxc 'serve:0' <<<"$CLEAN_OUTPUT")" -eq 5 ] \
+    || fail 'a clean phase did not report five successful serves'
+fi
+
+if source_view_case execution-bounds-problematic-topic; then
+  # A single problematic topic costs three runs, one per consumed read.
+  PROBLEM_DIR="$(source_run_dir execution-bounds-problematic-topic)"
+  set +e
+  PROBLEM_OUTPUT="$(bash -c '
+    eval "$1"
+    STREAM="$2"
+    RUN_DIR="$3"
+    RUNS="$4"
+    timeout() { printf "run\n" >>"$RUNS"; printf "%s\n" "$STREAM"; return 0; }
+    log_error() { :; }
+    MAVROS_SOURCE_BATCH=1
+    for view_attempt in 1 2 3; do
+      mavros_source_view 0 /mavros/imu/data >/dev/null
+      printf "serve:%s\n" "$?"
+    done
+  ' _ "$SOURCE_VIEW_FUNCTION" "$SOURCE_PROBE_STREAM" "$PROBLEM_DIR" \
+    "$PROBLEM_DIR/runs" 2>&1)"
+  set -e
+  [ "$(grep -Fxc 'run' "$PROBLEM_DIR/runs")" -eq 3 ] \
+    || fail 'one problematic topic did not cost exactly three probe runs'
+  [ "$(grep -Fxc 'serve:0' <<<"$PROBLEM_OUTPUT")" -eq 3 ] \
+    || fail 'a repeatedly read topic did not report three successful serves'
+fi
+
+if source_view_case execution-bounds-worst-case; then
+  # The per-phase worst case is 1 + (2 * 5): the first read of each topic after
+  # the first is served from the surviving generation, the next two re-run.
+  WORST_DIR="$(source_run_dir execution-bounds-worst-case)"
+  set +e
+  WORST_OUTPUT="$(bash -c '
+    eval "$1"
+    STREAM="$2"
+    RUN_DIR="$3"
+    RUNS="$4"
+    timeout() { printf "run\n" >>"$RUNS"; printf "%s\n" "$STREAM"; return 0; }
+    log_error() { :; }
+    MAVROS_SOURCE_BATCH=1
+    for view_topic in \
+      /mavros/state /mavros/global_position/raw/fix /mavros/imu/data \
+      /mavros/battery /mavros/rc/in; do
+      for view_attempt in 1 2 3; do
+        mavros_source_view 0 "$view_topic" >/dev/null
+        printf "serve:%s\n" "$?"
+      done
+    done
+  ' _ "$SOURCE_VIEW_FUNCTION" "$SOURCE_PROBE_STREAM" "$WORST_DIR" \
+    "$WORST_DIR/runs" 2>&1)"
+  set -e
+  [ "$(grep -Fxc 'run' "$WORST_DIR/runs")" -eq 11 ] \
+    || fail 'the per-phase worst case did not settle at 1 + (2 * 5) probe runs'
+  [ "$(grep -Fxc 'serve:0' <<<"$WORST_OUTPUT")" -eq 15 ] \
+    || fail 'the per-phase worst case did not report fifteen successful serves'
+fi
+
+if source_view_case finite-deadline-clamp; then
+  # A finite parent deadline clamps the probe below the remaining budget and
+  # keeps non-zero headroom for serialization and teardown.
+  CLAMP_DIR="$(source_run_dir finite-deadline-clamp)"
+  set +e
+  CLAMP_RC_OUTPUT="$(bash -c '
+    eval "$1"
+    RUN_DIR="$2"
+    BOUNDS="$3"
+    SECONDS=17
+    timeout() { printf "bound:%s\n" "$*" >>"$BOUNDS"; return 124; }
+    log_error() { :; }
+    MAVROS_SOURCE_BATCH=1
+    mavros_source_view 20 /mavros/state >/dev/null
+    printf "view_returned=%s\n" "$?"
+  ' _ "$SOURCE_VIEW_FUNCTION" "$CLAMP_DIR" "$CLAMP_DIR/bounds" 2>&1)"
+  set -e
+  CLAMP_BOUND="$(grep -o 'bound:--signal=KILL [0-9]\+s' "$CLAMP_DIR/bounds" \
+    | head -1 | grep -o '[0-9]\+' || true)"
+  [ -n "$CLAMP_BOUND" ] \
+    || fail 'the batched probe did not record a clamped hard bound'
+  [ "$CLAMP_BOUND" -lt 3 ] \
+    || fail 'the batched probe did not clamp below the remaining parent budget'
+  [ "$CLAMP_BOUND" -gt 0 ] \
+    || fail 'the batched probe did not keep non-zero headroom'
+  grep -Fxq 'view_returned=1' <<<"$CLAMP_RC_OUTPUT" \
+    || fail 'a probe that hit its own clamped bound was not reported as a content failure'
+  ! grep -Fxq 'view_returned=75' <<<"$CLAMP_RC_OUTPUT" \
+    || fail 'a probe timeout inside the parent budget was misreported as deadline exhaustion'
+fi
+
+if source_view_case probe-timeout-crossing-deadline; then
+  # A probe timeout that does consume the parent budget is deadline exhaustion.
+  CROSS_DIR="$(source_run_dir probe-timeout-crossing-deadline)"
+  set +e
+  CROSS_OUTPUT="$(bash -c '
+    eval "$1"
+    RUN_DIR="$2"
+    SECONDS=10
+    timeout() { SECONDS=40; return 124; }
+    log_error() { :; }
+    MAVROS_SOURCE_BATCH=1
+    mavros_source_view 30 /mavros/state >/dev/null
+    printf "view_returned=%s\n" "$?"
+  ' _ "$SOURCE_VIEW_FUNCTION" "$CROSS_DIR" 2>&1)"
+  set -e
+  grep -Fxq 'view_returned=75' <<<"$CROSS_OUTPUT" \
+    || fail 'a probe timeout that consumed the parent budget was not reported as 75'
+fi
+
+if source_view_case failed-view-leaves-no-cache; then
+  # A view that returns non-zero must leave nothing a later phase could serve.
+  RESIDUE_DIR="$(source_run_dir failed-view-leaves-no-cache)"
+  set +e
+  RESIDUE_OUTPUT="$(bash -c '
+    eval "$1"
+    RUN_DIR="$2"
+    STREAM="$3"
+    RUNS="$4"
+    SECONDS=10
+    timeout() { printf "run\n" >>"$RUNS"; printf "%s\n" "$STREAM"; SECONDS=40; return 0; }
+    log_error() { :; }
+    MAVROS_SOURCE_BATCH=1
+    mavros_source_view 30 /mavros/state >/dev/null
+    printf "first=%s\n" "$?"
+    if [ -s "$RUN_DIR/source_view/pending" ]; then
+      printf "residual=yes\n"
+    else
+      printf "residual=no\n"
+    fi
+    SECONDS=0
+    mavros_source_view 300 /mavros/global_position/raw/fix >/dev/null
+    printf "second=%s\n" "$?"
+  ' _ "$SOURCE_VIEW_FUNCTION" "$RESIDUE_DIR" "$SOURCE_PROBE_STREAM" \
+    "$RESIDUE_DIR/runs" 2>&1)"
+  set -e
+  grep -Fxq 'first=75' <<<"$RESIDUE_OUTPUT" \
+    || fail 'a generation that crossed the parent deadline was not reported as 75'
+  grep -Fxq 'residual=no' <<<"$RESIDUE_OUTPUT" \
+    || fail 'a deadline-exhausted view left a generation a later phase could serve'
+  grep -Fxq 'second=0' <<<"$RESIDUE_OUTPUT" \
+    || fail 'the next phase could not recover after the discarded generation'
+  [ "$(grep -Fxc 'run' "$RESIDUE_DIR/runs")" -eq 2 ] \
+    || fail 'the next phase served a discarded generation instead of probing again'
+fi
+
+if source_view_case probe-invocation-argv; then
+  # The real probe argument vector: program path, settle budget, and the exact
+  # five-topic list, compared as one ordered string.
+  ARGV_DIR="$(source_run_dir probe-invocation-argv)"
+  set +e
+  bash -c '
+    eval "$1"
+    RUN_DIR="$2"
+    ARGV="$3"
+    timeout() { printf "%s\n" "$*" >>"$ARGV"; return 0; }
+    log_error() { :; }
+    MAVROS_SOURCE_BATCH=1
+    mavros_source_view 0 /mavros/state >/dev/null
+  ' _ "$SOURCE_VIEW_FUNCTION" "$ARGV_DIR" "$ARGV_DIR/argv" >/dev/null 2>&1
+  set -e
+  [ "$(cat "$ARGV_DIR/argv")" = "--signal=KILL 6s python3 $ARGV_DIR/mavros_source_probe.py 3 /mavros/state /mavros/global_position/raw/fix /mavros/imu/data /mavros/battery /mavros/rc/in" ] \
+    || fail "the probe invocation changed: $(cat "$ARGV_DIR/argv")"
+fi
+
+if source_view_case probe-budget-split; then
+  # The outer bound is spent as startup reserve plus spin budget, so a slow host
+  # loses discovery time instead of overrunning the bound. The reserve is
+  # honoured under a clamped parent deadline too, down to a one-second floor.
+  BUDGET_DIR="$(source_run_dir probe-budget-split)"
+  set +e
+  bash -c '
+    eval "$1"
+    RUN_DIR="$2"
+    ARGV="$3"
+    timeout() { printf "%s\n" "$*" >>"$ARGV"; return 0; }
+    log_error() { :; }
+    MAVROS_SOURCE_BATCH=1
+    mavros_source_view 0 /mavros/state >/dev/null
+  ' _ "$SOURCE_VIEW_FUNCTION" "$BUDGET_DIR" "$BUDGET_DIR/argv" >/dev/null 2>&1
+  set -e
+  BUDGET_BOUND="$(awk '{print $2}' "$BUDGET_DIR/argv" | head -1 | tr -d 's')"
+  BUDGET_SETTLE="$(awk '{print $5}' "$BUDGET_DIR/argv" | head -1)"
+  BUDGET_RESERVE="$(sed -n 's/^PROBE_STARTUP_RESERVE="${LIVE_PROBE_STARTUP_RESERVE:-\([0-9]*\)}"$/\1/p' "$HELPER")"
+  [ -n "$BUDGET_RESERVE" ] || fail 'the probe startup reserve default was not readable'
+  [ "$BUDGET_SETTLE" -eq "$((BUDGET_BOUND - BUDGET_RESERVE))" ] \
+    || fail "the probe spin budget is not the bound minus the startup reserve: $BUDGET_SETTLE"
+  [ "$BUDGET_RESERVE" -ge 2 ] \
+    || fail 'the probe startup reserve leaves too little for interpreter start and import'
+
+  : >"$BUDGET_DIR/argv"
+  set +e
+  bash -c '
+    eval "$1"
+    RUN_DIR="$2"
+    ARGV="$3"
+    SECONDS=17
+    timeout() { printf "%s\n" "$*" >>"$ARGV"; return 0; }
+    log_error() { :; }
+    MAVROS_SOURCE_BATCH=1
+    mavros_source_view 20 /mavros/state >/dev/null
+  ' _ "$SOURCE_VIEW_FUNCTION" "$BUDGET_DIR" "$BUDGET_DIR/argv" >/dev/null 2>&1
+  set -e
+  [ "$(awk '{print $5}' "$BUDGET_DIR/argv" | head -1)" -eq 1 ] \
+    || fail 'a clamped probe budget did not fall back to the one-second spin floor'
+fi
+
+if source_view_case deadline-zero-hard-bound; then
+  # Parent deadline zero keeps the probe's own finite hard bound.
+  HARD_DIR="$(source_run_dir deadline-zero-hard-bound)"
+  set +e
+  bash -c '
+    eval "$1"
+    RUN_DIR="$2"
+    BOUNDS="$3"
+    SECONDS=900
+    timeout() { printf "bound:%s\n" "$*" >>"$BOUNDS"; return 0; }
+    log_error() { :; }
+    MAVROS_SOURCE_BATCH=1
+    mavros_source_view 0 /mavros/state >/dev/null
+  ' _ "$SOURCE_VIEW_FUNCTION" "$HARD_DIR" "$HARD_DIR/bounds" >/dev/null 2>&1
+  set -e
+  grep -Fq -- '--signal=KILL 6s ' "$HARD_DIR/bounds" \
+    || fail 'a deadline-zero batched probe did not keep its own six-second hard bound'
+fi
+
+if source_view_case probe-status-three-maps-to-one; then
+  # A raw probe status of 3 surfaces as a fail-closed 1, never as 75, and the
+  # probe must actually have been invoked.
+  STATUS_DIR="$(source_run_dir probe-status-three-maps-to-one)"
+  set +e
+  STATUS_THREE_OUTPUT="$(bash -c '
+    eval "$1"
+    RUN_DIR="$2"
+    RUNS="$3"
+    timeout() { printf "run\n" >>"$RUNS"; return 3; }
+    log_error() { :; }
+    MAVROS_SOURCE_BATCH=1
+    mavros_source_view 0 /mavros/state >/dev/null
+    printf "view_returned=%s\n" "$?"
+  ' _ "$SOURCE_VIEW_FUNCTION" "$STATUS_DIR" "$STATUS_DIR/runs" 2>&1)"
+  set -e
+  [ "$(grep -Fxc 'run' "$STATUS_DIR/runs")" -eq 1 ] \
+    || fail 'the status-three case did not invoke the probe, so its result is vacuous'
+  grep -Fxq 'view_returned=1' <<<"$STATUS_THREE_OUTPUT" \
+    || fail 'a raw probe status of 3 did not map to view status 1'
+  ! grep -Fxq 'view_returned=75' <<<"$STATUS_THREE_OUTPUT" \
+    || fail 'a raw probe status of 3 was misreported as deadline exhaustion'
+fi
+
+if source_view_case pre-window-probe-selftest; then
+  # The status-three mapping is covered before the window by a bounded
+  # self-test that fails closed and is wired ahead of the live window.
+  SELFTEST_DIR="$(source_run_dir pre-window-probe-selftest)"
+  set +e
+  SELFTEST_OUTPUT="$(bash -c '
+    eval "$1"
+    RUN_DIR="$2"
+    RUNS="$3"
+    timeout() { printf "run\n" >>"$RUNS"; return 3; }
+    log_error() { printf "LOG %s\n" "$*"; }
+    MAVROS_SOURCE_BATCH=1
+    mavros_source_probe_selftest 0
+    printf "selftest_returned=%s\n" "$?"
+  ' _ "$SOURCE_SELFTEST_FUNCTION" "$SELFTEST_DIR" "$SELFTEST_DIR/runs" 2>&1)"
+  set -e
+  [ -n "$(extract_function mavros_source_probe_selftest)" ] \
+    || fail 'the pre-window probe self-test does not exist'
+  [ "$(grep -Fxc 'run' "$SELFTEST_DIR/runs")" -eq 1 ] \
+    || fail 'the pre-window probe self-test did not run exactly one bounded probe'
+  grep -Fxq 'selftest_returned=1' <<<"$SELFTEST_OUTPUT" \
+    || fail 'the pre-window probe self-test did not fail closed on a status-three probe'
+  grep -q '^mavros_source_probe_selftest ' \
+    <<<"$(sed -n '/^monitor_live_stack live-window/q;p' "$HELPER")" \
+    || fail 'the probe self-test is not called before the live window'
+
+  # A successful self-test must not leave a pre-window generation behind, or the
+  # first in-window source check would serve a snapshot taken before the window.
+  SELFTEST_CLEAN_DIR="$(source_run_dir pre-window-probe-selftest-clean)"
+  set +e
+  SELFTEST_CLEAN_OUTPUT="$(bash -c '
+    eval "$1"
+    RUN_DIR="$2"
+    STREAM="$3"
+    timeout() { printf "%s\n" "$STREAM"; return 0; }
+    log_error() { :; }
+    MAVROS_SOURCE_BATCH=1
+    mavros_source_probe_selftest 0
+    printf "selftest_returned=%s\n" "$?"
+    if [ -s "$RUN_DIR/source_view/pending" ]; then
+      printf "residual=yes\n"
+    else
+      printf "residual=no\n"
+    fi
+  ' _ "$SOURCE_SELFTEST_FUNCTION" "$SELFTEST_CLEAN_DIR" "$SOURCE_PROBE_STREAM" 2>&1)"
+  set -e
+  grep -Fxq 'selftest_returned=0' <<<"$SELFTEST_CLEAN_OUTPUT" \
+    || fail 'a successful probe self-test did not report success'
+  grep -Fxq 'residual=no' <<<"$SELFTEST_CLEAN_OUTPUT" \
+    || fail 'the probe self-test left a pre-window generation that a later check could serve'
+fi
+
+for probe_failure_mode in crash exception timeout malformed partial; do
+  if source_view_case "atomic-publication-$probe_failure_mode"; then
+    # No failure mode may publish cache state that a later read can consume.
+    # "partial" is a complete-looking stream missing one topic, which is why
+    # every success fixture above uses a complete five-topic generation.
+    ATOMIC_DIR="$(source_run_dir "atomic-publication-$probe_failure_mode")"
+    set +e
+    ATOMIC_OUTPUT="$(bash -c '
+      eval "$1"
+      RUN_DIR="$2"
+      RUNS="$3"
+      MODE="$4"
+      PARTIAL="$5"
+      MALFORMED="$6"
+      timeout() {
+        printf "run\n" >>"$RUNS"
+        case "$MODE" in
+          crash) return 137 ;;
+          exception) printf "Traceback (most recent call last):\n"; return 1 ;;
+          timeout) return 124 ;;
+          malformed) printf "%s\n" "$MALFORMED"; return 0 ;;
+          partial) printf "%s\n" "$PARTIAL"; return 0 ;;
+        esac
+      }
+      log_error() { :; }
+      MAVROS_SOURCE_BATCH=1
+      mavros_source_view 0 /mavros/state >/dev/null
+      printf "first=%s\n" "$?"
+      mavros_source_view 0 /mavros/state >/dev/null
+      printf "second=%s\n" "$?"
+    ' _ "$SOURCE_VIEW_FUNCTION" "$ATOMIC_DIR" "$ATOMIC_DIR/runs" \
+      "$probe_failure_mode" \
+      "$(source_topic_block /mavros/state 1 01.01
+         source_topic_block /mavros/imu/data 1 03.03)" \
+      "$SOURCE_MALFORMED_STREAM" 2>&1)"
+    set -e
+    grep -Fxq 'first=1' <<<"$ATOMIC_OUTPUT" \
+      || fail "the $probe_failure_mode probe-failure mode did not fail closed"
+    grep -Fxq 'second=1' <<<"$ATOMIC_OUTPUT" \
+      || fail "the $probe_failure_mode probe-failure mode served a later read from failed state"
+    [ "$(grep -Fxc 'run' "$ATOMIC_DIR/runs")" -eq 2 ] \
+      || fail "the $probe_failure_mode probe-failure mode published consumable cache state"
+  fi
+done
+
+if source_view_case publication-failure-fails-closed; then
+  # A failed atomic publication is reported, never logged as a successful run.
+  PUBLISH_DIR="$(source_run_dir publication-failure-fails-closed)"
+  set +e
+  PUBLISH_OUTPUT="$(bash -c '
+    eval "$1"
+    RUN_DIR="$2"
+    STREAM="$3"
+    timeout() { printf "%s\n" "$STREAM"; return 0; }
+    mv() { return 1; }
+    log_error() { printf "LOG %s\n" "$*" >&2; }
+    MAVROS_SOURCE_BATCH=1
+    mavros_source_view 0 /mavros/state >/dev/null
+    printf "view_returned=%s\n" "$?"
+  ' _ "$SOURCE_VIEW_FUNCTION" "$PUBLISH_DIR" "$SOURCE_PROBE_STREAM" 2>&1)"
+  set -e
+  grep -Fxq 'view_returned=1' <<<"$PUBLISH_OUTPUT" \
+    || fail 'a failed atomic publication did not fail closed'
+  ! grep -Fq 'MAVROS_SOURCE_PROBE_RUN result=OK' <<<"$PUBLISH_OUTPUT" \
+    || fail 'a failed atomic publication was logged as a successful run'
+fi
+
+if source_view_case probe-stderr-not-cached; then
+  # Probe standard error never becomes part of a cached payload.
+  STDERR_DIR="$(source_run_dir probe-stderr-not-cached)"
+  set +e
+  STDERR_OUTPUT="$(bash -c '
+    eval "$1"
+    RUN_DIR="$2"
+    STREAM="$3"
+    timeout() {
+      printf "%s\n" "$STREAM"
+      printf "PROBE_STDERR_NOISE\n" >&2
+      return 0
+    }
+    log_error() { :; }
+    MAVROS_SOURCE_BATCH=1
+    for view_topic in \
+      /mavros/state /mavros/global_position/raw/fix /mavros/imu/data \
+      /mavros/battery /mavros/rc/in; do
+      mavros_source_view 0 "$view_topic"
+      printf "serve:%s\n" "$?"
+    done
+  ' _ "$SOURCE_VIEW_FUNCTION" "$STDERR_DIR" "$SOURCE_PROBE_STREAM" 2>/dev/null)"
+  set -e
+  [ "$(grep -Fxc 'serve:0' <<<"$STDERR_OUTPUT")" -eq 5 ] \
+    || fail 'the probe-stderr case did not serve all five topics, so its result is vacuous'
+  ! grep -Fq 'PROBE_STDERR_NOISE' <<<"$STDERR_OUTPUT" \
+    || fail 'probe standard error was mixed into a cached payload'
+fi
+
+if source_view_case synchronous-no-managed-child; then
+  # The probe is synchronous and never becomes a managed child.
+  OWNERSHIP_DIR="$(source_run_dir synchronous-no-managed-child)"
+  set +e
+  OWNERSHIP_OUTPUT="$(bash -c '
+    eval "$1"
+    RUN_DIR="$2"
+    STREAM="$3"
+    declare -a CHILD_NAMES=()
+    declare -a CHILD_PIDS=()
+    declare -a CHILD_PGIDS=()
+    start_child() { printf "UNEXPECTED_START_CHILD\n"; }
+    timeout() { printf "%s\n" "$STREAM"; return 0; }
+    log_error() { :; }
+    MAVROS_SOURCE_BATCH=1
+    mavros_source_view 0 /mavros/state >/dev/null
+    printf "serve=%s\n" "$?"
+    printf "children=%s:%s:%s\n" \
+      "${#CHILD_NAMES[@]}" "${#CHILD_PIDS[@]}" "${#CHILD_PGIDS[@]}"
+  ' _ "$SOURCE_VIEW_FUNCTION" "$OWNERSHIP_DIR" "$SOURCE_PROBE_STREAM" 2>&1)"
+  set -e
+  grep -Fxq 'serve=0' <<<"$OWNERSHIP_OUTPUT" \
+    || fail 'the ownership case did not serve the topic, so its result is vacuous'
+  ! grep -Fq 'UNEXPECTED_START_CHILD' <<<"$OWNERSHIP_OUTPUT" \
+    || fail 'the batched probe registered a managed child'
+  grep -Fxq 'children=0:0:0' <<<"$OWNERSHIP_OUTPUT" \
+    || fail 'the batched probe changed the managed-child arrays'
+  ! grep -Fq 'start_child' <<<"$SOURCE_VIEW_FUNCTION" \
+    || fail 'the batched view references start_child'
+fi
+
+if source_view_case success-summary; then
+  # A complete run records one summary and no per-topic raw noise.
+  SUMMARY_DIR="$(source_run_dir success-summary)"
+  set +e
+  SUMMARY_OUTPUT="$(bash -c '
+    eval "$1"
+    RUN_DIR="$2"
+    STREAM="$3"
+    timeout() { printf "%s\n" "$STREAM"; return 0; }
+    log_error() { printf "LOG %s\n" "$*" >&2; }
+    MAVROS_SOURCE_BATCH=1
+    for view_topic in \
+      /mavros/state /mavros/global_position/raw/fix /mavros/imu/data \
+      /mavros/battery /mavros/rc/in; do
+      mavros_source_view 0 "$view_topic" >/dev/null
+      printf "serve:%s\n" "$?"
+    done
+  ' _ "$SOURCE_VIEW_FUNCTION" "$SUMMARY_DIR" "$SOURCE_PROBE_STREAM" 2>&1)"
+  set -e
+  [ "$(grep -Fxc 'serve:0' <<<"$SUMMARY_OUTPUT")" -eq 5 ] \
+    || fail 'the success-summary case did not serve all five topics'
+  [ "$(grep -Fc 'LOG MAVROS_SOURCE_PROBE_RUN' <<<"$SUMMARY_OUTPUT")" -eq 1 ] \
+    || fail 'a complete probe run did not record exactly one summary'
+  ! grep -Fq 'raw: ' <<<"$SUMMARY_OUTPUT" \
+    || fail 'a complete probe run emitted per-topic raw diagnostics'
+fi
+
+if source_view_case failure-summary-diagnostics; then
+  # An incomplete run keeps its raw diagnostics.
+  FAILURE_DIR="$(source_run_dir failure-summary-diagnostics)"
+  set +e
+  FAILURE_SUMMARY_OUTPUT="$(bash -c '
+    eval "$1"
+    RUN_DIR="$2"
+    timeout() { printf "TOPIC: /mavros/state\nnot an endpoint record\n"; return 0; }
+    log_error() { printf "LOG %s\n" "$*" >&2; }
+    MAVROS_SOURCE_BATCH=1
+    mavros_source_view 0 /mavros/state >/dev/null
+    printf "view_returned=%s\n" "$?"
+  ' _ "$SOURCE_VIEW_FUNCTION" "$FAILURE_DIR" 2>&1)"
+  set -e
+  grep -Fxq 'view_returned=1' <<<"$FAILURE_SUMMARY_OUTPUT" \
+    || fail 'an incomplete probe run did not fail closed'
+  grep -Fq 'LOG MAVROS_SOURCE_PROBE_RUN' <<<"$FAILURE_SUMMARY_OUTPUT" \
+    || fail 'an incomplete probe run did not record its summary'
+  grep -Fq 'raw: not an endpoint record' <<<"$FAILURE_SUMMARY_OUTPUT" \
+    || fail 'an incomplete probe run discarded its raw diagnostics'
+fi
+
+source_write_fake_rclpy() {
+  mkdir -p "$1/fake/rclpy"
+  cat >"$1/fake/rclpy/__init__.py" <<'FAKE_RCLPY'
+import os
+
+TRACE = os.environ['PROBE_TRACE']
+SETTLE_AFTER = int(os.environ.get('PROBE_SETTLE_AFTER', '0'))
+_STATE = {'spins': 0}
+
+
+def _record(event):
+    with open(TRACE, 'a') as handle:
+        handle.write(event + '\n')
+
+
+class _Endpoint:
+    def __init__(self, topic):
+        self.topic = topic
+
+    def __str__(self):
+        return '\n'.join([
+            'Node name: mavros',
+            'Node namespace: /',
+            'Topic type: mavros_msgs/msg/Probe',
+            'Topic type hash: RIHS01_%s' % self.topic,
+            'Endpoint type: PUBLISHER',
+            'GID: gid%s' % self.topic,
+            'QoS profile:',
+            '  Reliability: RELIABLE',
+        ])
+
+
+class Node:
+    def __init__(self, name, *args, **kwargs):
+        _record('node:' + name)
+
+    def _discovered(self):
+        return _STATE['spins'] > SETTLE_AFTER
+
+    def count_publishers(self, topic):
+        _record('count_publishers:' + topic)
+        return 3 if self._discovered() else 0
+
+    def get_publishers_info_by_topic(self, topic):
+        _record('get_publishers_info_by_topic:' + topic)
+        return [_Endpoint(topic)] if self._discovered() else []
+
+    def destroy_node(self):
+        _record('destroy_node')
+
+
+def init(*args, **kwargs):
+    _record('init')
+
+
+def shutdown(*args, **kwargs):
+    _record('shutdown')
+
+
+def create_node(name, *args, **kwargs):
+    return Node(name, *args, **kwargs)
+
+
+def spin_once(node, timeout_sec=None):
+    _STATE['spins'] += 1
+    _record('spin_once')
+FAKE_RCLPY
+  cat >"$1/fake/rclpy/node.py" <<'FAKE_RCLPY_NODE'
+from rclpy import Node
+
+__all__ = ['Node']
+FAKE_RCLPY_NODE
+}
+
+if source_view_case producer-single-participant; then
+  # Producer-level coverage: the materialized program is run against a fake
+  # rclpy so the accumulated-discovery spin, the two distinct API calls, the
+  # single participant, the topic order, and the endpoint serialization are all
+  # observable rather than inferred from an already-synthesized stream.
+  PRODUCER_DIR="$(source_run_dir producer-single-participant)"
+  source_write_fake_rclpy "$PRODUCER_DIR"
+  [ -n "$SOURCE_PROBE_PROGRAM" ] \
+    || fail 'the materialized probe program was not extractable'
+  printf '%s\n' "$SOURCE_PROBE_PROGRAM" >"$PRODUCER_DIR/probe.py"
+  set +e
+  PRODUCER_OUTPUT="$(PROBE_TRACE="$PRODUCER_DIR/trace" \
+    PYTHONPATH="$PRODUCER_DIR/fake" \
+    python3 "$PRODUCER_DIR/probe.py" 2 \
+      /mavros/state /mavros/global_position/raw/fix /mavros/imu/data \
+      /mavros/battery /mavros/rc/in 2>&1)"
+  PRODUCER_RC=$?
+  set -e
+  [ "$PRODUCER_RC" -eq 0 ] \
+    || fail "the materialized probe program exited $PRODUCER_RC against a fake rclpy"
+  [ "$(grep -Fxc 'node:_live_dashboard_graph_probe' "$PRODUCER_DIR/trace")" -eq 1 ] \
+    || fail 'the probe program did not create exactly one hidden participant'
+  [ "$(grep -Fc 'node:' "$PRODUCER_DIR/trace")" -eq 1 ] \
+    || fail 'the probe program created more than one participant'
+  [ "$(grep -Fxc 'spin_once' "$PRODUCER_DIR/trace")" -ge 1 ] \
+    || fail 'the probe program never spun its participant before reading endpoints'
+  [ "$(head -1 "$PRODUCER_DIR/trace")" = 'init' ] \
+    || fail 'the probe program did not initialise before creating its participant'
+  [ "$(tail -1 "$PRODUCER_DIR/trace")" = 'shutdown' ] \
+    || fail 'the probe program did not shut down its participant'
+  [ "$(grep -Fc 'count_publishers:' "$PRODUCER_DIR/trace")" -ge 5 ] \
+    || fail 'the probe program did not call count_publishers per topic'
+  [ "$(grep -Fc 'get_publishers_info_by_topic:' "$PRODUCER_DIR/trace")" -ge 5 ] \
+    || fail 'the probe program did not look up endpoints separately per topic'
+  EXPECTED_PRODUCER_OUTPUT="$(for producer_topic in \
+    /mavros/state /mavros/global_position/raw/fix /mavros/imu/data \
+    /mavros/battery /mavros/rc/in; do
+    printf 'TOPIC: %s\n' "$producer_topic"
+    printf 'Publisher count: 3\n'
+    printf 'Node name: mavros\n'
+    printf 'Node namespace: /\n'
+    printf 'Topic type: mavros_msgs/msg/Probe\n'
+    printf 'Topic type hash: RIHS01_%s\n' "$producer_topic"
+    printf 'Endpoint type: PUBLISHER\n'
+    printf 'GID: gid%s\n' "$producer_topic"
+    printf 'QoS profile:\n'
+    printf '  Reliability: RELIABLE\n'
+  done)"
+  [ "$PRODUCER_OUTPUT" = "$EXPECTED_PRODUCER_OUTPUT" ] \
+    || fail 'the probe program changed its topic order or endpoint serialization'
+fi
+
+if source_view_case producer-accumulated-discovery; then
+  # Discovery is accumulated: the program keeps spinning while the graph reports
+  # nothing and only emits once every topic has a publisher.
+  DISCOVERY_DIR="$(source_run_dir producer-accumulated-discovery)"
+  source_write_fake_rclpy "$DISCOVERY_DIR"
+  printf '%s\n' "$SOURCE_PROBE_PROGRAM" >"$DISCOVERY_DIR/probe.py"
+  set +e
+  DISCOVERY_OUTPUT="$(PROBE_TRACE="$DISCOVERY_DIR/trace" \
+    PROBE_SETTLE_AFTER=3 \
+    PYTHONPATH="$DISCOVERY_DIR/fake" \
+    python3 "$DISCOVERY_DIR/probe.py" 5 \
+      /mavros/state /mavros/global_position/raw/fix /mavros/imu/data \
+      /mavros/battery /mavros/rc/in 2>&1)"
+  DISCOVERY_RC=$?
+  set -e
+  [ "$DISCOVERY_RC" -eq 0 ] \
+    || fail "the accumulated-discovery probe exited $DISCOVERY_RC"
+  [ "$(grep -Fxc 'spin_once' "$DISCOVERY_DIR/trace")" -ge 4 ] \
+    || fail 'the probe program stopped spinning before the graph settled'
+  [ "$(grep -Fc 'Publisher count: 3' <<<"$DISCOVERY_OUTPUT")" -eq 5 ] \
+    || fail 'the probe program emitted a pre-discovery reading instead of the settled graph'
+  ! grep -Fq 'Publisher count: 0' <<<"$DISCOVERY_OUTPUT" \
+    || fail 'the probe program published a zero-publisher reading after settling'
+fi
+
+if source_view_case late-deadline-crossing; then
+  # A fresh probe that succeeds but consumes the parent budget is reported as
+  # deadline exhaustion, not as a late success.
+  LATE_DIR="$(source_run_dir late-deadline-crossing)"
+  set +e
+  LATE_OUTPUT="$(bash -c '
+    eval "$1"
+    RUN_DIR="$2"
+    STREAM="$3"
+    SECONDS=10
+    timeout() { printf "%s\n" "$STREAM"; SECONDS=40; return 0; }
+    log_error() { :; }
+    MAVROS_SOURCE_BATCH=1
+    mavros_source_view 30 /mavros/state >/dev/null
+    printf "view_returned=%s\n" "$?"
+  ' _ "$SOURCE_VIEW_FUNCTION" "$LATE_DIR" "$SOURCE_PROBE_STREAM" 2>&1)"
+  set -e
+  grep -Fxq 'view_returned=75' <<<"$LATE_OUTPUT" \
+    || fail 'a probe that consumed the parent budget was reported as a late success'
+fi
 
 printf 'PASS: Pi lifecycle, local-window, heartbeat, deadline, and monitored-hold contracts\n'
