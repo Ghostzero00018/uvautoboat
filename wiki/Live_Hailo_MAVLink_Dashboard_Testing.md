@@ -64,6 +64,26 @@ The tracked supervisor defaults to `HAILO_LOCAL_DISPLAY=1` and
 `HAILO_LOCAL_WINDOW_MODE=fullscreen`, and keeps the normal display path.
 Window outcome tracking remains through `HAILO_LOCAL_WINDOW` markers:
 `READY`, `FALLBACK_HEADLESS`, `FALLBACK_RESIZABLE`, and `EVIDENCE_UNAVAILABLE`.
+
+### Batched MAVROS source view
+
+`LIVE_MAVROS_SOURCE_BATCH` defaults to `0`. At the default the five MAVROS source
+checks run exactly as before, one `ros2 topic info --verbose --no-daemon --spin-time 2`
+process per topic per attempt. Set it to `1` in the Pi terminal before pasting the
+compound command to serve those checks instead from one run-owned `rclpy` participant
+that spins to accumulate discovery and answers all five topics from a single generation.
+
+The probe budget is split by `LIVE_PROBE_MAX_SECONDS` (default `6`, the outer hard
+bound) and `LIVE_PROBE_STARTUP_RESERVE` (default `3`, withheld for interpreter start,
+`import rclpy`, participant creation and teardown). The remainder is the spin budget;
+the bound must exceed the reserve. Raise both together on a slow host, keeping the bound
+larger.
+
+Each probe run records one `MAVROS_SOURCE_PROBE_RUN result=` line. `OK` carries the
+`bound`, `settle` and `reserve` actually used. `TIMEOUT` means the probe hit its own
+bound, which is a host startup-margin result and fails closed with a retry, not a
+deadline result. `INCOMPLETE` means the generation was partial or malformed. A view
+returning `75` is genuine parent-deadline exhaustion, which is a different condition.
 The removed measurement-only selectors are not part of current runtime commands.
 
 In fullscreen mode, the wrapper waits for the first upstream `imshow` and `waitKey`
@@ -85,8 +105,8 @@ verified the deployed helper checksum before launch. The Hailo image measured `7
 and `7.50 Hz`; each MAVROS topic measured approximately `1.00 Hz`. Both runs completed
 their Pi source windows, but the workstation dashboard stack became unavailable
 unexpectedly before the intended Pi-first stop in each run, without deliberate operator
-intervention. Fail-closed cleanup passed; the cause and clean Pi-first normal shutdown
-remain open.
+intervention. Fail-closed cleanup passed; the cause remains open. A clean Pi-first normal
+shutdown was obtained on 03/08/2026 and repeated on 04/08/2026.
 
 On 22/07/2026, the Pi desktop Hailo window and workstation dashboard displayed the same
 annotated stream simultaneously. The helper published at least `2,800` frames, all six

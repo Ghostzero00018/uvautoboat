@@ -71,8 +71,8 @@ approximately `1.00 Hz`. The detailed stale, disconnect, and inert-control
 behaviour matrix retains automated coverage but was not deliberately exercised
 in full during those live runs. In both runs the workstation dashboard stack
 became unavailable unexpectedly before the intended Pi-first stop, without
-deliberate operator intervention. Its cause and clean Pi-first normal shutdown
-remain open. Follow
+deliberate operator intervention. Its cause remains open; clean Pi-first normal shutdown
+was obtained on 03/08/2026 and repeated on 04/08/2026. Follow
 [Live Hailo and MAVROS Dashboard
 Testing](../../wiki/Live_Hailo_MAVLink_Dashboard_Testing.md) for the isolated
 two-command service order and safety boundary. For the separate RealSense

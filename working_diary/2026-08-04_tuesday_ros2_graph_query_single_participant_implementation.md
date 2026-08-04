@@ -1,9 +1,12 @@
 # Tuesday 04/08/2026 - single-participant ROS 2 source-view implementation
 
-> **PRE-DIARY - NOT STARTED.** Prepared at EOD 03/08/2026. This file does not
-> authorize code work. Start only after explicit approval. Tomorrow's main gate
-> is offline: no Pi, control box, browser, live service, hardware run, package
-> installation, disk cleanup, SITL, VRX, or command/write path.
+> **Prepared as a pre-diary at EOD 03/08/2026; superseded by the execution
+> record appended below.** As written it did not authorize code work, required
+> explicit approval to start, and scoped the day as offline: no Pi, control box,
+> browser, live service, hardware run, package installation, disk cleanup, SITL,
+> VRX, or command/write path. The day ran offline through Gate 4 as planned and
+> then, under separate approval, deployed the helper to the Pi and ran one
+> flag-off canary.
 
 ## Starting state
 
@@ -660,7 +663,7 @@ spin, removing the settle predicate, removing the view deadline check, weakening
 block validation, leaving the publication status unchecked, and merging the
 probe streams are all detected.
 
-### Final pins
+### Pins after this gate
 
 | Artifact | Size | SHA-256 |
 | --- | --- | --- |
@@ -668,7 +671,8 @@ probe streams are all detected.
 | `tools/live_dashboard_preflight.sh` | `28,647` bytes | `3d5a2cbbe91664ca520dd3e72e15d76dc96724a0ad5b56dc6b71582020f77a42` |
 
 All twelve operational surfaces were re-propagated in cascade order and each
-final pin was compared against the actual file. `Board.md` no longer carries the
+pin was compared against the actual file at this point; later corrections in
+this diary supersede these values. `Board.md` no longer carries the
 superseded "no correctness fix has been selected", "designed but unapproved and
 unimplemented", or "no episode reached a third attempt" statements, and the
 live-testing wiki now dates the pins to 04/08/2026 and states that a previously
@@ -738,7 +742,7 @@ Each fix was checked by reintroducing the defect on a scratch copy: reporting a
 probe timeout as deadline exhaustion, keeping the generation after a `75`, a
 wrong program path, and a single-topic argument list are all detected.
 
-### Final pins
+### Pins after the pre-live corrections
 
 | Artifact | Size | SHA-256 |
 | --- | --- | --- |
@@ -801,3 +805,116 @@ ordinary retry and three-attempt verdict, not as deadline exhaustion.
 
 The reserve and bound remain unmeasured on the Pi. They are configurable so a
 margin problem can be corrected without editing the helper.
+
+## Deployment and flag-off canary run (04/08/2026)
+
+Both commits landed and were pushed: `63d6e9a` for the code and `c8a0ecd` for
+the documentation, leaving `HEAD == main == origin/main` with divergence `0/0`.
+
+### Pi runtime margin, measured
+
+The helper was transferred to the Pi Desktop and verified as
+`31bcee05d3d664d4b825648cfac1edd2c116becd1da87108113f1de89d1f56aa`. On the Pi
+desktop session:
+
+- `DISPLAY=:0`;
+- `rclpy` resolves to `/opt/ros/jazzy/lib/python3.12/site-packages/rclpy/__init__.py`
+  under `/usr/bin/python3`, which is the interpreter the helper invokes;
+- a full `init` / `create_node` / `destroy_node` / `shutdown` cycle took
+  `1.701 s` real on an idle Pi.
+
+That is the quantity no offline check could supply. Against the `3 s` startup
+reserve it leaves roughly `1.3 s` of slack, so the defaults were kept for the
+canary. The measurement is idle-state only; the same cycle under Hailo, MAVROS,
+MAVProxy and thermal-watchdog load is unmeasured.
+
+### Canary result, flag off
+
+Workstation supervisor `live_dashboard_workstation_20260804_172253`, Pi run
+`live_dashboard_20260804_172331`.
+
+| Marker | Value |
+| --- | --- |
+| `WORKSTATION_RUNTIME_PREFLIGHT` | `PASS helper=verified ssid=IoT IMT Nord Europe dev=wlp147s0 ipv4=10.120.2.168` |
+| `WORKSTATION_SERVICES` | `UP ports=8002,8080,9090 nodes=rosbridge,rosapi,web_video_server` |
+| `PI_DATA_ARRIVED` | `PASS topics=6 elapsed=272s` |
+| `W5_RATE_PROBES` | `PASS topics=6 duration_each=10s` |
+| `WORKSTATION_TEARDOWN` | `PASS` |
+| Workstation exit | `status=0 failed_phase=none cleanup_rc=0` |
+| Pi stop phase | `live-hold`, `PI_SOURCE_HOLD=STOP operator-requested` |
+| Pi teardown | `TEARDOWN=PASS`, all four children stopped |
+| Pi exit | `status=0 failed_phase=none cleanup_rc=0` |
+
+Measured rates: `/hailo/overlay/image_raw` at `7.56 Hz` on arrival and `7.42 Hz`
+on the rate probe; all five MAVROS source topics at `1.00 Hz` with interval
+standard deviations between `19.71 ms` and `33.32 ms`. Supervision ran about
+`349 s` between the rate probes passing and the operator interrupt; the whole
+workstation session was about `13` minutes.
+
+The Pi reached the monitored hold and stopped on operator request, so the source
+window completed. Stop order was Pi, then browser, then workstation.
+
+### What this canary does and does not establish
+
+It establishes that the seam replacement did not regress the flag-off path: the
+full two-command lifecycle ran end to end, six topics arrived and sampled at
+nominal rates, and both supervisors exited `0` with clean teardown.
+
+It does not yet establish the Pi-side graph-query figures. The
+`MAVROS_SOURCE_PROBE_RUN` absence check, the `PI_SOURCE_WINDOW=COMPLETE`
+`monitored`/`target` pair, and the `MAVROS_SOURCE_EVIDENCE` count against the
+`14`-reading / `11`-episode baseline were not extracted before the session
+ended. Those live only in the Pi run directory and were extracted the same
+day; see "Canary Pi-side figures" below.
+
+Browser-last ordering is still not obtained: the browser was closed after the Pi
+but before the workstation, so it did not outlive both signals.
+
+No enabled-flag run was performed. The batched path remains unexercised live.
+
+### Canary Pi-side figures
+
+The Pi run directory was copied to the workstation at
+`~/Desktop/pi_run_evidence/live_dashboard_20260804_172331` and the missing
+figures extracted.
+
+| Check | Result |
+| --- | --- |
+| `MAVROS_SOURCE_PROBE_RUN` records | `0` |
+| `$RUN_DIR/source_view` cache | absent |
+| `mavros_source_probe.py` artifact | present, `1,316` bytes, never executed |
+| `PI_SOURCE_WINDOW` | `COMPLETE target=120s monitored=120s final_verification=115s elapsed=235s peak=65C` |
+| `MAVROS_SOURCE_EVIDENCE` headers | `2` (plus `40` raw continuation lines) |
+| publisher-count-zero readings | `2` |
+| identity-unknown readings | `0` |
+| episodes reaching attempt 3 | `0`; terminal data-plane probe never fired |
+| `PI_SUPERVISOR_EXIT status=0` | `1` |
+| Thermal peak | `68,300` mC, below the `80 C` abort |
+| MAVROS topics at readiness | `29` |
+
+Two independent witnesses confirm the batched path did not run: no probe-run
+record, and no cache directory. The generated probe file was materialized as
+designed and left unexecuted, which also proves the top-level heredoc works on
+the Pi.
+
+`monitored=120s` equals `target=120s`, so the window was not truncated. Final
+verification used `115 s` of its `180 s` budget.
+
+The two non-verifying readings were distinct episodes, both `attempt=1`, both
+`query_rc=0`, both `publisher count 0`, and both recovered silently on attempt
+two:
+
+- `/mavros/imu/data` during the live window;
+- `/mavros/battery` during the monitored hold.
+
+### The defect recurred, and the control is highly variable
+
+This is a flag-off control, so it measures the existing CLI path. The defect
+recurred, which is the expected outcome and keeps the run comparable.
+
+Per-run non-verifying reading counts now stand at `11`, `3` and `2` across the
+two 03/08/2026 runs and this one. That spread is the important result for
+planning: a control that varies between `2` and `11` readings per run cannot be
+distinguished from a modest improvement using three enabled runs. Any reduction
+observed tomorrow inside that range is not evidence of a fix, and the comparison
+design has to acknowledge it rather than report a difference of means.

@@ -45,7 +45,7 @@ Welcome to the **AutoBoat Wiki**! This documentation provides comprehensive guid
 - **[YOLO Dataset Plan](YOLO_Dataset_Plan)** — object-detection dataset plan for Pi 5 RealSense frames, workstation GPU training, NCNN export, and Pi-side validation gates.
 - **[Hailo HAT Workstream Memo](Hailo_HAT_Workstream)** — active accelerator branch for the Raspberry Pi AI HAT+ 13 TOPS board, including RealSense compatibility, Ubuntu/Jazzy version gates, HEF export risk, the proven runtime baseline, and next integration gates.
 - **[Pi Hailo COCO-Overlay Demo](Hailo_COCO_Overlay_Demo)** — reproducible build-and-run procedure for the Pi 5 + Hailo-8L live detection overlay (stock COCO `yolov11n`), with a temperature-guarded launcher and how a custom detector plugs in.
-- **[Live Hailo and MAVROS Dashboard Testing](Live_Hailo_MAVLink_Dashboard_Testing)** — bounded view-only two-command procedure proven on `IoT IMT Nord Europe` with the stock-COCO overlay and five live MAVROS feeds; normal Pi-first shutdown and full endurance remain open.
+- **[Live Hailo and MAVROS Dashboard Testing](Live_Hailo_MAVLink_Dashboard_Testing)** — bounded view-only two-command procedure proven on `IoT IMT Nord Europe` with the stock-COCO overlay and five live MAVROS feeds; full endurance remains open.
 - **[MP + QGC Update Procedures](MP_QGC_Update_Procedures)** — host-local update workflow for Mission Planner (under Mono on Linux) and QGroundControl (AppImage). Includes how to check for newer builds + the SkiaSharp / libdl fix re-apply step after MP updates.
 
 ### 🐛 Troubleshooting & Security
