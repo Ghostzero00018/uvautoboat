@@ -977,3 +977,34 @@ evidence was placed inside the repository.
 
 One documentation gap is left open deliberately: `wiki/Roadmap.md` still has no
 entries for the sessions between 22/07/2026 and 24/07/2026.
+
+## Day-close revision correction (04/08/2026)
+
+The Commits table and the revision line above are one commit short. They were
+written into the commit that closed the day, so the state they describe stopped
+being current at the moment they were committed. The entries above are left
+unchanged; this section carries the corrected figures.
+
+The day produced **five** commits, not four:
+
+| Commit | Content |
+| --- | --- |
+| `63d6e9a` | batched MAVROS source view, its coverage, and the pin cascade |
+| `c8a0ecd` | implementation record, pins, corrected statuses |
+| `12bcc6a` | canary results, superseded statuses, 05/08 plan |
+| `3bfcdde` | superseded lifecycle status across the wiki and `Board.md` |
+| `0169553` | this documentation pass and the 05/08 starting-state pin |
+
+The final state is `HEAD == main == origin/main == 0169553` with divergence
+`0/0`, verified after the push. Both focused suites pass, `git diff --check` is
+clean, and the production pins are unchanged from the values recorded above:
+`tools/pi_live_hailo_mavlink_dashboard.sh` at `71,501` bytes /
+`31bcee05d3d664d4b825648cfac1edd2c116becd1da87108113f1de89d1f56aa`, and
+`tools/live_dashboard_preflight.sh` at `28,647` bytes /
+`958000f4fdae071a2f24a4864d81f88ed885bb8ed1ad71b6ed60eda3111a6877`.
+
+The same pattern was handled correctly earlier in this diary, where the
+`6f9dfde` preparation note is explicitly separated from the `123d882`
+operational starting revision. A day-close revision line has the same exposure
+and needs the same treatment: a self-describing hash is stale unless it is
+written knowing the commit that will carry it, or corrected afterwards.

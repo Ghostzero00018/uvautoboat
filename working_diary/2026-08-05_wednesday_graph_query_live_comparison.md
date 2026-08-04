@@ -8,9 +8,11 @@
 
 ## Starting state
 
-- Clean `main` at `3bfcdde`, the last of four 04/08/2026 commits: `63d6e9a`
-  carries the batched source view, `c8a0ecd`, `12bcc6a` and `3bfcdde` the
-  documentation.
+- Clean `main` at `0169553`, the last of five 04/08/2026 commits: `63d6e9a`
+  carries the batched source view; `c8a0ecd`, `12bcc6a`, `3bfcdde` and
+  `0169553` the documentation. Certify `HEAD == main == origin/main == 0169553`
+  with divergence `0/0` before starting. If `HEAD` is later, inspect every
+  intervening commit first.
 - Operator reference for the flag and the probe budget is the "Batched MAVROS
   source view" section of
   [Live_Hailo_MAVLink_Dashboard_Testing](Live_Hailo_MAVLink_Dashboard_Testing).
@@ -42,10 +44,17 @@ Pi desktop terminal, nothing else running:
 
 ```bash
 RUN=~/hailo_coco_overlay_2026-07-10/logs/live_dashboard_20260804_172331
+[ -f "$RUN/mavros_source_probe.py" ] \
+  || RUN=~/Desktop/pi_run_evidence/live_dashboard_20260804_172331
 time python3 "$RUN/mavros_source_probe.py" 3 \
   /mavros/state /mavros/global_position/raw/fix /mavros/imu/data \
   /mavros/battery /mavros/rc/in
 ```
+
+The first path is the run directory the helper wrote; the second is the copy
+taken at day close on 04/08. If neither exists the probe was not preserved, and
+Block A is replaced by regenerating it from a fresh `--preflight-only` run
+before any live time is spent.
 
 Expected with no MAVROS running: five `TOPIC:` blocks, each with
 `Publisher count: 0` and no endpoint records, exit `0`, and a real time near
@@ -96,12 +105,23 @@ Feasibility acceptance:
 - final verification inside its budget;
 - clean teardown and `status=0`.
 
-Failure classification:
+Failure classification. The helper emits five `result=` values; all five need a
+reading, because the extraction above will surface whichever occurs:
 
+- `result=OK` is the feasibility case above.
 - `result=TIMEOUT` is a startup-margin result; raise the two budget variables,
   keeping the bound above the reserve.
 - `result=INCOMPLETE` is a partial or malformed generation; keep the raw
   diagnostics.
+- `result=FAILED` is the probe running and not producing a usable generation.
+  This is a defect in the batched path, not a capacity result, so do not raise
+  the budgets in response. Keep the raw output and stop after the run.
+- `result=SKIPPED` means the batched path did not execute at all. Treat the run
+  as void for feasibility: check that `LIVE_MAVROS_SOURCE_BATCH=1` was exported
+  in the same shell that ran the pasted command, since the flag defaults to `0`
+  and an unexported flag reproduces the 04/08 canary rather than testing
+  anything new. `0` `MAVROS_SOURCE_PROBE_RUN` records and no `source_view` cache
+  are the same two witnesses used on 04/08 to confirm a flag-off run.
 - A view returning `75` is genuine parent-deadline exhaustion, not a probe
   timeout.
 - `monitored=` shorter than `target=` is a truncated window; the run is void.
