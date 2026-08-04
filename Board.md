@@ -26,9 +26,11 @@
 > Pi thermal peaks were `68.3 C` and `67.2 C`, and both Pi log directories were
 > copied back. In both runs the workstation dashboard stack ended before the
 > intended Pi-first stop, and fail-closed Pi and workstation teardown markers
-> passed. The initiating event, cross-host causal order, normal Pi-first lifecycle
-> acceptance, post-teardown temperature, full endurance, optimized transport,
-> GPS fix, and any FCU write remain open.
+> passed. The initiating event and cross-host causal order remain open. Normal
+> Pi-first lifecycle acceptance and post-teardown temperature were obtained on
+> 03/08/2026 and repeated on 04/08/2026, as recorded further down this block.
+> Browser-last ordering, full endurance, optimized transport, GPS fix, and any
+> FCU write remain open.
 >
 > **22/07/2026 live update:** the stock-COCO annotated view ran simultaneously in
 > the Pi desktop window and workstation dashboard. The tracked helper now provides

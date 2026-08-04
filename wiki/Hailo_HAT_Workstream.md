@@ -363,9 +363,10 @@ runs the workstation dashboard stack became unavailable unexpectedly before
 the intended Pi-first stop, without deliberate operator intervention. The Pi
 correctly failed closed when rosbridge/rosapi disappeared and then reported
 `TEARDOWN=PASS`; workstation teardown also passed. This proves fail-closed
-cleanup, not the required normal Pi-first operator shutdown. The cause,
-post-teardown temperature, full endurance, optimized transport, GPS fix, and
-every FCU write remain open.
+cleanup, not the required normal Pi-first operator shutdown. That cause remains
+open. A normal Pi-first operator shutdown with post-teardown temperature was
+obtained on 03/08/2026 and repeated on 04/08/2026. Browser-last ordering, full
+endurance, optimized transport, GPS fix, and every FCU write remain open.
 
 ## Still Out Of Scope For The Custom-Detector Track
 

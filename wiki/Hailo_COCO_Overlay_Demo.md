@@ -386,9 +386,11 @@ and `67.2 C`; both Pi run directories were copied back to the workstation.
 In both runs the workstation dashboard stack became unavailable unexpectedly
 before the intended Pi-first stop, without deliberate operator intervention.
 Pi and workstation teardown markers passed fail-closed, but this is not the
-required normal Pi-first operator shutdown. The cause, post-teardown
-temperature, full endurance, optimized transport, GPS fix, custom-detector
-calibration/accuracy/live integration, and every FCU write remain open.
+required normal Pi-first operator shutdown. That cause remains open. A normal
+Pi-first operator shutdown with post-teardown temperature was obtained on
+03/08/2026 and repeated on 04/08/2026. Browser-last ordering, full endurance,
+optimized transport, GPS fix, custom-detector calibration/accuracy/live
+integration, and every FCU write remain open.
 
 That diagnostic does not replace or modify the canonical `hailo_coco_demo.sh`
 procedure documented here.
