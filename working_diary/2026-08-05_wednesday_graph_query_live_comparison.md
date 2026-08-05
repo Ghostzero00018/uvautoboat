@@ -687,3 +687,38 @@ The lower trigger of the graph race, browser-last ordering, the
 `live_dashboard_20260724_175832` cumulative timing cause, and the never-fired
 terminal data-plane probe all remain open. Task 2 stays retired, and Task 3
 stays behind the powered-off, propellers-removed wiring gate.
+
+## Evidence copy verified (05/08/2026)
+
+The Pi run directory was copied to the workstation at
+`~/Desktop/pi_run_evidence/live_dashboard_20260805_163818` - `22` files, `912K` -
+together with a checksum manifest generated on the Pi before the transfer. All
+`22` files verify `OK` against it. The 23/07/2026 evidence copy was recorded as
+having had no remote-versus-local comparison run; this one has.
+
+The copied `source_view` directory is a third witness that the flag was live,
+independent of the log. On 04/08/2026 the absence of that directory was one of
+the two witnesses of a flag-off run. Here it is present:
+
+| Artifact | Size | What it shows |
+| --- | ---: | --- |
+| `probe.err` | `0` bytes | Across all `18` probe runs the program wrote nothing to standard error |
+| `pending` | `0` bytes | The final generation was fully consumed - all five entries served, so the next phase would have probed again |
+| `probe.out` | `2,413` bytes | The last run's raw payload |
+
+### The payload contract is verified against real data
+
+`probe.out` carries five `TOPIC:` blocks, each reporting `Publisher count: 1`,
+each with one publisher endpoint under namespace `/mavros` and its own GID. Node
+names are `sys` for `/mavros/state` and `/mavros/battery`, then
+`global_position`, `imu` and `rc` - matching the plugin allowlist the helper
+writes at `:1357-1365`.
+
+Field order is `Node name`, `Node namespace`, `Topic type`, `Topic type hash`,
+`Endpoint type`, `GID`, then the QoS block. That is exactly the order the
+corrected Gate 3 payload contract required and the order the existing Bash
+identity parser consumes. Until now it had only ever been produced by the fake
+module in the focused suite; it is now confirmed from `str(TopicEndpointInfo)`
+on the Pi against a real MAVROS graph.
+
+This does not extend any Block B claim. It is the same run, better evidenced.
