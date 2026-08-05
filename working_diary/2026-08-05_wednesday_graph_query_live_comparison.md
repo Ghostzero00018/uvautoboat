@@ -527,3 +527,163 @@ ever run against the fake module.
   not reproduced and today's is the better basis.
 - Nothing here bears on the graph race, its lower trigger, browser-last ordering,
   or the separate cumulative timing cause.
+
+## Block B executed - first enabled run (05/08/2026)
+
+Operator-run. Workstation supervisor `live_dashboard_workstation_20260805_163802`
+in W1, logs at `/home/ghostzero/Desktop/live_dashboard_workstation_20260805_163802`;
+Pi run `live_dashboard_20260805_163818`, logs at
+`/home/imt-aqua-drone/hailo_coco_overlay_2026-07-10/logs/live_dashboard_20260805_163818`.
+`LIVE_MAVROS_SOURCE_BATCH=1` exported in the Pi shell that ran the pasted
+compound command. Budgets left at their defaults: every probe-run summary reports
+`bound=6s settle=3s reserve=3s`. Stop order was Pi, then browser, then
+workstation, matching 04/08/2026.
+
+### Probe outcomes
+
+| Result | Count |
+| --- | ---: |
+| `OK` | `18` |
+| `TIMEOUT` | `0` |
+| `INCOMPLETE` | `0` |
+| `FAILED` | `0` |
+| `SKIPPED` | `0` |
+
+Every summary carries `topics=5`, so each probe run served all five source
+topics from one participant. No probe hit its bound and no generation was
+rejected.
+
+The flag-took witness is unambiguous. `PI_SOURCE_STACK_READY=PASS` is at line
+`67`; the self-test summary follows at line `70`, `2.4 s` later, exactly where
+`:2020` places it. Four further summaries precede readiness at lines `22`, `39`,
+`48` and `65` - the two pre-readiness invocation groups and their retries - and
+the rest fall in the window, final verification and the monitored hold. All four
+invocation groups therefore exercised the batched path.
+
+### Window, verification and lifecycle
+
+`PI_SOURCE_WINDOW=COMPLETE target=120s monitored=120s final_verification=85s
+elapsed=205s peak=66C`.
+
+`monitored` equals `target`, so the window was not truncated. Final verification
+used `85 s` of its `180 s` budget. Thermal peak `66 C`, below the `80 C` abort.
+`PI_SUPERVISOR_EXIT status=0` appears once. On the workstation,
+`W5_RATE_PROBES=PASS topics=6 duration_each=10s` with
+`/hailo/overlay/image_raw` at `7.40 Hz` (`N=73`, interval mean/std
+`135.17`/`20.82 ms`) and all five MAVROS topics at `1.00 Hz` with interval
+standard deviations between `20.01` and `30.09 ms`;
+`WORKSTATION_TEARDOWN=PASS` and
+`SUPERVISOR_EXIT status=0 trigger=signal signal=INT stop_phase=supervision
+failed_phase=none cleanup_rc=0`.
+
+### Feasibility verdict - PASS
+
+All four acceptance conditions hold:
+
+- the batched path ran on the Pi against real `rclpy`, `18` runs, no failure of
+  any kind;
+- it stayed inside its budget at the shipped defaults, with no `TIMEOUT`;
+- it served all five topics from one participant per run;
+- the source window and final verification completed intact, with clean teardown
+  and `status=0` on both supervisors.
+
+### The populated endpoint path is now exercised
+
+Block A left this open: every count was zero, so an endpoint record had never
+been serialized from real data. This run closes it. Sixteen serves returned
+populated blocks that passed validation, which requires a publisher endpoint
+record carrying node name, namespace and GID whenever the count is above zero.
+`str(TopicEndpointInfo)` therefore round-trips through the generation, the cache
+and the existing Bash identity parser on real output.
+
+### The race still occurs under the batched path
+
+Two non-verifying readings, both on `/mavros/state`, both `attempt=1`, both
+`query_rc=0`, both `verdict=publisher identity temporarily unknown`, both before
+readiness, both recovered on attempt two:
+
+| Episode | Failing attempt | Recovery probe | Gap |
+| --- | --- | --- | ---: |
+| 1 | `1785940806.550` | `1785940809.186` | `2.6 s` |
+| 2 | `1785940830.508` | `1785940833.913` | `3.4 s` |
+
+Each failure discarded its generation and forced a fresh probe run on the next
+attempt, which is the consume-and-refresh contract behaving as designed and
+observed live for the first time.
+
+The failure mode is identity-unknown, not publisher-count-zero. The endpoint
+record existed and carried a GID, but the publisher's node identity had not
+resolved. Both modes were present in the combined 03/08/2026 baseline - `12`
+count-zero and `2` identity-unknown - so this is a known mode, not a new one.
+Batching the query did not prevent it.
+
+### Workstation interrupt noise
+
+Ctrl+C in W1 arrived while the supervisor was inside a `ros2 node list`
+monitoring query. The signal reached that child, which printed a
+`KeyboardInterrupt` traceback from `ros2cli` before the supervisor's own handler
+ran. Teardown then proceeded normally: all three children stopped,
+`WORKSTATION_TEARDOWN=PASS`, `failed_phase=none`, `cleanup_rc=0`, exit `0`. This
+is terminal noise from an interrupted child, not a supervisor defect. It is
+recorded because it was not seen on 04/08/2026, where the interrupt landed at a
+different moment.
+
+### Bounded Block B non-claims
+
+- **No reduction claim.** Per-run flag-off counts are `11`, `3` and `2`. This
+  enabled run produced `2`, which sits inside the control range and is
+  indistinguishable from it. One run cannot separate a modest improvement from
+  ordinary between-run variation, and today's design was never able to.
+- Final verification took `85 s` against `115 s` on 04/08/2026. These are single
+  samples from runs that differ in more than the flag, and the separate
+  `live_dashboard_20260724_175832` cumulative timing cause remains open. No
+  timing conclusion follows.
+- Feasibility does not mean the graph race is fixed or explained. It recurred in
+  this run.
+- The lower DDS/RMW/network trigger stays unidentified. Matching GIDs and
+  unresolved identities remain a proximate description, not a cause.
+- No episode reached attempt three, so `probe_mavros_source_dataplane` has still
+  never fired live.
+- Browser-last ordering is still not obtained; the browser was closed after the
+  Pi and before the workstation, matching 04/08/2026 by design.
+- Post-teardown temperature, endurance, GPS fix, detector quality and all FCU
+  write paths remain out of scope and were not exercised.
+
+## Block C - decision (05/08/2026)
+
+The feasibility question is answered and closed. The batched path is live-viable
+at shipped defaults. **No run count is scheduled.**
+
+### Why more runs of today's design would not settle anything
+
+The measured quantity is the wrong one. A control that ranges from `2` to `11`
+readings per run has a spread wider than any plausible effect, so separating a
+real improvement from noise would need on the order of ten runs per arm - many
+days of live time for a single number, with the boat, control box, workstation
+and operator occupied throughout.
+
+### What would make further enabled runs informative
+
+Three changes, in descending order of value, all design-only and none approved:
+
+1. **Pair the arms within one session.** The `11`, `3`, `2` spread is between
+   sessions, which suggests session-level conditions - network, DDS state,
+   participant history - dominate the variance. Alternating flag-off and flag-on
+   phases inside one run would hold those constant and remove the largest noise
+   term. This is the single highest-value change and it costs no extra live days.
+2. **Measure a lower-variance quantity.** Probe runs per verification phase is
+   deterministic and already logged: `1` on the clean path, `+2` per problematic
+   topic, against five CLI invocations per phase when the flag is off. Today's
+   `18` summaries with `topics=5` each are already this evidence. It measures the
+   design change directly rather than through the race it is meant to survive.
+3. **Record the failing mode, not just the count.** Today's two readings were
+   identity-unknown where 04/08's two were count-zero. A design that only counts
+   readings cannot see that shift, and the shift is more informative than the
+   count.
+
+### Open, unchanged
+
+The lower trigger of the graph race, browser-last ordering, the
+`live_dashboard_20260724_175832` cumulative timing cause, and the never-fired
+terminal data-plane probe all remain open. Task 2 stays retired, and Task 3
+stays behind the powered-off, propellers-removed wiring gate.
