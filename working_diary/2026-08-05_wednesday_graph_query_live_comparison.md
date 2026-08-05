@@ -411,3 +411,119 @@ Both are recorded now and neither is acted on until Block B is approved.
 - Nothing here bears on the graph race, its lower DDS/RMW/network trigger,
   browser-last ordering, or the separate `live_dashboard_20260724_175832`
   cumulative timing cause.
+
+## Block A executed - probe dry-run, offline (05/08/2026)
+
+Operator-run on the Pi desktop session at `15:14`-`15:25`, `imtaquadrone-desktop`,
+one terminal, nothing else started. The control box was powered but its supply is
+separate from the Pi's, and Block A used neither the FCU, the camera, the serial
+link, nor any service.
+
+### Preconditions
+
+| Check | Value |
+| --- | --- |
+| Conflicting processes | `NONE_RUNNING` |
+| Temperature | `56,750` mC / `56.75 C` |
+| Interpreter | `/usr/bin/python3` |
+| `rclpy` | `/opt/ros/jazzy/lib/python3.12/site-packages/rclpy/__init__.py` |
+| Probe file | `1,316` bytes, `571be8f5811488f8a47903f2857f62a82be54f126e562fea343bdb202207bff4`, verified `OK` on the Pi |
+
+The `rclpy` path is identical to the one recorded on 04/08/2026, so the probe
+resolves the same module the helper invokes. The primary run directory still held
+the probe, so the fallback extraction was not used.
+
+The Pi was not idle in the strict sense. Load average read `1.43, 0.51, 0.21` and
+then `1.53, 1.02, 0.47`, with `gnome-remote-desktop` and `gnome-shell` the only
+non-trivial consumers. The session was being driven over RDP, and an active
+remote-desktop encoder accounts for roughly one core of a four-core host. The
+figures below therefore include desktop-session cost rather than representing a
+bare idle host. `ps` reports average CPU since process start, so its `5.7` percent
+for the encoder understates its instantaneous share.
+
+### First attempt did not run
+
+The first pass at the timed block produced
+`python3: can't open file '/mavros_source_probe.py'` three times, `exit=2`, real
+time `0.05 s`. `RUN` was unset in that shell, so the path expanded to root. The
+timed block had been written to depend on shell state established two steps
+earlier instead of setting what it needs. Nothing executed, no measurement was
+taken and no state changed. The block was reissued self-contained - environment,
+`RUN`, and an explicit `ABORT probe-not-found` guard in one paste - and that
+form is the one recorded above.
+
+### Timing
+
+Three runs, all `exit=0`, all five topics emitted in `MAVROS_SOURCE_TOPICS`
+declaration order, every `Publisher count: 0`, no endpoint lines, no
+`MAVROS_SOURCE_PROBE_RUN` marker. No hard stop triggered. Overhead is real time
+minus the `3 s` settle budget; because the bound is `settle + reserve`, the
+unused reserve equals the margin to the `6 s` hard bound.
+
+| Run | Real | User | Sys | Overhead | Margin to `6 s` |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 1, cold | `4.618 s` | `0.852 s` | `0.193 s` | `1.618 s` | `1.382 s` |
+| 2, warm | `4.116 s` | `0.888 s` | `0.127 s` | `1.116 s` | `1.884 s` |
+| 3, warm | `4.076 s` | `0.858 s` | `0.117 s` | `1.076 s` | `1.924 s` |
+
+Cold-to-warm delta is `0.52 s` of page-cache warming. Warm overhead is stable at
+`1.08`-`1.12 s`, about a third of the `3 s` reserve.
+
+### Verdict - defaults retained
+
+Block B runs at `LIVE_PROBE_MAX_SECONDS=6` and `LIVE_PROBE_STARTUP_RESERVE=3`.
+
+The warm runs are the relevant samples. By the time
+`mavros_source_probe_selftest` fires at `:2020`, the helper has already run
+`initial_graph_gate`, `require_publisher_count` and the
+`ros2_graph_query topic list` at `:2011`; each is a `ros2` CLI invocation that
+imports `rclpy` through the same interpreter, so page cache is warm at the
+self-test by construction.
+
+Total CPU is about `1.0 s` against `4.1 s` wall, so the probe is not CPU-bound -
+the `3 s` spin is wall-clock inside `spin_once`, and additional load can inflate
+only the `~1.1 s` startup and teardown portion. That portion would have to
+roughly triple to consume the reserve. Keeping the defaults also makes the first
+enabled run a test of the shipped configuration rather than of a hand-raised one,
+which is the stronger feasibility claim. If the budget is nevertheless too tight,
+the failure is loud, early and safe: the self-test is followed by `|| die`, so it
+aborts at a known point instead of truncating the window, and that outcome is
+itself the capacity result.
+
+### Correction to the self-test failure rule
+
+`mavros_source_probe_selftest` is called with deadline `0` at `:2020`. With a
+zero deadline, `mavros_source_probe_generation` skips its deadline branch
+entirely, so `SKIPPED` is unreachable there, and the timeout branch's
+`[ "$deadline" -ne 0 ]` guard cannot fire either. The self-test returns only `0`
+or `1`; it can never return `75`. A `75` can only arise from a later
+deadline-bearing call. `TIMEOUT` at the self-test takes the `8`/`5` raise;
+`FAILED` and `INCOMPLETE` are defects and must not be answered with a budget
+raise.
+
+### What Block A establishes
+
+The probe has now executed against real `rclpy` on the Pi. Interpreter
+resolution, `import rclpy`, argument parsing, node creation, the spin loop,
+serialization and teardown all work, and a zero-publisher graph correctly yields
+`Publisher count: 0` with exit `0` rather than failing closed. That path had only
+ever run against the fake module.
+
+### Bounded Block A non-claims
+
+- The populated path is untested. Every count was zero, so
+  `get_publishers_info_by_topic` was never observed returning an endpoint and
+  `str(TopicEndpointInfo)` was never serialized against real data. The block
+  validation requiring node name, namespace and GID has still never run on real
+  output. Block B is the first test of it.
+- The measurement includes RDP desktop-session load and excludes Hailo, MAVROS,
+  MAVProxy, the thermal watchdog and the heavier encoder load of a live video
+  window. It is a floor for Block B conditions, not a prediction of them.
+- The `1.701 s` idle lifecycle figure recorded on 04/08/2026 covers `init`,
+  `create_node`, `destroy_node` and `shutdown`. Today's `1.08`-`1.12 s` covers
+  all of that plus interpreter start, `import rclpy`, gather and serialization -
+  a strictly larger scope, yet a smaller number. Today's figure is three samples
+  of the real program; the earlier one was a single sample. The earlier figure is
+  not reproduced and today's is the better basis.
+- Nothing here bears on the graph race, its lower trigger, browser-last ordering,
+  or the separate cumulative timing cause.
