@@ -79,11 +79,22 @@ bound) and `LIVE_PROBE_STARTUP_RESERVE` (default `3`, withheld for interpreter s
 the bound must exceed the reserve. Raise both together on a slow host, keeping the bound
 larger.
 
-Each probe run records one `MAVROS_SOURCE_PROBE_RUN result=` line. `OK` carries the
-`bound`, `settle` and `reserve` actually used. `TIMEOUT` means the probe hit its own
-bound, which is a host startup-margin result and fails closed with a retry, not a
-deadline result. `INCOMPLETE` means the generation was partial or malformed. A view
-returning `75` is genuine parent-deadline exhaustion, which is a different condition.
+Each probe run records one `MAVROS_SOURCE_PROBE_RUN result=` line, and the helper can emit
+five values:
+
+| Value | Meaning | Response |
+| --- | --- | --- |
+| `OK` | Generation published; carries the `bound`, `settle` and `reserve` actually used | None |
+| `TIMEOUT` | The probe hit its own bound. A host startup-margin result, not a deadline result; fails closed and retries | Raise `LIVE_PROBE_MAX_SECONDS` and `LIVE_PROBE_STARTUP_RESERVE` together, keeping the bound larger |
+| `INCOMPLETE` | The generation was partial or malformed; the offending topic is named | Keep the raw diagnostics. A defect - do not raise the budgets |
+| `FAILED` | The probe ran and produced nothing usable: `reason=cache-unavailable`, a bare `probe_rc=<n>`, `reason=staging`, or `reason=publication` | Keep the raw diagnostics. A defect - do not raise the budgets |
+| `SKIPPED` | `reason=deadline-exhausted`: the parent deadline had one second or less left, so the probe was not started. Only reachable while the batched path is active | None; the ordinary retry and verdict path applies |
+
+A view returning `75` is genuine parent-deadline exhaustion, which is a different condition.
+A run with the flag off emits **no** `MAVROS_SOURCE_PROBE_RUN` line at all and leaves no
+`source_view` cache directory; those two absences together are what identify a flag-off run.
+The pre-window self-test is called with a zero deadline, so it can return only success or a
+fail-closed error - never `75`.
 The removed measurement-only selectors are not part of current runtime commands.
 
 In fullscreen mode, the wrapper waits for the first upstream `imshow` and `waitKey`
