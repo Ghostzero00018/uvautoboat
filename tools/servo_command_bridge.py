@@ -8,11 +8,11 @@ This node contains three distinct MAVLink/ROS 2 paths over UDP:
 * Supported inbound path: FCU/SITL ``SERVO_OUTPUT_RAW`` messages drive
   /wamv/thrusters/{left,right}/thrust (and optionally /cmd_vel).
 * Unconditional outbound heartbeat: a 1 Hz HEARTBEAT is sent to the configured
-  MAVLink output. Nothing in Monday's topology binds that output, so the
+  MAVLink output. Nothing in the supported topology binds that output, so the
   heartbeat is unconsumed there.
 * Optional outbound sensor injection: the /gps/fix and /imu/data path exists but
   is unsupported, unvalidated, and disabled by default. Keep
-  publish_sensors:=false for Monday.
+  publish_sensors:=false.
 
 The supported inbound path is the point of the exercise: the autopilot computes
 its servo outputs and those drive the simulated thrusters.
@@ -32,15 +32,25 @@ Differences from the C++ reference (deliberate)
   convention for a companion computer and avoids impersonating the vehicle.
 * Default component id is the standard onboard-computer id rather than an ad-hoc
   value, so the node cannot be mistaken for the autopilot on the same system id.
-* Servo decoding defaults to LEFT = SERVO3 and RIGHT = SERVO1. PWM normalisation
-  uses a provisional SITL starting profile (1100/1500/1900) that must be
-  confirmed from the parameter listing; the real boat's 800/800/2200 profile
-  remains available through explicit parameter overrides.
+* Servo decoding defaults to LEFT = SERVO3 and RIGHT = SERVO1, which is the
+  REAL BOAT's mapping. Rover SITL is the mirror image: it assigns
+  SERVO1_FUNCTION 73 (ThrottleLeft) and SERVO3_FUNCTION 74 (ThrottleRight), so
+  the defaults decode left and right INVERTED against a stock SITL instance.
+  Measured 07/08/2026 on ArduRover 4.6.3 with frame motorboat-skid; the enum
+  lives in libraries/SRV_Channel/SRV_Channel.h. Always set the channels from
+  the observed SERVO*_FUNCTION values rather than relying on these defaults.
+* The PWM defaults (1100/1500/1900) match NEITHER platform. Measured Rover
+  SITL is 1000/1500/2000 (neutral at mid-scale, so reverse is available); the
+  real boat is 800/800/2200 (neutral at the BOTTOM, so there is no reverse).
+  Emitting a mid-scale neutral at the real boat commands roughly half thrust
+  on both thrusters while the caller believes it commanded zero. Read the
+  rail from the live parameter listing every time; do not trust any
+  hard-coded profile, including these defaults.
 * Thrust is published on the project's own VRX topics
   (/wamv/thrusters/{left,right}/thrust, Float64 newtons). /cmd_vel is optional and
   off by default.
 * Outbound GPS/IMU injection towards the autopilot is unsupported and not
-  validated for the Monday SITL-to-VRX path. Keep publish_sensors:=false.
+  validated for the SITL-to-VRX path. Keep publish_sensors:=false.
 * The receive loop uses a bounded wait and shuts down cleanly instead of blocking
   forever on a socket that is closed underneath it.
 
@@ -51,9 +61,9 @@ Safety
 * It publishes on /wamv/thrusters/*, which the Pi safety monitor treats as
   protected command topics. If this bridge and the live Pi helper are discoverable
   in the same ROS domain, the helper will abort on the first protected thrust
-  message. Monday must keep the Pi stack down and use a separate explicitly
+  message. Any run must keep the Pi stack down and use a separate explicitly
   isolated ROS_DOMAIN_ID.
-* Outbound GPS/IMU injection is outside the supported Monday path. Keep
+* Outbound GPS/IMU injection is outside the supported path. Keep
   publish_sensors:=false; do not enable it for this run.
 
 Usage
@@ -71,22 +81,31 @@ At the MAVProxy prompt, inspect all channel functions before starting the bridge
     param show SERVO*_MAX
 
 Select ``left_servo_channel`` and ``right_servo_channel`` from the observed
-assignments rather than assuming fixed channel numbers. Replace the example
-channel and PWM values below with the confirmed values.
+assignments rather than assuming fixed channel numbers. Function 73 is
+ThrottleLeft and 74 is ThrottleRight on both platforms; only the channel
+numbers carrying those functions differ. Replace the example values below
+with the confirmed ones.
 
 Use the same isolated domain for VRX and every bridge/query terminal. Start VRX
-alone rather than the complete live-boat launch, then run:
+alone rather than the complete live-boat launch.
+
+Against stock Rover SITL, the values measured on 07/08/2026 are:
 
     export ROS_DOMAIN_ID=42
     python3 tools/servo_command_bridge.py --ros-args \
-        -p left_servo_channel:=3 -p right_servo_channel:=1 \
-        -p pwm_min:=1100 -p pwm_neutral:=1500 -p pwm_max:=1900 \
+        -p left_servo_channel:=1 -p right_servo_channel:=3 \
+        -p pwm_min:=1000 -p pwm_neutral:=1500 -p pwm_max:=2000 \
         -p max_thrust:=800.0 -p publish_sensors:=false
 
-The decimal in ``800.0`` is required by the declared ROS parameter type. To use
-the real boat's PWM profile after confirming its servo assignments, also pass:
+The decimal in ``800.0`` is required by the declared ROS parameter type. The
+real boat's profile, which must never be combined with the SITL channel numbers
+above, is:
 
-    -p pwm_min:=800 -p pwm_neutral:=800 -p pwm_max:=2200
+    -p left_servo_channel:=3 -p right_servo_channel:=1 \
+        -p pwm_min:=800 -p pwm_neutral:=800 -p pwm_max:=2200
+
+Mixing a channel mapping from one platform with a rail from the other is the
+specific mistake this file previously documented; check both together.
 
 Requires rclpy and pymavlink (already used by tools/qgc_live_mission_bridge.py).
 """
