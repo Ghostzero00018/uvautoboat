@@ -256,6 +256,25 @@ Status row in §3 Phase 5 status table now records Path A landed 05/05/2026 and 
    ordering and the terminal data-plane probe remain unexercised. No
    command/write path was opened.
 
+   **07/08/2026 supersession:** a command path was opened **in simulation only**.
+   ArduPilot SITL is built and running on the workstation - `Rover-4.6.3` at
+   `3fc7011a`, frame `motorboat-skid`, matching the boat's skid-steer
+   configuration and the real controller's ArduRover `4.6.3` line - and its
+   MAVLink surface is verified read-only at `tcp:127.0.0.1:5760` with a MAVProxy
+   rebroadcast on `127.0.0.1:14550`. No command was sent to the simulator, the
+   vehicle stayed disarmed, no code was written, and **no command/write path to
+   any real autopilot was opened**. The verification produced two constraints the
+   eventual bridge must satisfy. SITL and the real boat assign the same throttle
+   functions (`73` left, `74` right) to **opposite channel numbers**, so a design
+   keyed on channel number is correct on exactly one of the two platforms.
+   And the PWM rails differ in kind, not only in value: SITL measures
+   `1000`/`1500`/`2000` with neutral at mid-scale, the real boat is
+   `800`/`800`/`2200` with neutral at the bottom, and `tools/servo_command_bridge.py`
+   defaults to `1100`/`1500`/`1900`, matching neither - so a bridge emitting the
+   simulator's neutral at the real vehicle would command substantial thrust while
+   believing it commanded zero. The written command-ingress contract is unstarted
+   and remains design-only.
+
 ---
 
 ## 4. Research Extensions — Architecture
@@ -685,3 +704,4 @@ Re-derive the bake-in commit if upstream changes the relevant section of `wamv_g
 | 17/07/2026 | §3 refreshed after two tracked-supervisor runs on `IoT IMT Nord Europe`. Both reached six-topic arrival and rate acceptance: the stock-COCO Hailo overlay measured `7.40/7.50 Hz`, while state, raw GPS, IMU, battery, and RC were near `1 Hz`; MAVROS stayed connected and disarmed, and the command sentinel observed zero messages on its five monitored command topics. During both runs, the operator confirmed the combined browser view. Pi thermal peaks were `68.3/67.2 C`, and both Pi run directories were copied back. The workstation dashboard stack became unavailable unexpectedly before the intended Pi-first stop in each run; both sides cleaned up fail-closed. The cause, normal Pi-first shutdown, post-teardown temperature, full endurance, optimized transport, GPS fix, custom-detector accuracy/calibration/live integration, and FCU writes remain open. |
 | 04/08/2026 | §3 supervisor row and §3 Blockers refreshed after `working_diary/2026-08-03` and `working_diary/2026-08-04`. The 17/07 lifecycle gap closed: normal Pi-first shutdown and post-teardown temperature were obtained 03/08/2026 and repeated 04/08/2026. Both 03/08 runs reproduced a daemonless graph-query defect where a fresh `ros2 topic info --verbose` process returns a successful but transiently incomplete snapshot. On 04/08/2026 a batched MAVROS source view landed behind `LIVE_MAVROS_SOURCE_BATCH` (off by default, `63d6e9a`): one run-owned `rclpy` participant spins to accumulate discovery and serves all five source topics from a single consume-once generation, with the flag-off path delegating byte-for-byte to the existing CLI query. A flag-off canary passed end to end and the defect recurred at `2` non-verifying readings; per-run control counts are now `11`, `3` and `2`. The batched path remains unexercised live, the lower DDS/RMW/network trigger is unidentified, and browser-last ordering, endurance, GPS fix, detector quality and all FCU write paths remain out of scope. Sessions between 22/07/2026 and 24/07/2026 are recorded in `Board.md` and the working diaries and are not restated here. |
 | 05/08/2026 | §3 supervisor row and §3 Blockers refreshed after `working_diary/2026-08-05`. The batched MAVROS source view was exercised live for the first time at shipped defaults and is feasible: `18` probe runs all `OK`, one run-owned participant serving all five source topics per run, a `120 s` window that was not truncated, final verification at `85 s` inside its `180 s` budget, and `status=0` on both supervisors. Its payload contract is now verified against real endpoint output. The graph-query defect recurred under the batched path, so the earlier "unexercised live" status is replaced by feasibility rather than by a fix; the per-run reading count sits inside the flag-off control range and no reduction is claimed. Browser-last ordering and the terminal data-plane probe remain unexercised. |
+| 07/08/2026 | §3 gains a 07/08/2026 supersession after `working_diary/2026-08-07`. A command path was opened in simulation only: ArduPilot SITL is built and running on the workstation (`Rover-4.6.3` at `3fc7011a`, frame `motorboat-skid`, `build/sitl/bin/ardurover`), reaching steady state with `Mode MANUAL`, `EKF3` active and `1283` parameters received while disarmed, and its MAVLink surface was verified read-only at `tcp:127.0.0.1:5760` with a MAVProxy rebroadcast on `127.0.0.1:14550`. No command was sent to the simulator, no code was written, and no command/write path to any real autopilot was opened. Two constraints for the eventual bridge were established from measured parameters rather than assumption: SITL and the real boat assign the same throttle functions (`73` left, `74` right) to opposite channel numbers, so a design keyed on channel number is correct on only one platform; and the PWM rails differ in kind, SITL measuring `1000`/`1500`/`2000` with neutral mid-scale against the real boat's `800`/`800`/`2200` with neutral at the bottom, while `tools/servo_command_bridge.py` defaults to `1100`/`1500`/`1900` and matches neither, so emitting the simulator's neutral at the real vehicle would command substantial thrust while appearing to command zero. The written command-ingress contract is unstarted and stays design-only. |
