@@ -275,6 +275,25 @@ Status row in §3 Phase 5 status table now records Path A landed 05/05/2026 and 
    believing it commanded zero. The written command-ingress contract is unstarted
    and remains design-only.
 
+   Later the same day the **first workstation-to-autopilot command path** in this
+   project was exercised, **against ArduPilot SITL on the workstation only and
+   never a real autopilot**. `MAV_CMD_DO_SET_SERVO` was ruled out from source -
+   `AP_ServoRelayEvents::do_set_servo` allowlists only `k_none`, `k_manual`,
+   sprayer, gripper and `k_rcin*`, so it returns `false` on `k_throttleLeft` `73`
+   and `k_throttleRight` `74`. `RC_CHANNELS_OVERRIDE` is the validated path, with
+   `RCMAP_ROLL 1` / `RCMAP_THROTTLE 3` read rather than assumed. `mode MANUAL`,
+   `arm throttle` and `disarm` were all `ACCEPTED`; RC override produced armed
+   idle `1500`/`1500`, throttle `1570`/`1570` (`delta +0`), steering
+   `1644`/`1496` (`delta +148`, mean `1570` with a `±74` differential), and a
+   clean return to `1500`/`1500`. This adds a third constraint that partly
+   supersedes the two above: **command at the RC or higher layer, not the raw
+   servo layer**, because the autopilot resolves SERVO function to physical
+   channel internally, so the SITL-versus-boat channel swap never reaches the RC
+   path and only affects raw-channel code such as `tools/servo_command_bridge.py`.
+   Simulator only: no command reached a real autopilot, no real thruster moved,
+   the boat's `800/800/2200` neutral-at-bottom rail means none of these PWM
+   figures transfer, and Block D remains unwritten.
+
 ---
 
 ## 4. Research Extensions — Architecture

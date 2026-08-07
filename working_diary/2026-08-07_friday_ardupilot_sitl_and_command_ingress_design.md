@@ -8,10 +8,13 @@
 > and no edit to `tools/pi_live_hailo_mavlink_dashboard.sh`.
 > **Scope correction:** the blocks above were planned and executed
 > workstation-only, and the day-close commit `6645b29` recorded the day as having
-> no Pi work. After that commit the operator directed a view-only live run with
-> the Pi and control box, and a set of view-only dashboard telemetry
-> improvements. Both are recorded in the sections at the end of this file, which
-> supersede the workstation-only statement for the day as a whole.
+> no Pi work. After that commit the operator directed three further pieces of
+> work: a view-only live run with the Pi and control box, a set of view-only
+> dashboard telemetry improvements, and a command exercise against ArduPilot SITL
+> on the workstation. All three are recorded in the sections at the end of this
+> file, which supersede both the workstation-only statement for the day as a
+> whole and Block C's statement that no command is sent to the simulator. No real
+> autopilot was commanded at any point.
 
 ## Starting state
 
@@ -707,6 +710,24 @@ a browser refresh without disturbing the running session.
 | GPS accuracy | not displayed | `mavlink-gps-accuracy`, horizontal RMS from `position_covariance`, `N/A` when `position_covariance_type` is `0` |
 | GPS fix | `Fix (0)` | `Fix (standard) (0)`, plus `Fix (SBAS)`, `Fix (GBAS)`, `No fix` |
 | System status | bare integer | `Critical (5)` by `MAV_STATE` name, warning badge at `5`, critical badge at `>= 6` |
+| Thrust output | not displayed | `mavlink-thrust-output` and a sixth freshness badge, from `/mavros/rc/out` (`mavros_msgs/RCOut`) |
+
+The thrust readout was added last, at the operator's request, to show live servo
+output in the browser. Three facts made it safe to add during the live posture:
+`rc_io` is already in the helper's MAVROS `plugin_allowlist`, so the topic
+publishes during a run; `/mavros/rc/out` is **not** one of the helper's five
+`COMMAND_TOPICS` (`/planning/mission_command`, `/planning/set_config`,
+`/planning/emergency_stop`, `/wamv/thrusters/left/thrust`,
+`/wamv/thrusters/right/thrust`), so subscribing cannot trip
+`reject_unexpected_command_subscribers` or `check_command_sentinel`; and the
+entry is subscribe-only.
+
+It renders **raw PWM with no conversion to a percentage**, deliberately: the rail
+differs between platforms and today's findings say it must be read, never
+assumed. Channel indices follow the **real boat** - `SERVO3` left, `SERVO1`
+right - which is the opposite of SITL, and that is stated in a source comment
+beside the constants. The focused suite's "exactly five read-only MAVROS topics"
+contract was updated to six with the reason recorded in the test itself.
 
 The system-status change is the substantive one. This vehicle reports
 `system_status: 5`, which is `MAV_STATE_CRITICAL` and has been an open item in
@@ -734,3 +755,129 @@ No file under `tools/` changed and both production pins are unchanged.
 **Next steps:** Block D, the command-ingress contract, still design only and
 still gated on explicit approval. A clean Pi-first lifecycle run remains
 unobtained.
+
+## First workstation-to-autopilot command path, simulator only (07/08/2026)
+
+Second forward correction. Block C above states that no command is sent to the
+simulator. The operator revised that boundary later the same day and directed a
+command exercise against SITL. This section records it and supersedes that
+sentence **for the simulator only**. No real autopilot was commanded at any
+point, and the real boat's standing gates are untouched.
+
+This is the first time in this project that anything has commanded an autopilot
+from the workstation.
+
+### Route
+
+Workstation MAVProxy `1.8.74` from `~/venv-ardupilot`, connected
+`udpin:0.0.0.0:14600`, against `sim_vehicle.py -v Rover -f motorboat-skid`
+started with an additional `--out=udp:127.0.0.1:14600`. Both ends on the
+workstation; nothing on the Pi, the control box or the FCU was involved.
+
+### Two mechanisms checked before running anything
+
+- **`MAV_CMD_DO_SET_SERVO` cannot drive these thrusters.**
+  `AP_ServoRelayEvents::do_set_servo` allowlists only `k_none`, `k_manual`,
+  `k_sprayer_pump`, `k_sprayer_spinner`, `k_gripper` and the `k_rcin*` families;
+  anything else falls to `default:`, which emits
+  `ServoRelayEvent: Channel %d is already in use` and returns `false`.
+  `k_throttleLeft` (`73`) and `k_throttleRight` (`74`) are not in that list, so
+  `servo set` is rejected on the thrust channels. Read from
+  `libraries/AP_ServoRelayEvents/AP_ServoRelayEvents.cpp:32-57`.
+- **`RC_CHANNELS_OVERRIDE` is the path that works**, handled at
+  `libraries/GCS_MAVLink/GCS_Common.cpp:3988`, feeding `AP_MotorsUGV` which mixes
+  to `k_throttleLeft` / `k_throttleRight`.
+
+Channel numbers were read rather than assumed. `AP_RCMapper.cpp` defaults are
+`RCMAP_ROLL 1` and `RCMAP_THROTTLE 3`; the live listing confirmed
+`RCMAP_ROLL 1`, `RCMAP_PITCH 2`, `RCMAP_THROTTLE 3`, `RCMAP_YAW 4`.
+
+### Sequence and result
+
+```text
+mode MANUAL    -> Got COMMAND_ACK: DO_SET_MODE: ACCEPTED
+arm throttle   -> Got COMMAND_ACK: COMPONENT_ARM_DISARM: ACCEPTED
+                  AP: Throttle armed / ARMED
+rc 3 1600
+rc 1 1600
+rc all 0
+disarm         -> AP: Throttle disarmed / DISARMED
+```
+
+Servo outputs observed on SITL's spare port `tcp:127.0.0.1:5762`:
+
+| Step | SERVO1 (left) | SERVO3 (right) | delta |
+| --- | ---: | ---: | ---: |
+| armed, idle | `1500` | `1500` | `+0` |
+| `rc 3 1600` throttle | `1570` | `1570` | `+0` |
+| `rc 1 1600` steering | `1644` | `1496` | `+148` |
+| `rc all 0` | `1500` | `1500` | `+0` |
+
+### What the numbers establish
+
+- **The skid-steer mixer behaves correctly.** On the steering step the mean is
+  `(1644 + 1496) / 2 = 1570`, exactly the throttle level, with a pure
+  differential of `±74`. Throttle sets the mean, steering sets the difference.
+- **The mapping is confirmed.** `rc 1 1600` is steering above centre, a right
+  turn; SERVO1 rose and SERVO3 fell. SERVO1 carries `ThrottleLeft` on SITL, and
+  a left thruster speeding up while the right slows is a right turn.
+- **A symmetric impulse cannot detect a channel swap.** The throttle step left
+  `delta` at exactly `+0`; only the asymmetric steering input separated the
+  channels. Any future mapping test must use a differential input.
+- **RC input PWM is not servo output PWM.** A commanded `1600` produced `1570`.
+  The autopilot scales, so no contract may assume passthrough.
+
+### Consequence for Block D - a third constraint
+
+The two constraints recorded this morning were derived from raw channel numbers
+and rails. This exercise adds a third that partly supersedes their importance:
+
+**Command at the RC or higher level, not at the raw servo layer.** The autopilot
+resolves SERVO function to physical channel internally, so the SITL-versus-boat
+channel swap does not affect the RC command path at all. It only affects code
+that reads or writes raw servo channels by number - which is exactly what
+`tools/servo_command_bridge.py` does. Letting the autopilot keep ownership of the
+function-to-channel mapping removes that entire class of inversion defect rather
+than documenting around it.
+
+### Observation tooling
+
+`watch SERVO_OUTPUT_RAW` in MAVProxy prints every message at roughly `4 Hz`,
+which buries the prompt and made three consecutive attempts unusable - in each
+one the armed state and the observation were never active at the same time, so
+the RC effect went unobserved despite the commands succeeding.
+
+Replaced with `~/servo_watch.py`, an untracked read-only observer outside the
+repository. It attaches to a spare MAVLink endpoint, prints only `servo1_raw`,
+`servo3_raw` and their difference, and only when a value changes, so the terminal
+stays silent at idle. It sends nothing. Compile-checked and functionally
+verified against the running instance before use.
+
+### Environment defect, unresolved
+
+MAVProxy prints a NumPy import wall at every start and frequently exits with
+`Fatal Python error: _enter_buffered_busy ... Aborted (core dumped)`.
+`mavproxy.py:50` imports `matplotlib`, which resolves to
+`/usr/lib/python3/dist-packages` built against NumPy 1.x, while the venv carries
+NumPy `2.5.1`. This is a direct consequence of `SKIP_AP_GRAPHIC_ENV=1` during the
+prerequisite install leaving no compatible `matplotlib` inside the venv. The
+import failure is caught, so sessions run, but the shutdown abort cost several
+restarts. `pip install matplotlib` inside the activated venv is the fix; not
+applied at time of writing.
+
+### Bounded non-claims
+
+- **Simulator only.** No command reached a real autopilot, and no thruster on
+  the real boat moved. The powered-off, propellers-removed wiring gate plus
+  `ARMING_REQUIRE=1` and the safety switch are untouched.
+- The real boat's rail is `800/800/2200` with neutral at the **bottom**, so its
+  idle reading is `800`, not `1500`. None of the PWM figures above transfer.
+- `RCMAP_*` was confirmed for SITL only; the boat's values must be read
+  separately.
+- Nothing here is a command-ingress contract. Block D remains unwritten, and no
+  bridge, dashboard control or ROS path was created or enabled - the dashboard
+  still contains no FCU command code and `LIVE_MAVLINK_VIEW_ONLY` remains `true`.
+
+**Next steps:** Block D, the command-ingress contract, design only and gated on
+explicit approval, now with three constraints rather than two. A clean Pi-first
+lifecycle run also remains unobtained.
