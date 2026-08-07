@@ -306,6 +306,15 @@ transfer a separately checksum-pinned phase runner to the Pi Desktop and type it
 single-line invocation in P1; do not start the command through SSH because it must inherit
 the active desktop display.
 
+Copy the block from the terminal that printed it. Routing it through any intermediate
+surface that re-wraps text can corrupt it, and the corruption is quiet. Observed
+07/08/2026: the closing `)` landed on top of the `H` of `HAILO_LOCAL_WINDOW_MODE`, leaving
+`exec env VAR=... VAR=...` with no command argument. `env` with no command prints its own
+environment and exits `0`, so the terminal fills with an environment dump, the helper never
+starts, and no error is raised. If P1 prints an environment listing instead of
+`HAILO_LOCAL_DISPLAY=ENABLED`, that is this failure: the arrival deadline is still running,
+so relaunch immediately using the short-line fallback rather than re-pasting the block.
+
 Before pasting, confirm the desktop display inherited by this terminal:
 
 ```bash
@@ -515,6 +524,15 @@ Then stop in this exact order:
 Do not stop the workstation while the Pi remains in its monitored hold. If the Pi stops
 because rosbridge, rosapi, or `web_video_server` disappeared, the shutdown order was not
 a clean Pi-first operator stop even when both cleanup markers pass.
+
+The signature of a reversed order, observed 07/08/2026: the Pi prints
+`STOP: workstation rosbridge node is not visible from the Pi` and exits
+`status=1 trigger=failure failed_phase=live-hold`, while the workstation exits
+`status=0 trigger=signal signal=INT`. Distinguish an operator mistake from a genuine
+workstation-side loss by reading the workstation `rosbridge.log`: an operator stop records
+`[WARNING] [launch]: user interrupted with ctrl-c (SIGINT)` and the service logs all end
+within a few seconds of each other, whereas an unexpected loss does not. Both cases
+produce `TEARDOWN=PASS` on each side, so the cleanup markers alone cannot tell them apart.
 
 The `monitored` field covers the finite evidence window and its shared absolute query
 deadline. `final_verification` covers the complete fail-closed graph, fresh image,

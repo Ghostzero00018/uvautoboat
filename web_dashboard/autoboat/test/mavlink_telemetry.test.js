@@ -248,6 +248,8 @@ test('temporary panel DOM contract is complete and camera defaults to Hailo', ()
         'mavlink-system-status',
         'mavlink-manual-input',
         'mavlink-gps-fix',
+        'mavlink-gps-position',
+        'mavlink-gps-accuracy',
         'mavlink-gps-altitude',
         'mavlink-attitude',
         'mavlink-gyro',
@@ -310,7 +312,8 @@ test('state, IMU, battery, RC, and GPS samples render bounded diagnostics', () =
     assert.equal(harness.elements.get('mavlink-connected').textContent, 'Connected');
     assert.equal(harness.elements.get('mavlink-armed').textContent, 'Disarmed');
     assert.equal(harness.elements.get('mavlink-mode').textContent, 'HOLD');
-    assert.equal(harness.elements.get('mavlink-system-status').textContent, '5');
+    // MAV_STATE 5 is CRITICAL; it renders by name so the state is legible at a glance.
+    assert.equal(harness.elements.get('mavlink-system-status').textContent, 'Critical (5)');
 
     const yaw90 = Math.sqrt(0.5);
     const euler = harness.api.quaternionToEulerDegrees({ x: 0, y: 0, z: yaw90, w: yaw90 });
@@ -340,7 +343,23 @@ test('state, IMU, battery, RC, and GPS samples render bounded diagnostics', () =
         longitude: 0
     });
     assert.equal(harness.elements.get('mavlink-gps-fix').textContent, 'No fix (-1)');
+    assert.equal(harness.elements.get('mavlink-gps-position').textContent, '0.0000000, 0.0000000');
+    // No covariance supplied, so accuracy must report unknown rather than invent a figure.
+    assert.equal(harness.elements.get('mavlink-gps-accuracy').textContent, 'N/A');
     assert.equal(harness.getGpsUpdates(), 1);
+
+    harness.api.updateLiveMavlinkGps({
+        status: { status: 0, service: 1 },
+        altitude: 17.16,
+        latitude: 50.5187654,
+        longitude: 3.1234567,
+        position_covariance: [1.44, 0, 0, 0, 2.56, 0, 0, 0, 4],
+        position_covariance_type: 2
+    });
+    assert.equal(harness.elements.get('mavlink-gps-fix').textContent, 'Fix (standard) (0)');
+    assert.equal(harness.elements.get('mavlink-gps-position').textContent, '50.5187654, 3.1234567');
+    assert.equal(harness.elements.get('mavlink-gps-accuracy').textContent, '+/-1.41 m horizontal');
+    assert.equal(harness.getGpsUpdates(), 2);
 });
 
 test('topic freshness expires independently and invalidates only stale telemetry', () => {

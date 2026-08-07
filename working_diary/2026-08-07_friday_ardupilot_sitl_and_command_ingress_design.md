@@ -4,9 +4,14 @@
 > pre-diary that was deferred because that day went to the internship report.
 > Gate 0 and Blocks A, B and C have since run; the sections appended below
 > record what happened and supersede parts of the plan.** Block D has not
-> started. The day stayed workstation-only. No Pi, no control box, no FCU write,
-> no arming, no motor or thrust command to real hardware, no edit to
-> `tools/pi_live_hailo_mavlink_dashboard.sh`.
+> started. No FCU write, no arming, no motor or thrust command to real hardware,
+> and no edit to `tools/pi_live_hailo_mavlink_dashboard.sh`.
+> **Scope correction:** the blocks above were planned and executed
+> workstation-only, and the day-close commit `6645b29` recorded the day as having
+> no Pi work. After that commit the operator directed a view-only live run with
+> the Pi and control box, and a set of view-only dashboard telemetry
+> improvements. Both are recorded in the sections at the end of this file, which
+> supersede the workstation-only statement for the day as a whole.
 
 ## Starting state
 
@@ -582,3 +587,150 @@ file under `tools/` was modified today.
 
 **Next steps:** Block D, the command-ingress contract, design only and gated on
 explicit approval.
+
+## Live view-only run executed after the day-close commit (07/08/2026)
+
+This section is a forward correction. It records work carried out after commit
+`6645b29`, which had recorded the day as having no Pi work. That statement was
+true when written and is superseded here rather than rewritten.
+
+The operator directed a **view-only** live run with the Pi and control box. No
+command path was built, no FCU write was attempted, and the vehicle stayed
+disarmed throughout.
+
+### One aborted start, and its cause
+
+A first workstation supervisor run (`live_dashboard_workstation_20260807_154342`)
+was started and then stopped in `arrival` without a Pi stack, exiting
+`status=0 trigger=signal signal=INT cleanup_rc=0` with `WORKSTATION_TEARDOWN=PASS`.
+
+The Pi side had not started because the compound launch command was routed
+through a chat transcript, where it wrapped and corrupted: the closing `)` of the
+subshell landed on top of the `H` of `HAILO_LOCAL_WINDOW_MODE`, leaving
+`exec env VAR=... VAR=...` with no command argument. `env` with no command prints
+its environment and exits, so the helper never ran. The checksum verification,
+`chmod +x`, and `PI_TEMP_START_MC=56750` before that point all succeeded.
+
+**Method note:** a paste-sensitive multi-line command must be copied directly
+from the terminal that printed it, or transferred as a checksum-pinned file and
+invoked by a short single line. Re-transcribing it through an intermediate
+surface is what failed here.
+
+### The completed run
+
+Workstation `live_dashboard_workstation_20260807_154942`, Pi
+`live_dashboard_20260807_154959`, on `IoT IMT Nord Europe` with workstation IPv4
+`10.120.2.168` and the Pi at `10.120.2.249`.
+
+Gates reached in order: `WORKSTATION_RUNTIME_PREFLIGHT=PASS` with the helper pin
+verified, `WORKSTATION_SERVICES=UP ports=8002,8080,9090`,
+`PI_SOURCE_STACK_READY=PASS`, `HAILO_LOCAL_DISPLAY=ENABLED window_mode=fullscreen`,
+six-topic arrival, and all six rate probes.
+
+| Topic | N | Mean | Interval mean/std |
+| --- | ---: | ---: | --- |
+| `/hailo/overlay/image_raw` | `73` | `7.32 Hz` | `136.58`/`29.31` ms |
+| `/mavros/state` | `10` | `1.00 Hz` | `998.25`/`19.66` ms |
+| `/mavros/global_position/raw/fix` | `10` | `1.00 Hz` | `1001.72`/`25.34` ms |
+| `/mavros/imu/data` | `10` | `1.00 Hz` | `996.54`/`24.66` ms |
+| `/mavros/battery` | `10` | `1.01 Hz` | `993.98`/`32.21` ms |
+| `/mavros/rc/in` | `10` | `1.00 Hz` | `1002.92`/`20.91` ms |
+
+Source window and view-only posture:
+
+```text
+COMMAND_SENTINEL=PASS topics=5; safety monitor publishers=0
+COMMAND_SENTINEL=PASS messages=0; FCU remained observed-disarmed
+PI_SOURCE_WINDOW=COMPLETE target=120s monitored=120s final_verification=128s elapsed=248s peak=66C
+PI_SOURCE_HOLD=ACTIVE monitored=true stop=Ctrl+C
+```
+
+The monitored window was not truncated. Final verification took `128 s` against
+its `180 s` budget; with `115 s` on 04/08/2026 and `85 s` on 05/08/2026 these are
+three single samples and support no timing conclusion. Run-wide thermal peak was
+`67200` mC, `67.2 C`, against the `80 C` abort; the `66C` in the window marker is
+the peak at window close, not the run maximum.
+
+### The run did not close cleanly, and the cause is the shutdown order
+
+`PI_SUPERVISOR_EXIT status=1 trigger=failure signal=none stop_phase=live-hold
+failed_phase=live-hold cleanup_rc=0`, preceded by
+`STOP: workstation rosbridge node is not visible from the Pi` after
+`hold_elapsed=812s`.
+
+The workstation was stopped first. `rosbridge.log` records
+`[WARNING] [launch]: user interrupted with ctrl-c (SIGINT)` and all three
+workstation service logs end at `16:12:22`-`16:12:27`, so rosbridge was
+interrupted rather than lost. The Pi, still in its monitored hold, detected the
+missing node and failed closed as designed.
+
+Both teardowns passed with `cleanup_rc=0`, but a Pi that stops because rosbridge
+disappeared is not a clean Pi-first operator stop. **No normal-lifecycle claim
+comes out of this run.** The required order remains Ctrl+C in the Pi terminal,
+wait for Pi `TEARDOWN=PASS`, then Ctrl+C on the workstation.
+
+### Graph-query control data point
+
+`MAVROS_SOURCE_PROBE_RUN` occurrences: `0`. The batched source view was off, so
+this is a **flag-off control run**.
+
+`10` non-verifying readings, recorded as `20` `MAVROS_SOURCE_EVIDENCE` lines in
+verdict/raw pairs: `/mavros/imu/data` `5`, `/mavros/rc/in` `3`,
+`/mavros/battery` `2`. Every one was `query_rc=0` with
+`verdict=publisher count 0`, the publisher-count-zero mode also seen on
+04/08/2026 rather than 05/08's identity-unknown mode. No reading reached
+`attempt=3`.
+
+Per-run flag-off control counts are now `11`, `3`, `2` and `10`. That widened
+range reinforces the existing conclusion: the control variance exceeds any effect
+a handful of enabled runs could resolve, and no reduction claim is available from
+run counts.
+
+### Evidence copied back
+
+The Pi run directory was copied to
+`~/Desktop/test_logs_folder/live_dashboard_20260807_154959` - `18` files plus
+`mavproxy_home/`, including `supervisor.log`, `thermal_peak_mc.txt`, the five
+MAVROS source YAML captures and `hailo.log`. The workstation run directory
+remains at `~/Desktop/live_dashboard_workstation_20260807_154942` with its six
+arrival samples and `w5_live_rates.log`.
+
+## Dashboard telemetry improvements, view-only (07/08/2026)
+
+Directed by the operator during the run. `web_dashboard/` is served as static
+files and is not covered by the supervisor's helper pin, so these took effect on
+a browser refresh without disturbing the running session.
+
+| Field | Before | After |
+| --- | --- | --- |
+| GPS position | not displayed | `mavlink-gps-position`, latitude and longitude to `7` decimals |
+| GPS accuracy | not displayed | `mavlink-gps-accuracy`, horizontal RMS from `position_covariance`, `N/A` when `position_covariance_type` is `0` |
+| GPS fix | `Fix (0)` | `Fix (standard) (0)`, plus `Fix (SBAS)`, `Fix (GBAS)`, `No fix` |
+| System status | bare integer | `Critical (5)` by `MAV_STATE` name, warning badge at `5`, critical badge at `>= 6` |
+
+The system-status change is the substantive one. This vehicle reports
+`system_status: 5`, which is `MAV_STATE_CRITICAL` and has been an open item in
+earlier records; the panel had been rendering it as an uninformative integer.
+
+`LIVE_MAVLINK_VIEW_ONLY` remains `true` at `web_dashboard/autoboat/app.js:263`
+and no write path was added, enabled or implemented. Both new fields were added
+to the topic clear/stale specification so they blank correctly on disconnect and
+staleness, and to the DOM contract in the focused suite.
+
+Verification: `31`/`31` across `camera_viewer`, `gps_fix`, `mavlink_telemetry`
+and `view_only_feedback`. The `mavlink_telemetry` DOM-contract and diagnostic
+tests were extended to cover the new fields and the renamed system-status output.
+No file under `tools/` changed and both production pins are unchanged.
+
+### Bounded non-claims for this section
+
+- The live run proves telemetry delivery and view-only posture. It is **not** a
+  normal-lifecycle acceptance, and browser-last ordering was not obtained.
+- No command was sent to the FCU, and no command path exists to send one with.
+- The dashboard changes are display-layer only and were not exercised against a
+  fixed GPS; `mavlink-gps-accuracy` renders `N/A` whenever covariance type is
+  unknown, which is the expected reading without a fix.
+
+**Next steps:** Block D, the command-ingress contract, still design only and
+still gated on explicit approval. A clean Pi-first lifecycle run remains
+unobtained.

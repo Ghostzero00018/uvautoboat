@@ -327,6 +327,27 @@ const LIVE_MAVLINK_TOPIC_SPECS = Object.freeze([
     })
 ]);
 
+// sensor_msgs/NavSatStatus fix codes and MAV_STATE system-status codes, rendered by
+// name so an operator does not have to decode a bare integer while a run is live.
+const NAVSAT_FIX_LABELS = Object.freeze({
+    '-1': 'No fix',
+    0: 'Fix (standard)',
+    1: 'Fix (SBAS)',
+    2: 'Fix (GBAS)'
+});
+
+const MAV_STATE_LABELS = Object.freeze({
+    0: 'Uninitialised',
+    1: 'Boot',
+    2: 'Calibrating',
+    3: 'Standby',
+    4: 'Active',
+    5: 'Critical',
+    6: 'Emergency',
+    7: 'Power off',
+    8: 'Flight termination'
+});
+
 const LIVE_MAVLINK_EMPTY_VALUES = Object.freeze({
     state: Object.freeze([
         Object.freeze({ id: 'mavlink-connected', disconnected: 'Disconnected', stale: 'Unknown (stale)', badge: 'critical' }),
@@ -337,6 +358,8 @@ const LIVE_MAVLINK_EMPTY_VALUES = Object.freeze({
     ]),
     gps: Object.freeze([
         Object.freeze({ id: 'mavlink-gps-fix', disconnected: '-', stale: '-', badge: 'warning' }),
+        Object.freeze({ id: 'mavlink-gps-position', disconnected: '-', stale: '-' }),
+        Object.freeze({ id: 'mavlink-gps-accuracy', disconnected: '-', stale: '-' }),
         Object.freeze({ id: 'mavlink-gps-altitude', disconnected: '-', stale: '-' })
     ]),
     imu: Object.freeze([
@@ -439,15 +462,45 @@ function updateLiveMavlinkState(message) {
     setLiveMavlinkValue('mavlink-connected', message.connected ? 'Connected' : 'Disconnected', message.connected ? 'clear' : 'critical');
     setLiveMavlinkValue('mavlink-armed', message.armed ? 'ARMED' : 'Disarmed', message.armed ? 'critical' : 'clear');
     setLiveMavlinkValue('mavlink-mode', message.mode || 'Unknown');
-    setLiveMavlinkValue('mavlink-system-status', Number.isFinite(message.system_status) ? String(message.system_status) : 'N/A');
+    const systemStatus = message.system_status;
+    const systemStatusKnown = Number.isFinite(systemStatus);
+    const systemStatusText = systemStatusKnown
+        ? `${MAV_STATE_LABELS[systemStatus] || 'Unrecognised'} (${systemStatus})`
+        : 'N/A';
+    let systemStatusBadge = '';
+    if (systemStatusKnown && systemStatus >= 6) systemStatusBadge = 'critical';
+    else if (systemStatusKnown && systemStatus === 5) systemStatusBadge = 'warning';
+    setLiveMavlinkValue('mavlink-system-status', systemStatusText, systemStatusBadge);
     setLiveMavlinkValue('mavlink-manual-input', message.manual_input === true ? 'Enabled' : message.manual_input === false ? 'Disabled' : 'Unknown');
     markLiveMavlinkTopic('state');
 }
 
+function formatLatLon(latitude, longitude) {
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return 'N/A';
+    return `${latitude.toFixed(7)}, ${longitude.toFixed(7)}`;
+}
+
+function formatGpsAccuracy(message) {
+    const covariance = Array.isArray(message?.position_covariance) ? message.position_covariance : null;
+    const covarianceType = message?.position_covariance_type;
+    // Type 0 is COVARIANCE_TYPE_UNKNOWN; anything else carries a usable east/north variance.
+    if (!covariance || !Number.isFinite(covarianceType) || covarianceType === 0) return 'N/A';
+    const east = covariance[0];
+    const north = covariance[4];
+    if (!Number.isFinite(east) || !Number.isFinite(north) || east < 0 || north < 0) return 'N/A';
+    return `+/-${Math.sqrt((east + north) / 2).toFixed(2)} m horizontal`;
+}
+
 function updateLiveMavlinkGps(message) {
     const status = message?.status?.status;
-    const fixText = Number.isFinite(status) && status >= 0 ? `Fix (${status})` : `No fix (${Number.isFinite(status) ? status : 'unknown'})`;
-    setLiveMavlinkValue('mavlink-gps-fix', fixText, Number.isFinite(status) && status >= 0 ? 'clear' : 'warning');
+    const statusKnown = Number.isFinite(status);
+    const hasFix = statusKnown && status >= 0;
+    const fixText = statusKnown
+        ? `${NAVSAT_FIX_LABELS[status] || 'Unrecognised'} (${status})`
+        : 'Unknown';
+    setLiveMavlinkValue('mavlink-gps-fix', fixText, hasFix ? 'clear' : 'warning');
+    setLiveMavlinkValue('mavlink-gps-position', formatLatLon(message.latitude, message.longitude));
+    setLiveMavlinkValue('mavlink-gps-accuracy', formatGpsAccuracy(message));
     setLiveMavlinkValue('mavlink-gps-altitude', finiteNumber(message.altitude, 2, ' m'));
     markLiveMavlinkTopic('gps');
     updateGPS(message);
