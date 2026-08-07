@@ -460,8 +460,9 @@ vehicle remained disarmed for the whole session.
   caught: `mavproxy.py:48-52` wraps those imports in `try` / `except Exception`,
   and execution continues to `Connect tcp:127.0.0.1:5760` and beyond. It is a
   direct consequence of `SKIP_AP_GRAPHIC_ENV=1` leaving no `matplotlib` inside
-  the venv. Cosmetic, and `pip install matplotlib` inside the venv would silence
-  it if that is ever wanted.
+  the venv. Cosmetic. **Resolved later the same day** - see the resolution note
+  under "Environment defect" below; the plain `pip install matplotlib` suggested
+  here is a no-op and the correct command is recorded there.
 - `paramftp: bad count 1283 should be 1273`. At
   `MAVProxy/modules/lib/param_ftp.py:96-98` a decode whose item count disagrees
   with the declared total is discarded and returns `None`. A later pass
@@ -867,6 +868,23 @@ prerequisite install leaving no compatible `matplotlib` inside the venv. The
 import failure is caught, so sessions run, but the shutdown abort cost several
 restarts. `pip install matplotlib` inside the activated venv is the fix; not
 applied at time of writing.
+
+**Resolved later on 07/08/2026, and the obvious command was wrong.** Because the
+venv was created `--system-site-packages`, a plain
+`pip install matplotlib` sees the system `3.6.3` and reports
+`Requirement already satisfied`, installing **nothing** - a silent no-op that
+looks like a successful fix. The command that works forces a venv-local copy:
+
+```bash
+~/venv-ardupilot/bin/pip install --ignore-installed matplotlib
+```
+
+After it, the venv resolves `matplotlib 3.11.1` from
+`~/venv-ardupilot/lib/python3.12/site-packages`, while the system keeps
+`matplotlib 3.6.3`, `numpy 1.26.4` and `scipy 1.11.4` untouched and mutually
+consistent. `mavproxy.py --help` then exits `0` with zero occurrences of the
+NumPy wall. The heading above is retained as written; this note supersedes both
+its "unresolved" status and the command it named.
 
 ### Bounded non-claims
 

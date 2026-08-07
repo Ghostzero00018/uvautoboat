@@ -86,6 +86,21 @@ rediscussion:
    resolves function to channel internally, which removes the entire inversion
    class rather than documenting around it.
 
+The contract must specify a **startup resolution guard** that makes the 07/08
+mismatch structurally impossible to reintroduce. Before the bridge publishes
+anything, it must:
+
+1. read `SERVO*_FUNCTION` from the connected vehicle and resolve which channel
+   carries `73` and which carries `74`, aborting if either function is
+   unassigned;
+2. read `SERVO<n>_MIN`, `SERVO<n>_TRIM` and `SERVO<n>_MAX` for exactly those two
+   resolved channels, aborting if the rail is incomplete.
+
+Neither value may come from a default, a constant, a configuration file, or an
+observation of a different platform. If the vehicle cannot answer, the bridge
+does not start. That is the whole defence: the channel numbers and the rail stop
+being assumptions and become preconditions.
+
 State the non-goals and the over-design traps avoided. Prefer existing contracts
 and a narrow interface over a new abstraction.
 
@@ -167,12 +182,21 @@ the same whether or not the channels are inverted.
 
 - `tools/servo_command_bridge.py` parameter defaults remain internally
   inconsistent - the real boat's channels paired with a rail belonging to
-  neither platform. The docstring now says so. Whether the defaults should
-  become SITL-shaped is an open decision.
-- MAVProxy on the workstation prints a NumPy import wall and often exits
-  `Aborted (core dumped)`, because `mavproxy.py:50` imports the system
-  `matplotlib` built against NumPy 1.x. `pip install matplotlib` inside the
-  activated venv is the fix; not applied.
+  neither platform. The docstring says so. **Decided 07/08/2026: leave them.**
+  Flipping them to SITL-shaped would substitute one set of implicit assumptions
+  for another and could make a wrong model look correct by accident. They stay
+  as historical reference; correctness comes from the Block B contract reading
+  live values, not from a better default.
+- MAVProxy's NumPy import wall and `Aborted (core dumped)` exits are **fixed as
+  of 07/08/2026**. Cause: `mavproxy.py:50` imports `matplotlib`, which resolved
+  to the system `3.6.3` built against NumPy 1.x while the venv carries NumPy
+  `2.5.1`. Note the trap - because the venv was created
+  `--system-site-packages`, a plain `pip install matplotlib` reports
+  "Requirement already satisfied" and does nothing. The working command was
+  `~/venv-ardupilot/bin/pip install --ignore-installed matplotlib`, which put
+  `matplotlib 3.11.1` inside the venv. System `matplotlib 3.6.3`, `numpy 1.26.4`
+  and `scipy 1.11.4` are untouched and still mutually consistent, and
+  `mavproxy.py --help` now runs clean with no traceback.
 - The graph-query workstream stays parked, not closed. Flag-off control counts
   are `11`, `3`, `2`, `10`.
 - Task 2 remains retired.
