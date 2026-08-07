@@ -196,6 +196,9 @@ objective. A day that reaches D by rushing B does not.
 - A working SITL says nothing about the real boat. The autopilot, the rail, the
   wiring and the safety interlocks all differ.
 - No command has been sent to any autopilot, simulated or real.
+  **Superseded later on 07/08/2026:** commands were subsequently sent to
+  ArduPilot SITL on the workstation, recorded in the SITL command-path section
+  below. No command reached a real autopilot, and none ever left the workstation.
 - The Pi helper's view-only posture is unchanged, and its pins are unchanged.
 - The graph-race workstream is parked, not closed: its lower DDS/RMW/network
   trigger is unidentified, browser-last ordering is unobtained, the

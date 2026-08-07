@@ -448,7 +448,8 @@ and verify:
 - live Hailo boxes and class labels;
 - the Pi desktop window starts fullscreen and remains open with the same live Hailo boxes
   and class labels;
-- all five MAVROS badges remain `Live` with independent ages below `3.0 s`;
+- all six MAVROS badges remain `Live` with independent ages below `3.0 s` - the
+  sixth is `Thrust`, added 07/08/2026, carrying `/mavros/rc/out` servo output;
 - MAVROS state remains freshly connected and disarmed;
 - GPS, IMU, battery, and RC activity reaches the view-only panel without a `Stale`
   badge or cleared values;
