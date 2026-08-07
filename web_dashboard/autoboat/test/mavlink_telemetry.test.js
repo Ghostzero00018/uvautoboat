@@ -134,6 +134,7 @@ function createHarness() {
             updateLiveMavlinkImu,
             updateLiveMavlinkBattery,
             updateLiveMavlinkRc,
+            updateLiveMavlinkThrust,
             updateLiveMavlinkGps
         };`,
         context
@@ -158,9 +159,12 @@ function createHarness() {
     };
 }
 
-test('temporary live view wires exactly five read-only MAVROS topics', () => {
+test('temporary live view wires exactly six read-only MAVROS topics', () => {
     const harness = createHarness();
     assert.equal(harness.api.LIVE_MAVLINK_VIEW_ONLY, true);
+    // Every entry must be a subscription. /mavros/rc/out is servo OUTPUT
+    // telemetry from the allowlisted rc_io plugin and is not one of the Pi
+    // helper's COMMAND_TOPICS, so subscribing to it cannot abort a live run.
     assert.deepEqual(
         Array.from(harness.api.LIVE_MAVLINK_TOPIC_SPECS, (spec) => [spec.name, spec.messageType]),
         [
@@ -168,12 +172,13 @@ test('temporary live view wires exactly five read-only MAVROS topics', () => {
             ['/mavros/global_position/raw/fix', 'sensor_msgs/NavSatFix'],
             ['/mavros/imu/data', 'sensor_msgs/Imu'],
             ['/mavros/battery', 'sensor_msgs/BatteryState'],
-            ['/mavros/rc/in', 'mavros_msgs/RCIn']
+            ['/mavros/rc/in', 'mavros_msgs/RCIn'],
+            ['/mavros/rc/out', 'mavros_msgs/RCOut']
         ]
     );
 
     harness.api.subscribeToLiveMavlinkTopics();
-    assert.equal(harness.subscriptions.length, 5);
+    assert.equal(harness.subscriptions.length, 6);
     assert.equal(harness.subscriptions.find((topic) => topic.options.name === '/mavros/imu/data').options.throttle_rate, 200);
 });
 
@@ -242,6 +247,7 @@ test('temporary panel DOM contract is complete and camera defaults to Hailo', ()
         'mavlink-topic-imu',
         'mavlink-topic-battery',
         'mavlink-topic-rc',
+        'mavlink-topic-thrust',
         'mavlink-connected',
         'mavlink-armed',
         'mavlink-mode',
@@ -258,6 +264,7 @@ test('temporary panel DOM contract is complete and camera defaults to Hailo', ()
         'mavlink-battery-current',
         'mavlink-rc-rssi',
         'mavlink-rc-channels',
+        'mavlink-thrust-output',
         'mavlink-last-update'
     ];
     for (const id of ids) {
@@ -335,6 +342,16 @@ test('state, IMU, battery, RC, and GPS samples render bounded diagnostics', () =
     harness.api.updateLiveMavlinkRc({ rssi: 255, channels: [] });
     assert.equal(harness.elements.get('mavlink-rc-rssi').textContent, '255 raw');
     assert.equal(harness.elements.get('mavlink-rc-channels').textContent, '0 channels');
+
+    // This vehicle carries ThrottleLeft on SERVO3 and ThrottleRight on SERVO1,
+    // so index 2 is LEFT and index 0 is RIGHT. Raw PWM only; no rail assumed.
+    harness.api.updateLiveMavlinkThrust({ channels: [1496, 0, 1644, 0, 0, 0, 0, 0] });
+    assert.equal(
+        harness.elements.get('mavlink-thrust-output').textContent,
+        'L SERVO3 1644 us | R SERVO1 1496 us | delta +148'
+    );
+    harness.api.updateLiveMavlinkThrust({ channels: [] });
+    assert.equal(harness.elements.get('mavlink-thrust-output').textContent, 'N/A');
 
     harness.api.updateLiveMavlinkGps({
         status: { status: -1, service: 1 },

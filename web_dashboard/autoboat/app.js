@@ -324,8 +324,23 @@ const LIVE_MAVLINK_TOPIC_SPECS = Object.freeze([
         messageType: 'mavros_msgs/RCIn',
         throttle_rate: 500,
         handler: updateLiveMavlinkRc
+    }),
+    Object.freeze({
+        key: 'thrust',
+        label: 'Thrust',
+        name: '/mavros/rc/out',
+        messageType: 'mavros_msgs/RCOut',
+        throttle_rate: 500,
+        handler: updateLiveMavlinkThrust
     })
 ]);
+
+// This vehicle assigns SERVO3 = ThrottleLeft (function 73) and SERVO1 =
+// ThrottleRight (function 74). Rover SITL uses the opposite channels, so these
+// indices describe the real boat only. Raw PWM is shown without conversion to a
+// percentage: the rail differs between platforms and must never be assumed.
+const THRUST_LEFT_CHANNEL = 3;
+const THRUST_RIGHT_CHANNEL = 1;
 
 // sensor_msgs/NavSatStatus fix codes and MAV_STATE system-status codes, rendered by
 // name so an operator does not have to decode a bare integer while a run is live.
@@ -374,6 +389,9 @@ const LIVE_MAVLINK_EMPTY_VALUES = Object.freeze({
     rc: Object.freeze([
         Object.freeze({ id: 'mavlink-rc-rssi', disconnected: '-', stale: '-' }),
         Object.freeze({ id: 'mavlink-rc-channels', disconnected: '-', stale: '-' })
+    ]),
+    thrust: Object.freeze([
+        Object.freeze({ id: 'mavlink-thrust-output', disconnected: '-', stale: '-' })
     ])
 });
 
@@ -538,6 +556,23 @@ function updateLiveMavlinkRc(message) {
         channels.length ? `${channels.length} channels | ${channels.slice(0, 8).join(', ')}` : '0 channels'
     );
     markLiveMavlinkTopic('rc');
+}
+
+function updateLiveMavlinkThrust(message) {
+    const channels = Array.isArray(message?.channels) ? message.channels : [];
+    const left = channels[THRUST_LEFT_CHANNEL - 1];
+    const right = channels[THRUST_RIGHT_CHANNEL - 1];
+    if (!Number.isFinite(left) || !Number.isFinite(right)) {
+        setLiveMavlinkValue('mavlink-thrust-output', 'N/A');
+        markLiveMavlinkTopic('thrust');
+        return;
+    }
+    const delta = left - right;
+    setLiveMavlinkValue(
+        'mavlink-thrust-output',
+        `L SERVO${THRUST_LEFT_CHANNEL} ${left} us | R SERVO${THRUST_RIGHT_CHANNEL} ${right} us | delta ${delta >= 0 ? '+' : ''}${delta}`
+    );
+    markLiveMavlinkTopic('thrust');
 }
 
 function subscribeToLiveMavlinkTopics() {
