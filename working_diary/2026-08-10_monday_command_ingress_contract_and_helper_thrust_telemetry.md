@@ -2,8 +2,15 @@
 
 > **PRE-DIARY - NOT STARTED.** Written at the close of 07/08/2026. This file does
 > not authorize work. Every block below needs explicit approval before it starts.
-> No FCU write, no arming, no thrust command to real hardware, and no weakening
-> of the Pi helper's view-only posture.
+> No arming, no thrust command to real hardware, and no weakening of the Pi
+> helper's view-only posture.
+>
+> **Real-controller access policy, revised 09/08/2026.** The former blanket
+> prohibition on any real-FCU write is replaced by a tiered gate, recorded in
+> `Board.md`. The revision does **not** authorize anything in this file: no tier
+> is in scope for 10/08/2026, and each tier still requires its own separate
+> approval when it is proposed. The change is recorded here only so that a
+> reader does not treat the blanket wording as current.
 
 ## Starting state
 
@@ -214,9 +221,17 @@ the same whether or not the channels are inverted.
 
 - A working SITL says nothing about the real boat. Autopilot instance, rail,
   wiring and interlocks all differ.
-- No command has reached a real autopilot. Real-boat thrust stays behind the
-  powered-off, propellers-removed wiring gate plus `ARMING_REQUIRE=1` and the
-  safety switch.
+- No command has reached a real autopilot. Real-controller work is governed by
+  the tiered gate recorded in `Board.md` as of 09/08/2026; none of its tiers is
+  authorized by this file, and each requires separate approval. Real-boat thrust
+  stays behind a propellers-removed bench condition, hull restraint and isolated
+  propulsion power. Note that `ARMING_CHECK=0` on this vehicle, so autopilot
+  pre-arm checks are **not** a safety layer; `ARMING_REQUIRE=1` only means output
+  requires arming, it does not screen it. The Cube safety switch is a
+  conditional firmware guard rather than physical isolation: `BRD_SAFETY_DEFLT=1`
+  only sets the startup default. The repository carries no recorded reading of
+  the current safety state, `BRD_SAFETY_MASK` or `BRD_SAFETYOPTION` for this
+  vehicle as of 09/08/2026.
 - The dashboard contains no FCU command code, and
   `LIVE_MAVLINK_VIEW_ONLY` remains `true` at `web_dashboard/autoboat/app.js:263`,
   asserted literally by

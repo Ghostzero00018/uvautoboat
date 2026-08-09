@@ -100,6 +100,61 @@
 > `working_diary/2026-08-03_monday_ros2_graph_query_hardening.md` and
 > `working_diary/2026-08-04_tuesday_ros2_graph_query_single_participant_implementation.md`, and
 > `working_diary/2026-08-05_wednesday_graph_query_live_comparison.md`.
+>
+> **09/08/2026 policy supersession - real-controller access.** The former blanket
+> rule, that any write or arming on the real flight controller is prohibited outright,
+> is **superseded** by a tiered gate. The blanket wording did not distinguish
+> non-modifying queries from configuration writes from actuating commands, and
+> the command-ingress contract's startup guard depends on reading the real
+> channel assignment and PWM rail from the connected vehicle, so an undifferentiated
+> rule sat on the critical path of the very defence it was meant to support.
+>
+> **Each tier requires its own separate approval when proposed. Nothing below is
+> authorized by this entry, and no tier is in scope for 10/08/2026.**
+>
+> | Tier | Scope | Binding conditions |
+> | --- | --- | --- |
+> | **T0a** | Powered-down inspection or repair of the `Pi TXD (GPIO14) -> Cube SERIAL1 RX` link | Controller and propulsion powered down; no parameter changed |
+> | **T0b** | Non-actuating request/response over the link | Disarmed; hardware safety state confirmed ON (safe) and left unchanged; heartbeat and parameter **reads** only, including `BRD_SAFETY_DEFLT`, `BRD_SAFETY_MASK` and `BRD_SAFETYOPTION`. No `PARAM_SET`, no safety-state change, no mode change, no arming, no motor test and no RC override |
+> | **T1** | Link-configuration write under a strict allowlist | Initially only `BRD_SER1_RTSCTS`, currently `2`, candidate `0`. Record the prior value, one write, reboot if required, read back, and state the rollback. Propulsion power isolated |
+> | **T2a** | First arm/disarm on the bench, propellers removed | Function, channel and rail confirmed live in T0b; the Block B contract implemented and passing against the simulator; **no non-neutral input sent** |
+> | **T2b** | Minimal bounded input on the bench, propellers removed | Separate approval again. Short, low amplitude, asymmetric so it can actually evidence the mapping; dead-man defined; explicit neutral, disarm and power-down order |
+> | **T3a** | Static test with propellers fitted | Separate approval, dedicated mechanical guarding and an exclusion zone |
+> | **T3b** | On-water test | Separate day, separate plan, separate approval |
+>
+> Two facts govern why the physical conditions carry the weight rather than the
+> autopilot. First, this vehicle records **`ARMING_CHECK=0`**, so pre-arm checks
+> are **not** a safety layer; `ARMING_REQUIRE=1` only means output requires
+> arming, it does not screen it. The layers that do carry weight are the removed
+> propellers, a restrained hull and isolated propulsion power. The Cube safety
+> switch is a **conditional firmware/IOMCU guard, not a physical isolation and
+> not independent of software**: `BRD_SAFETY_DEFLT=1` sets the startup default to
+> the safe state; it does not prove the current safety state or independently
+> isolate propulsion. The current state, `BRD_SAFETY_MASK` and `BRD_SAFETYOPTION`
+> must be read before the safety mechanism can count as a guard - none of the
+> three is on record anywhere in this repository today. It remains subordinate to
+> propeller removal, hull restraint and propulsion-power isolation. Second, this
+> platform uses
+> **above-water, airboat-style propulsion** (`wiki/Roadmap.md`), so a fitted
+> propeller turns unshielded at working height - which is why T3a is separated
+> from the bench tiers and from on-water testing rather than folded into either.
+>
+> **Current position: T0a remains unscheduled.** The bidirectional-link cause is
+> not yet isolated; the next hardware window must inspect TX-to-RX continuity
+> before deciding whether wiring repair or a separately approved T1 configuration
+> change is needed. The 24/07/2026 record names two candidates - an unconnected
+> `Pi TXD (GPIO14) -> Cube SERIAL1 RX` line, or `BRD_SER1_RTSCTS=2` flow control
+> on a three-wire link. Neither candidate has been eliminated. T0a inspection is
+> therefore the first hardware step; its result decides whether T0a includes a
+> wiring repair or closes without repair before a separately approved T1
+> configuration change is considered.
+>
+> That no tier is currently scheduled is not a gap in this framework. Its purpose
+> is to state why the real-controller path is still blocked, and in what order it
+> would be unlocked once a hardware window exists.
+>
+> Diaries for 24/07/2026 and 07/08/2026 record the former policy and are left
+> unchanged as history.
 
 ---
 
