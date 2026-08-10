@@ -34,11 +34,11 @@ artifacts are retained below only for traceability.
 | --- | --- |
 | Helper source | `tools/pi_live_hailo_mavlink_dashboard.sh` |
 | Helper Pi destination | resolved Pi Desktop: `$(xdg-user-dir DESKTOP)/pi_live_hailo_mavlink_dashboard.sh` |
-| Helper size | `72,514` bytes |
-| Helper SHA-256 | `19eaaef1a6147235705160abe5379915ff03e83f3ea553948ebe5b27ba38cc40` |
+| Helper size | `73,862` bytes |
+| Helper SHA-256 | `a72cd04d37984d692cdfecb73456d55bc7bb6f0b4fd69d69ba79447fc3594a97` |
 | Workstation supervisor | `tools/live_dashboard_preflight.sh` |
-| Supervisor size | `28,647` bytes |
-| Supervisor SHA-256 | `0a37ba04c7261225eadc7889a9169efcab5bbdc2b05808714b1350d4ea8d8f2b` |
+| Supervisor size | `28,749` bytes |
+| Supervisor SHA-256 | `c1490db8f7198a774fc21b3892415d654725e33d83b3680edb820bc9d2f259bf` |
 
 Historical 23/07/2026 session artifacts:
 
@@ -67,11 +67,11 @@ Window outcome tracking remains through `HAILO_LOCAL_WINDOW` markers:
 
 ### Batched MAVROS source view
 
-`LIVE_MAVROS_SOURCE_BATCH` defaults to `0`. At the default the five MAVROS source
+`LIVE_MAVROS_SOURCE_BATCH` defaults to `0`. At the default the six MAVROS source
 checks run exactly as before, one `ros2 topic info --verbose --no-daemon --spin-time 2`
 process per topic per attempt. Set it to `1` in the Pi terminal before pasting the
 compound command to serve those checks instead from one run-owned `rclpy` participant
-that spins to accumulate discovery and answers all five topics from a single generation.
+that spins to accumulate discovery and answers all six topics from a single generation.
 
 The probe budget is split by `LIVE_PROBE_MAX_SECONDS` (default `6`, the outer hard
 bound) and `LIVE_PROBE_STARTUP_RESERVE` (default `3`, withheld for interpreter start,
@@ -214,7 +214,7 @@ topic sample the same absolute deadline. Graph commands and topic-echo process t
 hard-stopped at the remaining budget; topic echoes also retain their cooperative message
 wait, capped by that budget. Deadline exhaustion hands the interrupted phase to a separate
 `180`-second final verification, which repeats required workstation nodes, forbidden
-services and subscribers, the single Hailo publisher, all five MAVROS source identities,
+services and subscribers, the single Hailo publisher, all six MAVROS source identities,
 fresh image and telemetry samples, connected/disarmed state, temperature, and power.
 Final-verification exhaustion is fail-closed and cannot emit the source-window completion
 marker. Startup discovery and the operator-controlled post-window hold retain their
@@ -231,7 +231,7 @@ D="$(xdg-user-dir DESKTOP)" || exit 1
 D="$(readlink -f -- "$D")" || exit 1
 [ -n "$D" ] && [ -d "$D" ] && [ "$D" != "$H" ] || exit 1
 printf '%s  %s\n' \
-  '19eaaef1a6147235705160abe5379915ff03e83f3ea553948ebe5b27ba38cc40' \
+  'a72cd04d37984d692cdfecb73456d55bc7bb6f0b4fd69d69ba79447fc3594a97' \
   "$D/pi_live_hailo_mavlink_dashboard.sh" | sha256sum -c -
 ```
 
@@ -241,7 +241,7 @@ only the helper from a workstation terminal:
 ```bash
 cd ~/seal_ws/src/uvautoboat
 printf '%s  %s\n' \
-  '19eaaef1a6147235705160abe5379915ff03e83f3ea553948ebe5b27ba38cc40' \
+  'a72cd04d37984d692cdfecb73456d55bc7bb6f0b4fd69d69ba79447fc3594a97' \
   tools/pi_live_hailo_mavlink_dashboard.sh | sha256sum -c -
 
 read -r -p 'Current Pi SSH endpoint (user@host): ' PI_SSH
@@ -258,7 +258,7 @@ scp tools/pi_live_hailo_mavlink_dashboard.sh \
 ssh "$PI_SSH" "
   cd '$PI_DESKTOP' &&
   printf '%s  %s\n' \
-    '19eaaef1a6147235705160abe5379915ff03e83f3ea553948ebe5b27ba38cc40' \
+    'a72cd04d37984d692cdfecb73456d55bc7bb6f0b4fd69d69ba79447fc3594a97' \
     pi_live_hailo_mavlink_dashboard.sh |
   sha256sum -c -
 "
@@ -405,7 +405,7 @@ The following is kept only for traceability of the completed measurement path.
 
 ## Workstation arrival and automatic rate evidence
 
-W1 waits for these six publishers and then samples each topic with its compatible QoS:
+W1 waits for these seven publishers and then samples each topic with its compatible QoS:
 
 | Topic | Probe reliability | Depth |
 | --- | --- | --- |
@@ -415,16 +415,17 @@ W1 waits for these six publishers and then samples each topic with its compatibl
 | `/mavros/imu/data` | best effort | `10` |
 | `/mavros/battery` | best effort | `10` |
 | `/mavros/rc/in` | best effort | `10` |
+| `/mavros/rc/out` | best effort | `10` |
 
 The default arrival deadline is `360` seconds from the printed Pi command. Each arrival
 sample is `10` seconds. Continue only after:
 
 ```text
-PI_DATA_ARRIVED=PASS topics=6 ...
-W5_RATE_PROBES=PASS topics=6 duration_each=10s log=/home/...
+PI_DATA_ARRIVED=PASS topics=7 ...
+W5_RATE_PROBES=PASS topics=7 duration_each=10s log=/home/...
 ```
 
-The supervisor records offered QoS plus all six `10`-second rate probes in
+The supervisor records offered QoS plus all seven `10`-second rate probes in
 `w5_live_rates.log` inside its run directory. Each probe must print `N=...` and
 `mean=... Hz`. These measurements describe the current `240p@10fps` diagnostic profile;
 they do not select an optimized resolution, frame rate, or transport.
@@ -438,7 +439,7 @@ Open or hard-refresh <http://127.0.0.1:8002/> only after both:
 
 ```text
 PI_SOURCE_STACK_READY=PASS
-PI_DATA_ARRIVED=PASS topics=6 ...
+PI_DATA_ARRIVED=PASS topics=7 ...
 ```
 
 Open the browser developer tools Network panel, clear its log, filter for `/stream?`,

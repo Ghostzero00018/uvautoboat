@@ -18,7 +18,7 @@ function liveMavlinkSource() {
     return appSource.slice(start, end);
 }
 
-function createHarness() {
+function createHarness(search = '') {
     const elements = new Map();
     const subscriptions = [];
     const intervals = [];
@@ -89,6 +89,7 @@ function createHarness() {
         showFeedback() {},
         updateGPS() { gpsUpdates += 1; },
         Date: FakeDate,
+        location: { search },
         setInterval(callback) {
             intervals.push(callback);
             return intervals.length;
@@ -377,6 +378,17 @@ test('state, IMU, battery, RC, and GPS samples render bounded diagnostics', () =
     assert.equal(harness.elements.get('mavlink-gps-position').textContent, '50.5187654, 3.1234567');
     assert.equal(harness.elements.get('mavlink-gps-accuracy').textContent, '+/-1.41 m horizontal');
     assert.equal(harness.getGpsUpdates(), 2);
+});
+
+test('thrust output labels follow the live-selected servo function channels', () => {
+    const harness = createHarness('?thrust_left_servo=1&thrust_right_servo=3');
+
+    harness.api.updateLiveMavlinkThrust({ channels: [1644, 0, 1496, 0] });
+
+    assert.equal(
+        harness.elements.get('mavlink-thrust-output').textContent,
+        'L SERVO1 1644 us | R SERVO3 1496 us | delta +148'
+    );
 });
 
 test('topic freshness expires independently and invalidates only stale telemetry', () => {

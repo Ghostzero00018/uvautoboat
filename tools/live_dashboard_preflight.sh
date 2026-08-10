@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 DASHBOARD_DIR="$REPO_ROOT/web_dashboard/autoboat"
 HELPER="$SCRIPT_DIR/pi_live_hailo_mavlink_dashboard.sh"
-EXPECTED_HELPER_SHA256='19eaaef1a6147235705160abe5379915ff03e83f3ea553948ebe5b27ba38cc40'
+EXPECTED_HELPER_SHA256='a72cd04d37984d692cdfecb73456d55bc7bb6f0b4fd69d69ba79447fc3594a97'
 EXPECTED_SSID="${LIVE_SSID:-IoT IMT Nord Europe}"
 PI_WINDOW_MODE="${LIVE_PI_WINDOW_MODE:-fullscreen}"
 ROS_SETUP='/opt/ros/jazzy/setup.bash'
@@ -55,6 +55,7 @@ EXPECTED_TOPICS=(
   '/mavros/imu/data'
   '/mavros/battery'
   '/mavros/rc/in'
+  '/mavros/rc/out'
 )
 EXPECTED_TOPIC_TYPES=(
   'sensor_msgs/msg/Image'
@@ -63,9 +64,10 @@ EXPECTED_TOPIC_TYPES=(
   'sensor_msgs/msg/Imu'
   'sensor_msgs/msg/BatteryState'
   'mavros_msgs/msg/RCIn'
+  'mavros_msgs/msg/RCOut'
 )
-EXPECTED_TOPIC_RELIABILITY=(reliable best_effort best_effort best_effort best_effort best_effort)
-EXPECTED_TOPIC_DEPTH=(1 10 10 10 10 10)
+EXPECTED_TOPIC_RELIABILITY=(reliable best_effort best_effort best_effort best_effort best_effort best_effort)
+EXPECTED_TOPIC_DEPTH=(1 10 10 10 10 10 10)
 
 ROSBRIDGE_COMMAND=(
   ros2 launch rosbridge_server rosbridge_websocket_launch.xml address:=127.0.0.1
@@ -687,7 +689,7 @@ run_post_service_phases() {
   if "$arrival_fn"; then
     "$stop_fn" && return "$FINAL_RC"
     emit_marker_once PI_DATA_ARRIVED \
-      "PI_DATA_ARRIVED=PASS topics=6 elapsed=${ARRIVAL_ELAPSED_SECONDS}s"
+      "PI_DATA_ARRIVED=PASS topics=${#EXPECTED_TOPICS[@]} elapsed=${ARRIVAL_ELAPSED_SECONDS}s"
   else
     rc=$?
     "$stop_fn" && return "$FINAL_RC"
@@ -701,7 +703,7 @@ run_post_service_phases() {
   if "$probe_fn"; then
     "$stop_fn" && return "$FINAL_RC"
     emit_marker_once W5_RATE_PROBES \
-      "W5_RATE_PROBES=PASS topics=6 duration_each=10s log=$RATE_LOG"
+      "W5_RATE_PROBES=PASS topics=${#EXPECTED_TOPICS[@]} duration_each=10s log=$RATE_LOG"
   else
     rc=$?
     "$stop_fn" && return "$FINAL_RC"

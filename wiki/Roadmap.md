@@ -274,9 +274,9 @@ Status row in §3 Phase 5 status table now records Path A landed 05/05/2026 and 
    defaults to `1100`/`1500`/`1900`, matching neither - so a bridge emitting the
    simulator's neutral at the real vehicle would command substantial thrust while
    believing it commanded zero. **10/08/2026:** the written command-ingress
-   contract is now closed as a design-only decision; implementation and runtime
-   acceptance remain unstarted. It is SITL-only, not implementation-ready and not
-   runnable in the known environment. It resolves ingress from live `RCMAP_*` and
+   contract is now closed as a design-only decision; production-bridge implementation
+   and full contract acceptance remain unstarted. It is SITL-only and not
+   implementation-ready. It resolves ingress from live `RCMAP_*` and
    `RC<n>_*`, retains `SERVO*_FUNCTION` and live servo rails for output
    observation, and uses domain `42` for operational isolation rather than FCU
    actuation safety; no current repository path converts the thrust topics into
@@ -299,8 +299,21 @@ Status row in §3 Phase 5 status table now records Path A landed 05/05/2026 and 
    path and only affects raw-channel code such as `tools/servo_command_bridge.py`.
    Simulator only: no command reached a real autopilot, no real thruster moved,
    the boat's `800/800/2200` neutral-at-bottom rail means none of these PWM
-   figures transfer. The 10/08 design-only command-ingress contract is now
-   written; implementation and runtime acceptance remain unstarted.
+   figures transfer. The 10/08 design-only command-ingress contract is now written.
+
+   **10/08/2026 runtime addendum:** a new bounded workstation-only acceptance reran the
+   MAVProxy RC-override path while MAVROS and the browser dashboard were isolated on
+   `ROS_DOMAIN_ID=42` with localhost-only discovery. Live reads again resolved
+   function `73` to `SERVO1`, function `74` to `SERVO3`, both servo rails to
+   `1000`/`1500`/`2000`, and steering/throttle to RC channels `1`/`3`. The browser
+   rendered disarmed and armed neutral at `1500`/`1500`, symmetric throttle at
+   `1570`/`1570`, and the discriminating steering step at `1644`/`1496` (`delta
+   +148`). `rc all 0` left that last output present; explicit live RC trims were
+   required to recover `1500`/`1500` before disarm. The two temporary SITL
+   prerequisites were restored to `RC_OVERRIDE_TIME=3.0` and `ARMING_RUDDER=2`,
+   and all local services stopped. This is runtime evidence for the bounded operator
+   path and dashboard telemetry, not implementation or acceptance of the production
+   command-ingress bridge. No Pi, physical controller or real thruster was involved.
 
 ---
 

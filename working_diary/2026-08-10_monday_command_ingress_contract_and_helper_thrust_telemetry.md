@@ -842,3 +842,129 @@ certify the unguarded documentation occurrences. Historical hashes in the four
 frozen 04/08-07/08 diaries remain untouched, as do the original Block A pins at
 the start of this diary. The Pi Desktop copy remains stale until the operator
 transfers and verifies the new helper.
+
+## Block C implementation and workstation-only SITL dashboard acceptance
+
+The operator explicitly expanded today's authority to the complete workstation-only
+SITL path: implement Block C, start Rover SITL, write the required simulator
+parameters, arm, apply bounded thrust inputs, and observe the result in the web
+dashboard. This did not authorize the Pi, control box, physical FCU or real
+propulsion system; none was contacted.
+
+### Block C result
+
+Block C is implemented rather than closed as a no-change decision. The Pi helper
+now treats `/mavros/rc/out` as its sixth MAVROS source identity, captures a full
+`mavros_msgs/msg/RCOut` sample at initial and final verification, and prints the
+raw channel list between `THRUST_OUTPUT_RAW_BEGIN` and
+`THRUST_OUTPUT_RAW_END`. It performs no PWM percentage or physical-thrust
+conversion. `reject_command_services`, `reject_unexpected_command_subscribers`,
+`check_command_sentinel` and the five protected command topics are unchanged.
+
+The workstation supervisor now includes `/mavros/rc/out` in arrival and rate
+evidence, so the active pipeline covers seven publishers: the Hailo image plus six
+MAVROS topics. Marker counts are derived from the array rather than duplicated as
+a literal. The browser keeps the real-boat mapping as its default, but accepts
+`thrust_left_servo` and `thrust_right_servo` query values after the operator has
+resolved functions `73` and `74` from the connected vehicle's live parameters.
+Invalid, duplicate or out-of-range values do not replace the default. The SITL
+acceptance used:
+
+```text
+http://127.0.0.1:8002/?thrust_left_servo=1&thrust_right_servo=3
+```
+
+The helper edit invalidates the deployed Pi copy. This session did not transfer
+or run it on the Pi.
+
+### Workstation and runtime preconditions
+
+- Repository revision before edits: `11460fc088b33853f1ed8ed1089b2c60c552d945`,
+  with `HEAD == main == origin/main` and no ahead/behind count.
+- Root filesystem: `24G` free at `88%` used.
+- Workstation network: `10.120.2.168` on `wlp147s0`, SSID
+  `IoT IMT Nord Europe`; the full workstation preflight passed.
+- SITL binary: `4,939,888` bytes, SHA-256
+  `569412d6843e6b1ecfd2cfd6106ea4f60559ff440100f3b6dca94a02bf750169`,
+  embedding `ArduRover V4.6.3 (3fc7011a)`.
+- SITL/MAVProxy ran from `/home/ghostzero/ardupilot` after activating
+  `/home/ghostzero/venv-ardupilot/bin/activate`; no ROS setup was sourced in that
+  shell.
+- MAVROS and rosbridge used `/opt/ros/jazzy/setup.bash`,
+  `ROS_DOMAIN_ID=42`, `ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST` and
+  `ROS_LOCALHOST_ONLY=1`. The system interpreter imported `rclpy`,
+  `sensor_msgs.msg.Joy` and `pymavlink 2.4.49` together.
+
+### Live resolution and simulator writes
+
+Before arming, the connected SITL instance returned exactly one assignment for
+each thrust function:
+
+| Output layer | Left | Right |
+| --- | --- | --- |
+| Output function | `SERVO1_FUNCTION=73` | `SERVO3_FUNCTION=74` |
+| Servo rail | `1000/1500/2000`, reversed `0` | `1000/1500/2000`, reversed `0` |
+
+The independent RC ingress resolved steering through `RCMAP_ROLL=1` and throttle
+through `RCMAP_THROTTLE=3`. Both RC rails were `1000/1500/2000`, with dead zone
+`30`, reversal `0` and option `0`.
+
+`SYSID_MYGCS` was `255`. The stock values were
+`RC_OVERRIDE_TIME=3.0` and `ARMING_RUDDER=2`. While disarmed, the simulator was
+temporarily written to `RC_OVERRIDE_TIME=0.5` and `ARMING_RUDDER=0`; both live
+read-backs passed before arming.
+
+### Armed acceptance and dashboard evidence
+
+MAVProxy reported `DO_SET_MODE: ACCEPTED` for `MANUAL` and
+`COMPONENT_ARM_DISARM: ACCEPTED` for both arm and disarm. The headless browser
+connected through the live rosbridge endpoint, subscribed to `/mavros/rc/out`
+and rendered:
+
+| Step | Browser left | Browser right | Delta |
+| --- | ---: | ---: | ---: |
+| Disarmed neutral | `SERVO1 1500` | `SERVO3 1500` | `+0` |
+| Armed neutral | `SERVO1 1500` | `SERVO3 1500` | `+0` |
+| `rc 3 1600` | `SERVO1 1570` | `SERVO3 1570` | `+0` |
+| plus `rc 1 1600` | `SERVO1 1644` | `SERVO3 1496` | `+148` |
+| explicit `rc 1 1500`, `rc 3 1500` | `SERVO1 1500` | `SERVO3 1500` | `+0` |
+| final disarmed state | `SERVO1 1500` | `SERVO3 1500` | `+0` |
+
+The asymmetric step establishes the SITL mapping in the dashboard: positive
+steering increased function `73` on the left and decreased function `74` on the
+right. The symmetric throttle step did not discriminate the mapping.
+
+`rc all 0` did **not** neutralise the vehicle. More than the live `0.5 s` timeout
+later, the dashboard still rendered `1644/1496`. This is direct runtime evidence
+for the contract's distinction: zero releases RC override selection; it is not a
+neutral command, and without a new receiver/input event the last output can
+persist. Both live RC trims were therefore commanded explicitly before disarm.
+
+After disarm, `rc all 0` released the neutral overrides. The two temporary
+parameters were restored and read back as `RC_OVERRIDE_TIME=3.0` and
+`ARMING_RUDDER=2`. The persisted `mav.parm` contains those original values.
+The browser, dashboard server, rosbridge, MAVROS, MAVProxy and SITL then stopped;
+no matching process or listener remained.
+
+This proves the bounded simulator operator path and raw-PWM web display. It does
+not implement or accept the production command-ingress bridge, does not run
+`tools/servo_command_bridge.py`, does not exercise VRX, and says nothing about a
+physical controller or motor.
+
+### Verification and new operational pins
+
+- `bash -n` passed for both operational shell files and both shell test files.
+- `bash tools/test_pi_live_hailo_mavlink_dashboard.sh` passed.
+- `bash tools/test_live_dashboard_preflight.sh` passed, `13/13` cases.
+- all dashboard tests passed, `32/32`; `node --check` passed for `app.js`.
+- the host-visible workstation preflight passed on the required SSID.
+- `git diff --check` passed.
+
+| Artifact | Size | SHA-256 |
+| --- | ---: | --- |
+| `tools/pi_live_hailo_mavlink_dashboard.sh` | `73,862` bytes | `a72cd04d37984d692cdfecb73456d55bc7bb6f0b4fd69d69ba79447fc3594a97` |
+| `tools/live_dashboard_preflight.sh` | `28,749` bytes | `c1490db8f7198a774fc21b3892415d654725e33d83b3680edb820bc9d2f259bf` |
+
+All twelve current operational pin surfaces were updated: ten digest occurrences
+and the two size rows. The earlier pins in this diary and every frozen diary
+remain unchanged. The external weekly diary was not touched.

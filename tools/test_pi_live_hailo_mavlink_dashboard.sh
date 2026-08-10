@@ -71,6 +71,10 @@ require_literal 'PI_SUPERVISOR_STOP trigger='
 require_literal 'PI_SUPERVISOR_EXIT status='
 require_literal 'SUPERVISOR_LOG="$RUN_DIR/supervisor.log"'
 require_literal 'helper_sha256='
+require_literal 'THRUST_SAMPLE="$RUN_DIR/mavros_thrust_output.yaml"'
+require_literal 'log_thrust_output_sample() {'
+require_literal 'THRUST_OUTPUT_RAW_BEGIN phase=$context'
+require_literal 'THRUST_OUTPUT_RAW_END phase=$context'
 
 require_literal 'wait_for_mavproxy_heartbeat() {'
 require_literal 'MAVPROXY_LINK_DOWN=OBSERVED'
@@ -1972,7 +1976,8 @@ EXPECTED_FINAL_TRACE="$(printf '%s\n' \
   'source:/mavros/global_position/raw/fix:77' \
   'source:/mavros/imu/data:77' \
   'source:/mavros/battery:77' \
-  'source:/mavros/rc/in:77')"
+  'source:/mavros/rc/in:77' \
+  'source:/mavros/rc/out:77')"
 [ "$(<"$GRAPH_TRACE")" = "$EXPECTED_FINAL_TRACE" ] \
   || fail 'final graph verification changed phase order or absolute deadline'
 for contract in \
@@ -2106,10 +2111,11 @@ require_trace_count 1 source:/mavros/global_position/raw/fix
 require_trace_count 1 source:/mavros/imu/data
 require_trace_count 1 source:/mavros/battery
 require_trace_count 1 source:/mavros/rc/in
+require_trace_count 1 source:/mavros/rc/out
 require_trace_count 1 state:live-hold
 require_trace_count 1 power:live-hold
 
-# Four invocation groups read the same five MAVROS source topics: the two
+# Four invocation groups read the same six MAVROS source topics: the two
 # top-level pre-readiness groups, final_graph_verification, and monitor phase
 # three. The guards below pin one canonical order for all four, the absence of a
 # deadline argument in the two top-level groups, and their surrounding anchors.
@@ -2118,7 +2124,8 @@ MAVROS_SOURCE_TOPIC_ORDER="$(printf '%s\n' \
   /mavros/global_position/raw/fix \
   /mavros/imu/data \
   /mavros/battery \
-  /mavros/rc/in)"
+  /mavros/rc/in \
+  /mavros/rc/out)"
 
 extract_source_group() {
   awk '
@@ -2153,22 +2160,24 @@ extract_source_group() {
   'require_mavros_source /mavros/imu/data' \
   'require_mavros_source /mavros/battery' \
   'require_mavros_source /mavros/rc/in' \
+  'require_mavros_source /mavros/rc/out' \
   'require_mavros_source /mavros/state' \
   'require_mavros_source /mavros/global_position/raw/fix' \
   'require_mavros_source /mavros/imu/data' \
   'require_mavros_source /mavros/battery' \
-  'require_mavros_source /mavros/rc/in')" ] \
+  'require_mavros_source /mavros/rc/in' \
+  'require_mavros_source /mavros/rc/out')" ] \
   || fail 'the MAVROS-source consumer gained, lost, or reshaped a reference'
 
 mapfile -t PRE_READINESS_SOURCE_LINES < <(grep -n '^require_mavros_source ' "$HELPER" | cut -d: -f1)
-[ "${#PRE_READINESS_SOURCE_LINES[@]}" -eq 10 ] \
-  || fail "expected two five-topic pre-readiness groups, found ${#PRE_READINESS_SOURCE_LINES[@]} top-level source checks"
+[ "${#PRE_READINESS_SOURCE_LINES[@]}" -eq 12 ] \
+  || fail "expected two six-topic pre-readiness groups, found ${#PRE_READINESS_SOURCE_LINES[@]} top-level source checks"
 
-for group_offset in 0 5; do
+for group_offset in 0 6; do
   GROUP_START="${PRE_READINESS_SOURCE_LINES[$group_offset]}"
-  GROUP_END="${PRE_READINESS_SOURCE_LINES[$((group_offset + 4))]}"
-  [ "$((GROUP_END - GROUP_START))" -eq 4 ] \
-    || fail "the pre-readiness source group at line $GROUP_START is not five contiguous checks"
+  GROUP_END="${PRE_READINESS_SOURCE_LINES[$((group_offset + 5))]}"
+  [ "$((GROUP_END - GROUP_START))" -eq 5 ] \
+    || fail "the pre-readiness source group at line $GROUP_START is not six contiguous checks"
   GROUP_LINES="$(sed -n "${GROUP_START},${GROUP_END}p" "$HELPER")"
   [ "$(awk 'NF != 2 { unexpected++ } END { print unexpected + 0 }' <<<"$GROUP_LINES")" -eq 0 ] \
     || fail "the pre-readiness source group at line $GROUP_START no longer runs without a deadline argument"
@@ -2176,10 +2185,10 @@ for group_offset in 0 5; do
     || fail "the pre-readiness source group at line $GROUP_START changed topic membership or order"
 done
 
-[ "$(sed -n "$((PRE_READINESS_SOURCE_LINES[4] + 1))p" "$HELPER")" \
-  = "log 'MAVROS_TELEMETRY=PASS state,GPS,IMU,battery,RC sampled from one MAVROS publisher each'" ] \
+[ "$(sed -n "$((PRE_READINESS_SOURCE_LINES[5] + 1))p" "$HELPER")" \
+  = "log 'MAVROS_TELEMETRY=PASS state,GPS,IMU,battery,RC-input,thrust-output sampled from one MAVROS publisher each'" ] \
   || fail 'the telemetry pre-readiness source group no longer precedes the telemetry pass marker'
-[ "$(sed -n "$((PRE_READINESS_SOURCE_LINES[5] - 1))p" "$HELPER")" \
+[ "$(sed -n "$((PRE_READINESS_SOURCE_LINES[6] - 1))p" "$HELPER")" \
   = 'require_connected_disarmed_state pre-ready' ] \
   || fail 'the post-Hailo-readiness source group no longer follows the pre-ready connection check'
 
@@ -2239,7 +2248,8 @@ EXPECTED_MONITOR_SOURCE_TRACE="$(printf 'source:%s:77\n' \
   /mavros/global_position/raw/fix \
   /mavros/imu/data \
   /mavros/battery \
-  /mavros/rc/in)"
+  /mavros/rc/in \
+  /mavros/rc/out)"
 [ "$(<"$MONITOR_TRACE")" = "$EXPECTED_MONITOR_SOURCE_TRACE" ] \
   || fail 'monitor phase three changed its source order or stopped forwarding the phase deadline'
 
@@ -2565,13 +2575,14 @@ SOURCE_TOPIC_GIDS='/mavros/state:01.01
 /mavros/global_position/raw/fix:02.02
 /mavros/imu/data:03.03
 /mavros/battery:04.04
-/mavros/rc/in:05.05'
+/mavros/rc/in:05.05
+/mavros/rc/out:06.06'
 
 source_gid_for() {
   awk -F: -v topic="$1" '$1 == topic { print $2 }' <<<"$SOURCE_TOPIC_GIDS"
 }
 
-# A complete generation: all five topics, each with its own identity.
+# A complete generation: all six topics, each with its own identity.
 source_complete_stream() {
   local override_topic="${1:-}" override_count="${2:-}" entry topic gid count
   while IFS=: read -r topic gid; do
@@ -2681,11 +2692,11 @@ if source_view_case discriminating-count-api; then
     || fail 'the batched view did not report the endpoint list independently of the count'
 fi
 
-if source_view_case one-participant-five-topics; then
-  # Five ordered topics are served from a single probe run.
-  SHARED_DIR="$(source_run_dir one-participant-five-topics)"
+if source_view_case one-participant-six-topics; then
+  # Six ordered topics are served from a single probe run.
+  SHARED_DIR="$(source_run_dir one-participant-six-topics)"
   set +e
-  FIVE_TOPIC_OUTPUT="$(bash -c '
+  SHARED_TOPIC_OUTPUT="$(bash -c '
     eval "$1"
     STREAM="$2"
     RUN_DIR="$3"
@@ -2695,7 +2706,7 @@ if source_view_case one-participant-five-topics; then
     MAVROS_SOURCE_BATCH=1
     for view_topic in \
       /mavros/state /mavros/global_position/raw/fix /mavros/imu/data \
-      /mavros/battery /mavros/rc/in; do
+      /mavros/battery /mavros/rc/in /mavros/rc/out; do
       mavros_source_view 0 "$view_topic" >/dev/null
       printf "serve:%s:%s\n" "$view_topic" "$?"
     done
@@ -2703,11 +2714,11 @@ if source_view_case one-participant-five-topics; then
     "$SHARED_DIR/runs" 2>&1)"
   set -e
   [ "$(grep -Fxc 'run' "$SHARED_DIR/runs")" -eq 1 ] \
-    || fail 'five source topics did not share one probe run'
+    || fail 'six source topics did not share one probe run'
   for view_topic in \
     /mavros/state /mavros/global_position/raw/fix /mavros/imu/data \
-    /mavros/battery /mavros/rc/in; do
-    grep -Fxq "serve:$view_topic:0" <<<"$FIVE_TOPIC_OUTPUT" \
+    /mavros/battery /mavros/rc/in /mavros/rc/out; do
+    grep -Fxq "serve:$view_topic:0" <<<"$SHARED_TOPIC_OUTPUT" \
       || fail "the batched view did not serve $view_topic successfully from the shared run"
   done
 fi
@@ -2754,7 +2765,7 @@ if source_view_case execution-bounds-clean-phase; then
     MAVROS_SOURCE_BATCH=1
     for view_topic in \
       /mavros/state /mavros/global_position/raw/fix /mavros/imu/data \
-      /mavros/battery /mavros/rc/in; do
+      /mavros/battery /mavros/rc/in /mavros/rc/out; do
       mavros_source_view 0 "$view_topic" >/dev/null
       printf "serve:%s\n" "$?"
     done
@@ -2763,8 +2774,8 @@ if source_view_case execution-bounds-clean-phase; then
   set -e
   [ "$(grep -Fxc 'run' "$CLEAN_DIR/runs")" -eq 1 ] \
     || fail 'a clean phase did not stay within one probe run'
-  [ "$(grep -Fxc 'serve:0' <<<"$CLEAN_OUTPUT")" -eq 5 ] \
-    || fail 'a clean phase did not report five successful serves'
+  [ "$(grep -Fxc 'serve:0' <<<"$CLEAN_OUTPUT")" -eq 6 ] \
+    || fail 'a clean phase did not report six successful serves'
 fi
 
 if source_view_case execution-bounds-problematic-topic; then
@@ -2793,7 +2804,7 @@ if source_view_case execution-bounds-problematic-topic; then
 fi
 
 if source_view_case execution-bounds-worst-case; then
-  # The per-phase worst case is 1 + (2 * 5): the first read of each topic after
+  # The per-phase worst case is 1 + (2 * 6): the first read of each topic after
   # the first is served from the surviving generation, the next two re-run.
   WORST_DIR="$(source_run_dir execution-bounds-worst-case)"
   set +e
@@ -2807,7 +2818,7 @@ if source_view_case execution-bounds-worst-case; then
     MAVROS_SOURCE_BATCH=1
     for view_topic in \
       /mavros/state /mavros/global_position/raw/fix /mavros/imu/data \
-      /mavros/battery /mavros/rc/in; do
+      /mavros/battery /mavros/rc/in /mavros/rc/out; do
       for view_attempt in 1 2 3; do
         mavros_source_view 0 "$view_topic" >/dev/null
         printf "serve:%s\n" "$?"
@@ -2816,10 +2827,10 @@ if source_view_case execution-bounds-worst-case; then
   ' _ "$SOURCE_VIEW_FUNCTION" "$SOURCE_PROBE_STREAM" "$WORST_DIR" \
     "$WORST_DIR/runs" 2>&1)"
   set -e
-  [ "$(grep -Fxc 'run' "$WORST_DIR/runs")" -eq 11 ] \
-    || fail 'the per-phase worst case did not settle at 1 + (2 * 5) probe runs'
-  [ "$(grep -Fxc 'serve:0' <<<"$WORST_OUTPUT")" -eq 15 ] \
-    || fail 'the per-phase worst case did not report fifteen successful serves'
+  [ "$(grep -Fxc 'run' "$WORST_DIR/runs")" -eq 13 ] \
+    || fail 'the per-phase worst case did not settle at 1 + (2 * 6) probe runs'
+  [ "$(grep -Fxc 'serve:0' <<<"$WORST_OUTPUT")" -eq 18 ] \
+    || fail 'the per-phase worst case did not report eighteen successful serves'
 fi
 
 if source_view_case finite-deadline-clamp; then
@@ -2910,7 +2921,7 @@ fi
 
 if source_view_case probe-invocation-argv; then
   # The real probe argument vector: program path, settle budget, and the exact
-  # five-topic list, compared as one ordered string.
+  # six-topic list, compared as one ordered string.
   ARGV_DIR="$(source_run_dir probe-invocation-argv)"
   set +e
   bash -c '
@@ -2923,7 +2934,7 @@ if source_view_case probe-invocation-argv; then
     mavros_source_view 0 /mavros/state >/dev/null
   ' _ "$SOURCE_VIEW_FUNCTION" "$ARGV_DIR" "$ARGV_DIR/argv" >/dev/null 2>&1
   set -e
-  [ "$(cat "$ARGV_DIR/argv")" = "--signal=KILL 6s python3 $ARGV_DIR/mavros_source_probe.py 3 /mavros/state /mavros/global_position/raw/fix /mavros/imu/data /mavros/battery /mavros/rc/in" ] \
+  [ "$(cat "$ARGV_DIR/argv")" = "--signal=KILL 6s python3 $ARGV_DIR/mavros_source_probe.py 3 /mavros/state /mavros/global_position/raw/fix /mavros/imu/data /mavros/battery /mavros/rc/in /mavros/rc/out" ] \
     || fail "the probe invocation changed: $(cat "$ARGV_DIR/argv")"
 fi
 
@@ -3068,7 +3079,7 @@ for probe_failure_mode in crash exception timeout malformed partial; do
   if source_view_case "atomic-publication-$probe_failure_mode"; then
     # No failure mode may publish cache state that a later read can consume.
     # "partial" is a complete-looking stream missing one topic, which is why
-    # every success fixture above uses a complete five-topic generation.
+    # every success fixture above uses a complete six-topic generation.
     ATOMIC_DIR="$(source_run_dir "atomic-publication-$probe_failure_mode")"
     set +e
     ATOMIC_OUTPUT="$(bash -c '
@@ -3148,14 +3159,14 @@ if source_view_case probe-stderr-not-cached; then
     MAVROS_SOURCE_BATCH=1
     for view_topic in \
       /mavros/state /mavros/global_position/raw/fix /mavros/imu/data \
-      /mavros/battery /mavros/rc/in; do
+      /mavros/battery /mavros/rc/in /mavros/rc/out; do
       mavros_source_view 0 "$view_topic"
       printf "serve:%s\n" "$?"
     done
   ' _ "$SOURCE_VIEW_FUNCTION" "$STDERR_DIR" "$SOURCE_PROBE_STREAM" 2>/dev/null)"
   set -e
-  [ "$(grep -Fxc 'serve:0' <<<"$STDERR_OUTPUT")" -eq 5 ] \
-    || fail 'the probe-stderr case did not serve all five topics, so its result is vacuous'
+  [ "$(grep -Fxc 'serve:0' <<<"$STDERR_OUTPUT")" -eq 6 ] \
+    || fail 'the probe-stderr case did not serve all six topics, so its result is vacuous'
   ! grep -Fq 'PROBE_STDERR_NOISE' <<<"$STDERR_OUTPUT" \
     || fail 'probe standard error was mixed into a cached payload'
 fi
@@ -3204,14 +3215,14 @@ if source_view_case success-summary; then
     MAVROS_SOURCE_BATCH=1
     for view_topic in \
       /mavros/state /mavros/global_position/raw/fix /mavros/imu/data \
-      /mavros/battery /mavros/rc/in; do
+      /mavros/battery /mavros/rc/in /mavros/rc/out; do
       mavros_source_view 0 "$view_topic" >/dev/null
       printf "serve:%s\n" "$?"
     done
   ' _ "$SOURCE_VIEW_FUNCTION" "$SUMMARY_DIR" "$SOURCE_PROBE_STREAM" 2>&1)"
   set -e
-  [ "$(grep -Fxc 'serve:0' <<<"$SUMMARY_OUTPUT")" -eq 5 ] \
-    || fail 'the success-summary case did not serve all five topics'
+  [ "$(grep -Fxc 'serve:0' <<<"$SUMMARY_OUTPUT")" -eq 6 ] \
+    || fail 'the success-summary case did not serve all six topics'
   [ "$(grep -Fc 'LOG MAVROS_SOURCE_PROBE_RUN' <<<"$SUMMARY_OUTPUT")" -eq 1 ] \
     || fail 'a complete probe run did not record exactly one summary'
   ! grep -Fq 'raw: ' <<<"$SUMMARY_OUTPUT" \
@@ -3329,7 +3340,7 @@ if source_view_case producer-single-participant; then
     PYTHONPATH="$PRODUCER_DIR/fake" \
     python3 "$PRODUCER_DIR/probe.py" 2 \
       /mavros/state /mavros/global_position/raw/fix /mavros/imu/data \
-      /mavros/battery /mavros/rc/in 2>&1)"
+      /mavros/battery /mavros/rc/in /mavros/rc/out 2>&1)"
   PRODUCER_RC=$?
   set -e
   [ "$PRODUCER_RC" -eq 0 ] \
@@ -3344,13 +3355,13 @@ if source_view_case producer-single-participant; then
     || fail 'the probe program did not initialise before creating its participant'
   [ "$(tail -1 "$PRODUCER_DIR/trace")" = 'shutdown' ] \
     || fail 'the probe program did not shut down its participant'
-  [ "$(grep -Fc 'count_publishers:' "$PRODUCER_DIR/trace")" -ge 5 ] \
+  [ "$(grep -Fc 'count_publishers:' "$PRODUCER_DIR/trace")" -ge 6 ] \
     || fail 'the probe program did not call count_publishers per topic'
-  [ "$(grep -Fc 'get_publishers_info_by_topic:' "$PRODUCER_DIR/trace")" -ge 5 ] \
+  [ "$(grep -Fc 'get_publishers_info_by_topic:' "$PRODUCER_DIR/trace")" -ge 6 ] \
     || fail 'the probe program did not look up endpoints separately per topic'
   EXPECTED_PRODUCER_OUTPUT="$(for producer_topic in \
     /mavros/state /mavros/global_position/raw/fix /mavros/imu/data \
-    /mavros/battery /mavros/rc/in; do
+    /mavros/battery /mavros/rc/in /mavros/rc/out; do
     printf 'TOPIC: %s\n' "$producer_topic"
     printf 'Publisher count: 3\n'
     printf 'Node name: mavros\n'
@@ -3378,14 +3389,14 @@ if source_view_case producer-accumulated-discovery; then
     PYTHONPATH="$DISCOVERY_DIR/fake" \
     python3 "$DISCOVERY_DIR/probe.py" 5 \
       /mavros/state /mavros/global_position/raw/fix /mavros/imu/data \
-      /mavros/battery /mavros/rc/in 2>&1)"
+      /mavros/battery /mavros/rc/in /mavros/rc/out 2>&1)"
   DISCOVERY_RC=$?
   set -e
   [ "$DISCOVERY_RC" -eq 0 ] \
     || fail "the accumulated-discovery probe exited $DISCOVERY_RC"
   [ "$(grep -Fxc 'spin_once' "$DISCOVERY_DIR/trace")" -ge 4 ] \
     || fail 'the probe program stopped spinning before the graph settled'
-  [ "$(grep -Fc 'Publisher count: 3' <<<"$DISCOVERY_OUTPUT")" -eq 5 ] \
+  [ "$(grep -Fc 'Publisher count: 3' <<<"$DISCOVERY_OUTPUT")" -eq 6 ] \
     || fail 'the probe program emitted a pre-discovery reading instead of the settled graph'
   ! grep -Fq 'Publisher count: 0' <<<"$DISCOVERY_OUTPUT" \
     || fail 'the probe program published a zero-publisher reading after settling'

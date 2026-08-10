@@ -5,7 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PREFLIGHT="${1:-$SCRIPT_DIR/live_dashboard_preflight.sh}"
 WIKI="$SCRIPT_DIR/../wiki/Live_Hailo_MAVLink_Dashboard_Testing.md"
-EXPECTED_PREFLIGHT_SHA256='0a37ba04c7261225eadc7889a9169efcab5bbdc2b05808714b1350d4ea8d8f2b'
+EXPECTED_PREFLIGHT_SHA256='c1490db8f7198a774fc21b3892415d654725e33d83b3680edb820bc9d2f259bf'
 CASE_COUNT=0
 
 fail() {
@@ -50,7 +50,7 @@ grep -Fq 'the rosbridge `user interrupted with ctrl-c (SIGINT)` line as a discri
 ! grep -Fq 'The signature of a reversed order, observed 07/08/2026' "$WIKI" \
   || fail 'live-dashboard runbook retains the falsified 07/08 stop-order claim'
 
-require_literal "EXPECTED_HELPER_SHA256='19eaaef1a6147235705160abe5379915ff03e83f3ea553948ebe5b27ba38cc40'"
+require_literal "EXPECTED_HELPER_SHA256='a72cd04d37984d692cdfecb73456d55bc7bb6f0b4fd69d69ba79447fc3594a97'"
 require_literal 'EXPECTED_SSID="${LIVE_SSID:-IoT IMT Nord Europe}"'
 require_literal 'PI_WINDOW_MODE="${LIVE_PI_WINDOW_MODE:-fullscreen}"'
 require_literal 'validate_pi_window_selectors() {'
@@ -100,7 +100,7 @@ PI_COMMAND_OUTPUT="$(bash -c '
 PI_COMMAND_BLOCK="$(sed -n '/^($/,/^)$/{p}' <<<"$PI_COMMAND_OUTPUT")"
 [ -n "$PI_COMMAND_BLOCK" ] || fail 'printed Pi command block missing'
 bash -n <<<"$PI_COMMAND_BLOCK"
-grep -Fq '19eaaef1a6147235705160abe5379915ff03e83f3ea553948ebe5b27ba38cc40' \
+grep -Fq 'a72cd04d37984d692cdfecb73456d55bc7bb6f0b4fd69d69ba79447fc3594a97' \
   <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not verify the helper pin'
 grep -Fq 'LIVE_HOLD_AFTER_WINDOW=1' <<<"$PI_COMMAND_BLOCK" \
@@ -124,7 +124,7 @@ grep -Fq 'HAILO_DEMO_ROOT="$PI_RUNTIME_ROOT"' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not preserve the Hailo runtime root'
 grep -Fq '"$PI_HELPER"' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not execute the absolute Desktop helper'
-grep -Fq "\\n' '19eaaef1a6147235705160abe5379915ff03e83f3ea553948ebe5b27ba38cc40' \"\$PI_HELPER\" | sha256sum -c -" \
+grep -Fq "\\n' 'a72cd04d37984d692cdfecb73456d55bc7bb6f0b4fd69d69ba79447fc3594a97' \"\$PI_HELPER\" | sha256sum -c -" \
   <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi checksum format contains a literal line break'
 ! grep -Fq './pi_live_hailo_mavlink_dashboard.sh' <<<"$PI_COMMAND_BLOCK" \
@@ -248,7 +248,7 @@ RATE_MONITOR_OUTPUT="$(bash -c '
   python3() { PROBE_CALLS=$((PROBE_CALLS + 1)); }
   monitor_workstation_once() {
     MONITOR_CALLS=$((MONITOR_CALLS + 1))
-    [ "$MONITOR_CALLS" -lt 15 ]
+    [ "$MONITOR_CALLS" -lt 16 ]
   }
   if run_rate_probe_body; then
     fail "rate body ignored a local-service failure"
@@ -498,7 +498,7 @@ MARKER_CASE_OUTPUT="$(bash -c '
     [ "$SAMPLE_FAIL_AT" -ne "$SAMPLE_COUNT" ] || return 23
   }
   wait_for_pi_data_arrival
-  [ "$SAMPLE_COUNT" -eq 6 ] || fail "arrival gate did not sample all six topics"
+  [ "$SAMPLE_COUNT" -eq 7 ] || fail "arrival gate did not sample all seven topics"
 
   PUBLISHER_CHECKS=3
   SAMPLE_COUNT=0

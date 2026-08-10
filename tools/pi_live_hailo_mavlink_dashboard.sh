@@ -52,6 +52,7 @@ GPS_SAMPLE="$RUN_DIR/mavros_gps.yaml"
 IMU_SAMPLE="$RUN_DIR/mavros_imu.yaml"
 BATTERY_SAMPLE="$RUN_DIR/mavros_battery.yaml"
 RC_SAMPLE="$RUN_DIR/mavros_rc.yaml"
+THRUST_SAMPLE="$RUN_DIR/mavros_thrust_output.yaml"
 IMAGE_SAMPLE="$RUN_DIR/hailo_image.yaml"
 COMMAND_ABORT_FILE="$RUN_DIR/command_abort.txt"
 THERMAL_ABORT_FILE="$RUN_DIR/thermal_abort.txt"
@@ -104,6 +105,17 @@ log_error() {
   local line="[live-dashboard] $*"
   append_supervisor_log "$line"
   printf '%s\n' "$line" >&2
+}
+
+log_thrust_output_sample() {
+  local context="$1" sample_line
+  grep -q '^channels:' "$THRUST_SAMPLE" \
+    || die "invalid MAVROS thrust-output sample; see $THRUST_SAMPLE"
+  log "THRUST_OUTPUT_RAW_BEGIN phase=$context"
+  while IFS= read -r sample_line; do
+    log "THRUST_OUTPUT_RAW $sample_line"
+  done < <(awk '/^channels:/{show=1} show' "$THRUST_SAMPLE")
+  log "THRUST_OUTPUT_RAW_END phase=$context"
 }
 
 set_supervisor_phase() {
@@ -639,6 +651,7 @@ declare -a MAVROS_SOURCE_TOPICS=(
   /mavros/imu/data
   /mavros/battery
   /mavros/rc/in
+  /mavros/rc/out
 )
 
 mavros_source_topic_block() {
@@ -1058,7 +1071,8 @@ final_graph_verification() {
     /mavros/global_position/raw/fix \
     /mavros/imu/data \
     /mavros/battery \
-    /mavros/rc/in; do
+    /mavros/rc/in \
+    /mavros/rc/out; do
     require_mavros_source "$source_topic" "$deadline" || result=$?
     [ "$result" -eq 0 ] || return "$result"
     check_command_sentinel
@@ -1124,7 +1138,8 @@ monitor_live_stack() {
             /mavros/global_position/raw/fix \
             /mavros/imu/data \
             /mavros/battery \
-            /mavros/rc/in; do
+            /mavros/rc/in \
+            /mavros/rc/out; do
             phase_rc=0
             require_mavros_source "$source_topic" "$deadline" || phase_rc=$?
             if [ "$phase_rc" -eq 75 ]; then
@@ -1967,12 +1982,19 @@ ros2 topic echo --once --timeout 10 --no-arr \
   /mavros/rc/in mavros_msgs/msg/RCIn >"$RC_SAMPLE" 2>&1 \
   || die "no MAVROS RC input sample; see $RC_SAMPLE"
 check_command_sentinel
+ros2 topic echo --once --timeout 10 \
+  --qos-reliability best_effort --qos-history keep_last --qos-depth 10 \
+  /mavros/rc/out mavros_msgs/msg/RCOut >"$THRUST_SAMPLE" 2>&1 \
+  || die "no MAVROS thrust-output sample; see $THRUST_SAMPLE"
+log_thrust_output_sample initial
+check_command_sentinel
 require_mavros_source /mavros/state
 require_mavros_source /mavros/global_position/raw/fix
 require_mavros_source /mavros/imu/data
 require_mavros_source /mavros/battery
 require_mavros_source /mavros/rc/in
-log 'MAVROS_TELEMETRY=PASS state,GPS,IMU,battery,RC sampled from one MAVROS publisher each'
+require_mavros_source /mavros/rc/out
+log 'MAVROS_TELEMETRY=PASS state,GPS,IMU,battery,RC-input,thrust-output sampled from one MAVROS publisher each'
 
 HAILO_ENV=(
   "PYTHONUNBUFFERED=1"
@@ -2032,6 +2054,7 @@ require_mavros_source /mavros/global_position/raw/fix
 require_mavros_source /mavros/imu/data
 require_mavros_source /mavros/battery
 require_mavros_source /mavros/rc/in
+require_mavros_source /mavros/rc/out
 
 NODES="$(graph_nodes)" || die 'cannot inspect the ROS node graph'
 reject_forbidden_nodes "$NODES"
@@ -2045,7 +2068,7 @@ MAVROS_TOPIC_COUNT="$(grep -c '^/mavros/' <<<"$TOPICS" || true)"
 [ "$MAVROS_TOPIC_COUNT" -gt 0 ] || die 'no MAVROS topics discovered'
 set_supervisor_phase live-window
 log "PI_SOURCE_STACK_READY=PASS mavros_topics=$MAVROS_TOPIC_COUNT image_topic=$IMAGE_TOPIC"
-log "dashboard: hard-refresh; camera=$IMAGE_TOPIC; native MAVROS panel reads five topics directly"
+log "dashboard: hard-refresh; camera=$IMAGE_TOPIC; native MAVROS panel reads six topics directly"
 log 'scope: Pi source readiness only; GPS no-fix is valid telemetry and must not be misread as transport loss'
 
 mavros_source_probe_selftest 0 || die 'batched MAVROS source probe self-test failed'
@@ -2117,6 +2140,16 @@ bounded_topic_echo "$FINAL_VERIFY_DEADLINE" 5 --no-arr \
   || FINAL_CHECK_RC=$?
 require_final_check_result "$FINAL_CHECK_RC" RC-sample \
   "no fresh final MAVROS RC input sample; see $RC_SAMPLE"
+check_command_sentinel
+check_thermal_watchdog
+FINAL_CHECK_RC=0
+bounded_topic_echo "$FINAL_VERIFY_DEADLINE" 5 \
+  --qos-reliability best_effort --qos-history keep_last --qos-depth 10 \
+  /mavros/rc/out mavros_msgs/msg/RCOut >"$THRUST_SAMPLE" 2>&1 \
+  || FINAL_CHECK_RC=$?
+require_final_check_result "$FINAL_CHECK_RC" thrust-output-sample \
+  "no fresh final MAVROS thrust-output sample; see $THRUST_SAMPLE"
+log_thrust_output_sample final
 check_command_sentinel
 check_thermal_watchdog
 FINAL_CHECK_RC=0

@@ -571,11 +571,16 @@ The whole repo is expected to run on the Pi 5. Long-term (Phase 5.2+): QGC and t
    zero, so the rail must be read from live parameters and never hard-coded. **10/08/2026:** the
    written command-ingress contract is now closed as a design-only decision in
    `working_diary/2026-08-10_monday_command_ingress_contract_and_helper_thrust_telemetry.md`.
-   Implementation and runtime acceptance remain unstarted; the contract is SITL-only, not
-   implementation-ready and not runnable in the known environment. It resolves ingress from live
-   `RCMAP_*` and `RC<n>_*`, retains `SERVO*_FUNCTION` and live servo rails for output
-   observation, and fixes domain `42` for operational isolation rather than FCU actuation safety;
-   no current repository path converts the thrust topics into an FCU command.
+   Production-bridge implementation and full contract acceptance remain unstarted; the contract is
+   SITL-only and not implementation-ready. A bounded workstation-only acceptance on 10/08/2026
+   nevertheless exercised the established MAVProxy RC-override path with live-resolved
+   `RCMAP_*`, `RC<n>_*`, `SERVO*_FUNCTION` and servo rails. The simulator armed in `MANUAL`,
+   produced `1570`/`1570` for throttle and `1644`/`1496` for asymmetric steering, returned to
+   `1500`/`1500` only after both live RC trims were commanded explicitly, and disarmed cleanly.
+   The isolated domain-`42` browser rendered the same raw PWM values with the SITL mapping selected
+   from that live read. `rc all 0` alone left the last servo output present, confirming that release
+   is not neutral. No current repository path converts the thrust topics into an FCU command, and
+   no physical controller or Pi was contacted.
 3. **Detector recovery before Hailo accuracy gates**: the Hailo six-output decode
    contract is proven on saved frames (07/07/2026, `fb308f9`), and the 08/07 Pi
    runtime smoke proved single-process RealSense -> Hailo -> decode-summary

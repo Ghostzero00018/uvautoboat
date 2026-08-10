@@ -255,6 +255,17 @@ Start, Resume, Go Home, Reset, and Emergency Stop prompt a confirmation before a
 | `/wamv/thrusters/left/thrust`  | Left thruster command feedback       |
 | `/wamv/thrusters/right/thrust` | Right thruster command feedback      |
 
+The live MAVLink thrust row defaults to the real boat's measured output mapping
+(`SERVO3` left, `SERVO1` right). For another connected vehicle, first resolve
+functions `73` and `74` from its live `SERVO*_FUNCTION` values, then open the
+dashboard with those resolved channels, for example:
+
+```text
+http://127.0.0.1:8002/?thrust_left_servo=1&thrust_right_servo=3
+```
+
+The readout remains raw PWM and does not infer a percentage or physical thrust.
+
 The current temporary view-only build does not subscribe to the VRX simulation GPS
 topic. Simulation GPS and map updates require restoring that subscription in a
 simulation build.

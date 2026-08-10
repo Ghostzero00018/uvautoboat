@@ -335,12 +335,32 @@ const LIVE_MAVLINK_TOPIC_SPECS = Object.freeze([
     })
 ]);
 
-// This vehicle assigns SERVO3 = ThrottleLeft (function 73) and SERVO1 =
-// ThrottleRight (function 74). Rover SITL uses the opposite channels, so these
-// indices describe the real boat only. Raw PWM is shown without conversion to a
-// percentage: the rail differs between platforms and must never be assumed.
-const THRUST_LEFT_CHANNEL = 3;
-const THRUST_RIGHT_CHANNEL = 1;
+// The real boat assigns SERVO3 = ThrottleLeft (function 73) and SERVO1 =
+// ThrottleRight (function 74). A live parameter read may select another mapping
+// for a different vehicle with ?thrust_left_servo=N&thrust_right_servo=N. Raw
+// PWM is shown without conversion to a percentage: the rail differs between
+// platforms and must never be assumed.
+function liveMavlinkThrustChannels(search = '') {
+    const defaults = Object.freeze({ left: 3, right: 1 });
+    let left = NaN;
+    let right = NaN;
+    String(search).replace(/^\?/, '').split('&').forEach((entry) => {
+        const [key, value] = entry.split('=', 2);
+        if (key === 'thrust_left_servo') left = Number(value);
+        if (key === 'thrust_right_servo') right = Number(value);
+    });
+    const valid = Number.isInteger(left) && Number.isInteger(right)
+        && left >= 1 && left <= 16
+        && right >= 1 && right <= 16
+        && left !== right;
+    return valid ? Object.freeze({ left, right }) : defaults;
+}
+
+const LIVE_MAVLINK_THRUST_CHANNELS = liveMavlinkThrustChannels(
+    typeof location === 'object' ? location.search : ''
+);
+const THRUST_LEFT_CHANNEL = LIVE_MAVLINK_THRUST_CHANNELS.left;
+const THRUST_RIGHT_CHANNEL = LIVE_MAVLINK_THRUST_CHANNELS.right;
 
 // sensor_msgs/NavSatStatus fix codes and MAV_STATE system-status codes, rendered by
 // name so an operator does not have to decode a bare integer while a run is live.
