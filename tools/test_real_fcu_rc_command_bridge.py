@@ -1,0 +1,297 @@
+#!/usr/bin/env python3
+"""Focused pure-function and ROS-node tests for real_fcu_rc_command_bridge.py."""
+
+from __future__ import annotations
+
+import importlib.util
+import inspect
+import os
+import pathlib
+import sys
+import unittest
+from unittest import mock
+
+import rclpy
+from mavros_msgs.msg import State
+from rclpy.signals import SignalHandlerOptions
+from std_msgs.msg import Bool
+
+
+MODULE_PATH = pathlib.Path(__file__).with_name("real_fcu_rc_command_bridge.py")
+SPEC = importlib.util.spec_from_file_location("real_fcu_rc_command_bridge", MODULE_PATH)
+MODULE = importlib.util.module_from_spec(SPEC)
+assert SPEC.loader is not None
+sys.modules[SPEC.name] = MODULE
+SPEC.loader.exec_module(MODULE)
+
+
+def valid_parameters():
+    values = {
+        "SYSID_THISMAV": 1,
+        "SYSID_MYGCS": 255,
+        "SYSID_ENFORCE": 0,
+        "SERIAL1_PROTOCOL": 2,
+        "BRD_SAFETY_DEFLT": 1,
+        "BRD_SAFETY_MASK": 0,
+        "BRD_SAFETYOPTION": 0,
+        "ARMING_CHECK": 0,
+        "ARMING_RUDDER": 2,
+        "ARMING_REQUIRE": 1,
+        "FRAME_CLASS": 2,
+        "PILOT_STEER_TYPE": 0,
+        "MODE_CH": 8,
+        "RC_OPTIONS": 0,
+        "RC_OVERRIDE_TIME": 0.5,
+        "RCMAP_ROLL": 1,
+        "RCMAP_THROTTLE": 3,
+        "SCR_ENABLE": 0,
+        "SERVO_32_ENABLE": 0,
+        "FS_THR_ENABLE": 0,
+        "FS_THR_VALUE": 950,
+        "FS_TIMEOUT": 5,
+        "FS_ACTION": 0,
+        "FS_OPTIONS": 0,
+        "FS_GCS_ENABLE": 0,
+        "FS_GCS_TIMEOUT": 5,
+    }
+    for channel in range(1, 17):
+        values[f"RC{channel}_OPTION"] = 0
+        values[f"SERVO{channel}_FUNCTION"] = 0
+    values["SERVO3_FUNCTION"] = 73
+    values["SERVO1_FUNCTION"] = 74
+    for channel in (1, 3):
+        values.update({
+            f"RC{channel}_MIN": 1000,
+            f"RC{channel}_TRIM": 1500,
+            f"RC{channel}_MAX": 2000,
+            f"RC{channel}_DZ": 30,
+            f"RC{channel}_REVERSED": 0,
+        })
+        values.update({
+            f"SERVO{channel}_MIN": 800,
+            f"SERVO{channel}_TRIM": 800,
+            f"SERVO{channel}_MAX": 2200,
+            f"SERVO{channel}_REVERSED": 0,
+        })
+    return values
+
+
+class BridgeFunctionsTest(unittest.TestCase):
+    def test_resolves_function_mapping_and_independent_rails(self):
+        guard = MODULE.resolve_guard(valid_parameters())
+        self.assertEqual((guard.left_servo, guard.right_servo), (3, 1))
+        self.assertEqual((guard.steering_channel, guard.throttle_channel), (1, 3))
+        self.assertEqual(guard.left_servo_rail.trim, 800)
+        self.assertEqual(guard.throttle_rail.trim, 1500)
+
+    def test_rejects_duplicate_throttle_function(self):
+        values = valid_parameters()
+        values["SERVO2_FUNCTION"] = 73
+        with self.assertRaisesRegex(MODULE.GuardError, "exactly one"):
+            MODULE.resolve_guard(values)
+
+    def test_rejects_unbounded_override_timeout(self):
+        values = valid_parameters()
+        values["RC_OVERRIDE_TIME"] = 3.0
+        with self.assertRaisesRegex(MODULE.GuardError, "RC_OVERRIDE_TIME"):
+            MODULE.resolve_guard(values)
+
+    def test_quantization_stays_toward_trim(self):
+        rail = MODULE.RcRail(1000, 1500, 2000, 30, 0)
+        self.assertEqual(MODULE.encode_axis(0.0, rail), 1500)
+        self.assertEqual(MODULE.encode_axis(0.20, rail), 1624)
+        self.assertEqual(MODULE.encode_axis(-0.20, rail), 1376)
+
+    def test_reversal_and_channel_aware_release(self):
+        rail = MODULE.RcRail(1000, 1500, 2000, 30, 1)
+        self.assertLess(MODULE.encode_axis(0.2, rail), rail.trim)
+        self.assertEqual(MODULE.release_value(8), 0)
+        self.assertEqual(MODULE.release_value(9), 65534)
+
+    def test_override_frame_changes_only_resolved_channels(self):
+        channels = MODULE.override_channels(1, 1550, 3, 1600)
+        self.assertEqual(len(channels), 18)
+        self.assertEqual(channels[0], 1550)
+        self.assertEqual(channels[2], 1600)
+        self.assertTrue(all(value == 65535 for value in channels[3:]))
+
+    def test_nonnegative_throttle_contract_uses_trim_for_failsafe_floor(self):
+        values = valid_parameters()
+        values["FS_THR_ENABLE"] = 1
+        values["RC3_MIN"] = 900
+        values["FS_THR_VALUE"] = 950
+        guard = MODULE.resolve_guard(values)
+        self.assertEqual(guard.throttle_rail.trim, 1500)
+
+    def test_command_timestamp_is_nonzero_and_strictly_representable(self):
+        self.assertEqual(MODULE.command_stamp_ns(1, 25), 1_000_000_025)
+        with self.assertRaisesRegex(MODULE.GuardError, "non-zero"):
+            MODULE.command_stamp_ns(0, 0)
+        with self.assertRaisesRegex(MODULE.GuardError, "ROS time domain"):
+            MODULE.command_stamp_ns(1, 1_000_000_000)
+
+    def test_neutral_readiness_uses_live_resolved_rc_channels_and_trims(self):
+        guard = MODULE.resolve_guard(valid_parameters())
+        channels = [1500, 900, 1500]
+        self.assertTrue(MODULE.rc_input_is_neutral(channels, guard))
+        channels[guard.throttle_channel - 1] = 1510
+        self.assertFalse(MODULE.rc_input_is_neutral(channels, guard))
+
+    def test_main_keeps_rclpy_from_taking_signal_ownership(self):
+        source = inspect.getsource(MODULE.main)
+        self.assertIn("signal_handler_options=SignalHandlerOptions.NO", source)
+
+
+class RecordingPublisher:
+    def __init__(self):
+        self.messages = []
+
+    def publish(self, message):
+        self.messages.append(message)
+
+
+class BridgeNodeStateMachineTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        os.environ["ROS_DOMAIN_ID"] = "42"
+        os.environ["ROS_LOG_DIR"] = "/tmp"
+        if not rclpy.ok():
+            rclpy.init(args=[], signal_handler_options=SignalHandlerOptions.NO)
+
+    @classmethod
+    def tearDownClass(cls):
+        if rclpy.ok():
+            rclpy.shutdown()
+
+    def setUp(self):
+        self.node = MODULE.RealFcuRcCommandBridge()
+        self.node.timer.cancel()
+        self.node.allow_real_fcu = True
+        self.node.guard = MODULE.resolve_guard(valid_parameters())
+        self.node.override_pub = RecordingPublisher()
+        self.node.status_pub = RecordingPublisher()
+
+    def tearDown(self):
+        self.node.destroy_node()
+
+    @staticmethod
+    def vehicle(armed, mode="MANUAL"):
+        message = State()
+        message.connected = True
+        message.armed = armed
+        message.mode = mode
+        return message
+
+    def set_valid_feedback(self, now):
+        self.node.latest_rc_in = (1500, 1500, 1500)
+        self.node.latest_rc_out = (800, 800, 800)
+        self.node.latest_rc_in_at = now - 0.1
+        self.node.latest_rc_out_at = now - 0.1
+
+    def test_startup_armed_abort_emits_no_override(self):
+        now = 100.0
+        self.node.latest_state = self.vehicle(True)
+        self.node.latest_state_at = now
+        self.node.startup_armed = True
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._tick()
+        self.assertEqual(self.node.override_pub.messages, [])
+
+    def test_empty_feedback_cannot_enable_non_neutral_output(self):
+        now = 100.0
+        self.node.latest_state = self.vehicle(True)
+        self.node.latest_state_at = now
+        self.node.arm_epoch_authorized = True
+        self.node.armed_enable_primed = True
+        self.node.last_command = (0.1, 0.1, True)
+        self.node.last_command_at = now
+        self.node.latest_rc_in_at = now
+        self.node.latest_rc_out_at = now
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now), \
+                mock.patch.object(self.node, "count_publishers", return_value=1):
+            self.node._tick()
+        channels = self.node.override_pub.messages[-1].channels
+        guard = self.node.guard
+        self.assertEqual(channels[guard.steering_channel - 1], guard.steering_rail.trim)
+        self.assertEqual(channels[guard.throttle_channel - 1], guard.throttle_rail.trim)
+        self.assertEqual(self.node.fault, "FEEDBACK_INVALID")
+
+    def test_one_hertz_state_stream_does_not_false_trip(self):
+        now = 100.0
+        self.node.latest_state = self.vehicle(False)
+        self.node.latest_state_at = now - 1.1
+        self.node.latest_rc_in = (1500, 1500, 1500)
+        self.node.latest_rc_in_at = now - 0.1
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._tick()
+        self.assertEqual(self.node.fault, "READY_DISARMED")
+
+    def test_stale_armed_state_sends_live_trims_instead_of_silence(self):
+        now = 100.0
+        self.node.latest_state = self.vehicle(True)
+        self.node.latest_state_at = now - 3.0
+        self.node.arm_epoch_authorized = True
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._tick()
+        channels = self.node.override_pub.messages[-1].channels
+        guard = self.node.guard
+        self.assertEqual(channels[guard.steering_channel - 1], guard.steering_rail.trim)
+        self.assertEqual(channels[guard.throttle_channel - 1], guard.throttle_rail.trim)
+        self.assertEqual(self.node.fault, "STATE_STALE")
+
+    def test_disarmed_readiness_is_recomputed_after_each_epoch(self):
+        now = 100.0
+        self.node.disarmed_ready = True
+        self.node.latest_state = self.vehicle(False)
+        self.node.latest_state_at = now
+        self.node.latest_rc_in = (1600, 1500, 1500)
+        self.node.latest_rc_in_at = now
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._tick()
+        self.assertFalse(self.node.disarmed_ready)
+        self.assertEqual(self.node.fault, "WAITING_DISARMED_NEUTRAL_RC")
+
+    def test_arm_transition_rechecks_latest_rc_input(self):
+        now = 100.0
+        self.node.latest_state = self.vehicle(False)
+        self.node.disarmed_ready = True
+        self.node.latest_rc_in = (1600, 1500, 1500)
+        self.node.latest_rc_in_at = now
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._state_cb(self.vehicle(True))
+        self.assertFalse(self.node.arm_epoch_authorized)
+
+    def test_emergency_stop_immediately_overrides_demand_with_live_trims(self):
+        now = 100.0
+        self.node.latest_state = self.vehicle(True)
+        self.node.latest_state_at = now
+        self.node.arm_epoch_authorized = True
+        self.set_valid_feedback(now)
+        self.node._emergency_cb(Bool(data=True))
+        channels = self.node.override_pub.messages[-1].channels
+        guard = self.node.guard
+        self.assertEqual(channels[guard.steering_channel - 1], guard.steering_rail.trim)
+        self.assertEqual(channels[guard.throttle_channel - 1], guard.throttle_rail.trim)
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._tick()
+        self.assertEqual(self.node.fault, "EMERGENCY_STOP")
+
+    def test_shutdown_neutralizes_before_context_close(self):
+        self.node.latest_state = self.vehicle(True)
+        with mock.patch.object(MODULE.time, "sleep"):
+            self.node.neutralize_for_shutdown()
+        self.assertEqual(len(self.node.override_pub.messages), 3)
+        guard = self.node.guard
+        for message in self.node.override_pub.messages:
+            self.assertEqual(
+                message.channels[guard.steering_channel - 1],
+                guard.steering_rail.trim,
+            )
+            self.assertEqual(
+                message.channels[guard.throttle_channel - 1],
+                guard.throttle_rail.trim,
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()

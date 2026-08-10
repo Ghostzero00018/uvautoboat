@@ -22,6 +22,7 @@ function createHarness(search = '') {
     const elements = new Map();
     const subscriptions = [];
     const intervals = [];
+    const published = [];
     let gpsUpdates = 0;
     let publishes = 0;
     let serviceCalls = 0;
@@ -39,18 +40,30 @@ function createHarness(search = '') {
 
     function createElement() {
         const classes = new Set();
+        const listeners = new Map();
         return {
             textContent: '',
             className: '',
             dataset: {},
+            value: '0',
+            checked: false,
             disabled: false,
             inert: false,
             attributes: new Map(),
             classList: {
                 add(name) { classes.add(name); },
+                remove(name) { classes.delete(name); },
                 contains(name) { return classes.has(name); }
             },
-            setAttribute(name, value) { this.attributes.set(name, value); }
+            setAttribute(name, value) { this.attributes.set(name, value); },
+            removeAttribute(name) { this.attributes.delete(name); },
+            addEventListener(name, callback) {
+                if (!listeners.has(name)) listeners.set(name, []);
+                listeners.get(name).push(callback);
+            },
+            dispatch(name, event = {}) {
+                for (const callback of listeners.get(name) || []) callback(event);
+            }
         };
     }
 
@@ -64,6 +77,8 @@ function createHarness(search = '') {
         'health-auto-scroll'
     ];
     diagnosticControlIds.forEach((id) => elements.set(id, createElement()));
+    elements.set('btn-emergency-stop', createElement());
+    elements.set('btn-camera-emergency-stop', createElement());
 
     class Topic {
         constructor(options) {
@@ -77,13 +92,17 @@ function createHarness(search = '') {
 
         publish() {
             publishes += 1;
+            published.push({ topic: this.options.name, message: arguments[0] });
         }
     }
 
     const bodyClasses = new Set();
+    const windowListeners = new Map();
+    const documentListeners = new Map();
     const context = {
-        ROSLIB: { Topic },
+        ROSLIB: { Topic, Message: class Message { constructor(value) { Object.assign(this, value); } } },
         ros: {},
+        connected: true,
         console: { warn() {} },
         addLog() {},
         showFeedback() {},
@@ -91,26 +110,45 @@ function createHarness(search = '') {
         Date: FakeDate,
         location: { search },
         setInterval(callback) {
-            intervals.push(callback);
+            intervals.push({ callback, active: true });
             return intervals.length;
         },
+        clearInterval(id) {
+            if (intervals[id - 1]) intervals[id - 1].active = false;
+        },
+        setTimeout(callback) {
+            callback();
+            return 1;
+        },
+        addEventListener(name, callback) {
+            if (!windowListeners.has(name)) windowListeners.set(name, []);
+            windowListeners.get(name).push(callback);
+        },
         document: {
+            hidden: false,
             body: {
                 classList: {
                     add(name) { bodyClasses.add(name); }
                 }
             },
             querySelectorAll(selector) {
-                return selector.includes('button') ? writeControls : panelContainers;
+                return selector.includes('button')
+                    ? [...writeControls, elements.get('btn-emergency-stop')]
+                    : panelContainers;
             },
             getElementById(id) {
                 if (!elements.has(id)) {
                     elements.set(id, createElement());
                 }
                 return elements.get(id);
+            },
+            addEventListener(name, callback) {
+                if (!documentListeners.has(name)) documentListeners.set(name, []);
+                documentListeners.get(name).push(callback);
             }
         }
     };
+    context.window = context;
 
     vm.createContext(context);
     vm.runInContext(
@@ -136,7 +174,19 @@ function createHarness(search = '') {
             updateLiveMavlinkBattery,
             updateLiveMavlinkRc,
             updateLiveMavlinkThrust,
-            updateLiveMavlinkGps
+            updateLiveMavlinkGps,
+            LIVE_FCU_BENCH_REQUESTED,
+            liveFcuBenchRequested,
+            clampFcuBenchDemand,
+            fcuBenchMessage,
+            fcuBenchCanApply,
+            updateLiveFcuBenchStatus,
+            refreshFcuBenchControls,
+            subscribeToLiveFcuBenchLoop,
+            initFcuBenchLoop,
+            startFcuBenchHold,
+            stopFcuBenchHold,
+            publishFcuBenchEmergencyStop
         };`,
         context
     );
@@ -146,6 +196,7 @@ function createHarness(search = '') {
         bodyClasses,
         elements,
         intervals,
+        published,
         subscriptions,
         diagnosticControlIds,
         panelContainers,
@@ -154,6 +205,10 @@ function createHarness(search = '') {
         getGpsUpdates: () => gpsUpdates,
         getPublishes: () => publishes,
         getServiceCalls: () => serviceCalls,
+        runInterval(index) {
+            const interval = intervals[index];
+            if (interval?.active) interval.callback();
+        },
         service: {
             callService() { serviceCalls += 1; }
         }
@@ -229,12 +284,31 @@ test('temporary view blocks writes while preserving diagnostic controls', () => 
     assert.equal(harness.intervals.length, 1);
 });
 
+test('bench URL restores the real E-Stop while leaving other live writes blocked', () => {
+    const normal = createHarness();
+    normal.api.enableLiveMavlinkViewOnly();
+    assert.equal(normal.elements.get('btn-emergency-stop').disabled, true);
+    assert.equal(normal.elements.get('btn-camera-emergency-stop').disabled, true);
+
+    const bench = createHarness('?enable_fcu_bench_control=1');
+    bench.api.enableLiveMavlinkViewOnly();
+    assert.equal(bench.elements.get('btn-emergency-stop').disabled, false);
+    assert.equal(bench.elements.get('btn-camera-emergency-stop').disabled, false);
+    assert.equal(bench.elements.get('btn-emergency-stop').inert, false);
+    assert.equal(bench.writeControls.every((control) => control.disabled), true);
+    assert.match(htmlSource, /id="btn-camera-emergency-stop"/);
+});
+
 test('direct-call syntax canary keeps known writes behind the temporary guard', () => {
     const publishCalls = appSource.match(/\.publish\s*\(/g) || [];
     const serviceCalls = appSource.match(/\.callService\s*\(/g) || [];
-    assert.equal(publishCalls.length, 1);
+    assert.equal(publishCalls.length, 3);
     assert.equal(serviceCalls.length, 2);
     assert.match(appSource, /function publishDashboardWrite[\s\S]*?topic\.publish\(message\)/);
+    assert.match(appSource, /function publishFcuBenchDemand[\s\S]*?liveFcuBenchCommandPublisher\.publish\(message\)/);
+    assert.match(appSource, /function publishFcuBenchEmergencyStop[\s\S]*?liveFcuBenchEmergencyPublisher\.publish/);
+    assert.match(appSource, /enable_fcu_bench_control/);
+    assert.match(htmlSource, /Hold to Apply RC Demand/);
     assert.match(appSource, /function callDashboardWriteService[\s\S]*?service\.callService\(request/);
     assert.match(appSource, /name: '\/rosapi\/topics_for_type'[\s\S]*?svc\.callService\(/);
     assert.equal(appSource.includes('const LIVE_MAVLINK_VIEW_ONLY = true;'), true);
@@ -266,7 +340,17 @@ test('temporary panel DOM contract is complete and camera defaults to Hailo', ()
         'mavlink-rc-rssi',
         'mavlink-rc-channels',
         'mavlink-thrust-output',
-        'mavlink-last-update'
+        'mavlink-last-update',
+        'fcu-loop-policy',
+        'fcu-loop-state',
+        'fcu-loop-mapping',
+        'fcu-loop-command',
+        'fcu-loop-feedback',
+        'fcu-loop-steering',
+        'fcu-loop-throttle',
+        'fcu-loop-physical-confirmation',
+        'btn-fcu-loop-neutral',
+        'btn-fcu-loop-hold'
     ];
     for (const id of ids) {
         const matches = htmlSource.match(new RegExp(`id=["']${id}["']`, 'g')) || [];
@@ -305,6 +389,160 @@ test('temporary panel DOM contract is complete and camera defaults to Hailo', ()
     assert.match(cssSource, /\.live-mavlink-write-disabled\s*\{/);
     assert.doesNotMatch(cssSource, /live-mavlink-view-only \.health-check-panel (?:button|input)/);
     assert.match(htmlSource, /id="camera-topic" value="\/hailo\/overlay\/image_raw"/);
+});
+
+test('bench command path is opt-in, bounded, paired, and strictly stamped', () => {
+    const inhibited = createHarness();
+    assert.equal(inhibited.api.LIVE_FCU_BENCH_REQUESTED, false);
+    assert.equal(inhibited.api.liveFcuBenchRequested('enable_fcu_bench_control=1'), true);
+    assert.equal(inhibited.api.liveFcuBenchRequested('?enable_fcu_bench_control=true'), false);
+
+    const harness = createHarness('?enable_fcu_bench_control=1');
+    assert.equal(harness.api.LIVE_FCU_BENCH_REQUESTED, true);
+    const first = harness.api.fcuBenchMessage(0.1, 0.05, 1, 1000);
+    const second = harness.api.fcuBenchMessage(0.1, 0.05, 1, 1000);
+    assert.deepEqual(Array.from(first.axes), [0.1, 0.05]);
+    assert.deepEqual(Array.from(first.buttons), [1]);
+    assert.equal(first.header.frame_id, 'uvautoboat/rc_axes/v1');
+    assert.ok(second.header.stamp.nanosec > first.header.stamp.nanosec);
+
+    const clamped = harness.api.clampFcuBenchDemand(9, 9);
+    assert.equal(clamped.steering, 0.2);
+    assert.equal(clamped.throttle, 0.12);
+    assert.equal(harness.api.fcuBenchMessage(0, 0, 2), null);
+});
+
+test('bench status keeps requested and measured outputs in separate fields', () => {
+    const harness = createHarness('?enable_fcu_bench_control=1');
+    harness.api.updateLiveFcuBenchStatus({
+        data: JSON.stringify({
+            state: 'ARMED_NEUTRAL',
+            fault: 'ARMED_NEUTRAL',
+            ready: true,
+            connected: true,
+            armed: true,
+            mode: 'MANUAL',
+            feedback_fresh: true,
+            rc_in_age_ms: 20,
+            rc_out_age_ms: 25,
+            resolved: {
+                steering_rc: 1,
+                throttle_rc: 3,
+                left_servo: 3,
+                right_servo: 1
+            },
+            command: { steering: 0.1, throttle: 0.05 },
+            measured: {
+                rc_steering_pwm: 1550,
+                rc_throttle_pwm: 1525,
+                left_servo_pwm: 860,
+                right_servo_pwm: 820
+            }
+        })
+    });
+    assert.equal(harness.elements.get('fcu-loop-state').textContent, 'ARMED_NEUTRAL');
+    assert.match(harness.elements.get('fcu-loop-mapping').textContent, /Left SERVO3/);
+    assert.equal(
+        harness.elements.get('fcu-loop-command').textContent,
+        'Steering 0.10 | Throttle 0.05'
+    );
+    assert.equal(
+        harness.elements.get('fcu-loop-feedback').textContent,
+        'RC 1550 / 1525 us | Left 860 us | Right 820 us'
+    );
+    harness.elements.get('fcu-loop-physical-confirmation').checked = true;
+    assert.equal(harness.api.fcuBenchCanApply(), true);
+    harness.advance(501);
+    assert.equal(harness.api.fcuBenchCanApply(), false);
+});
+
+test('bench hold stops and emits disabled frames when readiness disappears', () => {
+    const harness = createHarness('?enable_fcu_bench_control=1');
+    harness.api.subscribeToLiveFcuBenchLoop();
+    harness.elements.get('fcu-loop-physical-confirmation').checked = true;
+    const ready = {
+        state: 'ARMED_NEUTRAL',
+        fault: 'ARMED_NEUTRAL',
+        ready: true,
+        connected: true,
+        armed: true,
+        mode: 'MANUAL',
+        feedback_fresh: true,
+        resolved: { steering_rc: 1, throttle_rc: 3, left_servo: 3, right_servo: 1 },
+        command: { steering: 0, throttle: 0 },
+        measured: {}
+    };
+    harness.api.updateLiveFcuBenchStatus({ data: JSON.stringify(ready) });
+    assert.equal(harness.api.startFcuBenchHold(), true);
+    assert.equal(harness.intervals.some((entry) => entry.active), true);
+
+    harness.api.updateLiveFcuBenchStatus({
+        data: JSON.stringify({ ...ready, ready: false, state: 'FEEDBACK_INVALID' })
+    });
+    assert.equal(harness.intervals.some((entry) => entry.active), false);
+    const commands = harness.published.filter(
+        (entry) => entry.topic === '/command_ingress/rc_axes'
+    );
+    assert.deepEqual(Array.from(commands.at(-1).message.buttons), [0]);
+});
+
+test('bench emergency stop stops hold and publishes a latched stop topic', () => {
+    const harness = createHarness('?enable_fcu_bench_control=1');
+    harness.api.subscribeToLiveFcuBenchLoop();
+    harness.elements.get('fcu-loop-physical-confirmation').checked = true;
+    harness.api.updateLiveFcuBenchStatus({
+        data: JSON.stringify({
+            state: 'ARMED_NEUTRAL', fault: 'ARMED_NEUTRAL', ready: true,
+            connected: true, armed: true, mode: 'MANUAL', feedback_fresh: true,
+            resolved: { steering_rc: 1, throttle_rc: 3, left_servo: 3, right_servo: 1 },
+            command: {}, measured: {}
+        })
+    });
+    assert.equal(harness.api.startFcuBenchHold(), true);
+    assert.equal(harness.api.publishFcuBenchEmergencyStop(), true);
+    assert.equal(harness.intervals.some((entry) => entry.active), false);
+    const estops = harness.published.filter(
+        (entry) => entry.topic === '/planning/emergency_stop'
+    );
+    assert.equal(estops.at(-1).message.data, true);
+    const commands = harness.published.filter(
+        (entry) => entry.topic === '/command_ingress/rc_axes'
+    );
+    assert.deepEqual(Array.from(commands.at(-1).message.buttons), [0]);
+});
+
+test('bench keyboard hold stops when Tab moves focus off the button', () => {
+    const harness = createHarness('?enable_fcu_bench_control=1');
+    harness.api.subscribeToLiveFcuBenchLoop();
+    harness.elements.get('fcu-loop-physical-confirmation').checked = true;
+    harness.api.updateLiveFcuBenchStatus({
+        data: JSON.stringify({
+            state: 'ARMED_NEUTRAL', fault: 'ARMED_NEUTRAL', ready: true,
+            connected: true, armed: true, mode: 'MANUAL', feedback_fresh: true,
+            resolved: { steering_rc: 1, throttle_rc: 3, left_servo: 3, right_servo: 1 },
+            command: {}, measured: {}
+        })
+    });
+    harness.api.initFcuBenchLoop();
+    const hold = harness.elements.get('btn-fcu-loop-hold');
+    hold.dispatch('keydown', {
+        key: ' ', repeat: false, preventDefault() {}
+    });
+    assert.equal(harness.intervals.some((entry) => entry.active), true);
+
+    hold.dispatch('blur');
+    assert.equal(harness.intervals.some((entry) => entry.active), false);
+    const commands = harness.published.filter(
+        (entry) => entry.topic === '/command_ingress/rc_axes'
+    );
+    assert.deepEqual(Array.from(commands.at(-1).message.buttons), [0]);
+});
+
+test('onboarding backdrop cannot intercept emergency-stop clicks', () => {
+    assert.match(
+        cssSource,
+        /\.onboarding-backdrop\s*\{[^}]*pointer-events:\s*none;/s
+    );
 });
 
 test('state, IMU, battery, RC, and GPS samples render bounded diagnostics', () => {
@@ -464,7 +702,7 @@ test('freshness watchdog expires an all-topic freeze without another message', (
 
     assert.equal(harness.intervals.length, 1);
     harness.advance(harness.api.LIVE_MAVLINK_STALE_AFTER_MS + 1);
-    harness.intervals[0]();
+    harness.runInterval(0);
 
     for (const key of ['state', 'gps', 'imu', 'battery', 'rc']) {
         assert.match(harness.elements.get(`mavlink-topic-${key}`).textContent, /: Stale /);

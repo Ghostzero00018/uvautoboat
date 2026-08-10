@@ -274,8 +274,8 @@ Status row in §3 Phase 5 status table now records Path A landed 05/05/2026 and 
    defaults to `1100`/`1500`/`1900`, matching neither - so a bridge emitting the
    simulator's neutral at the real vehicle would command substantial thrust while
    believing it commanded zero. **10/08/2026:** the written command-ingress
-   contract is now closed as a design-only decision; production-bridge implementation
-   and full contract acceptance remain unstarted. It is SITL-only and not
+   contract is now closed as a design-only decision; production-contract implementation
+   and full acceptance remain unstarted. It is SITL-only and not
    implementation-ready. It resolves ingress from live `RCMAP_*` and
    `RC<n>_*`, retains `SERVO*_FUNCTION` and live servo rails for output
    observation, and uses domain `42` for operational isolation rather than FCU
@@ -314,6 +314,15 @@ Status row in §3 Phase 5 status table now records Path A landed 05/05/2026 and 
    and all local services stopped. This is runtime evidence for the bounded operator
    path and dashboard telemetry, not implementation or acceptance of the production
    command-ingress bridge. No Pi, physical controller or real thruster was involved.
+
+   A later default-inhibited prototype adds a narrow browser
+   `/command_ingress/rc_axes` input, MAVROS RC override conversion and a separate
+   `/mavros/rc/out` measured-feedback row. Its direct dashboard E-Stop latches live
+   RC trims, and its shutdown publishes neutral or release frames before the ROS
+   context closes. It does not close the production contract or a physical tier.
+   The same-day operator-supplied Pi transcript received heartbeat but no parameter
+   values and showed an already-armed startup; both conditions make the prototype
+   abort, and no repository process sent a physical command.
 
 ---
 

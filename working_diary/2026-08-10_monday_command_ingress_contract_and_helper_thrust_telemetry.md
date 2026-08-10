@@ -968,3 +968,191 @@ physical controller or motor.
 All twelve current operational pin surfaces were updated: ten digest occurrences
 and the two size rows. The earlier pins in this diary and every frozen diary
 remain unchanged. The external weekly diary was not touched.
+
+## Physical-FCU digital-twin implementation prepared
+
+Later on 10/08/2026 the operator explicitly requested a web control/feedback
+loop for a physical-FCU bench test. The supplied Pi transcript showed three
+serial sessions on `/dev/ttyAMA0:57600`. Each received the vehicle `1:1`
+heartbeat, but no requested parameter value was printed. The second and third
+sessions reported the vehicle already `ARMED` in `MANUAL`, with arming checks
+disabled. This is evidence of heartbeat reception only. It does not close T0b,
+prove bidirectional request/response, or satisfy the disarmed startup condition
+for T2a/T2b.
+
+No repository process contacted the Pi or FCU during this implementation. No
+parameter, mode, arming state, RC input or physical output was changed from the
+workstation. The operator was told to disarm through the existing physical
+control surface and isolate propulsion before any further test.
+
+### Implemented path
+
+`tools/real_fcu_rc_command_bridge.py` adds a default-inhibited MAVROS bridge:
+
+- the browser emits one paired `sensor_msgs/Joy` frame on
+  `/command_ingress/rc_axes`, with steering, non-negative throttle, enable and a
+  strictly increasing timestamp;
+- the bridge reads the connected target's live RC mapping, RC rails and exact
+  output-function `73`/`74` assignments twice before it creates an
+  `/mavros/rc/override` publisher;
+- channel numbers and both RC and servo rails come only from those live MAVROS
+  parameter responses;
+- steering and throttle are converted through their own live RC rails and sent
+  in one `mavros_msgs/OverrideRCIn` frame at `20 Hz`;
+- `/mavros/rc/in` and `/mavros/rc/out` are read independently and returned as
+  JSON on `/command_ingress/status`; the requested pair is never reused as
+  measured feedback;
+- the browser renders the request and measured raw PWM in separate rows and
+  marks feedback stale after `500 ms`;
+- the browser publisher exists only with
+  `?enable_fcu_bench_control=1`; applying demand additionally requires a fresh
+  ready status, fresh input/output feedback, the physical-condition checkbox
+  and a continuously held button;
+- a newly armed epoch requires a disabled frame before the first enabled frame,
+  and loss of the enabled stream replaces both fields with their live trims;
+- startup already armed latches `STARTUP_ARMED`; a later disarm cannot recover
+  that process into a command-ready state.
+
+The bridge has no arm, disarm, mode-change, parameter-write, motor-test or raw
+servo-command route. Its configured limits cannot exceed `0.20` steering or
+`0.12` throttle. It requires domain `42`, one command publisher, a fresh
+disarmed `MANUAL` observation, both resolved RC inputs at live trim and
+`RC_OVERRIDE_TIME` in `(0, 0.5]`. Channel-aware release is sent only after an
+observed armed-to-disarmed transition; zero is not treated as neutral.
+
+`config/mavros_real_fcu_digital_twin_plugins.yaml` is the minimal separate
+MAVROS allowlist for this component: `sys_status`, `param` and `rc_io`. The
+existing Pi helper remains unchanged and view-only. Its allowlist omits `param`
+and its MAVProxy `udpout` route is not promoted into a command transport.
+
+### Scope and unresolved runtime gates
+
+This is prepared code, not physical acceptance and not a claim that the full
+Block B `v1` contract is implemented. The first implementation deliberately
+does not yet provide the contract's process/socket provenance census, rolling
+two-second guard re-read, discriminating dead-zone application probe, GID-based
+publisher identity or latched production fault state. Python Jazzy does not
+expose the designed `MessageInfo.publisher_gid`, so this implementation uses
+the narrower observable condition of exactly one ROS publisher. Those
+differences keep the production-contract verdict unchanged.
+
+The current physical path cannot start this bridge. Its blank parameter results
+would fail the first MAVROS parameter request, and the recorded armed startup
+would independently latch `STARTUP_ARMED`. A future physical test needs a
+direct, bidirectional MAVROS serial route using the minimal allowlist, complete
+live parameter responses and a disarmed neutral start before any arming phase.
+No physical runner or acceptance result is recorded here.
+
+### Verification
+
+- `python3 -m py_compile` passed for the bridge and its focused test.
+- `python3 -m unittest tools/test_real_fcu_rc_command_bridge.py` passed all nine
+  tests, including function discovery, independent rails, override-time guard,
+  quantization toward trim, channel-aware release, timestamp validation,
+  failsafe range and live-neutral input resolution.
+- `node --check web_dashboard/autoboat/app.js` passed.
+- the focused dashboard telemetry test passed with the opt-in command contract,
+  strict paired timestamps, fresh-status gate and requested-versus-measured
+  rendering covered.
+
+Full dashboard, YAML and repository-diff checks remain to be run before the
+change is staged.
+
+### Verification completion
+
+The remaining local checks then completed:
+
+- the complete dashboard suite passed `34/34`;
+- `config/mavros_real_fcu_digital_twin_plugins.yaml` parsed and its allowlist
+  resolved exactly to `sys_status`, `param`, `rc_io`;
+- `bash tools/test_live_dashboard_preflight.sh` passed all `13` cases;
+- `git diff --check` passed.
+
+The physical FCU and Pi were not contacted by these checks. The implementation
+remains prepared and unrun against physical hardware.
+
+## Physical prototype stop-path correction
+
+A later adversarial read found that the prepared prototype's two operator stop
+paths were incomplete. The ordinary live-build invariant still blocked the
+dashboard E-Stop, and the bridge did not subscribe to the E-Stop topic. The
+default `rclpy` signal handlers could also close the ROS context before the
+bridge's `finally` block published its neutral or release frames. No physical
+run was attempted with that version.
+
+The following corrections are now implemented:
+
+- the opt-in bench URL creates a dedicated
+  `/planning/emergency_stop` `std_msgs/Bool` publisher while mission,
+  configuration and generic thrust-topic writes remain blocked;
+- the main E-Stop, both shortcut buttons and a new button inside the expanded
+  camera viewer all reach that same direct stop path without a confirmation
+  dialogue;
+- the browser stops the hold timer, emits disabled command frames and latches
+  the E-Stop locally before publishing the stop message;
+- the bridge subscribes to the E-Stop, clears the active demand immediately and
+  publishes both live RC trims while the vehicle is armed;
+- `SIGINT` and `SIGTERM` are handled outside `rclpy`, the publish timer is
+  cancelled, and three neutral or channel-aware release frames are emitted
+  before the ROS context is shut down;
+- disarmed readiness is recalculated for every arming epoch, including a final
+  fresh neutral RC-input check on the armed transition;
+- empty, incomplete or out-of-rail `/mavros/rc/in` and `/mavros/rc/out` content
+  is invalid and cannot enable a non-neutral command;
+- the state timeout is `2.5 s` and the RC input/output timeout is `1.5 s`, which
+  permits the measured one-hertz MAVROS streams without the earlier
+  deterministic false trip. The browser's bridge-status limit remains
+  `500 ms` because the bridge emits status at `20 Hz`;
+- if readiness disappears while Hold to Apply is down, the interval stops and
+  the final browser frames have `enable=0`.
+
+An armed E-Stop or armed runtime fault deliberately holds the live trims rather
+than releasing the override. The simulator acceptance above proved that
+release is not neutral. Once the bridge stops, its final neutral frames remain
+the last override until the live `RC_OVERRIDE_TIME` expires; after disarm it
+uses the channel-aware release encoding directly.
+
+The earlier pure-function-only test gap is also closed. The focused Python
+suite now constructs the ROS node and exercises startup-armed silence, empty
+feedback, the measured-rate state threshold, stale-state neutralisation,
+per-epoch readiness and the immediate E-Stop branch. It passed `17/17` with DDS
+restricted to isolated localhost domain `232`. The complete dashboard suite
+passed `37/37`, including a dropped-readiness hold and direct E-Stop publication;
+`node --check` passed. The MAVROS plugin YAML parsed to exactly `sys_status`,
+`param`, `rc_io`; the preflight suite passed `13/13`; and both staged and
+unstaged diff checks passed.
+
+The operator-supplied Pi transcript remains heartbeat-only evidence: it printed
+no requested parameter values and showed an already-armed vehicle. These
+changes were verified locally without opening a Pi, browser, MAVROS serial link
+or physical-FCU connection. No parameter, mode, arming state, RC override or
+physical output was changed.
+
+A final node-level test directly exercised `neutralize_for_shutdown()` while
+armed and confirmed three live-trim frames. The isolated Python suite therefore
+finished at `18/18`; the earlier `17/17` result above remains the preceding
+checkpoint.
+
+## Browser dead-man and onboarding correction
+
+A same-page keyboard sequence remained open after the stop-path correction:
+holding Space on Hold to Apply and then pressing Tab moved focus away without
+delivering `keyup` to the button. The window stayed focused and the page stayed
+visible, so neither existing fallback stopped the `50 ms` interval. The Hold
+button now treats its own `blur` event as a release. A focused browser test
+starts the keyboard hold, dispatches the focus loss and confirms that the
+interval is inactive and the final command has `enable=0`.
+
+The first-run onboarding backdrop also sat above the E-Stop controls and
+received pointer events. It is now a visual-only layer with
+`pointer-events: none`; the onboarding card remains independently interactive
+above it. This keeps the header, floating and main E-Stop controls reachable
+during every tour step. The README was also corrected to distinguish missing
+parameters, which exit before publisher creation, from startup armed, which
+latches `STARTUP_ARMED` and emits no override while the publisher remains
+present. No Pi, browser service or physical-FCU link was opened for these
+changes.
+
+The focused dashboard file passed `17/17`; the complete dashboard suite passed
+`39/39`; `node --check` passed; the preflight suite remained `13/13`; and
+`git diff --check` passed.

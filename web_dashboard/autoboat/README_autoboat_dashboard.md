@@ -23,6 +23,8 @@ Real-time web-based monitoring and control dashboard for the AutoBoat autonomous
   or button Enlarge; `1.0×`–`4.0×` zoom; Reset; Close; Escape; focus trapping; and
   camera-error recovery without opening another stream
 - **State badges** for: INIT, WAITING_CONFIRM, READY, DRIVING, PAUSED, FINISHED, EMERGENCY_STOP, JOYSTICK
+- **FCU bench digital twin** with a paired RC-layer request and separately measured
+  MAVROS RC-output panel; disabled unless its explicit URL and bridge gates pass
 
 ## Prerequisites
 
@@ -48,8 +50,8 @@ Real-time web-based monitoring and control dashboard for the AutoBoat autonomous
 ## Current Real-Boat Status
 
 The dashboard remains simulation-first and normally reads and writes the
-existing `/wamv/*` topic contract. The temporary real-boat mode is view-only:
-it displays the stock-COCO Hailo stream and five direct MAVROS telemetry feeds
+existing `/wamv/*` topic contract. The temporary live helper remains view-only:
+it displays the stock-COCO Hailo stream and six direct MAVROS telemetry feeds
 without validating any real-FCU write path. Its implementation gives each
 MAVROS topic an independent three-second freshness threshold, clears the
 corresponding values when a topic becomes stale, clears the whole panel when
@@ -57,10 +59,56 @@ rosbridge disconnects, and makes all write-capable controls inert while
 preserving Mission History, tuning expanders, health clear/auto-scroll, export,
 and copy controls.
 
-The expanded camera viewer is approved only for this view-only mode. Its full-screen
-overlay and focus trap cover the current E-Stop button and shortcuts. Before any future
-write-enabled build reuses the viewer, an operational E-Stop must remain reachable by
-pointer or keyboard without closing the viewer.
+A separate, default-inhibited bench component is now implemented for a bounded
+digital-twin test. The browser publishes one atomic steering/throttle
+`sensor_msgs/Joy` frame on `/command_ingress/rc_axes` only while the operator
+holds its Apply button. `tools/real_fcu_rc_command_bridge.py` discovers the live
+RC mapping, RC rails and function `73`/`74` output rails through MAVROS, converts
+the request to `/mavros/rc/override`, and returns the separately observed
+`/mavros/rc/in` and `/mavros/rc/out` values on `/command_ingress/status`. The
+requested values are never displayed as measured feedback.
+
+The component cannot arm, disarm, change mode or write parameters. It is inert
+unless `allow_real_fcu:=true`, `ROS_DOMAIN_ID=42`, a fresh neutral RC input and
+the live parameter guards all pass. The browser additionally requires
+`?enable_fcu_bench_control=1`, fresh measured feedback, the physical-condition
+checkbox and a continuously held button. A new armed epoch requires a disabled
+frame before an enabled frame, and command loss replaces both channels with
+their live trims. Empty or out-of-rail RC input/output arrays are invalid rather
+than fresh. The measured one-hertz MAVROS feeds use a `1.5 s` feedback limit and
+the state feed uses `2.5 s`; the browser still requires a fresh bridge status
+within `500 ms` because that status is emitted by the bridge at `20 Hz`.
+
+With the bench query enabled, the normal E-Stop button, both shortcut buttons
+and the E-Stop inside the expanded camera viewer publish a latched
+`/planning/emergency_stop`. The bridge immediately clears the demand and holds
+both resolved RC inputs at their live trims while armed. `Ctrl+C` and `SIGTERM`
+use the same neutralisation path before the ROS context closes; when already
+disarmed, shutdown sends the channel-aware release values instead.
+
+This path has static and dashboard-test coverage but no physical acceptance. In
+the operator-supplied Pi transcript on 10/08/2026, the Pi received the FCU
+heartbeat, but parameter requests returned no values and the FCU was observed
+already armed in `MANUAL`. That evidence keeps
+the physical run blocked. A missing parameter response exits before the
+RC-override publisher is created. Startup while armed keeps the publisher
+present but latches `STARTUP_ARMED`, and every timer tick returns without
+publishing an override. The
+existing live helper is not the runner for this path because its MAVROS plugin
+allowlist omits `param` and its `udpout` route is the established view-only
+transport. The bounded direct-MAVROS runner must use
+`config/mavros_real_fcu_digital_twin_plugins.yaml` after the serial
+request/response path is restored.
+
+The expanded camera viewer owns pointer and keyboard focus while open. It now
+contains its own E-Stop button, so the explicit FCU bench stop path remains
+reachable without closing the viewer. The button stays inert in the ordinary
+live view and is enabled only by the opt-in bench URL.
+
+Keyboard Hold to Apply stops on button blur as well as key release, window blur
+and page hiding, so moving focus with Tab cannot leave its interval active. The
+first-run onboarding backdrop is visual only and cannot intercept pointer
+events; its card remains interactive above the page.
 
 On 17/07/2026, two runs from the clean, pushed workstation checkout on
 `IoT IMT Nord Europe` proved six-topic arrival and automatic rate measurement;
@@ -135,13 +183,37 @@ runbook: first require workstation `W5_RATE_PROBES=PASS` plus Pi
 workstation and require `WORKSTATION_TEARDOWN=PASS`. Treat any MAVROS topic marked
 `Stale` as a failed diagnostic even if another topic continues updating.
 
+### FCU Bench Command/Feedback Component
+
+This component is separate from the view-only helper and from the normal
+simulation controls. Its two dashboard rows have deliberately different
+provenance:
+
+| Row | Source | Meaning |
+| --- | --- | --- |
+| Requested RC Demand | bridge status | The bounded steering/throttle pair accepted from the browser |
+| Measured FCU Output | `/mavros/rc/out` | Raw PWM read back from the function-resolved left/right servo outputs |
+
+The narrow browser publisher exists only when the page is opened with:
+
+```text
+http://127.0.0.1:8002/?enable_fcu_bench_control=1
+```
+
+Without the query value, the page subscribes to status but creates no command
+publisher. This URL is not approval to run a physical test. A physical run also
+requires a disarmed startup, a working bidirectional serial path, complete live
+parameter responses, propellers removed, restrained hull, controlled propulsion
+power, and the separately approved arm and input phases.
+
 ## Dashboard Panels
 
 | Panel                      | Description                                                                      |
 | -------------------------- | -------------------------------------------------------------------------------- |
 | **Connection Status**      | WebSocket connection indicator (green/red)                                       |
 | **GPS Position**           | Latitude, longitude, local X/Y coordinates                                      |
-| **Live MAVLink Diagnostic** | Five direct MAVROS feeds with independent ages and stale-value clearing         |
+| **Live MAVLink Diagnostic** | Six direct MAVROS feeds with independent ages and stale-value clearing         |
+| **FCU Bench Digital Twin** | Opt-in paired RC demand beside separately measured function-resolved PWM feedback |
 | **Mission Status**         | State badge, waypoint progress, distance, speed, time remaining                 |
 | **Mission Control**        | Generate, Confirm, Start, Stop, Resume, Emergency Stop, Go Home, Reset          |
 | **Obstacle Detection**     | Front/Left/Right clearance with urgency scores and status badge                 |
@@ -232,7 +304,7 @@ Perception and Controller share the `/planning/set_config` topic. Parameters wit
 | ------------------ | --------------------------------------------------------------- |
 | **Stop**           | Pause mission, zero thrust                                      |
 | **Resume**         | Continue from current waypoint                                  |
-| **Emergency Stop** | Cut thrust, latch stop. Two shortcut badges pulse red while latched: header (`🚨 E-STOP`) and floating bottom-right FAB — both scroll to the real button and flash it (they don't fire E-Stop directly). Resume to recover. |
+| **Emergency Stop** | Simulation mode: cut thrust and latch stop; the two shortcut badges scroll to the main button. FCU bench mode: the main button, both shortcuts and the expanded-camera button publish the direct latched bridge E-Stop immediately. |
 | **Go Home**        | Navigate back to spawn point                                    |
 | **Reset**          | Clear waypoints, return to INIT                                 |
 
@@ -254,6 +326,7 @@ Start, Resume, Go Home, Reset, and Emergency Stop prompt a confirmation before a
 | `/planning/config`              | Current config values (syncs fields) |
 | `/wamv/thrusters/left/thrust`  | Left thruster command feedback       |
 | `/wamv/thrusters/right/thrust` | Right thruster command feedback      |
+| `/command_ingress/status`   | Guarded bridge state, live mapping, request and measured RC/servo PWM feedback |
 
 The live MAVLink thrust row defaults to the real boat's measured output mapping
 (`SERVO3` left, `SERVO1` right). For another connected vehicle, first resolve
@@ -276,9 +349,15 @@ simulation build.
 | -------------------------- | ---------------------------------------------- |
 | `/planning/set_config`      | Parameter updates (JSON)                       |
 | `/planning/mission_command` | Mission commands (start, resume, go_home, etc.) |
-| `/planning/emergency_stop`  | Safety-critical E-Stop (latched Bool)          |
+| `/planning/emergency_stop`  | Latched Bool; normal mission E-Stop, plus the opt-in direct FCU bench stop |
 | `/wamv/thrusters/left/thrust`  | E-Stop zero-thrust command (`0.0` only; blocked while `LIVE_MAVLINK_VIEW_ONLY=true`) |
 | `/wamv/thrusters/right/thrust` | E-Stop zero-thrust command (`0.0` only; blocked while `LIVE_MAVLINK_VIEW_ONLY=true`) |
+| `/command_ingress/rc_axes` | Opt-in paired steering/throttle `sensor_msgs/Joy`; created only by the FCU bench URL |
+
+`LIVE_MAVLINK_VIEW_ONLY` continues to block mission, configuration and generic
+thrust-topic writes. The two explicit exceptions under
+`?enable_fcu_bench_control=1` are the bounded paired RC-demand topic and its
+direct E-Stop topic.
 
 ### Called (Service Clients)
 
@@ -295,6 +374,8 @@ simulation build.
 | `app.js`                      | ROS connection, data handling, config logic |
 | `style_merged.css`            | Unified stylesheet                         |
 | `README_autoboat_dashboard.md` | This file                                  |
+| `../../tools/real_fcu_rc_command_bridge.py` | Default-inhibited MAVROS RC bridge and measured-output status |
+| `../../config/mavros_real_fcu_digital_twin_plugins.yaml` | Minimal MAVROS plugin allowlist for the separate bench runner |
 
 ## Troubleshooting
 
@@ -361,4 +442,4 @@ Part of the uvautoboat project — Apache License 2.0.
 
 Built with [roslibjs](http://robotwebtools.org/), [Leaflet.js](https://leafletjs.com/), [OpenStreetMap](https://www.openstreetmap.org/).
 
-Last updated: 01/08/2026
+Last updated: 10/08/2026

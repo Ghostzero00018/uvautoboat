@@ -132,6 +132,14 @@
 > | **T3a** | Static test with propellers fitted | Separate approval, dedicated mechanical guarding and an exclusion zone |
 > | **T3b** | On-water test | Separate day, separate plan, separate approval |
 >
+> **10/08/2026 later authorization addendum.** Subsequent operator instructions
+> brought the default-inhibited prototype implementation and a future
+> T0b/T2a/T2b physical workflow into the day's proposed scope. That later
+> instruction supersedes only the earlier “no tier is in scope” sentence; it
+> does not waive any tier condition. The operator-supplied Pi transcript did not
+> close T0b because it returned no parameter values or current safety state and
+> showed the vehicle already armed. No T2 command was emitted by the repository.
+>
 > Two facts govern why the physical conditions carry the weight rather than the
 > autopilot. First, this vehicle records **`ARMING_CHECK=0`**, so pre-arm checks
 > are **not** a safety layer; `ARMING_REQUIRE=1` only means output requires
@@ -571,7 +579,7 @@ The whole repo is expected to run on the Pi 5. Long-term (Phase 5.2+): QGC and t
    zero, so the rail must be read from live parameters and never hard-coded. **10/08/2026:** the
    written command-ingress contract is now closed as a design-only decision in
    `working_diary/2026-08-10_monday_command_ingress_contract_and_helper_thrust_telemetry.md`.
-   Production-bridge implementation and full contract acceptance remain unstarted; the contract is
+   Production-contract implementation and full acceptance remain unstarted; the contract is
    SITL-only and not implementation-ready. A bounded workstation-only acceptance on 10/08/2026
    nevertheless exercised the established MAVProxy RC-override path with live-resolved
    `RCMAP_*`, `RC<n>_*`, `SERVO*_FUNCTION` and servo rails. The simulator armed in `MANUAL`,
@@ -581,6 +589,15 @@ The whole repo is expected to run on the Pi 5. Long-term (Phase 5.2+): QGC and t
    from that live read. `rc all 0` alone left the last servo output present, confirming that release
    is not neutral. No current repository path converts the thrust topics into an FCU command, and
    no physical controller or Pi was contacted.
+   A later default-inhibited prototype now connects an explicit browser
+   `/command_ingress/rc_axes` publisher to MAVROS RC override and reports the
+   independently measured `/mavros/rc/out` values beside the request. A direct,
+   latched dashboard E-Stop now replaces both RC inputs with their live trims,
+   and shutdown sends neutral or release frames before the ROS context closes.
+   It is not production-contract acceptance: the operator-supplied Pi transcript
+   showed heartbeat but no parameter responses and an already-armed startup,
+   both of which make the prototype abort. No physical command was sent from the
+   repository.
 3. **Detector recovery before Hailo accuracy gates**: the Hailo six-output decode
    contract is proven on saved frames (07/07/2026, `fb308f9`), and the 08/07 Pi
    runtime smoke proved single-process RealSense -> Hailo -> decode-summary

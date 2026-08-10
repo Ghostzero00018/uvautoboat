@@ -255,11 +255,11 @@ function handleCameraViewerKeydown(event) {
 // ========== END CAMERA VIEWER PRESENTATION ==========
 
 // ========== TEMPORARY LIVE MAVLINK VIEW ==========
-// This temporary build is deliberately display-only. It subscribes directly to
-// MAVROS and blocks every dashboard command/config write at the final send boundary.
-// Safety gate: before setting this false, keep an operational E-Stop reachable by
-// pointer or keyboard while the expanded camera viewer remains open. The current
-// full-screen overlay and focus trap cover all three E-Stop controls.
+// The normal live build is deliberately display-only. It subscribes directly to
+// MAVROS and blocks mission/config writes at the final send boundary. The separately
+// requested FCU bench component has one narrow RC-demand publisher and one E-Stop.
+// The expanded camera viewer contains its own E-Stop so the narrow bench stop
+// path remains reachable while the full-screen overlay owns pointer and focus.
 const LIVE_MAVLINK_VIEW_ONLY = true;
 const LIVE_MAVLINK_STALE_AFTER_MS = 3000;
 const LIVE_MAVLINK_FRESHNESS_INTERVAL_MS = 500;
@@ -361,6 +361,34 @@ const LIVE_MAVLINK_THRUST_CHANNELS = liveMavlinkThrustChannels(
 );
 const THRUST_LEFT_CHANNEL = LIVE_MAVLINK_THRUST_CHANNELS.left;
 const THRUST_RIGHT_CHANNEL = LIVE_MAVLINK_THRUST_CHANNELS.right;
+
+const FCU_BENCH_COMMAND_TOPIC = '/command_ingress/rc_axes';
+const FCU_BENCH_STATUS_TOPIC = '/command_ingress/status';
+const FCU_BENCH_EMERGENCY_TOPIC = '/planning/emergency_stop';
+const FCU_BENCH_FRAME_ID = 'uvautoboat/rc_axes/v1';
+const FCU_BENCH_PUBLISH_MS = 50;
+const FCU_BENCH_STATUS_MAX_AGE_MS = 500;
+const FCU_BENCH_MAX_STEERING = 0.20;
+const FCU_BENCH_MAX_THROTTLE = 0.12;
+
+function liveFcuBenchRequested(search = '') {
+    return String(search).replace(/^\?/, '').split('&').some((entry) => {
+        const [key, value] = entry.split('=', 2);
+        return key === 'enable_fcu_bench_control' && value === '1';
+    });
+}
+
+const LIVE_FCU_BENCH_REQUESTED = liveFcuBenchRequested(
+    typeof location === 'object' ? location.search : ''
+);
+let liveFcuBenchStatus = null;
+let liveFcuBenchStatusReceivedAt = 0;
+let liveFcuBenchCommandPublisher = null;
+let liveFcuBenchEmergencyPublisher = null;
+let liveFcuBenchHoldTimer = null;
+let liveFcuBenchLastStampMs = 0;
+let liveFcuBenchLastArmed = false;
+let liveFcuBenchEmergencyLatched = false;
 
 // sensor_msgs/NavSatStatus fix codes and MAV_STATE system-status codes, rendered by
 // name so an operator does not have to decode a bare integer while a run is live.
@@ -595,6 +623,240 @@ function updateLiveMavlinkThrust(message) {
     markLiveMavlinkTopic('thrust');
 }
 
+function clampFcuBenchDemand(steering, throttle) {
+    const boundedSteering = Math.max(
+        -FCU_BENCH_MAX_STEERING,
+        Math.min(FCU_BENCH_MAX_STEERING, Number(steering))
+    );
+    const boundedThrottle = Math.max(
+        0,
+        Math.min(FCU_BENCH_MAX_THROTTLE, Number(throttle))
+    );
+    if (!Number.isFinite(boundedSteering) || !Number.isFinite(boundedThrottle)) return null;
+    return { steering: boundedSteering, throttle: boundedThrottle };
+}
+
+function fcuBenchMessage(steering, throttle, enable, nowMs = Date.now()) {
+    const demand = clampFcuBenchDemand(steering, throttle);
+    if (!demand || (enable !== 0 && enable !== 1)) return null;
+    const logicalMs = Math.max(Math.floor(nowMs), liveFcuBenchLastStampMs + 1);
+    liveFcuBenchLastStampMs = logicalMs;
+    const seconds = Math.floor(logicalMs / 1000);
+    return new ROSLIB.Message({
+        header: {
+            stamp: {
+                sec: seconds,
+                nanosec: (logicalMs - seconds * 1000) * 1000000
+            },
+            frame_id: FCU_BENCH_FRAME_ID
+        },
+        axes: [demand.steering, demand.throttle],
+        buttons: [enable]
+    });
+}
+
+function fcuBenchCanApply(status = liveFcuBenchStatus, nowMs = Date.now()) {
+    const confirmation = document.getElementById('fcu-loop-physical-confirmation');
+    return LIVE_FCU_BENCH_REQUESTED
+        && connected
+        && !liveFcuBenchEmergencyLatched
+        && nowMs - liveFcuBenchStatusReceivedAt < FCU_BENCH_STATUS_MAX_AGE_MS
+        && confirmation?.checked === true
+        && status?.ready === true
+        && status?.feedback_fresh === true
+        && status?.connected === true
+        && status?.armed === true
+        && status?.mode === 'MANUAL'
+        && ['ARMED_NEUTRAL', 'ACTIVE'].includes(status?.state);
+}
+
+function refreshFcuBenchControls() {
+    const requested = LIVE_FCU_BENCH_REQUESTED;
+    const resolved = liveFcuBenchStatus?.resolved;
+    const confirmation = document.getElementById('fcu-loop-physical-confirmation');
+    const steering = document.getElementById('fcu-loop-steering');
+    const throttle = document.getElementById('fcu-loop-throttle');
+    const neutral = document.getElementById('btn-fcu-loop-neutral');
+    const hold = document.getElementById('btn-fcu-loop-hold');
+    const canApply = fcuBenchCanApply();
+    if (liveFcuBenchHoldTimer !== null && !canApply) stopFcuBenchHold();
+    if (confirmation) confirmation.disabled = !requested || !resolved;
+    if (steering) steering.disabled = !requested || !resolved;
+    if (throttle) throttle.disabled = !requested || !resolved;
+    if (neutral) neutral.disabled = !requested || !resolved || !connected;
+    if (hold) hold.disabled = !canApply;
+
+    const policy = document.getElementById('fcu-loop-policy');
+    if (!policy) return;
+    if (!requested) {
+        policy.textContent = 'INHIBITED — append ?enable_fcu_bench_control=1 only for an approved propellers-removed bench test.';
+    } else if (!resolved) {
+        policy.textContent = 'WAITING — guarded bridge has not supplied a live mapping and rail resolution.';
+    } else if (!confirmation?.checked) {
+        policy.textContent = 'INHIBITED — confirm the physical bench conditions below.';
+    } else if (!fcuBenchCanApply()) {
+        policy.textContent = 'NEUTRAL ONLY — wait for connected, armed MANUAL state and ARMED_NEUTRAL bridge status.';
+    } else {
+        policy.textContent = 'READY — demand is emitted only while Hold to Apply remains pressed.';
+    }
+}
+
+function updateLiveFcuBenchStatus(message) {
+    let status;
+    try {
+        status = JSON.parse(message?.data || '');
+    } catch (error) {
+        setLiveMavlinkValue('fcu-loop-state', 'Invalid bridge status', 'critical');
+        return;
+    }
+    const newlyArmed = status.armed === true && !liveFcuBenchLastArmed;
+    liveFcuBenchStatus = status;
+    liveFcuBenchStatusReceivedAt = Date.now();
+    liveFcuBenchLastArmed = status.armed === true;
+    if (status.state === 'EMERGENCY_STOP') liveFcuBenchEmergencyLatched = true;
+    setLiveMavlinkValue(
+        'fcu-loop-state',
+        status.fault && status.fault !== status.state
+            ? `${status.state} (${status.fault})`
+            : status.state || 'Unknown',
+        status.state === 'ACTIVE' ? 'warning' : status.ready ? 'clear' : 'critical'
+    );
+    const resolved = status.resolved;
+    setLiveMavlinkValue(
+        'fcu-loop-mapping',
+        resolved
+            ? `Steering RC${resolved.steering_rc} | Throttle RC${resolved.throttle_rc} | Left SERVO${resolved.left_servo} | Right SERVO${resolved.right_servo}`
+            : '-'
+    );
+    const command = status.command || {};
+    setLiveMavlinkValue(
+        'fcu-loop-command',
+        `Steering ${Number(command.steering || 0).toFixed(2)} | Throttle ${Number(command.throttle || 0).toFixed(2)}`
+    );
+    const measured = status.measured;
+    setLiveMavlinkValue(
+        'fcu-loop-feedback',
+        measured
+            ? `RC ${measured.rc_steering_pwm ?? '-'} / ${measured.rc_throttle_pwm ?? '-'} us | Left ${measured.left_servo_pwm ?? '-'} us | Right ${measured.right_servo_pwm ?? '-'} us${status.feedback_fresh ? '' : ` | STALE (${status.rc_in_age_ms ?? '-'} / ${status.rc_out_age_ms ?? '-'} ms)`}`
+            : 'Waiting for /mavros/rc/out',
+        status.feedback_fresh ? undefined : 'critical'
+    );
+    refreshFcuBenchControls();
+    if (newlyArmed) publishFcuBenchDemand(0);
+}
+
+function publishFcuBenchDemand(enable) {
+    if (!LIVE_FCU_BENCH_REQUESTED || !liveFcuBenchCommandPublisher || !connected) return false;
+    if (enable === 1 && !fcuBenchCanApply()) return false;
+    const steering = enable === 1
+        ? document.getElementById('fcu-loop-steering')?.value
+        : 0;
+    const throttle = enable === 1
+        ? document.getElementById('fcu-loop-throttle')?.value
+        : 0;
+    const message = fcuBenchMessage(steering, throttle, enable);
+    if (!message) return false;
+    liveFcuBenchCommandPublisher.publish(message);
+    return true;
+}
+
+function stopFcuBenchHold() {
+    if (liveFcuBenchHoldTimer !== null) {
+        clearInterval(liveFcuBenchHoldTimer);
+        liveFcuBenchHoldTimer = null;
+    }
+    publishFcuBenchDemand(0);
+    setTimeout(() => publishFcuBenchDemand(0), FCU_BENCH_PUBLISH_MS);
+    setTimeout(() => publishFcuBenchDemand(0), FCU_BENCH_PUBLISH_MS * 2);
+}
+
+function startFcuBenchHold() {
+    if (!fcuBenchCanApply() || liveFcuBenchHoldTimer !== null) return false;
+    if (!publishFcuBenchDemand(1)) return false;
+    liveFcuBenchHoldTimer = setInterval(
+        () => {
+            if (!publishFcuBenchDemand(1)) stopFcuBenchHold();
+        },
+        FCU_BENCH_PUBLISH_MS
+    );
+    return true;
+}
+
+function publishFcuBenchEmergencyStop() {
+    if (!LIVE_FCU_BENCH_REQUESTED || !connected
+            || !liveFcuBenchEmergencyPublisher) return false;
+    stopFcuBenchHold();
+    liveFcuBenchEmergencyLatched = true;
+    liveFcuBenchEmergencyPublisher.publish(new ROSLIB.Message({ data: true }));
+    refreshFcuBenchControls();
+    return true;
+}
+
+function subscribeToLiveFcuBenchLoop() {
+    const statusTopic = new ROSLIB.Topic({
+        ros,
+        name: FCU_BENCH_STATUS_TOPIC,
+        messageType: 'std_msgs/String',
+        throttle_rate: 50,
+        queue_length: 1
+    });
+    statusTopic.subscribe(updateLiveFcuBenchStatus);
+    if (LIVE_FCU_BENCH_REQUESTED) {
+        liveFcuBenchCommandPublisher = new ROSLIB.Topic({
+            ros,
+            name: FCU_BENCH_COMMAND_TOPIC,
+            messageType: 'sensor_msgs/Joy',
+            queue_size: 1
+        });
+        liveFcuBenchEmergencyPublisher = new ROSLIB.Topic({
+            ros,
+            name: FCU_BENCH_EMERGENCY_TOPIC,
+            messageType: 'std_msgs/Bool',
+            queue_size: 1
+        });
+    }
+    refreshFcuBenchControls();
+}
+
+function initFcuBenchLoop() {
+    const steering = document.getElementById('fcu-loop-steering');
+    const throttle = document.getElementById('fcu-loop-throttle');
+    const confirmation = document.getElementById('fcu-loop-physical-confirmation');
+    const neutral = document.getElementById('btn-fcu-loop-neutral');
+    const hold = document.getElementById('btn-fcu-loop-hold');
+    const updateLabels = () => {
+        setLiveMavlinkValue('fcu-loop-steering-value', Number(steering?.value || 0).toFixed(2));
+        setLiveMavlinkValue('fcu-loop-throttle-value', Number(throttle?.value || 0).toFixed(2));
+    };
+    steering?.addEventListener('input', updateLabels);
+    throttle?.addEventListener('input', updateLabels);
+    confirmation?.addEventListener('change', refreshFcuBenchControls);
+    neutral?.addEventListener('click', stopFcuBenchHold);
+    hold?.addEventListener('pointerdown', (event) => {
+        event.preventDefault();
+        startFcuBenchHold();
+    });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach((eventName) => {
+        hold?.addEventListener(eventName, stopFcuBenchHold);
+    });
+    hold?.addEventListener('keydown', (event) => {
+        if ((event.key === 'Enter' || event.key === ' ') && !event.repeat) {
+            event.preventDefault();
+            startFcuBenchHold();
+        }
+    });
+    hold?.addEventListener('keyup', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') stopFcuBenchHold();
+    });
+    hold?.addEventListener('blur', stopFcuBenchHold);
+    window.addEventListener('blur', stopFcuBenchHold);
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) stopFcuBenchHold();
+    });
+    updateLabels();
+    refreshFcuBenchControls();
+}
+
 function subscribeToLiveMavlinkTopics() {
     LIVE_MAVLINK_TOPIC_SPECS.forEach((spec) => {
         const topic = new ROSLIB.Topic({
@@ -647,18 +909,41 @@ function disableLiveMavlinkWriteControl(control) {
     control.classList.add('live-mavlink-write-disabled');
 }
 
+function enableFcuBenchEmergencyControl(control) {
+    control.inert = false;
+    control.removeAttribute('inert');
+    control.removeAttribute('aria-disabled');
+    if ('disabled' in control) control.disabled = false;
+    control.classList.remove('live-mavlink-write-disabled');
+}
+
 function enableLiveMavlinkViewOnly() {
     if (!LIVE_MAVLINK_VIEW_ONLY) return;
     document.body.classList.add('live-mavlink-view-only');
     document.querySelectorAll(LIVE_MAVLINK_WRITE_CONTROL_SELECTOR)
         .forEach(disableLiveMavlinkWriteControl);
-    ['header-estop-badge', 'footer-estop-badge'].forEach((id) => {
+    ['header-estop-badge', 'footer-estop-badge', 'btn-camera-emergency-stop'].forEach((id) => {
         const shortcut = document.getElementById(id);
         if (!shortcut) return;
         disableLiveMavlinkWriteControl(shortcut);
     });
+    if (LIVE_FCU_BENCH_REQUESTED) {
+        [
+            'btn-emergency-stop',
+            'header-estop-badge',
+            'footer-estop-badge',
+            'btn-camera-emergency-stop'
+        ]
+            .map((id) => document.getElementById(id))
+            .filter(Boolean)
+            .forEach(enableFcuBenchEmergencyControl);
+    }
     const banner = document.getElementById('live-mavlink-safety-banner');
-    if (banner) banner.textContent = 'LIVE MAVLINK VIEW-ONLY — dashboard command/config writes are blocked. Use the physical safety controls for the real vehicle.';
+    if (banner) {
+        banner.textContent = LIVE_FCU_BENCH_REQUESTED
+            ? 'LIVE MAVLINK VIEW-ONLY — mission/config writes remain blocked; the explicit FCU bench demand and E-Stop paths are enabled.'
+            : 'LIVE MAVLINK VIEW-ONLY — dashboard command/config writes are blocked. Use the physical safety controls for the real vehicle.';
+    }
     resetLiveMavlinkTelemetry();
     if (liveMavlinkFreshnessTimer === null) {
         liveMavlinkFreshnessTimer = setInterval(refreshLiveMavlinkFreshness, LIVE_MAVLINK_FRESHNESS_INTERVAL_MS);
@@ -715,6 +1000,7 @@ let currentState = {
 window.addEventListener('load', () => {
     if (DEBUG_MODE) console.log('Dashboard loading...');
     enableLiveMavlinkViewOnly();
+    initFcuBenchLoop();
     initMap();
     restorePersistedWaypoints();  // Recover waypoints after hard refresh
     connectToROS();
@@ -1167,6 +1453,14 @@ function connectToROS() {
         healthLineTopic = null;
         healthStatusTopic = null;
         resetLiveMavlinkTelemetry();
+        stopFcuBenchHold();
+        liveFcuBenchCommandPublisher = null;
+        liveFcuBenchEmergencyPublisher = null;
+        liveFcuBenchStatus = null;
+        liveFcuBenchStatusReceivedAt = 0;
+        liveFcuBenchLastArmed = false;
+        liveFcuBenchEmergencyLatched = false;
+        refreshFcuBenchControls();
         addLog('Connection closed. Retrying in 5s...', 'warning');
         setTimeout(connectToROS, 5000);
     });
@@ -1422,6 +1716,7 @@ function subscribeToTopics() {
     
     // Temporary hardware view: direct, subscriber-only MAVROS diagnostics.
     subscribeToLiveMavlinkTopics();
+    subscribeToLiveFcuBenchLoop();
 
     // Left thruster
     const leftThrustTopic = new ROSLIB.Topic({
@@ -2989,9 +3284,12 @@ function initMissionControl() {
     });
 
     // Emergency Stop — no debounce (safety-critical, no artificial delay).
-    // The confirm() inside emergencyStop() acts as the accidental-click guard,
-    // mirroring the physical mushroom-head barrier on a hardware E-Stop button.
+    // The FCU bench path sends immediately; the simulation mission path retains
+    // its existing confirmation dialogue.
     document.getElementById('btn-emergency-stop').addEventListener('click', () => {
+        emergencyStop();
+    });
+    document.getElementById('btn-camera-emergency-stop').addEventListener('click', () => {
         emergencyStop();
     });
 
@@ -3015,6 +3313,10 @@ function initMissionControl() {
     // so new shortcut sites (e.g., a keyboard shortcut) only need to register
     // to the same ID list.
     const scrollToEmergencyStop = () => {
+        if (LIVE_FCU_BENCH_REQUESTED) {
+            emergencyStop();
+            return;
+        }
         debounceGroup('estop-shortcut', 300, () => {
             const target = document.getElementById('btn-emergency-stop');
             if (!target) return;
@@ -3137,6 +3439,15 @@ function emergencyStop() {
     if (!connected) {
         addLog('Not connected to ROS', 'error');
         return false;
+    }
+
+    if (LIVE_FCU_BENCH_REQUESTED) {
+        const sent = publishFcuBenchEmergencyStop();
+        if (sent) {
+            addLog('FCU bench emergency stop latched; live RC trims requested', 'error');
+            showFeedback('FCU bench emergency stop latched', 'error');
+        }
+        return sent;
     }
 
     if (LIVE_MAVLINK_VIEW_ONLY) {

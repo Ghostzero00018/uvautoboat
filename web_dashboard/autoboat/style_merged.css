@@ -245,6 +245,67 @@ h2 {
     font-variant-numeric: tabular-nums;
 }
 
+.fcu-loop-panel {
+    grid-column: span 2;
+    border: 2px solid #b02a37;
+}
+
+.fcu-loop-policy {
+    margin-bottom: 15px;
+    padding: 10px 12px;
+    border-left: 4px solid #b02a37;
+    border-radius: 6px;
+    background: #f8d7da;
+    color: #58151c;
+    font-weight: 700;
+}
+
+.fcu-loop-controls {
+    display: grid;
+    grid-template-columns: minmax(180px, 1fr) minmax(240px, 2fr) 70px;
+    align-items: center;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.fcu-loop-controls output,
+.fcu-loop-panel .telemetry-vector {
+    font-variant-numeric: tabular-nums;
+}
+
+.fcu-loop-confirmation,
+.fcu-loop-actions {
+    grid-column: 1 / -1;
+}
+
+.fcu-loop-confirmation {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+}
+
+.fcu-loop-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.fcu-loop-actions button {
+    min-height: 46px;
+}
+
+@media (max-width: 760px) {
+    .fcu-loop-controls {
+        grid-template-columns: 1fr;
+    }
+
+    .fcu-loop-confirmation,
+    .fcu-loop-actions {
+        grid-column: 1;
+    }
+}
+
 body.live-mavlink-view-only .mission-control-panel,
 body.live-mavlink-view-only .config-panel,
 body.live-mavlink-view-only .tuning-panel,
@@ -335,6 +396,19 @@ body.camera-viewer-active {
 .camera-viewer-actions button:disabled {
     cursor: not-allowed;
     opacity: 0.45;
+}
+
+.camera-viewer-actions .camera-viewer-emergency-stop {
+    border-color: #991b1b;
+    background: #b91c1c;
+    color: #ffffff;
+    font-weight: 700;
+}
+
+.camera-viewer-actions .camera-viewer-emergency-stop:hover:not(:disabled),
+.camera-viewer-actions .camera-viewer-emergency-stop:focus-visible {
+    background: #7f1d1d;
+    outline-color: #fca5a5;
 }
 
 #camera-zoom-level {
@@ -928,6 +1002,7 @@ body.camera-viewer-active {
     inset: 0;
     background: rgba(10, 15, 25, 0.72);
     z-index: 9998;
+    pointer-events: none;
     animation: onboarding-fade-in 0.25s ease-out;
 }
 

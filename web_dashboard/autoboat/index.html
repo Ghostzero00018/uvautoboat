@@ -188,6 +188,52 @@
                 </div>
             </div>
 
+            <!-- Dedicated command/feedback loop. Existing mission/configuration writes remain blocked. -->
+            <div class="panel collapsible fcu-loop-panel">
+                <h2>FCU Bench Digital Twin | Boucle FCU Banc</h2>
+                <div id="fcu-loop-policy" class="fcu-loop-policy" role="status">
+                    INHIBITED — start the guarded bridge and use the explicit bench-control URL.
+                </div>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <span class="label">Bridge State:</span>
+                        <span id="fcu-loop-state" class="value badge warning">Waiting</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Resolved Mapping:</span>
+                        <span id="fcu-loop-mapping" class="value">-</span>
+                    </div>
+                    <div class="info-item full-width">
+                        <span class="label">Requested RC Demand:</span>
+                        <span id="fcu-loop-command" class="value telemetry-vector">Steering 0.00 | Throttle 0.00</span>
+                    </div>
+                    <div class="info-item full-width">
+                        <span class="label">Measured FCU Output:</span>
+                        <span id="fcu-loop-feedback" class="value telemetry-vector">Waiting for /mavros/rc/out</span>
+                    </div>
+                </div>
+                <div class="fcu-loop-controls">
+                    <label for="fcu-loop-steering">Steering (-0.20 to +0.20)</label>
+                    <input id="fcu-loop-steering" type="range" min="-0.20" max="0.20" step="0.01" value="0" disabled>
+                    <output id="fcu-loop-steering-value" for="fcu-loop-steering">0.00</output>
+
+                    <label for="fcu-loop-throttle">Throttle (0.00 to 0.12)</label>
+                    <input id="fcu-loop-throttle" type="range" min="0" max="0.12" step="0.01" value="0" disabled>
+                    <output id="fcu-loop-throttle-value" for="fcu-loop-throttle">0.00</output>
+
+                    <label class="fcu-loop-confirmation">
+                        <input id="fcu-loop-physical-confirmation" type="checkbox" disabled>
+                        Propellers removed, hull restrained, propulsion power controlled
+                    </label>
+                    <div class="fcu-loop-actions">
+                        <button id="btn-fcu-loop-neutral" type="button" disabled>Neutral Now</button>
+                        <button id="btn-fcu-loop-hold" type="button" class="mission-btn emergency" disabled>
+                            Hold to Apply RC Demand
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Obstacle Detection Panel -->
             <div class="panel collapsible">
                 <h2>Obstacle Detection | Détection d'Obstacles (LiDAR v2.1)</h2>
@@ -979,6 +1025,7 @@
                         <div id="camera-viewer-controls" class="camera-viewer-controls" hidden>
                             <span id="camera-viewer-title" class="camera-viewer-title">Expanded Camera View | Vue Caméra Agrandie</span>
                             <div class="camera-viewer-actions">
+                                <button type="button" id="btn-camera-emergency-stop" class="camera-viewer-emergency-stop">Emergency Stop | Arrêt d'urgence</button>
                                 <button type="button" id="btn-camera-zoom-out" aria-label="Zoom out camera view">Zoom out</button>
                                 <output id="camera-zoom-level" aria-live="polite" aria-atomic="true">1.0×</output>
                                 <button type="button" id="btn-camera-zoom-in" aria-label="Zoom in camera view">Zoom in</button>
