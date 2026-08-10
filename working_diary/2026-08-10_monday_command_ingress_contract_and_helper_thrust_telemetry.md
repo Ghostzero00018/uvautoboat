@@ -1156,3 +1156,41 @@ changes.
 The focused dashboard file passed `17/17`; the complete dashboard suite passed
 `39/39`; `node --check` passed; the preflight suite remained `13/13`; and
 `git diff --check` passed.
+
+## SITL startup correction: MAVROS ROS 2 parameter API
+
+The operator started the isolated `motorboat-skid` SITL, a separate MAVProxy
+route and the minimal MAVROS instance on domain `42`. MAVROS connected to
+vehicle `1:1`, identified itself as `255.191`, detected `RC_CHANNELS` and
+received all `1283` parameters. The bridge then stopped twice before creating
+its RC-override publisher because it requested the obsolete
+`/mavros/param/get` service.
+
+The running Jazzy MAVROS installation exposes `/mavros/param/pull` and the ROS
+parameter services on node `/mavros/param`; it does not expose
+`/mavros/param/get`. Read-only checks returned live numeric values including
+`SYSID_MYGCS=255`, `RCMAP_ROLL=1`, `RC_OVERRIDE_TIME=0.5`,
+`SERVO1_FUNCTION=73` and `SERVO3_FUNCTION=74`. The failed bridge process sent
+no override, arm, mode, parameter write or thrust command.
+
+The bridge now forces a complete `ParamPull` refresh, reads the required
+integer and double values through `AsyncParameterClient`, and fails closed on
+missing, non-numeric or incomplete responses. Discovery is refreshed once;
+the resolved full set is then refreshed and read twice before equality and
+guard validation. `DDS_ENABLE` remains the sole optional value and absence is
+handled as `PARAMETER_NOT_SET` rather than a fabricated default.
+
+A complete read-only dump of the running SITL parameters found one subsequent
+guard mismatch: `BRD_SAFETY_DEFLT=0`, while the bridge requires `1`. The
+current two-line SITL overlay therefore cannot pass the complete guard even
+after the API correction. The guard is unchanged; the next clean SITL launch
+must add `BRD_SAFETY_DEFLT 1` to the launch-time overlay and read it back before
+the bridge is retried.
+
+At 18:11, `python3 -m py_compile` passed for the bridge and its focused test.
+The focused suite passed `21/21`, including the installed service names,
+integer/double/absent decoding and the one-discovery plus two-complete-round
+refresh order. `git diff --check` passed. This is a code correction and local
+verification result; the corrected process has not yet been started against
+the running SITL. The SITL remained disarmed and no physical FCU or Pi was
+contacted by this correction.

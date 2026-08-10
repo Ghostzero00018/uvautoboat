@@ -27,8 +27,10 @@ from typing import Dict, Iterable, Mapping, Optional, Sequence
 
 import rclpy
 from mavros_msgs.msg import OverrideRCIn, RCIn, RCOut, State
-from mavros_msgs.srv import ParamGet
+from mavros_msgs.srv import ParamPull
+from rcl_interfaces.msg import ParameterType, ParameterValue
 from rclpy.node import Node
+from rclpy.parameter_client import AsyncParameterClient
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from rclpy.signals import SignalHandlerOptions
 from sensor_msgs.msg import Joy
@@ -38,7 +40,8 @@ from std_msgs.msg import Bool, String
 COMMAND_TOPIC = "/command_ingress/rc_axes"
 STATUS_TOPIC = "/command_ingress/status"
 OVERRIDE_TOPIC = "/mavros/rc/override"
-PARAM_SERVICE = "/mavros/param/get"
+PARAM_NODE = "/mavros/param"
+PARAM_PULL_SERVICE = "/mavros/param/pull"
 FRAME_ID = "uvautoboat/rc_axes/v1"
 COMMAND_TIMEOUT_SECONDS = 0.150
 PUBLISH_PERIOD_SECONDS = 0.050
@@ -51,6 +54,23 @@ RELEASE_HIGH_CHANNEL = 65534
 
 class GuardError(RuntimeError):
     """Raised when live vehicle configuration cannot satisfy the bridge guard."""
+
+
+def decode_parameter_value(
+    name: str,
+    value: ParameterValue,
+    required: bool = True,
+) -> Optional[float]:
+    """Decode the numeric ROS parameter types emitted by MAVROS."""
+    if value.type == ParameterType.PARAMETER_NOT_SET:
+        if required:
+            raise GuardError(f"no live MAVROS parameter response for {name}")
+        return None
+    if value.type == ParameterType.PARAMETER_INTEGER:
+        return float(value.integer_value)
+    if value.type == ParameterType.PARAMETER_DOUBLE:
+        return float(value.double_value)
+    raise GuardError(f"live MAVROS parameter {name} is not numeric")
 
 
 @dataclass(frozen=True)
@@ -374,27 +394,51 @@ class RealFcuRcCommandBridge(Node):
         self.fault = "WAITING_DISARMED_MANUAL"
         self.timer = self.create_timer(PUBLISH_PERIOD_SECONDS, self._tick)
 
-    def _get_param(self, client, name: str, required: bool = True) -> Optional[float]:
-        request = ParamGet.Request()
-        request.param_id = name
+    def _refresh_parameter_cache(self, client) -> None:
+        request = ParamPull.Request()
+        request.force_pull = True
         future = client.call_async(request)
         rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
         if not future.done() or future.result() is None or not future.result().success:
-            if required:
-                raise GuardError(f"no live MAVROS parameter response for {name}")
-            return None
-        value = future.result().value
-        if value.integer != 0 or value.real == 0.0:
-            return float(value.integer)
-        return float(value.real)
+            raise GuardError("MAVROS did not complete a live parameter pull")
 
-    def _pull(self, client, names: Iterable[str]) -> Dict[str, float]:
-        return {name: self._get_param(client, name) for name in names}
+    def _pull(
+        self,
+        client: AsyncParameterClient,
+        names: Iterable[str],
+        optional: Iterable[str] = (),
+    ) -> Dict[str, float]:
+        requested = list(names)
+        optional_names = set(optional)
+        future = client.get_parameters(requested)
+        rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
+        if not future.done() or future.result() is None:
+            raise GuardError("MAVROS ROS parameter request did not complete")
+        response_values = future.result().values
+        if len(response_values) != len(requested):
+            raise GuardError("MAVROS ROS parameter response is incomplete")
+        resolved: Dict[str, float] = {}
+        for name, value in zip(requested, response_values):
+            decoded = decode_parameter_value(
+                name,
+                value,
+                required=name not in optional_names,
+            )
+            if decoded is not None:
+                resolved[name] = decoded
+        return resolved
 
     def _resolve_live_guard(self) -> LiveGuard:
-        client = self.create_client(ParamGet, PARAM_SERVICE)
-        if not client.wait_for_service(timeout_sec=10.0):
-            raise GuardError(f"MAVROS parameter service unavailable: {PARAM_SERVICE}")
+        parameter_client = AsyncParameterClient(self, PARAM_NODE)
+        if not parameter_client.wait_for_services(timeout_sec=10.0):
+            raise GuardError(
+                f"MAVROS ROS parameter services unavailable: {PARAM_NODE}"
+            )
+        pull_client = self.create_client(ParamPull, PARAM_PULL_SERVICE)
+        if not pull_client.wait_for_service(timeout_sec=10.0):
+            raise GuardError(
+                f"MAVROS parameter pull service unavailable: {PARAM_PULL_SERVICE}"
+            )
 
         base_names = {
             "SYSID_THISMAV", "SYSID_MYGCS", "SYSID_ENFORCE", "SERIAL1_PROTOCOL",
@@ -407,7 +451,8 @@ class RealFcuRcCommandBridge(Node):
         }
         base_names.update(f"RC{channel}_OPTION" for channel in range(1, 17))
         base_names.update(f"SERVO{channel}_FUNCTION" for channel in range(1, 17))
-        discovery = self._pull(client, sorted(base_names))
+        self._refresh_parameter_cache(pull_client)
+        discovery = self._pull(parameter_client, sorted(base_names))
         steering, throttle, left, right = discover_channels(discovery)
 
         dynamic_names = set(base_names)
@@ -421,14 +466,20 @@ class RealFcuRcCommandBridge(Node):
                 f"SERVO{channel}_{suffix}"
                 for suffix in ("MIN", "TRIM", "MAX", "REVERSED")
             )
+        dynamic_names.add("DDS_ENABLE")
 
-        first = self._pull(client, sorted(dynamic_names))
-        dds = self._get_param(client, "DDS_ENABLE", required=False)
-        if dds is not None:
-            first["DDS_ENABLE"] = dds
-        second = self._pull(client, sorted(dynamic_names))
-        if dds is not None:
-            second["DDS_ENABLE"] = self._get_param(client, "DDS_ENABLE")
+        self._refresh_parameter_cache(pull_client)
+        first = self._pull(
+            parameter_client,
+            sorted(dynamic_names),
+            optional=("DDS_ENABLE",),
+        )
+        self._refresh_parameter_cache(pull_client)
+        second = self._pull(
+            parameter_client,
+            sorted(dynamic_names),
+            optional=("DDS_ENABLE",),
+        )
         if first != second:
             raise GuardError("two complete live parameter rounds differ")
         guard = resolve_guard(second)

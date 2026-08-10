@@ -9,10 +9,12 @@ import os
 import pathlib
 import sys
 import unittest
+from types import SimpleNamespace
 from unittest import mock
 
 import rclpy
 from mavros_msgs.msg import State
+from rcl_interfaces.msg import ParameterType, ParameterValue
 from rclpy.signals import SignalHandlerOptions
 from std_msgs.msg import Bool
 
@@ -77,6 +79,28 @@ def valid_parameters():
 
 
 class BridgeFunctionsTest(unittest.TestCase):
+    def test_uses_installed_mavros_ros2_parameter_api(self):
+        self.assertEqual(MODULE.PARAM_NODE, "/mavros/param")
+        self.assertEqual(MODULE.PARAM_PULL_SERVICE, "/mavros/param/pull")
+
+    def test_decodes_integer_double_and_missing_ros_parameters(self):
+        integer = ParameterValue(
+            type=ParameterType.PARAMETER_INTEGER,
+            integer_value=0,
+        )
+        real = ParameterValue(
+            type=ParameterType.PARAMETER_DOUBLE,
+            double_value=0.5,
+        )
+        missing = ParameterValue(type=ParameterType.PARAMETER_NOT_SET)
+        self.assertEqual(MODULE.decode_parameter_value("INTEGER", integer), 0.0)
+        self.assertEqual(MODULE.decode_parameter_value("DOUBLE", real), 0.5)
+        self.assertIsNone(
+            MODULE.decode_parameter_value("OPTIONAL", missing, required=False)
+        )
+        with self.assertRaisesRegex(MODULE.GuardError, "no live MAVROS parameter"):
+            MODULE.decode_parameter_value("REQUIRED", missing)
+
     def test_resolves_function_mapping_and_independent_rails(self):
         guard = MODULE.resolve_guard(valid_parameters())
         self.assertEqual((guard.left_servo, guard.right_servo), (3, 1))
@@ -150,6 +174,58 @@ class RecordingPublisher:
         self.messages.append(message)
 
 
+class ImmediateFuture:
+    def __init__(self, result):
+        self._result = result
+
+    def done(self):
+        return True
+
+    def result(self):
+        return self._result
+
+
+class RecordingParameterClient:
+    def __init__(self, values):
+        self.values = values
+        self.requests = []
+
+    def wait_for_services(self, timeout_sec):
+        return True
+
+    def get_parameters(self, names):
+        self.requests.append(tuple(names))
+        response = []
+        for name in names:
+            if name not in self.values:
+                response.append(
+                    ParameterValue(type=ParameterType.PARAMETER_NOT_SET)
+                )
+            elif isinstance(self.values[name], int):
+                response.append(ParameterValue(
+                    type=ParameterType.PARAMETER_INTEGER,
+                    integer_value=self.values[name],
+                ))
+            else:
+                response.append(ParameterValue(
+                    type=ParameterType.PARAMETER_DOUBLE,
+                    double_value=self.values[name],
+                ))
+        return ImmediateFuture(SimpleNamespace(values=response))
+
+
+class RecordingPullClient:
+    def __init__(self):
+        self.requests = []
+
+    def wait_for_service(self, timeout_sec):
+        return True
+
+    def call_async(self, request):
+        self.requests.append(request)
+        return ImmediateFuture(SimpleNamespace(success=True, param_received=1283))
+
+
 class BridgeNodeStateMachineTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -187,6 +263,25 @@ class BridgeNodeStateMachineTest(unittest.TestCase):
         self.node.latest_rc_out = (800, 800, 800)
         self.node.latest_rc_in_at = now - 0.1
         self.node.latest_rc_out_at = now - 0.1
+
+    def test_live_guard_refreshes_then_reads_ros_parameters_twice(self):
+        parameter_client = RecordingParameterClient(valid_parameters())
+        pull_client = RecordingPullClient()
+        with mock.patch.object(
+            MODULE, "AsyncParameterClient", return_value=parameter_client
+        ), mock.patch.object(
+            self.node, "create_client", return_value=pull_client
+        ), mock.patch.object(MODULE.rclpy, "spin_until_future_complete"):
+            guard = self.node._resolve_live_guard()
+        self.assertEqual((guard.left_servo, guard.right_servo), (3, 1))
+        self.assertEqual(len(pull_client.requests), 3)
+        self.assertTrue(all(request.force_pull for request in pull_client.requests))
+        self.assertEqual(len(parameter_client.requests), 3)
+        self.assertNotIn("DDS_ENABLE", parameter_client.requests[0])
+        self.assertIn("DDS_ENABLE", parameter_client.requests[1])
+        self.assertEqual(
+            parameter_client.requests[1], parameter_client.requests[2]
+        )
 
     def test_startup_armed_abort_emits_no_override(self):
         now = 100.0
