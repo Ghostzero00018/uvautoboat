@@ -523,13 +523,39 @@ reject_forbidden_nodes() {
 }
 
 require_workstation_nodes() {
-  local nodes="$1"
-  grep -Fxq '/rosbridge_websocket' <<<"$nodes" \
-    || die 'workstation rosbridge node is not visible from the Pi'
-  grep -Fxq '/web_video_server' <<<"$nodes" \
-    || die 'workstation web_video_server node is not visible from the Pi'
-  grep -Fxq '/rosapi' <<<"$nodes" \
-    || die 'workstation rosapi node is not visible from the Pi'
+  local nodes="$1" deadline="${2:-0}" attempt node query_rc
+  local -a required_nodes=(/rosbridge_websocket /web_video_server /rosapi)
+  local -a missing=()
+
+  for attempt in 1 2 3; do
+    missing=()
+    for node in "${required_nodes[@]}"; do
+      grep -Fxq "$node" <<<"$nodes" || missing+=("$node")
+    done
+    if [ "${#missing[@]}" -eq 0 ]; then
+      [ "$attempt" -eq 1 ] \
+        || log "WORKSTATION_NODE_RECOVERY=PASS attempts=$attempt"
+      return 0
+    fi
+    [ "$attempt" -eq 3 ] && break
+
+    log "WORKSTATION_NODE_SNAPSHOT_RETRY attempt=$attempt/3 missing=${missing[*]}"
+    [ -z "${SAFETY_MONITOR_PID:-}" ] || check_command_sentinel
+    [ -z "${THERMAL_WATCHDOG_PID:-}" ] || check_thermal_watchdog
+    if [ "$deadline" -ne 0 ] && [ "$SECONDS" -ge "$deadline" ]; then
+      return 75
+    fi
+    sleep 1
+    if [ "$deadline" -ne 0 ] && [ "$SECONDS" -ge "$deadline" ]; then
+      return 75
+    fi
+    query_rc=0
+    nodes="$(graph_nodes "$deadline")" || query_rc=$?
+    [ "$query_rc" -ne 75 ] || return 75
+    [ "$query_rc" -eq 0 ] || nodes=''
+  done
+
+  die "workstation nodes not visible from the Pi after 3 attempts: ${missing[*]}"
 }
 
 reject_command_services() {
@@ -1008,7 +1034,9 @@ final_graph_verification() {
   nodes="$(graph_nodes "$deadline")" || result=$?
   [ "$result" -eq 0 ] || return "$result"
   reject_forbidden_nodes "$nodes"
-  require_workstation_nodes "$nodes"
+  result=0
+  require_workstation_nodes "$nodes" "$deadline" || result=$?
+  [ "$result" -eq 0 ] || return "$result"
   check_command_sentinel
   check_thermal_watchdog
 
@@ -1065,7 +1093,10 @@ monitor_live_stack() {
           [ "$phase_rc" -ne 75 ] || break
           [ "$phase_rc" -eq 0 ] || die 'cannot inspect the ROS node graph'
           reject_forbidden_nodes "$nodes"
-          require_workstation_nodes "$nodes"
+          phase_rc=0
+          require_workstation_nodes "$nodes" "$deadline" || phase_rc=$?
+          [ "$phase_rc" -ne 75 ] || break
+          [ "$phase_rc" -eq 0 ] || return "$phase_rc"
           phase_rc=0
           if reject_command_services "$deadline"; then
             :

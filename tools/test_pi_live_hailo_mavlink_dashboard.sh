@@ -762,6 +762,9 @@ GRAPH_DEADLINE_FUNCTION="$(extract_function ros2_graph_query_before)"
   || fail 'deadline-aware graph-query function was not extractable'
 GRAPH_WRAPPER_FUNCTION="$(extract_function ros2_graph_query)"
 [ -n "$GRAPH_WRAPPER_FUNCTION" ] || fail 'unbounded graph-query wrapper was not extractable'
+WORKSTATION_NODES_FUNCTION="$(extract_function require_workstation_nodes)"
+[ -n "$WORKSTATION_NODES_FUNCTION" ] \
+  || fail 'workstation-node function was not extractable'
 BOUNDED_ECHO_FUNCTION="$(extract_function bounded_topic_echo)"
 [ -n "$BOUNDED_ECHO_FUNCTION" ] || fail 'bounded topic-echo function was not extractable'
 # The consumer now reads through the source view, so every sandbox that
@@ -790,6 +793,92 @@ INTERRUPT_FUNCTION="$(extract_function on_interrupt)"
 SERVICE_TRACE="$(mktemp)"
 GRAPH_TRACE="$(mktemp)"
 trap 'rm -f "$PASS_LOG" "$FAIL_LOG" "$ORDER_LOG" "$LATE_LOG" "$SERVICE_TRACE" "$GRAPH_TRACE"' EXIT
+
+: >"$GRAPH_TRACE"
+set +e
+WORKSTATION_TRANSIENT_OUTPUT="$(bash -c '
+  eval "$1"
+  set -u
+  TRACE="$2"
+  log() { printf "%s\n" "$*"; }
+  die() { printf "DIE: %s\n" "$*" >&2; exit 17; }
+  check_command_sentinel() { : "$SAFETY_MONITOR_PID"; }
+  check_thermal_watchdog() { : "$THERMAL_WATCHDOG_PID"; }
+  sleep() { :; }
+  graph_nodes() {
+    printf "query\n" >>"$TRACE"
+    printf "%s\n" /rosbridge_websocket /web_video_server /rosapi
+  }
+  initial_nodes="$(printf "%s\n" /web_video_server /rosapi)"
+  require_workstation_nodes "$initial_nodes" 0
+' _ "$WORKSTATION_NODES_FUNCTION" "$GRAPH_TRACE" 2>&1)"
+WORKSTATION_TRANSIENT_RC=$?
+set -e
+[ "$WORKSTATION_TRANSIENT_RC" -eq 0 ] \
+  || fail 'one incomplete workstation-node snapshot did not recover'
+[ "$(grep -Fc 'query' "$GRAPH_TRACE")" -eq 1 ] \
+  || fail 'transient workstation-node recovery changed its re-query count'
+grep -Fq \
+  'WORKSTATION_NODE_SNAPSHOT_RETRY attempt=1/3 missing=/rosbridge_websocket' \
+  <<<"$WORKSTATION_TRANSIENT_OUTPUT" \
+  || fail 'transient workstation-node recovery omitted its retry evidence'
+grep -Fq 'WORKSTATION_NODE_RECOVERY=PASS attempts=2' \
+  <<<"$WORKSTATION_TRANSIENT_OUTPUT" \
+  || fail 'transient workstation-node recovery omitted its pass evidence'
+
+: >"$GRAPH_TRACE"
+set +e
+WORKSTATION_PERSISTENT_OUTPUT="$(bash -c '
+  eval "$1"
+  TRACE="$2"
+  log() { printf "%s\n" "$*"; }
+  die() { printf "DIE: %s\n" "$*" >&2; exit 17; }
+  check_command_sentinel() { :; }
+  check_thermal_watchdog() { :; }
+  sleep() { :; }
+  graph_nodes() {
+    printf "query\n" >>"$TRACE"
+    printf "%s\n" /web_video_server /rosapi
+  }
+  initial_nodes="$(printf "%s\n" /web_video_server /rosapi)"
+  require_workstation_nodes "$initial_nodes" 0
+' _ "$WORKSTATION_NODES_FUNCTION" "$GRAPH_TRACE" 2>&1)"
+WORKSTATION_PERSISTENT_RC=$?
+set -e
+[ "$WORKSTATION_PERSISTENT_RC" -eq 17 ] \
+  || fail 'three incomplete workstation-node snapshots did not fail closed'
+[ "$(grep -Fc 'query' "$GRAPH_TRACE")" -eq 2 ] \
+  || fail 'persistent workstation-node failure changed its re-query count'
+[ "$(grep -Fc 'WORKSTATION_NODE_SNAPSHOT_RETRY' \
+  <<<"$WORKSTATION_PERSISTENT_OUTPUT")" -eq 2 ] \
+  || fail 'persistent workstation-node failure omitted retry evidence'
+grep -Fq \
+  'DIE: workstation nodes not visible from the Pi after 3 attempts: /rosbridge_websocket' \
+  <<<"$WORKSTATION_PERSISTENT_OUTPUT" \
+  || fail 'persistent workstation-node failure changed its terminal verdict'
+
+: >"$GRAPH_TRACE"
+set +e
+WORKSTATION_DEADLINE_OUTPUT="$(bash -c '
+  eval "$1"
+  TRACE="$2"
+  log() { printf "%s\n" "$*"; }
+  die() { printf "DIE: %s\n" "$*" >&2; exit 17; }
+  check_command_sentinel() { :; }
+  check_thermal_watchdog() { :; }
+  sleep() { :; }
+  graph_nodes() { printf "query\n" >>"$TRACE"; return 75; }
+  initial_nodes="$(printf "%s\n" /web_video_server /rosapi)"
+  require_workstation_nodes "$initial_nodes" 10
+' _ "$WORKSTATION_NODES_FUNCTION" "$GRAPH_TRACE" 2>&1)"
+WORKSTATION_DEADLINE_RC=$?
+set -e
+[ "$WORKSTATION_DEADLINE_RC" -eq 75 ] \
+  || fail 'workstation-node retry did not preserve the shared deadline'
+[ "$(grep -Fc 'query' "$GRAPH_TRACE")" -eq 1 ] \
+  || fail 'workstation-node deadline performed an extra re-query'
+! grep -Fq 'DIE:' <<<"$WORKSTATION_DEADLINE_OUTPUT" \
+  || fail 'workstation-node deadline was converted into a content verdict'
 
 : >"$GRAPH_TRACE"
 set +e
@@ -1889,7 +1978,7 @@ EXPECTED_FINAL_TRACE="$(printf '%s\n' \
 for contract in \
   'graph_nodes "$deadline"' \
   'reject_forbidden_nodes "$nodes"' \
-  'require_workstation_nodes "$nodes"' \
+  'require_workstation_nodes "$nodes" "$deadline"' \
   'reject_command_services "$deadline"' \
   'reject_unexpected_command_subscribers "$deadline"' \
   'require_publisher_count "$IMAGE_TOPIC" 1 final-verification "$deadline"' \
@@ -1899,6 +1988,8 @@ for contract in \
   grep -Fq -- "$contract" <<<"$FINAL_GRAPH_FUNCTION" \
     || fail "final graph verification omits contract: $contract"
 done
+[ "$(grep -Fc 'require_workstation_nodes "$nodes" "$deadline"' "$HELPER")" -eq 2 ] \
+  || fail 'deadline-limited workstation-node checks must cover final verification and hold monitoring'
 for contract in \
   'check_command_sentinel' \
   'check_thermal_watchdog' \

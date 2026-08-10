@@ -34,11 +34,11 @@ artifacts are retained below only for traceability.
 | --- | --- |
 | Helper source | `tools/pi_live_hailo_mavlink_dashboard.sh` |
 | Helper Pi destination | resolved Pi Desktop: `$(xdg-user-dir DESKTOP)/pi_live_hailo_mavlink_dashboard.sh` |
-| Helper size | `71,501` bytes |
-| Helper SHA-256 | `31bcee05d3d664d4b825648cfac1edd2c116becd1da87108113f1de89d1f56aa` |
+| Helper size | `72,514` bytes |
+| Helper SHA-256 | `19eaaef1a6147235705160abe5379915ff03e83f3ea553948ebe5b27ba38cc40` |
 | Workstation supervisor | `tools/live_dashboard_preflight.sh` |
 | Supervisor size | `28,647` bytes |
-| Supervisor SHA-256 | `958000f4fdae071a2f24a4864d81f88ed885bb8ed1ad71b6ed60eda3111a6877` |
+| Supervisor SHA-256 | `0a37ba04c7261225eadc7889a9169efcab5bbdc2b05808714b1350d4ea8d8f2b` |
 
 Historical 23/07/2026 session artifacts:
 
@@ -231,7 +231,7 @@ D="$(xdg-user-dir DESKTOP)" || exit 1
 D="$(readlink -f -- "$D")" || exit 1
 [ -n "$D" ] && [ -d "$D" ] && [ "$D" != "$H" ] || exit 1
 printf '%s  %s\n' \
-  '31bcee05d3d664d4b825648cfac1edd2c116becd1da87108113f1de89d1f56aa' \
+  '19eaaef1a6147235705160abe5379915ff03e83f3ea553948ebe5b27ba38cc40' \
   "$D/pi_live_hailo_mavlink_dashboard.sh" | sha256sum -c -
 ```
 
@@ -241,7 +241,7 @@ only the helper from a workstation terminal:
 ```bash
 cd ~/seal_ws/src/uvautoboat
 printf '%s  %s\n' \
-  '31bcee05d3d664d4b825648cfac1edd2c116becd1da87108113f1de89d1f56aa' \
+  '19eaaef1a6147235705160abe5379915ff03e83f3ea553948ebe5b27ba38cc40' \
   tools/pi_live_hailo_mavlink_dashboard.sh | sha256sum -c -
 
 read -r -p 'Current Pi SSH endpoint (user@host): ' PI_SSH
@@ -258,7 +258,7 @@ scp tools/pi_live_hailo_mavlink_dashboard.sh \
 ssh "$PI_SSH" "
   cd '$PI_DESKTOP' &&
   printf '%s  %s\n' \
-    '31bcee05d3d664d4b825648cfac1edd2c116becd1da87108113f1de89d1f56aa' \
+    '19eaaef1a6147235705160abe5379915ff03e83f3ea553948ebe5b27ba38cc40' \
     pi_live_hailo_mavlink_dashboard.sh |
   sha256sum -c -
 "
@@ -526,14 +526,23 @@ Do not stop the workstation while the Pi remains in its monitored hold. If the P
 because rosbridge, rosapi, or `web_video_server` disappeared, the shutdown order was not
 a clean Pi-first operator stop even when both cleanup markers pass.
 
-The signature of a reversed order, observed 07/08/2026: the Pi prints
-`STOP: workstation rosbridge node is not visible from the Pi` and exits
-`status=1 trigger=failure failed_phase=live-hold`, while the workstation exits
-`status=0 trigger=signal signal=INT`. Distinguish an operator mistake from a genuine
-workstation-side loss by reading the workstation `rosbridge.log`: an operator stop records
-`[WARNING] [launch]: user interrupted with ctrl-c (SIGINT)` and the service logs all end
-within a few seconds of each other, whereas an unexpected loss does not. Both cases
-produce `TEARDOWN=PASS` on each side, so the cleanup markers alone cannot tell them apart.
+The 07/08/2026 failure was initially attributed to a reversed stop order. Later comparison
+of the copied lifecycle logs corrected that conclusion: the Pi reported its missing-node
+failure at `16:11:44.708`, rosbridge accepted a new client at `16:11:58.752`, and the
+workstation supervisor did not record its operator `SIGINT` until `16:12:22.288`. The
+workstation services were therefore still running when one daemonless node-list snapshot
+missed rosbridge. A publisher-count-zero reading for Pi-local `/mavros/rc/in` 19 seconds
+earlier independently places the event in the already observed incomplete-snapshot class.
+
+The helper now requires the complete rosbridge, rosapi and `web_video_server` set in one
+snapshot, but retries up to three snapshots before failing closed. A recovered miss records
+`WORKSTATION_NODE_SNAPSHOT_RETRY` followed by `WORKSTATION_NODE_RECOVERY=PASS`; exhaustion
+still fails the run. Prove Pi-first order from the lifecycle records instead: the Pi must
+record `PI_SOURCE_HOLD=STOP operator-requested`, `TEARDOWN=PASS` and
+`PI_SUPERVISOR_EXIT status=0` before the workstation records `SUPERVISOR_STOP`. Do not use
+the rosbridge `user interrupted with ctrl-c (SIGINT)` line as a discriminator: the
+workstation supervisor sends `SIGINT` to its child process groups during every orderly
+teardown. Cleanup markers alone also remain insufficient.
 
 The `monitored` field covers the finite evidence window and its shared absolute query
 deadline. `final_verification` covers the complete fail-closed graph, fresh image,

@@ -239,3 +239,606 @@ the same whether or not the channels are inverted.
 
 **Next steps:** certify, then Block B. The contract is the gate on everything
 downstream.
+
+## Block B executed - command-ingress contract, design only (10/08/2026)
+
+Block B was explicitly approved after the read-only certification. This section
+is a design record only. No command bridge was implemented, no parameter was
+written, no simulator or service was started, and nothing contacted the Pi,
+control box or real controller.
+
+The source basis is the pinned ArduPilot `Rover-4.6.3` checkout at `3fc7011a` and
+the current repository at `6d973ec`. Source-derived behaviour below is kept
+separate from the 07/08/2026 SITL observation.
+
+### Forward correction - the startup guard has two layers
+
+The pre-diary's lines 96-109 use the output servo rail as though it were the
+input rail for an RC-layer command. That is incomplete and is superseded by this
+correction.
+
+`SERVO*_FUNCTION` still answers an essential output question: which physical
+outputs carry `ThrottleLeft` (`73`) and `ThrottleRight` (`74`). Their
+`SERVO<n>_*` values describe output observation. They do **not** select or scale
+an `RC_CHANNELS_OVERRIDE` input.
+
+The ingress side is independent:
+
+- live `RCMAP_ROLL` selects Rover's steering input;
+- live `RCMAP_THROTTLE` selects Rover's throttle input;
+- the corresponding live `RC<n>_MIN`, `_TRIM`, `_MAX`, `_DZ` and `_REVERSED`
+  values define the raw input PWM that produces each normalized RC demand.
+
+This separation is already visible in the 07/08 result: RC input `1600`
+produced servo output `1570`. There is no PWM passthrough. The corrected startup
+guard therefore resolves both layers and never uses one layer's rail for the
+other.
+
+### Contract status and scope
+
+This is command-ingress contract `v1`, limited to an explicitly isolated
+ArduRover SITL instance on the workstation. It is not a real-controller
+contract.
+
+The future implementation is one separate bridge process. It is not an edit to
+`tools/pi_live_hailo_mavlink_dashboard.sh`, the browser dashboard, or
+`tools/servo_command_bridge.py`. The existing Python bridge remains the opposite
+`FCU/SITL -> VRX` direction and its executable defaults remain unchanged.
+
+The contract owns only a normalized steering/throttle stream and exclusive use
+of the two resolved RC override inputs. It does not own arming, mode selection,
+parameter writes, physical thrust estimation, the RC receiver, or the output
+mixer.
+
+### Upstream payload and ROS 2 delivery
+
+The bridge accepts one atomic `sensor_msgs/msg/Joy` frame on
+`/command_ingress/rc_axes`. Reusing this standard paired-axis message avoids a
+new interface package while keeping the two axes in one sample.
+
+The payload is exact:
+
+| Field | Contract |
+| --- | --- |
+| `header.frame_id` | literal `uvautoboat/rc_axes/v1` |
+| `axes[0]` | steering, dimensionless, finite, `[-0.8, +0.8]` |
+| `axes[1]` | throttle, dimensionless, finite, `[0.0, 1.0]` |
+| `buttons[0]` | enable/dead-man, exactly `0` or `1` |
+| Array lengths | exactly two axes and one button |
+
+Positive steering means positive Rover steering input; with the required
+`PILOT_STEER_TYPE=0` and non-negative throttle this is the clockwise/right
+direction. Throttle `0.0` is the live RC neutral and `1.0` is the live positive
+endpoint. Negative longitudinal throttle demand is deliberately absent from
+`v1`; this does not promise that both mixed motor outputs stay non-negative.
+Differential steering can still drive one side below neutral.
+
+`header.stamp` must be non-zero and strictly increasing for the locked publisher,
+but the safety watchdog uses the bridge's monotonic receive time rather than
+assuming synchronized ROS clocks. The bridge locks the first valid publisher
+GID from `MessageInfo.publisher_gid` and rejects a frame from any other publisher
+until restart.
+
+Both publisher and subscriber use `KEEP_LAST(1)`, `BEST_EFFORT`, `VOLATILE`, a
+`150 ms` deadline and a `150 ms` lifespan, and the producer publishes at
+`20 Hz`. Those QoS settings bound middleware retention; they do not prove that
+an executor has not already taken a delayed sample. The subscription therefore
+uses a dedicated non-blocking wait-set/executor with no other callbacks, and the
+RMW message's received timestamp and reception sequence must be supported. The
+callback only copies the newest sample and timing metadata. Immediately before
+every MAVLink emission the bridge revalidates publisher GID, sequence, strictly
+increasing header stamp, RMW receive age and monotonic callback age. Unsupported
+timing, a clock discontinuity, a taken-but-delayed callback or a superseded
+sample is rejected; only the newest sample with age strictly below `150 ms` can
+influence output.
+
+While `ACTIVE`, a gap reaching `150 ms`, a missed deadline, an invalid field
+or `buttons[0]=0` enters the fault state defined below. Before `ACTIVE`, none of
+those events can create demand. The sole handshake exception is that a valid
+`buttons[0]=0` frame in `ARMED_NEUTRAL` primes or resets the required consent
+edge; it still commands no motion. A publisher change invalidates readiness and
+requires restart.
+
+Contract `v1` fixes `ROS_DOMAIN_ID=42`. An unset, inherited or different value
+aborts startup. This is operational isolation, not an anti-actuation claim: the
+current repository has no path from `/wamv/thrusters/*` to an FCU command, so the
+Pi helper may remain up. Domain `42` keeps bridge-side ROS traffic out of the live
+domain, avoiding dashboard aborts and competing thrust publishers. The bridge
+does not probe or control the Pi, and the helper does not know
+`/command_ingress/rc_axes`.
+
+The repository's current `/wamv/thrusters/left/thrust` and
+`/wamv/thrusters/right/thrust` messages are **not** this payload. They are two
+independent `Float64` values in newtons, with no atomic pair, timestamp, validity
+period or calibrated inverse mapping to RC axes. `/cmd_vel` is also excluded: in
+the current bridge it is optional output derived from servo feedback, not an
+ingress. A future producer-side conversion is a separate contract and cannot be
+invented inside this bridge.
+
+No current repository node publishes this `Joy` contract and no launch file
+wires it. A concrete interpreter that imports both the required ROS 2 modules
+and `pymavlink` without the known NumPy/Matplotlib collision is also unproven.
+Both are implementation blockers, not gaps to improvise around at runtime.
+
+### Recipient, identity and transport
+
+The `v1` transport is a direct MAVLink 2 TCP connection to instance `0` SITL
+`SERIAL0` at `tcp:127.0.0.1:5760`. UDP `udpin` is rejected because pymavlink
+keeps a set of UDP clients and writes to all of them; it is not a one-peer
+session. A MAVProxy relay is also excluded. The SITL launch prerequisite uses
+the pinned checkout, the `motorboat-skid` frame and `--no-mavproxy`. The same TCP
+connection receives heartbeat, parameter responses, `RC_CHANNELS` and
+`SERVO_OUTPUT_RAW`, sends the two permitted telemetry-rate requests, and sends
+the override. Separate send and receive paths are forbidden.
+
+One temporary operator path is the explicit exception to the single-link rule.
+A separately approved, one-shot helper may connect directly to instance-0
+`SERIAL1` at `tcp:127.0.0.1:5762`, with source system `254` and source component
+`190`. It may send exactly one `MAV_CMD_COMPONENT_ARM_DISARM` arm or disarm
+request to the locked non-broadcast target: `param1=1` for arm or `param1=0` for
+disarm, `param2=0` so force-arm/force-disarm is impossible, and unused parameters
+all zero. It waits for that request's `COMMAND_ACK`, reports it, and exits. It has
+no mode, parameter, RC override, `MANUAL_CONTROL`, servo or motor-test operation.
+No QGC, MAVProxy or general command console substitutes for this bounded helper.
+Because `254` must differ from live `SYSID_MYGCS`, any RC override or
+`MANUAL_CONTROL` from the operator identity is rejected by the source-system gate
+even if the helper violates its own allowlist.
+
+Loopback text alone is not the SITL boundary. Before connecting, a local
+supervisor must prove all of the following from Linux process and socket state:
+
+- the ArduPilot checkout is still exactly `3fc7011a`, and the executable at
+  `/home/ghostzero/ardupilot/build/sitl/bin/ardurover` is `4,939,888` bytes with
+  SHA-256 `569412d6843e6b1ecfd2cfd6106ea4f60559ff440100f3b6dca94a02bf750169`
+  and contains the embedded `ArduRover V4.6.3 (3fc7011a)` identity;
+- the new listener PID has that exact executable, the expected checkout working
+  directory, a later recorded start time, `--model motorboat-skid`, instance
+  `0`, and the instance-0 waiting `SERIAL0` listener on port `5760`;
+- normally, exactly one established pair owned by the bridge reaches that PID;
+  during a separately approved arm or disarm only, one additional recorded
+  one-shot operator pair may reach `SERIAL1`, and it must close after its ACK.
+  No other established client may reach any MAVLink listener owned by that PID.
+
+The SITL TCP listeners bind beyond loopback and have accept backlogs, so the
+socket census continues while the bridge is alive. An unapproved or queued peer,
+an operator peer outside its bounded phase, listener/PID change, endpoint
+reconnect, or connection from a non-loopback address is a latched fault.
+Automatic reconnect is forbidden.
+
+The bridge locks exactly one ArduPilot heartbeat source. The non-broadcast
+`target_system` and `target_component` come from that source; live
+`SYSID_THISMAV` must agree with the heartbeat system id. Live
+`SERIAL0_PROTOCOL` and `SERIAL1_PROTOCOL` must both be `2`.
+
+`SIM_SPEEDUP` must be exactly `1`, selecting a wall-clock-rate target;
+`SIM_RATE_HZ` must be present, finite and positive. Configuration alone does not
+prove the achieved simulated-time rate under host load. Before readiness, and
+then continuously, the bridge compares FCU `time_boot_ms` progression with host
+monotonic time over a rolling `2 s` window and requires a slope in `0.9..1.1`
+with no regression. These simulation values corroborate the selected launch but
+are **not** identity proof: simulation parameters can also be compiled on
+hardware. Process, executable and socket provenance above form the positive SITL
+boundary.
+
+Sender discovery has one non-actuating bootstrap exception. After locking the
+target heartbeat, the bridge chooses provisional source system `253`, or `252`
+when the target heartbeat already uses `253`, with source component
+`MAV_COMP_ID_ONBOARD_COMPUTER` (`191`). It may request only `SYSID_ENFORCE` and
+`SYSID_MYGCS`. No response aborts. `SYSID_ENFORCE` must be `0`; the bridge then
+changes the sender on the same TCP connection to the returned live
+`SYSID_MYGCS` before any other parameter request, telemetry-rate command or
+override.
+
+From that point the MAVLink source system must equal live `SYSID_MYGCS`.
+Component id is not an RC-override authorization boundary: ArduPilot checks only
+the source system, and a wrong system is a silent drop. `SYSID_MYGCS` is
+ownership, not authentication. Both live system identifiers must be exact
+integers in `1..255`, must be distinct and must both differ from operator system
+`254`; the bridge and operator source components must each differ from the target
+component. Live `SYSID_ENFORCE=0` is also required so the separate operator
+identity reaches its arm/disarm handler.
+
+Every accepted override also refreshes ArduPilot's `SYSID_MYGCS` last-seen time.
+The bridge can therefore mask loss of an operator GCS using the same system id;
+the contract does not rely on GCS failsafe as a bridge watchdog and forbids a
+co-owned GCS identity.
+
+Exclusive ownership covers the resolved RC override state, not just the
+`RC_CHANNELS_OVERRIDE` message. No other link or process may send
+`RC_CHANNELS_OVERRIDE` or `MANUAL_CONTROL`, and onboard DDS and Lua override
+producers must be disabled. This is an operator/process prerequisite supported
+by the socket census and live guards; MAVLink cannot prove global writer
+exclusivity by itself.
+
+### Startup resolution guard
+
+State starts at `UNRESOLVED`, with no RC override output. The bridge requests the
+bounded guard set by exact name with `PARAM_REQUEST_READ`: every required live
+global value named below, `RC1_OPTION` through `RC16_OPTION`, and
+`SERVO1_FUNCTION` through `SERVO16_FUNCTION`. After the mappings are known, the
+set expands with the two resolved RC rails and the two resolved servo rails. Two
+complete rounds must return identical values from the locked target. Each round has a `30 s`
+deadline; an individually missing value may be retried once after `2 s`. No
+cached parameter file, launch value, default, constant or other vehicle's value
+is accepted as the observed value.
+
+All channel numbers, system identifiers, enum/function values, option masks,
+reversal values and PWM/dead-zone parameters must be finite exact integers before
+range checks or serialization. RC and servo `MIN`/`TRIM`/`MAX` must be within
+their documented `800..2200` domain. RC dead zones have documented domain
+`0..200`, but `v1` requires `1..200` so its zero-demand application probe is
+distinct from trim.
+
+Every condition below must pass together:
+
+1. `SYSID_THISMAV`, `SYSID_MYGCS`, `SYSID_ENFORCE`, `SERIAL0_PROTOCOL`,
+   `SERIAL1_PROTOCOL`, `SIM_SPEEDUP` and `SIM_RATE_HZ` pass the identity/time
+   checks above.
+2. `RCMAP_ROLL` and `RCMAP_THROTTLE` are present, distinct and each in `1..16`.
+3. For both resolved RC channels, `RC<n>_MIN`, `_TRIM`, `_MAX`, `_DZ`,
+   `_REVERSED` and `_OPTION` are present. `_OPTION` must be `0`, `_REVERSED`
+   must be `0` or `1`, and the rail must satisfy
+   `MIN < TRIM-DZ < TRIM+DZ < MAX`.
+4. Neither resolved RC channel equals live `MODE_CH`. Across `RC1_OPTION`
+   through `RC16_OPTION`, none may be `46`, because that switch can disable and
+   clear every override.
+5. `RC_OPTIONS` bits `0` and `1` are both clear: the receiver is not ignored and
+   MAVLink overrides are not ignored. Other set bits are recorded explicitly.
+6. `PILOT_STEER_TYPE` is exactly `0`, `FRAME_CLASS` is the Boat value `2`, the
+   exact output functions `73`/`74` establish skid steering, and the continuously
+   observed mode is `MANUAL`.
+7. `ARMING_RUDDER`, `FS_THR_ENABLE`, `FS_THR_VALUE`, `FS_TIMEOUT`, `FS_ACTION`,
+   `FS_OPTIONS`, `FS_GCS_ENABLE` and `FS_GCS_TIMEOUT` are present and recorded.
+   When throttle failsafe is enabled, every PWM the `v1` throttle range can emit
+   must stay above `FS_THR_VALUE`. The bridge does not rewrite any failsafe.
+8. `RC_OVERRIDE_TIME` is live, finite, greater than `0` and no greater than
+   `0.5 s`. Zero disables overrides; a negative value never expires. The bridge
+   never changes this parameter and never uses a temporary zero as teardown.
+9. `SCR_ENABLE` is `0`, excluding Lua override producers. The exact pinned
+   binary above contains no `AP_DDS` client and exposes no `DDS_ENABLE` parameter;
+   a different binary or a target that exposes DDS is outside `v1` and aborts.
+10. `SERVO_32_ENABLE` is `0`, so outputs `17..32` and their second raw-output
+    bank cannot hide a duplicate assignment. Across `SERVO1_FUNCTION` through
+    `SERVO16_FUNCTION`, exactly one channel carries `73` and exactly one carries
+    `74`. Missing or duplicate assignments abort.
+11. Both resolved servo channels are in the observable `1..16` range and have
+    complete live `SERVO<n>_MIN`, `_TRIM`, `_MAX` and `_REVERSED` values, with
+    `MIN < MAX`, `MIN <= TRIM <= MAX` and `_REVERSED` equal to `0` or `1`.
+12. The target is freshly observed disarmed; both resolved receiver inputs are
+    freshly at their live trims before any override; domain `42` has exactly the
+    locked command publisher; and the process/socket exclusivity prerequisites
+    above pass.
+
+The source-default `RC_OVERRIDE_TIME` for the known `motorboat-skid` instance is
+`3.0 s`, so the current SITL cannot pass item 8. A separately approved launch
+preconfiguration, read back live as at most `0.5 s`, is a runtime prerequisite.
+It was not created or applied in this block. Even after such preconfiguration,
+the live response remains the only accepted value; a launch overlay is never a
+substitute for resolution.
+
+The bridge never sends `PARAM_SET`, and the isolated run permits no other
+parameter writer. While ready or active it also completes a rolling
+`PARAM_REQUEST_READ` comparison of every guarded parameter at least once per
+`2 s`; a missing response or difference invalidates readiness.
+
+Any missing, duplicate, invalid, stale or target-mismatched value aborts startup.
+After neutral transmission has begun, a missing, stale or changed rolling
+guarded-parameter response, or vehicle-time regression/reboot, enters
+`CONFIG_FAULT`; cached channels and trims are no longer described as neutral. If
+the original target, link and process identity are still intact, the bridge sends
+only three channel-aware clear frames for the last resolved override fields and
+then stops output. If target, endpoint, heartbeat source or process/socket
+provenance changed, it closes the connection without transmitting to the
+unproven peer. Both paths require external disarm and restart. A ROS publisher
+change latches a restart-required fault while the still-valid FCU guard permits
+neutral hold. No state survives reconnect and there is no partial re-resolution.
+A mode change uses the separate mode-fault path below.
+
+### RC encoding and MAVLink emission
+
+No inherited `SERIAL0` stream rate is trusted. Before any override, the bridge
+may send exactly two non-persistent `MAV_CMD_SET_MESSAGE_INTERVAL` requests on
+this link: message `65` (`RC_CHANNELS`) and message `36`
+(`SERVO_OUTPUT_RAW`), each at `10 Hz`. Both require an accepted `COMMAND_ACK` and
+an observed maximum inter-arrival of `250 ms` for `2 s`; failure aborts startup.
+No `REQUEST_DATA_STREAM` is allowed because Rover persists that rate change.
+
+The bridge converts each normalized axis independently using that axis's live RC
+rail. Let `u` be the contracted normalized demand and let `d = -u` when
+`RC<n>_REVERSED=1`, otherwise `d = u`:
+
+```text
+d == 0: pwm = TRIM
+d >  0: pwm = TRIM + DZ + d * (MAX - TRIM - DZ)
+d <  0: pwm = TRIM - DZ + d * (TRIM - DZ - MIN)
+```
+
+For `d > 0` the continuous result is rounded down; for `d < 0` it is rounded up.
+Quantization therefore stays toward trim rather than increasing demand. Before
+serialization the bridge decodes the selected integer with Rover's exact
+integer arithmetic and rejects it unless the resulting steering magnitude is at
+most `3600`, below the strict greater-than-`4000` rudder-arm threshold. This is
+the inverse of RC input normalization, not a servo-output or thrust conversion.
+
+Every `RC_CHANNELS_OVERRIDE` frame carries both resolved channels atomically at
+`20 Hz`. All other channel fields are `65535` (`UINT16_MAX`, ignore). MAVLink 2
+is mandatory because an `RCMAP_*` result may be above channel 8.
+
+Before external arming, the bridge proves application by its configured sender
+with a zero-demand transition. Starting from a fresh pre-override effective RC
+echo at both trims, it sends each resolved channel at `TRIM+DZ`, observes that
+exact pair in `RC_CHANNELS`, returns to both trims, and observes the return. The
+dead-zone boundary decodes to zero demand, but the distinct raw pair proves that
+this override was applied rather than silently dropped. It does not by itself
+prove the wrong-sysid rejection branch. Failure aborts without arming. After this
+probe the bridge keeps sending both trims while disarmed.
+
+Neutral is the two live RC `TRIM` values. A field value of zero is **not**
+neutral. For channels 1-8 it clears override selection; for channels 9-16 both
+zero and `65535` mean ignore, and the clear value is `65534`. Receiver input is
+then used only if it is available under the live RC configuration. Channel-aware
+release is used only after the teardown conditions below pass, except for the
+explicitly non-neutral `CONFIG_FAULT` emergency clear.
+
+ArduPilot owns the skid-steer mixer, function-to-output mapping, saturation,
+slew and motor limits. The bridge does not invert the existing left/right thrust
+mix and does not claim raw RC PWM, servo PWM or physical newtons are equivalent.
+
+### Acknowledgement and feedback
+
+`RC_CHANNELS_OVERRIDE` is an ordinary MAVLink message with no `COMMAND_ACK`.
+Transmission success is therefore not an FCU-acceptance acknowledgement. The
+two telemetry-rate commands have their own startup ACKs; those ACKs say nothing
+about later override frames.
+
+The contract keeps three evidence levels separate:
+
+1. local serialization and socket send succeeded;
+2. a fresh `RC_CHANNELS` message from the locked target shows the effective
+   steering and throttle PWM matching a pair in the bridge's timestamped
+   `500 ms` transmit history;
+3. a fresh `SERVO_OUTPUT_RAW` message with `port=0` contains both
+   function-resolved channels, and both values are within their live servo rails.
+
+Level 2 is indirect application evidence; level 3 is output observation. Neither
+is a per-frame protocol ACK or proof of physical thrust. Another writer sharing
+`SYSID_MYGCS` would also make ownership ambiguous, which is why exclusive
+override-writer ownership is a precondition.
+
+Mapping acceptance compares each output only after decoding it through its own
+live servo rail. For `pwm > TRIM`, demand is
+`(pwm-TRIM)/(MAX-TRIM)`; for `pwm < TRIM`, demand is
+`(pwm-TRIM)/(TRIM-MIN)`; at trim it is zero. A zero denominator on the demanded
+side is an acceptance failure. The sign is then negated when that channel's live
+`SERVO<n>_REVERSED` is `1`. This direction-normalized value is used only to
+compare the two function outputs; it is not displayed as thrust or claimed as a
+physical percentage.
+
+`SERVO_OUTPUT_RAW.port=1` reuses the field names for outputs `17..32` and is never
+accepted as evidence for `1..16`. While active, heartbeat age must stay below
+`2.5 s`, and both accepted feedback types must stay below `500 ms`. A received
+RC pair that matches no pair sent during the preceding `500 ms`, heartbeat age
+reaching `2.5 s`, or either feedback age reaching `500 ms` immediately latches
+the applicable fault; there is no second grace period.
+
+Before the first non-neutral command, the bridge must already be transmitting
+both RC trims, observe the post-probe RC return to those trims, and, after
+external arming, observe both resolved servo outputs at their live trims within
+`2 s`. The distinct dead-zone probe above, not the trim echo alone, is the
+application evidence for the configured sender.
+
+### Arming and mode boundary
+
+The bridge contains no arm, disarm or mode-change path and sends no `SET_MODE`,
+parameter write, servo command or motor-test command. Its only `COMMAND_LONG`
+allowlist is the two non-actuating message-interval requests above. After the
+startup probe it may emit only the atomic trim pair or a channel-specific release
+while disarmed; no upstream demand can affect those frames.
+
+An external, separately authorized operator may arm SITL only after the raw
+dead-zone probe has passed, the trim override is continuous, and a fresh
+`RC_CHANNELS` sample reports both trims. The transition moves the bridge only to
+`ARMED_NEUTRAL`. Activation then requires a valid post-arm frame with
+`buttons[0]=0` followed by a fresh `0 -> 1` edge from the same publisher. A
+producer holding enable high through arming cannot activate the bridge, and no
+pre-arm or buffered demand survives.
+
+The permanent decoded `|steering| <= 3600` bound prevents the bridge from holding
+the greater-than-`4000` steering input that Rover's rudder-arm/disarm path
+requires. Mapped `RC<n>_OPTION=0` removes the other input-channel side effect.
+
+Unexpected disarm or an armed target at initial discovery erases demand and
+latches a fault. A mode other than fresh `MANUAL`, or loss of fresh mode
+observation, enters `MODE_FAULT`: the bridge erases demand and sends the RC trim
+pair as a best-effort input clamp, but makes no neutral-output claim because
+non-Manual modes need not use pilot RC input. `MODE_FAULT` requires external
+disarm. No fault can resume while armed; restart begins from fresh disarmed
+resolution.
+
+### Dead-man, failure and teardown semantics
+
+There are three different loss mechanisms and they must not be collapsed:
+
+- **Command-stream loss while the bridge and MAVLink link are alive:** when the
+  gap reaches `150 ms` without a valid enabled frame, the bridge immediately
+  replaces both demands with their live RC trims and keeps transmitting that
+  atomic neutral input pair at `20 Hz`. With fresh `MANUAL` mode this is
+  `NEUTRAL_HOLD`; the fault latches and fresh commands do not resume motion.
+- **Mode loss or non-Manual mode:** this is `MODE_FAULT`, not neutral hold. The
+  bridge sends the same best-effort trim input clamp, but the active mode may
+  continue producing motor output independently. External disarm is required.
+- **Bridge crash or MAVLink-link loss:** no process remains to send neutral.
+  `RC_OVERRIDE_TIME` is evaluated only when ArduPilot processes new receiver
+  input or another override. Without such an event, the last decoded control can
+  persist beyond the configured time. If reevaluation occurs, receiver use still
+  depends on receiver availability and `RC_OPTIONS`; there is no unconditional
+  authority transfer or neutral-output guarantee.
+
+`RC_OVERRIDE_TIME` is therefore a conditional validity timeout, not the neutral
+dead-man. Receiver values plus the recorded `RC_OPTIONS`, throttle-failsafe and
+GCS-failsafe parameters govern later behaviour. Override traffic itself refreshes
+GCS last-seen time. A true vehicle-side fail-neutral guarantee would require
+additional verified receiver/failsafe behaviour or a different higher-layer
+ingress; neither is established by this block. Process-loss transfer and its
+timing remain a required discriminating SITL acceptance, not a source claim.
+
+Failures in `UNRESOLVED` abort with no output. After the dead-zone probe begins,
+publisher, payload, feedback or command-age faults enter `NEUTRAL_HOLD` only
+while the entire FCU guard remains valid and fresh mode remains `MANUAL`;
+otherwise they enter `MODE_FAULT` or `CONFIG_FAULT` as defined above. While the
+link is alive, `NEUTRAL_HOLD` and `MODE_FAULT` do not release automatically.
+Endpoint loss is reported without pretending that the dead bridge emitted a
+fallback.
+
+Graceful teardown is:
+
+1. erase the last demand; in fresh `MANUAL`, enter `NEUTRAL_HOLD`, observe a
+   fresh RC echo at both trims and `port=0` servo outputs at their live trims;
+   in `MODE_FAULT`, send only the best-effort trim input clamp and make no output
+   claim;
+2. wait for an external operator to disarm and verify a fresh disarmed heartbeat;
+3. send three atomic channel-specific release frames at `20 Hz` while disarmed;
+4. send no further override, wait longer than the live `RC_OVERRIDE_TIME` plus
+   `100 ms`, and continue observing fresh disarmed heartbeat;
+5. record local release transmission and exit without claiming a release ACK or
+   an observable internal released state.
+
+If disarm never arrives, the process remains in the applicable hold/fault state
+and reports the blocker. Missing feedback may force external disarm but makes
+the teardown unclean. Release is never substituted for neutral while armed; the
+armed clear in `CONFIG_FAULT` is an explicitly non-neutral emergency exception,
+not a clean teardown.
+
+### Explicit real-controller boundary
+
+Contract `v1` accepts only the provenance-checked local instance-0 SITL process
+and its direct `SERIAL0` bridge connection, plus the separately approved one-shot
+`SERIAL1` arm/disarm helper exception. It rejects serial devices, UDP relays,
+non-loopback peers, unmatched processes/binaries and targets reached through an
+unproven endpoint. It has no real-controller transport profile and no runtime
+option that can enable one.
+
+The 09/08/2026 tiered gate remains unchanged. No tier was exercised or
+authorized here. A future real-controller proposal requires its own approval,
+live T0b reads, a separately reviewed transport profile, physical bench
+conditions, and resolution of the process-loss receiver-transfer residual before
+any actuating tier. A SITL result cannot satisfy those gates.
+
+### Non-goals and avoided over-design
+
+- No implementation, runtime, parameter change, arming or command occurred.
+- No change to either pinned helper, the dashboard, or
+  `tools/servo_command_bridge.py`.
+- No direct raw-servo path, `MAV_CMD_DO_MOTOR_TEST`, Lua motor path, or other
+  actuator mechanism is part of the contract. RC ingress is the selected design,
+  not the only route firmware could expose.
+- `MAV_CMD_DO_SET_SERVO` rejection for functions `73` and `74` is source-proven
+  in `AP_ServoRelayEvents.cpp`; it has not been exercised in SITL.
+- No inverse mixer, physical-thrust model, percentage conversion, multi-vehicle
+  router, automatic parameter repair or custom ROS interface package is added.
+- The Pi helper remains unchanged and view-only, but it does not know the new
+  command topic. Domain `42` prevents operational graph and publisher collisions;
+  helper shutdown is not a bridge prerequisite.
+
+### Block B verdict
+
+**Block B is closed only as a written design decision.** The pre-diary's fixed
+count remains three constraints; the startup guard is a separate requirement,
+now corrected into ingress and output layers.
+
+It is not runnable in the known environment: the stock SITL timeout is `3.0 s`,
+the required preconfiguration is neither approved nor present, the combined ROS
+2/pymavlink interpreter is unproven, and no repository publisher implements the
+new `Joy` payload. The bounded one-shot operator helper is also not implemented.
+Implementation and runtime acceptance remain `NOT STARTED`.
+
+The first later acceptance must prove every guard failure, exact RC
+normalization/quantization, the dead-zone application probe, a separate
+wrong-sysid no-effect test, channel-aware release, telemetry cadence and port
+filtering, publisher/command-age watchdogs, the post-arm `0 -> 1` consent edge,
+decoded rudder-arm bound, Manual neutral hold, Mode-fault non-claim, and actual
+process-loss behaviour against SITL. Mapping
+acceptance requires a positive-steering asymmetric input under positive throttle
+and must observe decoded function-`73` demand exceed decoded function `74` using
+each output's own live rail and reversal; raw PWM values are not compared across
+unequal rails. A symmetric impulse or two neutral readings cannot establish it.
+This contract is source-reviewed, not implementation-ready or runtime-proven.
+
+Blocks C, D and E remain separately gated and have not started.
+
+## Forward corrections - ROS publisher identity and the 07/08 lifecycle cause
+
+### Block B publisher identity and interpreter
+
+The installed Jazzy binding does not provide the callback identity used in the
+contract above. `MessageInfo` is not importable from `rclpy.subscription`, and
+the installed `_rclpy_pybind11` extension exposes source/received timestamps and
+publication/reception sequence numbers but no `publisher_gid`. The per-message
+publisher-GID lock at lines 316-340 is therefore not implementable as written.
+
+Contract `v1` is corrected to a graph-level publisher invariant. Before accepting
+the first sample and on a rolling check before output, the bridge must call
+`Node.get_publishers_info_by_topic()` and require exactly one publisher on
+`/command_ingress/rc_axes`. It locks that `TopicEndpointInfo.endpoint_gid` and
+faults on a missing, additional or changed endpoint. Message acceptance still
+requires increasing header stamps and supported RMW timing/sequence metadata.
+This is an operational uniqueness check, not per-message attribution,
+authentication or a claim that DDS graph propagation has no race. A stronger
+identity guarantee would require a different payload or transport and is outside
+`v1`; real-controller tiers remain excluded.
+
+The interpreter blocker is also retired. After sourcing
+`/opt/ros/jazzy/setup.bash`, the system interpreter imported `rclpy`,
+`sensor_msgs.msg.Joy` and `pymavlink 2.4.49` together. The known ArduPilot-venv
+NumPy conflict remains relevant, but this concrete ROS-side environment does not
+reintroduce it. Block B remains **SITL-only, not implementation-ready and not
+runnable in the known environment** because the timeout preconfiguration, bridge
+implementation, command publisher and bounded operator helper remain absent.
+
+### 07/08 lifecycle cause and Block D prerequisite
+
+The 07/08 diary's claim that the workstation was stopped first is corrected
+forward, without editing that frozen record. The copied logs establish this
+sequence in local time:
+
+| Time | Evidence |
+| --- | --- |
+| `16:11:44.708` | Pi reports the workstation rosbridge node missing |
+| `16:11:57.653` | Pi exits `status=1 failed_phase=live-hold` |
+| `16:11:58.752` | Workstation rosbridge accepts a new WebSocket client |
+| `16:12:22.288` | Workstation supervisor records operator `SIGINT` |
+
+Rosbridge was therefore alive after the Pi failure. Nineteen seconds before the
+fatal node-list miss, the same Pi log recorded a successful daemonless query with
+publisher count zero for Pi-local `/mavros/rc/in`. The evidence supports a
+transient incomplete graph snapshot, not workstation-first shutdown. The
+rosbridge `user interrupted with ctrl-c (SIGINT)` line is not a discriminator:
+the workstation supervisor starts child process groups with `setsid` and sends
+`SIGINT` to them during every orderly teardown.
+
+The helper now retries the complete workstation-node set for three snapshots,
+records retry/recovery markers and still fails closed after three incomplete
+results. Finite verification keeps its shared absolute deadline. Focused coverage
+proves one-miss recovery, persistent three-snapshot failure and deadline handoff.
+The runbook now judges stop order from the two supervisor lifecycle records.
+
+No live service, browser, SITL or Pi process was started for this correction. The
+helper edit invalidates the deployed Pi Desktop copy; transfer and Pi-side hash
+verification remain operator-run prerequisites before any live test. Block C was
+not started.
+
+### Current operational pins after the correction
+
+| Artifact | Size | SHA-256 |
+| --- | ---: | --- |
+| `tools/pi_live_hailo_mavlink_dashboard.sh` | `72,514` bytes | `19eaaef1a6147235705160abe5379915ff03e83f3ea553948ebe5b27ba38cc40` |
+| `tools/live_dashboard_preflight.sh` | `28,647` bytes | `0a37ba04c7261225eadc7889a9169efcab5bbdc2b05808714b1350d4ea8d8f2b` |
+
+The operational cascade is twelve pin occurrences: one helper hash in the
+supervisor, three in `tools/test_live_dashboard_preflight.sh`, four in the live
+runbook, the supervisor hash in both that test and the runbook, and the two
+runbook size rows. All twelve were checked directly; focused suites alone do not
+certify the unguarded documentation occurrences. Historical hashes in the four
+frozen 04/08-07/08 diaries remain untouched, as do the original Block A pins at
+the start of this diary. The Pi Desktop copy remains stale until the operator
+transfers and verifies the new helper.

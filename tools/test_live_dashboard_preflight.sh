@@ -5,7 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PREFLIGHT="${1:-$SCRIPT_DIR/live_dashboard_preflight.sh}"
 WIKI="$SCRIPT_DIR/../wiki/Live_Hailo_MAVLink_Dashboard_Testing.md"
-EXPECTED_PREFLIGHT_SHA256='958000f4fdae071a2f24a4864d81f88ed885bb8ed1ad71b6ed60eda3111a6877'
+EXPECTED_PREFLIGHT_SHA256='0a37ba04c7261225eadc7889a9169efcab5bbdc2b05808714b1350d4ea8d8f2b'
 CASE_COUNT=0
 
 fail() {
@@ -41,8 +41,16 @@ ACTUAL_PREFLIGHT_SHA256="$(sha256sum "$PREFLIGHT" | awk '{print $1}')"
 grep -Fqx -- \
   "| Supervisor SHA-256 | \`$EXPECTED_PREFLIGHT_SHA256\` |" "$WIKI" \
   || fail 'live-dashboard runbook supervisor checksum is stale'
+grep -Fq '`WORKSTATION_NODE_SNAPSHOT_RETRY` followed by `WORKSTATION_NODE_RECOVERY=PASS`' \
+  "$WIKI" \
+  || fail 'live-dashboard runbook omits transient workstation-node recovery evidence'
+grep -Fq 'the rosbridge `user interrupted with ctrl-c (SIGINT)` line as a discriminator' \
+  "$WIKI" \
+  || fail 'live-dashboard runbook omits the invalid SIGINT discriminator warning'
+! grep -Fq 'The signature of a reversed order, observed 07/08/2026' "$WIKI" \
+  || fail 'live-dashboard runbook retains the falsified 07/08 stop-order claim'
 
-require_literal "EXPECTED_HELPER_SHA256='31bcee05d3d664d4b825648cfac1edd2c116becd1da87108113f1de89d1f56aa'"
+require_literal "EXPECTED_HELPER_SHA256='19eaaef1a6147235705160abe5379915ff03e83f3ea553948ebe5b27ba38cc40'"
 require_literal 'EXPECTED_SSID="${LIVE_SSID:-IoT IMT Nord Europe}"'
 require_literal 'PI_WINDOW_MODE="${LIVE_PI_WINDOW_MODE:-fullscreen}"'
 require_literal 'validate_pi_window_selectors() {'
@@ -92,7 +100,7 @@ PI_COMMAND_OUTPUT="$(bash -c '
 PI_COMMAND_BLOCK="$(sed -n '/^($/,/^)$/{p}' <<<"$PI_COMMAND_OUTPUT")"
 [ -n "$PI_COMMAND_BLOCK" ] || fail 'printed Pi command block missing'
 bash -n <<<"$PI_COMMAND_BLOCK"
-grep -Fq '31bcee05d3d664d4b825648cfac1edd2c116becd1da87108113f1de89d1f56aa' \
+grep -Fq '19eaaef1a6147235705160abe5379915ff03e83f3ea553948ebe5b27ba38cc40' \
   <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not verify the helper pin'
 grep -Fq 'LIVE_HOLD_AFTER_WINDOW=1' <<<"$PI_COMMAND_BLOCK" \
@@ -116,7 +124,7 @@ grep -Fq 'HAILO_DEMO_ROOT="$PI_RUNTIME_ROOT"' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not preserve the Hailo runtime root'
 grep -Fq '"$PI_HELPER"' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not execute the absolute Desktop helper'
-grep -Fq "\\n' '31bcee05d3d664d4b825648cfac1edd2c116becd1da87108113f1de89d1f56aa' \"\$PI_HELPER\" | sha256sum -c -" \
+grep -Fq "\\n' '19eaaef1a6147235705160abe5379915ff03e83f3ea553948ebe5b27ba38cc40' \"\$PI_HELPER\" | sha256sum -c -" \
   <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi checksum format contains a literal line break'
 ! grep -Fq './pi_live_hailo_mavlink_dashboard.sh' <<<"$PI_COMMAND_BLOCK" \

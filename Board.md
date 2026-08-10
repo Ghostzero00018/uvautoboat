@@ -101,6 +101,16 @@
 > `working_diary/2026-08-04_tuesday_ros2_graph_query_single_participant_implementation.md`, and
 > `working_diary/2026-08-05_wednesday_graph_query_live_comparison.md`.
 >
+> **10/08/2026 lifecycle correction:** copied Pi/workstation logs disprove the
+> 07/08 workstation-first explanation. The Pi's missing-rosbridge failure preceded
+> its exit, rosbridge then accepted a new WebSocket client, and only afterwards did
+> the workstation supervisor receive operator `SIGINT`. A Pi-local publisher-count-zero
+> result 19 seconds before the fatal node miss independently matches the confirmed
+> incomplete-snapshot class. The helper now retries the complete workstation-node
+> set for three snapshots, records recovery and still fails closed on exhaustion.
+> Stop order is judged from supervisor lifecycle timestamps, not the rosbridge
+> `SIGINT` line. The helper pin changed and no corrective live run has occurred yet.
+>
 > **09/08/2026 policy supersession - real-controller access.** The former blanket
 > rule, that any write or arming on the real flight controller is prohibited outright,
 > is **superseded** by a tiered gate. The blanket wording did not distinguish
@@ -558,8 +568,14 @@ The whole repo is expected to run on the Pi 5. Long-term (Phase 5.2+): QGC and t
    real boat `800`/`800`/`2200` with neutral at the bottom, and `tools/servo_command_bridge.py`
    defaulting to `1100`/`1500`/`1900`, which matches neither. A bridge emitting the simulator's
    neutral at the real vehicle would command substantial thrust while believing it commanded
-   zero, so the rail must be read from live parameters and never hard-coded. The remaining step,
-   the written command-ingress contract, is unstarted and stays design-only.
+   zero, so the rail must be read from live parameters and never hard-coded. **10/08/2026:** the
+   written command-ingress contract is now closed as a design-only decision in
+   `working_diary/2026-08-10_monday_command_ingress_contract_and_helper_thrust_telemetry.md`.
+   Implementation and runtime acceptance remain unstarted; the contract is SITL-only, not
+   implementation-ready and not runnable in the known environment. It resolves ingress from live
+   `RCMAP_*` and `RC<n>_*`, retains `SERVO*_FUNCTION` and live servo rails for output
+   observation, and fixes domain `42` for operational isolation rather than FCU actuation safety;
+   no current repository path converts the thrust topics into an FCU command.
 3. **Detector recovery before Hailo accuracy gates**: the Hailo six-output decode
    contract is proven on saved frames (07/07/2026, `fb308f9`), and the 08/07 Pi
    runtime smoke proved single-process RealSense -> Hailo -> decode-summary
