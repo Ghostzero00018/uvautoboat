@@ -1194,3 +1194,94 @@ refresh order. `git diff --check` passed. This is a code correction and local
 verification result; the corrected process has not yet been started against
 the running SITL. The SITL remained disarmed and no physical FCU or Pi was
 contacted by this correction.
+
+## SITL digital-twin runtime acceptance and EOD closeout
+
+The corrected process was subsequently exercised against a fresh workstation
+`motorboat-skid` SITL. The launch-time overlay contained
+`RC_OVERRIDE_TIME 0.5`, `ARMING_RUDDER 0` and `BRD_SAFETY_DEFLT 1`. MAVProxy
+owned `tcp:127.0.0.1:5760`, forwarded to `udp:127.0.0.1:14600`, and used source
+system `254`. MAVROS ran on `ROS_DOMAIN_ID=42` with localhost-only discovery,
+identified itself as `255.191`, connected to vehicle `1:1`, loaded the minimal
+`sys_status`, `param` and `rc_io` plugins, detected `RC_CHANNELS` and received
+all `1283` parameters.
+
+The bridge passed its complete live guard and printed:
+
+```text
+live guard resolved: steering=RC1 throttle=RC3 left=SERVO1 right=SERVO3
+```
+
+With the simulated hardware safety switch still on, `/mavros/rc/out` contained
+zeros and feedback correctly remained invalid. `arm safetyoff` changed the
+simulated safety state without arming. The next full status sample was
+`READY_DISARMED`, `ready=true`, `feedback_fresh=true`, RC input
+`1500`/`1500`, servo output `1500`/`1500`, `MANUAL` and disarmed. A normal
+`arm throttle` then received an accepted command acknowledgement and reached
+`ARMED_NEUTRAL` with the same measured neutral output. No force-arm value was
+used.
+
+The dashboard was served from loopback with the explicit bench query and the
+live SITL mapping. Rosbridge subscribed to `/mavros/state`, `/mavros/rc/in`,
+`/mavros/rc/out`, `/command_ingress/status` and both thrust-display topics. Two
+screen recordings preserve the visible paired request and independently
+measured output:
+
+| Recording | Size | Duration | SHA-256 |
+| --- | ---: | ---: | --- |
+| `/home/ghostzero/Videos/Screencasts/Screencast from 2026-08-10 18-46-27.mp4` | `745617` B | `18.0168 s` | `b94f836ba24dfda7d6e6bda75eb185322c8aa6c06cbe47a1c3b776c0356bb26a` |
+| `/home/ghostzero/Videos/Screencasts/Screencast from 2026-08-10 18-54-53.mp4` | `504633` B | `9.2573 s` | `2d2d882cf05d7418a55a9396d8ebf5cc894516e965093ce28a14147ad26ac42d` |
+
+The original recordings were left untouched; review frames were temporary.
+The first recording shows the state change from `ARMED_NEUTRAL` to `ACTIVE` for
+steering `+0.10` and throttle `0.08`. The measured RC input becomes
+`1577`/`1567`, and measured output becomes left `1585`, right `1485`, a positive
+`100 us` differential. Releasing Hold to Apply returns the request and both
+measured outputs to `1500`/`1500`. The second recording repeats that positive
+case and then shows steering `-0.04`, throttle `0.09`: RC `1452`/`1572`, left
+`1520`, right `1559`, a negative `39 us` differential. The two signs therefore
+discriminate the left/right mapping rather than relying on a symmetric impulse.
+
+The simultaneous terminal capture in
+`/tmp/uvautoboat_sitl_20260810_eod/status_pulse.log` contained `363` status
+samples, but every sample was `ARMED_NEUTRAL` with command `0.0`/`0.0` and
+measured `1500`/`1500`. It did not overlap either browser hold. It proves stable
+armed neutral feedback only and is not machine-readable evidence of the active
+transitions. Tomorrow must capture the command and status topics before the
+operator touches Hold to Apply and keep both captures alive through positive,
+negative and release transitions.
+
+The final operator command was a normal disarm. MAVProxy recorded:
+
+```text
+Got COMMAND_ACK: COMPONENT_ARM_DISARM: ACCEPTED
+AP: Throttle disarmed
+DISARMED
+```
+
+This closes the arming epoch and proves normal disarm. A later read-only process
+and listener check found no `ardurover`, `sim_vehicle.py`, MAVProxy, MAVROS,
+rosbridge, command-bridge or dashboard-server process and no listener on ports
+`5760`, `8002`, `9090` or `14600`. This proves the final stopped state, but no
+complete stop transcript was supplied, so it does not prove shutdown ordering or
+the bridge's final frame sequence. The next run must make teardown part of the
+supervised acceptance rather than leaving it as terminal-by-terminal operator
+evidence.
+
+### Evidence boundary
+
+The run proves the implemented browser-to-bridge-to-MAVROS-to-ArduPilot loop in
+workstation SITL, live parameter resolution, normal arm/disarm, both asymmetric
+mapping directions, independently measured PWM feedback and neutral return. It
+does not prove physical thrust, physical-controller writes, Pi integration,
+real-boat rail behaviour or a complete supervised lifecycle. No physical FCU or
+Pi participated in this run.
+
+### Carry-forward
+
+The remaining simulator work is now narrow: integrate the digital-twin runner
+with the existing shell-helper family, retain the Pi helper's view-only posture,
+capture both request and measured status in machine-readable form during the
+browser holds, and prove one owned startup/teardown lifecycle. That work is
+scaffolded in
+`working_diary/2026-08-11_tuesday_digital_twin_thrust_loop_and_helper_integration.md`.

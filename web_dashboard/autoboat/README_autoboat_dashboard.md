@@ -86,17 +86,26 @@ both resolved RC inputs at their live trims while armed. `Ctrl+C` and `SIGTERM`
 use the same neutralisation path before the ROS context closes; when already
 disarmed, shutdown sends the channel-aware release values instead.
 
-This path has static and dashboard-test coverage but no physical acceptance. In
-the operator-supplied Pi transcript on 10/08/2026, the Pi received the FCU
+This path has static, dashboard-test and workstation-only SITL runtime coverage,
+but no physical acceptance. On 10/08/2026, a clean `motorboat-skid` run resolved
+steering/throttle to RC channels `1`/`3` and functions `73`/`74` to
+`SERVO1`/`SERVO3`. Normal arming reached `ARMED_NEUTRAL`; browser-held positive
+and negative steering demands reached `ACTIVE`, produced independently measured
+asymmetric servo output in the expected directions, and returned to measured
+`1500`/`1500` neutral. Normal disarm was acknowledged `ACCEPTED`. The recordings
+prove the visible request/feedback loop; the simultaneous terminal capture
+missed both active intervals and proves neutral stability only. A complete
+machine-readable active capture and shell-helper-owned lifecycle remain open.
+
+In the operator-supplied Pi transcript on 10/08/2026, the Pi received the FCU
 heartbeat, but parameter requests returned no values and the FCU was observed
-already armed in `MANUAL`. That evidence keeps
-the physical run blocked. A missing parameter response exits before the
-RC-override publisher is created. Startup while armed keeps the publisher
-present but latches `STARTUP_ARMED`, and every timer tick returns without
-publishing an override. The
-existing live helper is not the runner for this path because its MAVROS plugin
-allowlist omits `param` and its `udpout` route is the established view-only
-transport. The bounded direct-MAVROS runner must use
+already armed in `MANUAL`. That evidence keeps the physical run blocked. A
+missing parameter response exits before the RC-override publisher is created.
+Startup while armed keeps the publisher present but latches `STARTUP_ARMED`, and
+every timer tick returns without publishing an override. The existing live
+helper is not the runner for this path because its MAVROS plugin allowlist omits
+`param` and its `udpout` route is the established view-only transport. The
+bounded direct-MAVROS runner must use
 `config/mavros_real_fcu_digital_twin_plugins.yaml` after the serial
 request/response path is restored.
 

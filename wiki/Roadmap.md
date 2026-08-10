@@ -273,14 +273,13 @@ Status row in §3 Phase 5 status table now records Path A landed 05/05/2026 and 
    `800`/`800`/`2200` with neutral at the bottom, and `tools/servo_command_bridge.py`
    defaults to `1100`/`1500`/`1900`, matching neither - so a bridge emitting the
    simulator's neutral at the real vehicle would command substantial thrust while
-   believing it commanded zero. **10/08/2026:** the written command-ingress
-   contract is now closed as a design-only decision; production-contract implementation
-   and full acceptance remain unstarted. It is SITL-only and not
-   implementation-ready. It resolves ingress from live `RCMAP_*` and
-   `RC<n>_*`, retains `SERVO*_FUNCTION` and live servo rails for output
-   observation, and uses domain `42` for operational isolation rather than FCU
-   actuation safety; no current repository path converts the thrust topics into
-   an FCU command.
+   believing it commanded zero. **10/08/2026:** the command-ingress contract is
+   closed and a default-inhibited workstation-only implementation now exists.
+   It resolves ingress from live `RCMAP_*` and `RC<n>_*`, retains
+   `SERVO*_FUNCTION` and live servo rails for output observation, and uses domain
+   `42` for operational isolation rather than FCU actuation safety. Physical
+   acceptance and integration with the existing shell-helper lifecycle remain
+   open.
 
    Later the same day the **first workstation-to-autopilot command path** in this
    project was exercised, **against ArduPilot SITL on the workstation only and
@@ -315,14 +314,29 @@ Status row in §3 Phase 5 status table now records Path A landed 05/05/2026 and 
    path and dashboard telemetry, not implementation or acceptance of the production
    command-ingress bridge. No Pi, physical controller or real thruster was involved.
 
-   A later default-inhibited prototype adds a narrow browser
+   A later default-inhibited implementation adds a narrow browser
    `/command_ingress/rc_axes` input, MAVROS RC override conversion and a separate
    `/mavros/rc/out` measured-feedback row. Its direct dashboard E-Stop latches live
    RC trims, and its shutdown publishes neutral or release frames before the ROS
-   context closes. It does not close the production contract or a physical tier.
+   context closes. It does not constitute physical acceptance or open a physical tier.
    The same-day operator-supplied Pi transcript received heartbeat but no parameter
    values and showed an already-armed startup; both conditions make the prototype
    abort, and no repository process sent a physical command.
+
+   **10/08/2026 implementation acceptance:** the corrected bridge was started
+   against a clean `motorboat-skid` SITL with launch-time
+   `RC_OVERRIDE_TIME=0.5`, `ARMING_RUDDER=0` and `BRD_SAFETY_DEFLT=1`. The live
+   guard resolved RC channels `1`/`3` and `SERVO1`/`SERVO3`; after safety-off it
+   reported fresh `READY_DISARMED` feedback at `1500`/`1500`, and normal arming
+   reached `ARMED_NEUTRAL`. Two screen recordings show the browser reaching
+   `ACTIVE`: `+0.10` steering with `0.08` throttle measured RC `1577`/`1567` and
+   servo `1585`/`1485`, while `-0.04` steering with `0.09` throttle measured RC
+   `1452`/`1572` and servo `1520`/`1559`. Both returned to measured neutral, and
+   normal disarm received `MAV_CMD_COMPONENT_ARM_DISARM: ACCEPTED`. The terminal
+   status capture did not overlap either active interval, so it proves neutral
+   stability but not the commanded transitions. Complete machine-readable
+   capture and helper-owned startup/teardown are the remaining simulator work.
+   This is not physical-FCU or real-thrust evidence.
 
 ---
 
@@ -754,3 +768,4 @@ Re-derive the bake-in commit if upstream changes the relevant section of `wamv_g
 | 04/08/2026 | §3 supervisor row and §3 Blockers refreshed after `working_diary/2026-08-03` and `working_diary/2026-08-04`. The 17/07 lifecycle gap closed: normal Pi-first shutdown and post-teardown temperature were obtained 03/08/2026 and repeated 04/08/2026. Both 03/08 runs reproduced a daemonless graph-query defect where a fresh `ros2 topic info --verbose` process returns a successful but transiently incomplete snapshot. On 04/08/2026 a batched MAVROS source view landed behind `LIVE_MAVROS_SOURCE_BATCH` (off by default, `63d6e9a`): one run-owned `rclpy` participant spins to accumulate discovery and serves all five source topics from a single consume-once generation, with the flag-off path delegating byte-for-byte to the existing CLI query. A flag-off canary passed end to end and the defect recurred at `2` non-verifying readings; per-run control counts are now `11`, `3` and `2`. The batched path remains unexercised live, the lower DDS/RMW/network trigger is unidentified, and browser-last ordering, endurance, GPS fix, detector quality and all FCU write paths remain out of scope. Sessions between 22/07/2026 and 24/07/2026 are recorded in `Board.md` and the working diaries and are not restated here. |
 | 05/08/2026 | §3 supervisor row and §3 Blockers refreshed after `working_diary/2026-08-05`. The batched MAVROS source view was exercised live for the first time at shipped defaults and is feasible: `18` probe runs all `OK`, one run-owned participant serving all five source topics per run, a `120 s` window that was not truncated, final verification at `85 s` inside its `180 s` budget, and `status=0` on both supervisors. Its payload contract is now verified against real endpoint output. The graph-query defect recurred under the batched path, so the earlier "unexercised live" status is replaced by feasibility rather than by a fix; the per-run reading count sits inside the flag-off control range and no reduction is claimed. Browser-last ordering and the terminal data-plane probe remain unexercised. |
 | 07/08/2026 | §3 gains a 07/08/2026 supersession after `working_diary/2026-08-07`. A command path was opened in simulation only: ArduPilot SITL is built and running on the workstation (`Rover-4.6.3` at `3fc7011a`, frame `motorboat-skid`, `build/sitl/bin/ardurover`), reaching steady state with `Mode MANUAL`, `EKF3` active and `1283` parameters received while disarmed, and its MAVLink surface was verified read-only at `tcp:127.0.0.1:5760` with a MAVProxy rebroadcast on `127.0.0.1:14550`. No command was sent to the simulator, no code was written, and no command/write path to any real autopilot was opened. Two constraints for the eventual bridge were established from measured parameters rather than assumption: SITL and the real boat assign the same throttle functions (`73` left, `74` right) to opposite channel numbers, so a design keyed on channel number is correct on only one platform; and the PWM rails differ in kind, SITL measuring `1000`/`1500`/`2000` with neutral mid-scale against the real boat's `800`/`800`/`2200` with neutral at the bottom, while `tools/servo_command_bridge.py` defaults to `1100`/`1500`/`1900` and matches neither, so emitting the simulator's neutral at the real vehicle would command substantial thrust while appearing to command zero. The written command-ingress contract is unstarted and stays design-only. Later the same day a view-only live run with the Pi and control box reached six-topic rate acceptance and `COMMAND_SENTINEL=PASS messages=0` but ended on a reversed shutdown order, so telemetry delivery is proven and normal lifecycle is not; it also added a fourth flag-off graph-query control point of `10` readings, series now `11`/`3`/`2`/`10`. Five view-only dashboard telemetry improvements landed alongside it - GPS position and horizontal-accuracy readouts, `NavSatStatus` fix codes by name, `system_status` by `MAV_STATE` name so this vehicle's `5` reads `Critical (5)`, and a live thrust-output readout with a sixth freshness badge fed from `/mavros/rc/out`, showing raw servo PWM for both thrusters without converting to a percentage - with `LIVE_MAVLINK_VIEW_ONLY` still `true` and no write path added. `wiki/Live_Hailo_MAVLink_Dashboard_Testing.md` gains the compound-command corruption signature and the reversed-shutdown signature. |
+| 10/08/2026 | §3 refreshed after the command-ingress contract, default-inhibited bridge/dashboard implementation and clean workstation-only `motorboat-skid` SITL run. Live parameter resolution produced RC channels `1`/`3` and `SERVO1`/`SERVO3`; the run obtained fresh disarmed neutral, normal arming to `ARMED_NEUTRAL`, positive and negative browser-held `ACTIVE` intervals, measured neutral return and accepted normal disarm. Two recordings preserve the visible closed loop: `+0.10`/`0.08` produced measured servo `1585`/`1485`, and `-0.04`/`0.09` produced `1520`/`1559`. The terminal capture missed both active intervals, so machine-readable transition capture and one helper-owned lifecycle remain open. No Pi, physical controller or real thruster participated. |
