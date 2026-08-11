@@ -37,8 +37,8 @@ artifacts are retained below only for traceability.
 | Helper size | `73,862` bytes |
 | Helper SHA-256 | `a72cd04d37984d692cdfecb73456d55bc7bb6f0b4fd69d69ba79447fc3594a97` |
 | Workstation supervisor | `tools/live_dashboard_preflight.sh` |
-| Supervisor size | `28,749` bytes |
-| Supervisor SHA-256 | `c1490db8f7198a774fc21b3892415d654725e33d83b3680edb820bc9d2f259bf` |
+| Supervisor size | `29,058` bytes |
+| Supervisor SHA-256 | `d101ec5840c1358e0475fff33989af9b3f3431231859c0e0e1c2ffa0fafab82a` |
 
 Historical 23/07/2026 session artifacts:
 

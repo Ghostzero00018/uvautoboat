@@ -152,6 +152,7 @@ usage() {
   printf 'usage: %s workstation\n' "${0##*/}" >&2
   printf '       %s run\n' "${0##*/}" >&2
   printf '       %s pi WORKSTATION_IP\n' "${0##*/}" >&2
+  printf '       %s sitl\n' "${0##*/}" >&2
   exit 2
 }
 
@@ -897,11 +898,20 @@ run_pi_preflight() {
   log "P1_PREFLIGHT=PASS workstation=$workstation_ip dev=$pi_interface ssid=$ssid"
 }
 
+run_sitl_digital_twin_entry() {
+  local runner="$SCRIPT_DIR/sitl_digital_twin_runner.sh"
+  [ -r "$runner" ] || fail "SITL runner missing: $runner"
+  # shellcheck disable=SC1090
+  source "$runner"
+  run_sitl_digital_twin
+}
+
 main() {
   case "$#:${1:-}" in
     1:workstation) run_workstation_preflight ;;
     1:run) run_workstation_supervisor ;;
     2:pi) run_pi_preflight "$2" ;;
+    1:sitl) run_sitl_digital_twin_entry ;;
     *) usage ;;
   esac
 }

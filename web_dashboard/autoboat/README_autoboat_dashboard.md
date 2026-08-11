@@ -94,8 +94,22 @@ and negative steering demands reached `ACTIVE`, produced independently measured
 asymmetric servo output in the expected directions, and returned to measured
 `1500`/`1500` neutral. Normal disarm was acknowledged `ACCEPTED`. The recordings
 prove the visible request/feedback loop; the simultaneous terminal capture
-missed both active intervals and proves neutral stability only. A complete
-machine-readable active capture and shell-helper-owned lifecycle remain open.
+missed both active intervals and proves neutral stability only.
+
+The dedicated workstation entry is now implemented with static and focused-test
+coverage:
+
+```bash
+tools/live_dashboard_preflight.sh sitl
+```
+
+It is separate from the Pi helper, accepts no endpoint argument, forces ROS
+domain `42` with localhost-only discovery, and prints each finite simulator
+safety/arm/disarm action only when its one-shot gate is open. It records the raw
+request, status, E-Stop, override and MAVROS-state streams under one
+`sitl_digital_twin_YYYYMMDD_HHMMSS` directory. The helper-driven runtime remains
+**NOT RUN**; complete machine-readable phase and teardown acceptance therefore
+remain open.
 
 In the operator-supplied Pi transcript on 10/08/2026, the Pi received the FCU
 heartbeat, but parameter requests returned no values and the FCU was observed

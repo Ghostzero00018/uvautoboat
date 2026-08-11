@@ -5,7 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PREFLIGHT="${1:-$SCRIPT_DIR/live_dashboard_preflight.sh}"
 WIKI="$SCRIPT_DIR/../wiki/Live_Hailo_MAVLink_Dashboard_Testing.md"
-EXPECTED_PREFLIGHT_SHA256='c1490db8f7198a774fc21b3892415d654725e33d83b3680edb820bc9d2f259bf'
+EXPECTED_PREFLIGHT_SHA256='d101ec5840c1358e0475fff33989af9b3f3431231859c0e0e1c2ffa0fafab82a'
 CASE_COUNT=0
 
 fail() {
@@ -90,6 +90,7 @@ require_literal "trap ':' INT TERM"
 require_literal '1:workstation) run_workstation_preflight ;;'
 require_literal '1:run) run_workstation_supervisor ;;'
 require_literal '2:pi) run_pi_preflight "$2" ;;'
+require_literal '1:sitl) run_sitl_digital_twin_entry ;;'
 require_literal 'if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then'
 
 PI_COMMAND_OUTPUT="$(bash -c '
