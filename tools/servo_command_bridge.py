@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""FCU -> VRX command bridge (Python equivalent of tools/servo_command.cpp).
+"""FCU -> VRX command bridge for simulated-thruster integration.
 
 Purpose
 -------
