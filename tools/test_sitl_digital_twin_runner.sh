@@ -86,6 +86,19 @@ ENV_OUTPUT="$(bash -c '
   || fail_test "SITL environment did not fail closed: $ENV_OUTPUT"
 pass_case
 
+SITL_CONFLICT_OUTPUT="$(bash -c '
+  source "$1"
+  source "$2"
+  printf "%s\n" "${SITL_CONFLICT_PATTERNS[@]}"
+' _ "$PREFLIGHT" "$RUNNER")"
+for physical_helper in \
+  real_fcu_digital_twin_workstation.sh \
+  real_fcu_digital_twin_pi.sh; do
+  grep -Fxq "$physical_helper" <<<"$SITL_CONFLICT_OUTPUT" \
+    || fail_test "SITL conflict guard omits physical helper: $physical_helper"
+done
+pass_case
+
 set +e
 UDP_LOCAL_OUTPUT="$(bash -c '
   source "$1"
@@ -148,12 +161,25 @@ grep -Fxq 'RATE_LOG=empty' <<<"$STATE_OUTPUT" \
 PARAM_BLOCK="$(sed -n '/^PARAMS_BEGIN$/,/^PARAMS_END$/{/^PARAMS_/d;p}' <<<"$STATE_OUTPUT")"
 [ "$PARAM_BLOCK" = $'RC_OVERRIDE_TIME 0.5\nARMING_RUDDER 0\nBRD_SAFETY_DEFLT 1' ] \
   || fail_test 'SITL parameter file does not contain exactly the approved overlay'
-grep -Fq -- '--vehicle-binary "$4"' <<<"$STATE_OUTPUT" \
-  || fail_test 'SITL command does not pass an explicit vehicle binary'
-grep -Fq -- '/home/ghostzero/ardupilot/build/sitl/bin/ardurover' \
-  <<<"$STATE_OUTPUT" || fail_test 'SITL command does not select the pinned binary'
-grep -Fq -- '-f motorboat-skid -I 0 --no-rebuild --no-configure --no-mavproxy' \
-  <<<"$STATE_OUTPUT" || fail_test 'SITL command changed frame or build isolation'
+SITL_COMMAND_LINE="$(grep '^SITL_COMMAND=' <<<"$STATE_OUTPUT")"
+grep -Fq -- '/home/ghostzero/ardupilot/build/sitl/bin/ardurover -S --model motorboat-skid' \
+  <<<"$SITL_COMMAND_LINE" || fail_test 'SITL command does not directly launch the pinned Rover'
+grep -Fq -- "--chdir=$TEST_TMP/sitl_digital_twin_" <<<"$SITL_COMMAND_LINE" \
+  || fail_test 'SITL command does not own the run-specific state directory'
+grep -Fq -- '/sitl_state' <<<"$SITL_COMMAND_LINE" \
+  || fail_test 'SITL command cwd is not the run-specific state directory'
+grep -Fq -- '--defaults /home/ghostzero/ardupilot/Tools/autotest/default_params/rover.parm,/home/ghostzero/ardupilot/Tools/autotest/default_params/motorboat.parm,/home/ghostzero/ardupilot/Tools/autotest/default_params/rover-skid.parm,' \
+  <<<"$SITL_COMMAND_LINE" || fail_test 'SITL command does not use absolute pinned default files'
+grep -Fq -- '/manifest/sitl.params' <<<"$SITL_COMMAND_LINE" \
+  || fail_test 'SITL command does not include the run-specific parameter overlay'
+grep -Fq -- '--speedup 1 --slave 0' <<<"$SITL_COMMAND_LINE" \
+  || fail_test 'SITL command changed speed or slave isolation'
+grep -Fq -- '--sim-address=127.0.0.1 -I0' <<<"$SITL_COMMAND_LINE" \
+  || fail_test 'SITL command changed loopback simulation identity'
+! grep -Fq -- 'sim_vehicle.py' <<<"$SITL_COMMAND_LINE" \
+  || fail_test 'SITL command still delegates Rover ownership to sim_vehicle.py'
+! grep -Fq -- 'venv-ardupilot/bin/activate' <<<"$SITL_COMMAND_LINE" \
+  || fail_test 'SITL command still sources the ArduPilot virtual environment'
 grep -Fq -- '--master=tcp:127.0.0.1:5760:{"autoreconnect":false}' \
   <<<"$STATE_OUTPUT" || fail_test 'MAVProxy master can reconnect or changed endpoint'
 grep -Fq -- '--out=udp:127.0.0.1:14600' <<<"$STATE_OUTPUT" \
@@ -172,6 +198,8 @@ grep -Fq -- 'component_id:=191' <<<"$STATE_OUTPUT" \
   || fail_test 'MAVROS source component changed'
 grep -Fq -- 'allow_real_fcu:=true' <<<"$STATE_OUTPUT" \
   || fail_test 'bridge is not explicitly enabled inside the isolated runner'
+grep -Fq -- 'expected_domain_id:="42"' <<<"$STATE_OUTPUT" \
+  || fail_test 'SITL bridge does not explicitly require domain 42'
 grep -Fq -- 'max_steering:=0.20' <<<"$STATE_OUTPUT" \
   || fail_test 'bridge steering bound changed'
 grep -Fq -- 'max_throttle:=0.12' <<<"$STATE_OUTPUT" \
@@ -205,19 +233,22 @@ MAVROS_PARSE_OUTPUT="$(bash -c '
   export ROS_LOG_DIR
   mkdir -p "$ROS_LOG_DIR"
   sitl_build_commands
-  parsing=0
-  ros_args=()
-  for argument in "${SITL_MAVROS_COMMAND[@]}"; do
-    if [ "$parsing" -eq 1 ]; then
-      ros_args+=("$argument")
-    elif [ "$argument" = --ros-args ]; then
-      parsing=1
-      ros_args+=("$argument")
-    fi
+  for command_name in SITL_MAVROS_COMMAND SITL_BRIDGE_COMMAND; do
+    declare -n command_ref="$command_name"
+    parsing=0
+    ros_args=()
+    for argument in "${command_ref[@]}"; do
+      if [ "$parsing" -eq 1 ]; then
+        ros_args+=("$argument")
+      elif [ "$argument" = --ros-args ]; then
+        parsing=1
+        ros_args+=("$argument")
+      fi
+    done
+    [ "${#ros_args[@]}" -gt 0 ]
+    /usr/bin/python3 -c "import rclpy, sys; rclpy.init(args=sys.argv[1:]); rclpy.shutdown()" \
+      "${ros_args[@]}"
   done
-  [ "${#ros_args[@]}" -gt 0 ]
-  /usr/bin/python3 -c "import rclpy, sys; rclpy.init(args=sys.argv[1:]); rclpy.shutdown()" \
-    "${ros_args[@]}"
 ' _ "$PREFLIGHT" "$RUNNER" "$TEST_TMP" 2>&1)"
 MAVROS_PARSE_RC=$?
 set -e
@@ -268,6 +299,13 @@ for ordered_pair in \
 done
 grep -Fq 'sitl_wait_shutdown_frames' <<<"$CLEANUP_FUNCTION" \
   || fail_test 'bridge shutdown frames are not awaited while evidence is alive'
+BRIDGE_FRAME_GUARD_LINE="$(grep -n 'if \[ -n "${SITL_CHILD_INDEX\[bridge\]+present}" \]; then' \
+  <<<"$CLEANUP_FUNCTION" | cut -d: -f1 || true)"
+SHUTDOWN_WAIT_LINE="$(grep -n 'if ! sitl_wait_shutdown_frames; then' \
+  <<<"$CLEANUP_FUNCTION" | cut -d: -f1 || true)"
+[ -n "$BRIDGE_FRAME_GUARD_LINE" ] && [ -n "$SHUTDOWN_WAIT_LINE" ] \
+  && [ "$BRIDGE_FRAME_GUARD_LINE" -lt "$SHUTDOWN_WAIT_LINE" ] \
+  || fail_test 'early teardown still reports shutdown-frame failure before bridge startup'
 TEARDOWN_REQUEST_FUNCTION="$(sed -n \
   '/^sitl_write_teardown_request() {/,/^sitl_wait_shutdown_frames() {/p' "$RUNNER")"
 grep -Fq 'os.replace(temporary, path)' <<<"$TEARDOWN_REQUEST_FUNCTION" \

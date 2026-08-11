@@ -656,3 +656,205 @@ or hardware link was started. Block D remains **NOT STARTED**.
 
 **Next steps:** review and publish the corrected Block C change set, then request
 explicit approval before preparing the Block D user-run handover.
+
+## Block D first attempt and supervised-launch correction (11/08/2026)
+
+The first user-run helper attempt created
+`/home/ghostzero/Desktop/sitl_digital_twin_20260811_150958` and stopped at the
+first Rover listener gate:
+
+```text
+SITL_PHASE_FAIL phase=sitl-listener rc=1 reason=timeout
+SITL_VERDICT=FAIL
+```
+
+The retained `sitl.log` contains the `sim_vehicle.py` hand-off to
+`run_in_terminal_window.sh`, followed by `Waiting for SITL to exit`, but no Rover
+banner or error. `/tmp/Rover.log` was absent, the inherited session had a display,
+and `xterm` was installed, so the display-terminal branch had taken ownership of
+Rover output. More importantly, that branch cannot satisfy the runner's process
+provenance contract: the terminal's child must enter its own session to own the
+pseudo-terminal and therefore cannot remain in the supervisor child's process
+group. The empty `sitl_state/` directory also shows that Rover did not reach its
+state-file write in this attempt.
+
+The runner now launches the pinned Rover ELF directly under `start_child`, with
+its working directory set to the run-owned `sitl_state/` directory. The three
+ArduPilot defaults use absolute paths and the run-specific overlay remains the
+fourth `--defaults` input. This removes `sim_vehicle.py`, the terminal wrapper and
+the ArduPilot virtual-environment shell from the SITL child while preserving the
+same frame, speed, instance and loopback simulation address.
+
+The failed attempt also reported `SITL_SHUTDOWN_FRAMES=FAIL expected=3` although
+the bridge had never started. Cleanup now waits for the three bridge shutdown
+frames only when a bridge child was registered. Early failures therefore retain
+their primary cause without a false neutralisation error.
+
+Red-first focused cases reproduced both defects before their implementation
+changes. The runner suite passes `10` cases afterwards. The corrected SITL
+runner has **NOT BEEN RERUN**; the failed run remains the only 11/08 runtime
+evidence.
+
+## Guarded physical-FCU workstation/Pi helper pair (11/08/2026)
+
+The user's integration order adds one helper per machine while preserving the
+existing safety tiers. It supersedes only the earlier same-day statement that Pi
+command integration was outside today's implementation scope. It does not waive
+T0a, T0b, T2a or T2b conditions and does not convert static implementation into
+physical acceptance.
+
+### Workstation ownership
+
+`tools/real_fcu_digital_twin_workstation.sh` exposes `check|run`. It forces
+`ROS_DOMAIN_ID=42`, `ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET` and
+`ROS_LOCALHOST_ONLY=0`, clearing inherited DDS selectors before sourcing Jazzy.
+It requires a clean repository whose `HEAD` matches `origin/main`, validates the
+four-file Pi bundle pin, rejects conflicting processes and bound ports, and owns
+only loopback rosbridge `127.0.0.1:9090` plus dashboard
+`127.0.0.1:8002`.
+
+The workstation does not guess the real boat's servo ordering. It waits for a
+fresh bridge status with `state=READY_DISARMED`, `ready=true`, connected,
+disarmed, `MANUAL` and fresh feedback. Only then does it emit the bench URL with
+the live resolved left/right servo numbers. Shutdown stops the dashboard before
+rosbridge and checks that both loopback ports were released.
+
+### Pi ownership and tier separation
+
+`tools/real_fcu_digital_twin_pi.sh` exposes `check|probe|run` and owns the fixed
+direct endpoint `/dev/ttyAMA0:57600`. It contains no MAVProxy or UDP fan-out.
+Every live mode requires an explicit disarmed start, hardware safety ON,
+propellers removed, hull restrained and propulsion isolated.
+
+`probe` is T0b only. It also requires recorded T0a completion and separate T0b
+approval, starts MAVROS with only `sys_status` and `param`, requires connected
+and disarmed state, confirms that the motor-output safety bit is not enabled,
+force-pulls the parameter cache, and reads `BRD_SAFETY_DEFLT`,
+`BRD_SAFETY_MASK` and `BRD_SAFETYOPTION`. It requires
+`BRD_SAFETY_DEFLT=1`. It contains no parameter write, mode change, arm/disarm,
+motor test, safety-state change or RC override, and it never starts the bridge.
+
+`run` additionally requires separate T2a and T2b approval. It completes and
+stops the isolated T0b MAVROS process first, proves the serial endpoint is free,
+then starts a fresh full MAVROS process with `sys_status`, `param`,
+`global_position`, `imu` and `rc_io`. It captures state, GPS, IMU, battery, RC
+input and RC output samples before starting the existing command bridge with
+`allow_real_fcu=true`, maximum steering `0.20` and maximum throttle `0.12`.
+Hardware safety release and arming remain external operator actions; the helper
+issues neither. It requires a fresh `READY_DISARMED` bridge state and workstation
+node visibility. Planned shutdown requires external disarm before Pi `Ctrl+C`,
+then stops the bridge before MAVROS and checks that the serial endpoint is free.
+
+The Pi deployment unit is pinned by
+`config/real_fcu_digital_twin_bundle.sha256` and preserves these relative paths:
+
+```text
+tools/real_fcu_digital_twin_pi.sh
+tools/real_fcu_rc_command_bridge.py
+config/mavros_real_fcu_closed_loop_plugins.yaml
+config/mavros_real_fcu_t0b_plugins.yaml
+```
+
+The established `tools/pi_live_hailo_mavlink_dashboard.sh` remains byte-identical
+at `a72cd04d37984d692cdfecb73456d55bc7bb6f0b4fd69d69ba79447fc3594a97`
+and remains view-only. The new pair closes only the FCU telemetry and guarded
+command/feedback helper structure; it does not absorb the Hailo/camera runtime.
+The dashboard's six live FCU statistics and opt-in thrust-control panels already
+existed and retain their `39`-test coverage, so no dashboard source change was
+needed.
+
+### Static verification
+
+| Check | Result |
+| --- | --- |
+| Existing workstation preflight suite | PASS, `13` cases |
+| Existing Pi lifecycle suite | PASS |
+| Corrected SITL runner suite | PASS, `10` cases |
+| New physical-helper contract suite | PASS, `13` cases |
+| One-shot operator suite | PASS, `5` tests |
+| Evidence state/verdict suite | PASS, `9` tests |
+| Command-bridge suite | PASS, `21` tests |
+| Dashboard suite | PASS, `39`; fail `0` |
+| Bash syntax, Python compilation, `node --check` and YAML parsing | PASS |
+
+The helper contract suite uses parser-only ROS contexts, temporary directories
+and synthetic status payloads. It checks direct serial ownership, the T0b/full
+MAVROS separation, every explicit live gate, safe URL generation, plugin
+allowlists, cleanup order, the unchanged view-only helper pin and deployment
+bundle integrity.
+
+No corrected SITL run, Pi run, FCU contact, browser session, hardware safety
+change, arm/disarm, physical RC override or real thrust occurred during this
+implementation. T0a physical inspection remains unscheduled and is still the
+first hardware step. A corrected SITL acceptance run and every physical tier
+each require a fresh user-run approval and complete host/terminal handover.
+
+## Physical graph-isolation correction (11/08/2026)
+
+The earlier same-day physical-helper section records domain `42` for both
+machines. This entry supersedes that value: the physical workstation and Pi
+helpers now force `ROS_DOMAIN_ID=43`, `ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET` and
+`ROS_LOCALHOST_ONLY=0`. The SITL runner remains on domain `42` with localhost-only
+discovery.
+
+The correction closes a graph-mixing path rather than a proven direct
+SITL-to-FCU override path. A localhost-only SITL publisher does not directly
+reach MAVROS on the remote Pi. However, a workstation rosbridge participant on
+domain `42` with subnet discovery can match both an orphaned local SITL bridge
+and the remote physical bridge. One browser `/command_ingress/rc_axes` publisher
+could therefore feed both subscribers, while `/command_ingress/status` from both
+bridges could enter the operator display. Publisher-count checking in the bridge
+does not discriminate that subscriber-side duplication. A complete SITL stack
+was already rejected through occupied workstation ports; orphaned or partial
+stack ownership was the remaining process-check gap.
+
+The shared command bridge no longer embeds a domain value. It declares
+`expected_domain_id` with an empty, unusable default. When
+`allow_real_fcu:=true`, the declared value must be non-empty and exactly match
+the process `ROS_DOMAIN_ID` before live parameter resolution or override
+publisher creation. The SITL runner passes string value `42`; the physical Pi
+runner passes string value `43`. The inhibited branch remains inert without
+requiring either domain.
+
+Conflict checking is now symmetric for local ownership. The SITL runner rejects
+the physical workstation and Pi helper names. The physical workstation helper
+rejects the complete local SITL child set: Rover, both MAVProxy spellings,
+legacy `sim_vehicle.py`, MAVROS, the command bridge, evidence recorder, one-shot
+operator, rosbridge and dashboard server. Domain separation is the primary
+boundary; process checks remain defence in depth for partial or stale stacks.
+
+The four-file Pi deployment manifest was regenerated only after the Pi helper
+and shared bridge reached their final bytes:
+
+```text
+9c6a7f5d255da4e3faae30503df7a4ddfa859c8a5440b751da206fcc4b21af60  tools/real_fcu_digital_twin_pi.sh
+3edd7edbcc12e7ac37a7069b833ad8ee5e6ae7f527b6b550e3eacddf463dcf67  tools/real_fcu_rc_command_bridge.py
+215293eab9d97e8da5a941d6cb8130351dfbafc07cca7656a766798a2a32b5fc  config/mavros_real_fcu_closed_loop_plugins.yaml
+5e6008314216785f2de53a617ffec72913e52acbef00645a417f19d7279e7a94  config/mavros_real_fcu_t0b_plugins.yaml
+```
+
+The focused tests first failed on the missing explicit bridge parameter, both
+missing physical-helper conflicts in the SITL runner and the inherited physical
+domain `42`. After implementation, verification produced:
+
+| Check | Result |
+| --- | --- |
+| Existing workstation preflight suite | PASS, `13` cases |
+| Corrected SITL runner suite | PASS, `11` cases |
+| Physical-helper contract suite | PASS, `14` cases |
+| One-shot operator suite | PASS, `5` tests |
+| Evidence state/verdict suite | PASS, `9` tests |
+| Command-bridge suite | PASS, `22` tests in host context |
+| Dashboard suite | PASS, `39`; fail `0` |
+| Existing Pi lifecycle suite | PASS |
+| Bash syntax, Python compilation, JavaScript syntax and YAML parsing | PASS |
+| Four-file Pi deployment checksum | PASS |
+
+The separate simulator-to-VRX bridge remains in place. Its module summary now
+describes simulated-thruster integration without naming the deleted, unbuilt C++
+reference file; its existing live-rail warning and provisional defaults are
+unchanged.
+
+No SITL, MAVProxy, MAVROS, rosbridge, dashboard, Pi helper, FCU link, browser or
+hardware runtime was started for this correction. The corrected SITL acceptance
+and every physical tier remain **NOT RUN**. T0a remains the first physical gate.

@@ -69,8 +69,9 @@ the request to `/mavros/rc/override`, and returns the separately observed
 requested values are never displayed as measured feedback.
 
 The component cannot arm, disarm, change mode or write parameters. It is inert
-unless `allow_real_fcu:=true`, `ROS_DOMAIN_ID=42`, a fresh neutral RC input and
-the live parameter guards all pass. The browser additionally requires
+unless `allow_real_fcu:=true`, an explicitly supplied `expected_domain_id`
+matches `ROS_DOMAIN_ID`, a fresh neutral RC input and the live parameter guards
+all pass. The browser additionally requires
 `?enable_fcu_bench_control=1`, fresh measured feedback, the physical-condition
 checkbox and a continuously held button. A new armed epoch requires a disabled
 frame before an enabled frame, and command loss replaces both channels with
@@ -96,7 +97,7 @@ asymmetric servo output in the expected directions, and returned to measured
 prove the visible request/feedback loop; the simultaneous terminal capture
 missed both active intervals and proves neutral stability only.
 
-The dedicated workstation entry is now implemented with static and focused-test
+The dedicated workstation SITL entry is implemented with static and focused-test
 coverage:
 
 ```bash
@@ -107,9 +108,16 @@ It is separate from the Pi helper, accepts no endpoint argument, forces ROS
 domain `42` with localhost-only discovery, and prints each finite simulator
 safety/arm/disarm action only when its one-shot gate is open. It records the raw
 request, status, E-Stop, override and MAVROS-state streams under one
-`sitl_digital_twin_YYYYMMDD_HHMMSS` directory. The helper-driven runtime remains
-**NOT RUN**; complete machine-readable phase and teardown acceptance therefore
-remain open.
+`sitl_digital_twin_YYYYMMDD_HHMMSS` directory.
+
+The first helper-driven attempt on 11/08/2026 failed before the Rover listener
+gate in `sitl_digital_twin_20260811_150958`. `sim_vehicle.py` delegated Rover to
+a display terminal outside the supervisor-owned process group, so the runner
+could neither certify Rover provenance nor retain its output. The runner now
+launches the pinned `ardurover` binary directly in the run-owned state directory,
+and early teardown checks shutdown frames only after the bridge has started.
+Those corrections pass focused tests but have not been rerun against SITL;
+complete machine-readable phase and teardown acceptance remain open.
 
 In the operator-supplied Pi transcript on 10/08/2026, the Pi received the FCU
 heartbeat, but parameter requests returned no values and the FCU was observed
@@ -118,10 +126,21 @@ missing parameter response exits before the RC-override publisher is created.
 Startup while armed keeps the publisher present but latches `STARTUP_ARMED`, and
 every timer tick returns without publishing an override. The existing live
 helper is not the runner for this path because its MAVROS plugin allowlist omits
-`param` and its `udpout` route is the established view-only transport. The
-bounded direct-MAVROS runner must use
-`config/mavros_real_fcu_digital_twin_plugins.yaml` after the serial
-request/response path is restored.
+`param` and its `udpout` route is the established view-only transport.
+
+The guarded physical-FCU path is now prepared as two separate entry points:
+`tools/real_fcu_digital_twin_workstation.sh` and
+`tools/real_fcu_digital_twin_pi.sh`. Both force ROS domain `43` with subnet
+discovery, separate from the domain `42` localhost-only SITL graph. The Pi owns
+`/dev/ttyAMA0:57600` directly, without MAVProxy or UDP
+fan-out. Its `probe` mode uses only `sys_status` and `param` to verify a connected,
+disarmed, hardware-safe T0b state and read the three safety parameters. Its
+separately gated `run` mode restarts MAVROS with `sys_status`, `param`,
+`global_position`, `imu` and `rc_io`, verifies the six dashboard telemetry
+signals, and starts the bounded bridge. The workstation owns only loopback
+rosbridge and dashboard services and emits the servo-mapped bench URL only after
+fresh `READY_DISARMED` feedback. This pair is prepared and **NOT RUN**. T0a link
+inspection and separate T0b/T2 approvals remain mandatory before physical use.
 
 The expanded camera viewer owns pointer and keyboard focus while open. It now
 contains its own E-Stop button, so the explicit FCU bench stop path remains
@@ -205,6 +224,35 @@ runbook: first require workstation `W5_RATE_PROBES=PASS` plus Pi
 `PI_SUPERVISOR_EXIT` in the Pi run directory's `supervisor.log`; then stop the
 workstation and require `WORKSTATION_TEARDOWN=PASS`. Treat any MAVROS topic marked
 `Stale` as a failed diagnostic even if another topic continues updating.
+
+### Guarded Physical-FCU Helper Pair
+
+The physical command/feedback loop is deliberately separate from the Hailo
+view-only helper and from the domain `42` localhost-only SITL graph. Its
+workstation and Pi halves both force domain `43` with subnet discovery. The two
+entry points are:
+
+```text
+tools/real_fcu_digital_twin_workstation.sh check|run
+tools/real_fcu_digital_twin_pi.sh check|probe|run
+```
+
+`check` performs bounded preflight and static verification without starting the
+loop. `probe` is the separately approved read-only T0b request/response and
+safety-state check. `run` is the separately approved closed-loop phase; it does
+not arm, disarm, change mode, write parameters or issue a software safety
+release. Those actions remain outside the helpers, and external disarm is
+required before stopping them.
+
+Deploy the Pi helper, command bridge and both physical MAVROS allowlists with
+their `tools/` and `config/` layout intact. The exact four-file set is pinned by
+`config/real_fcu_digital_twin_bundle.sha256`. Do not replace or extend
+`tools/pi_live_hailo_mavlink_dashboard.sh`; it remains the established
+view-only Hailo/telemetry path.
+
+No physical mode is currently accepted for routine use. T0a physical link
+inspection is still the first hardware step, followed by distinct approval for
+T0b and the T2 command tiers.
 
 ### FCU Bench Command/Feedback Component
 
@@ -398,7 +446,13 @@ direct E-Stop topic.
 | `style_merged.css`            | Unified stylesheet                         |
 | `README_autoboat_dashboard.md` | This file                                  |
 | `../../tools/real_fcu_rc_command_bridge.py` | Default-inhibited MAVROS RC bridge and measured-output status |
-| `../../config/mavros_real_fcu_digital_twin_plugins.yaml` | Minimal MAVROS plugin allowlist for the separate bench runner |
+| `../../tools/real_fcu_digital_twin_workstation.sh` | Loopback rosbridge/dashboard supervisor for the guarded physical loop |
+| `../../tools/real_fcu_digital_twin_pi.sh` | Direct-serial T0b probe and separately gated physical-loop supervisor |
+| `../../tools/test_real_fcu_digital_twin_helpers.sh` | Focused static contract suite for both physical helpers |
+| `../../config/mavros_real_fcu_digital_twin_plugins.yaml` | Minimal MAVROS plugin allowlist for the SITL runner |
+| `../../config/mavros_real_fcu_t0b_plugins.yaml` | Two-plugin read-only T0b MAVROS allowlist |
+| `../../config/mavros_real_fcu_closed_loop_plugins.yaml` | Five-plugin physical closed-loop MAVROS allowlist |
+| `../../config/real_fcu_digital_twin_bundle.sha256` | Exact Pi deployment bundle paths and SHA-256 pins |
 
 ## Troubleshooting
 

@@ -83,6 +83,21 @@ class BridgeFunctionsTest(unittest.TestCase):
         self.assertEqual(MODULE.PARAM_NODE, "/mavros/param")
         self.assertEqual(MODULE.PARAM_PULL_SERVICE, "/mavros/param/pull")
 
+    def test_expected_domain_is_explicit_and_must_match(self):
+        source = inspect.getsource(MODULE.RealFcuRcCommandBridge.__init__)
+        self.assertIn('declare_parameter("expected_domain_id", "")', source)
+        self.assertGreater(
+            source.index("validate_ros_domain"),
+            source.index("return"),
+            "domain validation must remain inside the allow_real_fcu branch",
+        )
+        for domain_id in ("42", "43"):
+            MODULE.validate_ros_domain(domain_id, domain_id)
+        with self.assertRaisesRegex(MODULE.GuardError, "must be explicitly set"):
+            MODULE.validate_ros_domain("", "42")
+        with self.assertRaisesRegex(MODULE.GuardError, "ROS_DOMAIN_ID must be 43"):
+            MODULE.validate_ros_domain("43", "42")
+
     def test_decodes_integer_double_and_missing_ros_parameters(self):
         integer = ParameterValue(
             type=ParameterType.PARAMETER_INTEGER,

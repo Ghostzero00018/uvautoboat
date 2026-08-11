@@ -9,9 +9,10 @@ publishes atomic ``mavros_msgs/OverrideRCIn`` frames at 20 Hz.  Measured
 
 This bridge deliberately has no arm, disarm, mode, parameter-write, motor-test
 or raw-servo-command path.  Arming remains an external operator action.  The
-node is inert unless ``allow_real_fcu`` is explicitly true, ROS domain 42 is in
-use, every live guard passes twice, the vehicle was first observed disarmed in
-MANUAL, and exactly one command publisher exists.
+node is inert unless ``allow_real_fcu`` is explicitly true, an explicit
+``expected_domain_id`` matches ``ROS_DOMAIN_ID``, every live guard passes twice,
+the vehicle was first observed disarmed in MANUAL, and exactly one command
+publisher exists.
 """
 
 from __future__ import annotations
@@ -47,13 +48,21 @@ COMMAND_TIMEOUT_SECONDS = 0.150
 PUBLISH_PERIOD_SECONDS = 0.050
 STATE_TIMEOUT_SECONDS = 2.5
 FEEDBACK_TIMEOUT_SECONDS = 1.5
-EXPECTED_DOMAIN_ID = "42"
 NO_CHANGE = 65535
 RELEASE_HIGH_CHANNEL = 65534
 
 
 class GuardError(RuntimeError):
     """Raised when live vehicle configuration cannot satisfy the bridge guard."""
+
+
+def validate_ros_domain(expected_domain_id: str, actual_domain_id: Optional[str]) -> None:
+    """Require an explicitly declared ROS domain that matches the process."""
+    expected = expected_domain_id.strip()
+    if not expected:
+        raise GuardError("expected_domain_id must be explicitly set")
+    if actual_domain_id != expected:
+        raise GuardError(f"ROS_DOMAIN_ID must be {expected}")
 
 
 def decode_parameter_value(
@@ -340,6 +349,9 @@ class RealFcuRcCommandBridge(Node):
     def __init__(self) -> None:
         super().__init__("real_fcu_rc_command_bridge")
         self.allow_real_fcu = bool(self.declare_parameter("allow_real_fcu", False).value)
+        self.expected_domain_id = str(
+            self.declare_parameter("expected_domain_id", "").value
+        )
         self.max_steering = float(self.declare_parameter("max_steering", 0.20).value)
         self.max_throttle = float(self.declare_parameter("max_throttle", 0.12).value)
         if not (0.0 < self.max_steering <= 0.20):
@@ -376,8 +388,7 @@ class RealFcuRcCommandBridge(Node):
             self.get_logger().warning("real-FCU output inhibited; set allow_real_fcu:=true explicitly")
             self.timer = self.create_timer(PUBLISH_PERIOD_SECONDS, self._tick)
             return
-        if os.environ.get("ROS_DOMAIN_ID") != EXPECTED_DOMAIN_ID:
-            raise GuardError(f"ROS_DOMAIN_ID must be {EXPECTED_DOMAIN_ID}")
+        validate_ros_domain(self.expected_domain_id, os.environ.get("ROS_DOMAIN_ID"))
 
         self.guard = self._resolve_live_guard()
         self.override_pub = self.create_publisher(OverrideRCIn, OVERRIDE_TOPIC, 10)

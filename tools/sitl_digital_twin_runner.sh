@@ -3,10 +3,13 @@
 # Sourced only by live_dashboard_preflight.sh for its explicit `sitl` branch.
 
 SITL_ARDUPILOT_ROOT='/home/ghostzero/ardupilot'
-SITL_VENV_ACTIVATE='/home/ghostzero/venv-ardupilot/bin/activate'
-SITL_SIM_VEHICLE='/home/ghostzero/ardupilot/Tools/autotest/sim_vehicle.py'
 SITL_ROVER_BINARY='/home/ghostzero/ardupilot/build/sitl/bin/ardurover'
 SITL_MAVPROXY='/home/ghostzero/venv-ardupilot/bin/mavproxy.py'
+SITL_ROVER_DEFAULT_PARAMS=(
+  '/home/ghostzero/ardupilot/Tools/autotest/default_params/rover.parm'
+  '/home/ghostzero/ardupilot/Tools/autotest/default_params/motorboat.parm'
+  '/home/ghostzero/ardupilot/Tools/autotest/default_params/rover-skid.parm'
+)
 SITL_EXPECTED_ARDUPILOT_HEAD='3fc7011a7d3dc047cbb17d8bd98ee94577d144c6'
 SITL_EXPECTED_ROVER_SIZE='4939888'
 SITL_EXPECTED_ROVER_SHA256='569412d6843e6b1ecfd2cfd6106ea4f60559ff440100f3b6dca94a02bf750169'
@@ -37,6 +40,8 @@ SITL_CONFLICT_PATTERNS=(
   'sitl_operator_once.py'
   'rosbridge'
   'serve_dashboard.py'
+  'real_fcu_digital_twin_workstation.sh'
+  'real_fcu_digital_twin_pi.sh'
 )
 
 declare -A SITL_CHILD_INDEX=()
@@ -125,11 +130,12 @@ sitl_verify_repository_state() {
 }
 
 sitl_verify_ardupilot_pin() {
-  local head size digest identity checkout_status
-  [ -r "$SITL_VENV_ACTIVATE" ] || fail "ArduPilot virtual environment missing: $SITL_VENV_ACTIVATE"
-  [ -r "$SITL_SIM_VEHICLE" ] || fail "sim_vehicle.py missing: $SITL_SIM_VEHICLE"
+  local head size digest identity checkout_status parameter_file
   [ -x "$SITL_ROVER_BINARY" ] || fail "Rover binary missing: $SITL_ROVER_BINARY"
   [ -x "$SITL_MAVPROXY" ] || fail "MAVProxy missing: $SITL_MAVPROXY"
+  for parameter_file in "${SITL_ROVER_DEFAULT_PARAMS[@]}"; do
+    [ -r "$parameter_file" ] || fail "Rover default parameter file missing: $parameter_file"
+  done
   head="$(git -C "$SITL_ARDUPILOT_ROOT" rev-parse HEAD)" \
     || fail 'cannot read ArduPilot checkout revision'
   [ "$head" = "$SITL_EXPECTED_ARDUPILOT_HEAD" ] \
@@ -263,22 +269,19 @@ sitl_write_parameter_file() {
 }
 
 sitl_build_commands() {
+  local rover_defaults
+  rover_defaults="$(IFS=,; printf '%s' "${SITL_ROVER_DEFAULT_PARAMS[*]}")"
   SITL_SITL_COMMAND=(
     env
+    "--chdir=$RUN_DIR/sitl_state"
     -u ROS_DOMAIN_ID -u ROS_AUTOMATIC_DISCOVERY_RANGE -u ROS_LOCALHOST_ONLY
     -u ROS_STATIC_PEERS -u ROS_DISCOVERY_SERVER -u RMW_IMPLEMENTATION
     -u FASTDDS_DEFAULT_PROFILES_FILE -u FASTRTPS_DEFAULT_PROFILES_FILE
     -u CYCLONEDDS_URI
-    bash --noprofile --norc -c
-    'set -euo pipefail
-cd -- "$1"
-source "$2"
-unset ROS_DOMAIN_ID ROS_AUTOMATIC_DISCOVERY_RANGE ROS_LOCALHOST_ONLY
-unset ROS_STATIC_PEERS ROS_DISCOVERY_SERVER RMW_IMPLEMENTATION
-unset FASTDDS_DEFAULT_PROFILES_FILE FASTRTPS_DEFAULT_PROFILES_FILE CYCLONEDDS_URI
-exec python3 "$3" -v Rover -f motorboat-skid -I 0 --no-rebuild --no-configure --no-mavproxy --no-extra-ports --speedup 1 --vehicle-binary "$4" --use-dir "$5" --add-param-file "$6"'
-    _ "$SITL_ARDUPILOT_ROOT" "$SITL_VENV_ACTIVATE" "$SITL_SIM_VEHICLE"
-    "$SITL_ROVER_BINARY" "$RUN_DIR/sitl_state" "$RUN_DIR/manifest/sitl.params"
+    "$SITL_ROVER_BINARY"
+    -S --model motorboat-skid --speedup 1 --slave 0
+    --defaults "$rover_defaults,$RUN_DIR/manifest/sitl.params"
+    --sim-address=127.0.0.1 -I0
   )
   SITL_MAVPROXY_COMMAND=(
     "$SITL_MAVPROXY"
@@ -301,6 +304,7 @@ exec python3 "$3" -v Rover -f motorboat-skid -I 0 --no-rebuild --no-configure --
   SITL_BRIDGE_COMMAND=(
     /usr/bin/python3 "$SITL_BRIDGE" --ros-args
     -p 'allow_real_fcu:=true'
+    -p 'expected_domain_id:="42"'
     -p 'max_steering:=0.20'
     -p 'max_throttle:=0.12'
   )
@@ -799,9 +803,11 @@ sitl_cleanup() {
     sitl_stop_named_child rosbridge || cleanup_rc=1
     sitl_write_teardown_request || cleanup_rc=1
     sitl_stop_named_child bridge || cleanup_rc=1
-    if ! sitl_wait_shutdown_frames; then
-      log_error 'SITL_SHUTDOWN_FRAMES=FAIL expected=3'
-      cleanup_rc=1
+    if [ -n "${SITL_CHILD_INDEX[bridge]+present}" ]; then
+      if ! sitl_wait_shutdown_frames; then
+        log_error 'SITL_SHUTDOWN_FRAMES=FAIL expected=3'
+        cleanup_rc=1
+      fi
     fi
     sitl_stop_named_child evidence || cleanup_rc=1
     sitl_stop_named_child mavros || cleanup_rc=1
