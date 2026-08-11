@@ -25,19 +25,20 @@ Do not rewrite any earlier diary, dated Timeline row or historical hash.
 
 ## Repository certification
 
-Yesterday closed at `a0f516d8eff9a53e5892b921c5d6388f35c6207d` with the complete
-feature set uncommitted: nine modified tracked files, one tracked deletion and
-six untracked files. Two commits were prepared and must land before any run:
+The 11/08 work landed in three commits through
+`c72e8e52af5c5b53c0b0265a752a4dd230e4e468`:
 
 ```text
 feat(fcu): add guarded closed-loop helper pair
 chore: remove unbuilt servo command reference
+docs(diary): prepare SITL acceptance and live run
 ```
 
-This is a hard prerequisite, not housekeeping. `sitl_verify_repository_state`
-refuses to start unless the worktree is clean, `HEAD` equals `origin/main`, and
-`HEAD` descends from `d911f8a7cbe52b6c08cdd71391fcac823d9d79c4`. A committed but
-unpushed state fails the same check.
+Re-certify the current repository state before any run, because
+`sitl_verify_repository_state` refuses to start unless the worktree is clean,
+`HEAD` equals `origin/main`, and `HEAD` descends from
+`d911f8a7cbe52b6c08cdd71391fcac823d9d79c4`. A committed but unpushed state fails
+the same check.
 
 ```bash
 cd /home/ghostzero/seal_ws/src/uvautoboat
