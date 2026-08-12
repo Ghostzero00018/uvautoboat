@@ -150,6 +150,24 @@
 > byte-identical and view-only. This preparation does not close or schedule T0a,
 > T0b or either T2 tier.
 >
+> **12/08/2026 current limitation.** The tier policy above defines T0b as a
+> standalone non-actuating read-only request/response step, but the current
+> `tools/real_fcu_digital_twin_pi.sh probe` path also requires the propellers-removed,
+> hull-restrained and propulsion-isolated flags used by the T2 bench tiers. T0b is
+> therefore defined but cannot currently be executed independently. The
+> implementation is stricter than the policy; this is a policy/operability mismatch,
+> not an exposed safety weakness. The helper remains unchanged, and these gates must
+> not be loosened as part of documentation maintenance.
+>
+> The future implementation task has a narrow existing seam. The `probe` path starts
+> only the two-plugin read-only MAVROS session, captures T0b evidence, does not start
+> the bridge, and records `writes=none bridge=not-started`. A separately approved code
+> change must first add red contract coverage proving that: (1) standalone T0b can
+> enter without the T2 mechanical-condition flags; (2) `probe` creates no bridge,
+> command-demand publisher or write/actuation path; (3) `run` continues to require the
+> mechanical conditions and separate T2a/T2b approvals; and (4) parameter writes,
+> mode changes, arming and RC override remain fail-closed in `probe`.
+>
 > Two facts govern why the physical conditions carry the weight rather than the
 > autopilot. First, this vehicle records **`ARMING_CHECK=0`**, so pre-arm checks
 > are **not** a safety layer; `ARMING_REQUIRE=1` only means output requires
