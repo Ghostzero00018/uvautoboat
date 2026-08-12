@@ -1,8 +1,13 @@
-# Wednesday 12/08/2026 - corrected SITL acceptance and view-only live run
+# Thursday 13/08/2026 - corrected SITL acceptance and view-only live run
+
+> **PRE-DIARY - NOT STARTED.** Moved unchanged in substance from the 12/08/2026
+> plan, which was deferred because that day went to the internship report. This
+> file does not authorize work. Every block below needs explicit approval before
+> it starts.
 
 ## Purpose
 
-Convert yesterday's static work into runtime evidence. Two runs are in scope and
+Convert the 11/08 static work into runtime evidence. Two runs are in scope and
 they run in sequence, never together: the corrected workstation SITL closed loop,
 then the workstation/Pi view-only telemetry stack. The guarded physical-FCU
 helper pair stays unrun; its first hardware gate is a `T0a` inspection that has
@@ -16,23 +21,34 @@ not been scheduled.
    `Guarded physical-FCU workstation/Pi helper pair` and
    `Physical graph-isolation correction`:
    `working_diary/2026-08-11_tuesday_digital_twin_thrust_loop_and_helper_integration.md`.
-3. `wiki/Live_Hailo_MAVLink_Dashboard_Testing.md` for the view-only runbook.
-4. `tools/live_dashboard_preflight.sh`, `tools/sitl_digital_twin_runner.sh`,
+3. `working_diary/2026-08-12_wednesday_internship_report_writing.md` - short. It
+   records why this plan moved and the three inaccuracies corrected while moving
+   it, including the incomplete commit chain that this file's certification
+   section now states in full.
+4. `wiki/Live_Hailo_MAVLink_Dashboard_Testing.md` for the view-only runbook.
+5. `tools/live_dashboard_preflight.sh`, `tools/sitl_digital_twin_runner.sh`,
    `tools/real_fcu_rc_command_bridge.py` and their focused suites.
 
-Do not create a second 12/08 diary. Append the day's results to this file only.
+Do not create a second 13/08 diary. Append the day's results to this file only.
 Do not rewrite any earlier diary, dated Timeline row or historical hash.
 
 ## Repository certification
 
-The 11/08 work landed in three commits through
-`c72e8e52af5c5b53c0b0265a752a4dd230e4e468`:
+The 11/08 work landed in five commits, not three. The earlier statement in the
+12/08 plan named only the middle three and omitted both the day's core
+implementation and the commit that carried the plan itself:
 
 ```text
-feat(fcu): add guarded closed-loop helper pair
-chore: remove unbuilt servo command reference
-docs(diary): prepare SITL acceptance and live run
+a0f516d  feat(sitl): add guarded digital-twin runner
+3097061  feat(fcu): add guarded closed-loop helper pair
+fcb346a  chore: remove unbuilt servo command reference
+c72e8e5  docs(diary): prepare SITL acceptance and live run
+89b5fc1  docs(diary): record landed baseline in the 12/08 plan
 ```
+
+The pre-deferral baseline was `89b5fc1`. Startup must certify the current
+`origin/main` and inspect the documentation commit carrying this deferral, which
+landed after that baseline and touches only working-diary files.
 
 Re-certify the current repository state before any run, because
 `sitl_verify_repository_state` refuses to start unless the worktree is clean,
@@ -55,11 +71,20 @@ git rev-list --left-right --count main...origin/main
 | Behind only | `git pull --ff-only`, then repeat certification. |
 
 Re-measure free disk and require at least `10 GB`. The 11/08 figures of `23G`
-and `20G` are both spent; measure again rather than reusing either.
+and `20G` are stale snapshots, now two days old; re-measure rather than reusing
+either.
+
+The operational pin surface count is `13`: nine helper-hash occurrences, one
+helper size, two supervisor-hash occurrences and one supervisor size. Earlier
+diaries record `12`, which was correct when written and stays untouched.
+
+The deployed Pi helper copy is still stale, carried over from the 10/08 change,
+because no transfer has been recorded since. It must be transferred and verified
+before the view-only block.
 
 ## Carried evidence and exact non-claims
 
-Yesterday established, statically only:
+The 11/08 work established, statically only:
 
 - the SITL runner starts the pinned Rover binary directly instead of through
   `sim_vehicle.py`, in the supervisor-owned process group, with output in
@@ -249,8 +274,10 @@ what differs from the SITL block:
 The pair is prepared and statically certified only. `T0a` is an inspection gate
 and has not been scheduled, so `tools/real_fcu_digital_twin_workstation.sh` and
 `tools/real_fcu_digital_twin_pi.sh` are not invoked today in any mode, including
-`check`. Reaching them requires a separate approval with propellers removed, the
-hull restrained and propulsion power isolated.
+`check`. Any future invocation requires approval for its actual tier. `T0a` and
+`T0b` retain their own non-actuating conditions; propeller removal, hull
+restraint and isolated propulsion power apply before `T2a` or any actuating
+tier, not before the inspection and query tiers.
 
 ## Block E - document and wrap
 
@@ -292,3 +319,9 @@ git diff --cached --check
 
 Inspect the staged content and confirm no intended implementation, test or
 documentation file is missing.
+
+Never predict or record the SHA of the commit that contains the day-close text.
+Record the pre-edit baseline while drafting. If a landed implementation revision
+must be recorded, append it in a later documentation commit; do not attempt to
+record that documentation commit's own SHA. This series has produced three
+self-referential revision claims that were stale the moment they landed.
