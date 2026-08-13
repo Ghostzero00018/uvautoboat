@@ -1173,3 +1173,59 @@ release, whether the arm is rejected, accepted normally or aborted on an
 unexpected observation, must end with confirmed `Disarmed` state and the
 physical safety state re-engaged. This clarification is documentation only;
 C2 remains **NOT RUN**.
+
+### C2 stick, safety-release and Inspector-failure gates - NOT RUN
+
+Final pre-run review added three discriminating observations. First, the
+Herelink sticks must remain untouched throughout C2. ArduPilot source defines
+`ARMING_RUDDER=2` as rudder arm-or-disarm, so a full-yaw RC input can be a
+separate state-transition request and must not be confused with the one
+permitted QGroundControl button press. The cited 10/08/2026 repository record
+at lines `912`-`915` is explicitly from the connected SITL instance, not a
+current real-FCU parameter readback; this entry therefore does not claim that
+the physical FCU's live `ARMING_RUDDER` value was revalidated today. RC input
+PWM and `SERVO_OUTPUT_RAW` PWM are different layers and are not compared.
+
+Second, release of the FCU-box hardware safety state now has its own
+observation before the QGroundControl arm request:
+
+```text
+C2_SAFETY_RELEASED servo3=N servo1=N time_usec=ADVANCING
+```
+
+Both outputs must remain `800` while `time_usec` advances. A change at this
+point ends the attempt without an arm request: hardware safety is re-engaged
+and the observed values are retained. An armed-state transition before the
+intended QGroundControl button press likewise requires immediate disarm,
+hardware-safety restoration and stop.
+
+Third, an unavailable or stale Inspector path now has an explicit pre-arm
+result:
+
+```text
+C2_QGC_INSPECTOR=FAIL reason=<not-present|no-servo-output-raw|time_usec-static> armed=NO hardware_safety=ON
+```
+
+A static `time_usec` cannot support a neutral-output claim. This failure path
+stops before the physical safety state is released. The successful paste-back
+contract now includes the intermediate `C2_SAFETY_RELEASED` line. These are
+documentation-only corrections; no P2 or W2 command, Inspector interaction,
+hardware-safety release or arm request was run.
+
+### Real-FCU rudder-arming status clarification - NOT RUN
+
+A wider repository search sharpened the preceding note. No current or historical
+real-FCU readback of `ARMING_RUDDER` is recorded. The numeric values in the
+10/08/2026 diary and `wiki/Roadmap.md` belong to SITL. The 24/07/2026 real-FCU
+analysis records `ARMING_REQUIRE=1` and `ARMING_CHECK=0`, but not
+`ARMING_RUDDER`. Its real-vehicle status is therefore **unknown**, not confirmed
+as `2` or confirmed disabled.
+
+ArduPilot source documents `2` as `ArmOrDisarm`: right rudder arms, left rudder
+disarms, and rudder arming is available only while throttle is within its zero
+deadzone. C2 intentionally keeps throttle neutral for its entire observation,
+so that condition would be present if the unknown real-FCU value enables the
+feature. The runbook therefore treats rudder arming as potentially enabled,
+requires both Herelink sticks to remain untouched, and stops on any armed-state
+transition that did not follow the intended QGroundControl button press. This
+clarification changes no parameter and performs no C2 action.

@@ -571,19 +571,23 @@ only after C1 has passed and fully stopped.
 - **Prerequisites:** C1 has emitted Pi `TEARDOWN=PASS`,
   `PI_SUPERVISOR_EXIT status=0` and `WORKSTATION_TEARDOWN=PASS`; the browser is closed;
   the propellers are physically removed; propulsion power is isolated; the hull is
-  restrained; controls are neutral; QGroundControl on the Herelink is connected to the
-  real FCU.
+  restrained; controls are neutral and the Herelink sticks will remain untouched;
+  QGroundControl on the Herelink is connected to the real FCU.
 - **Stop condition:** stop without arming if any C1 process or port remains, the Herelink
   build has no live MAVLink Inspector, `SERVO_OUTPUT_RAW.time_usec` does not advance, or
-  the disarmed `servo1_raw` / `servo3_raw` pair is not `800` / `800`. Do not retry a
+  the disarmed `servo1_raw` / `servo3_raw` pair is not `800` / `800`. After hardware
+  safety is released but before the QGroundControl arm request, both outputs must still
+  read `800`; otherwise re-engage hardware safety and stop without arming. Do not retry a
   rejected arm. After an accepted arm, disarm immediately on a persistent departure from
   the observed neutral pair, unexpected actuator movement, a non-neutral control, loss
-  of the QGroundControl link, or any state other than the requested bounded arm. Once the
-  physical safety state has been released, every exit path must end with the FCU confirmed
+  of the QGroundControl link, an armed-state transition without the intended QGroundControl
+  button press, or any state other than the requested bounded arm. Once the physical
+  safety state has been released, every exit path must end with the FCU confirmed
   `Disarmed` and the physical safety state re-engaged.
 - **Paste-back:** paste both absence verdicts, browser-closed confirmation, the Inspector
-  source identity, port and advancing-time verdict, and the actual state/PWM observations
-  before arm, while armed and after disarm.
+  source identity, port and advancing-time verdict, the post-safety-release output pair,
+  and the actual state/PWM observations before arm, while armed and after disarm. If the
+  Inspector gate fails, paste its explicit pre-arm failure result instead.
 
 From Pi P2, confirm the Pi side of C1 is absent:
 
@@ -630,7 +634,10 @@ bracketed patterns prevent the inspection command from matching itself:
 After both verdicts pass and the browser is closed, perform the bounded controller-local
 sequence:
 
-1. Confirm QGroundControl reports the real FCU disarmed and all controls are neutral.
+1. Confirm QGroundControl reports the real FCU disarmed and all controls are neutral. Put
+   the Herelink controls in a stable neutral state and do not touch either stick at any
+   point in C2. A stick is an RC input; its position or input PWM is not numerically
+   comparable to the raw servo-output values observed below.
 2. Before releasing hardware safety, open the QGroundControl application menu, select
    Analyze Tools and then MAVLink Inspector. Herelink builds may omit this desktop-oriented
    view; if it is absent, stop without arming rather than improvising another telemetry
@@ -640,17 +647,28 @@ sequence:
    the actual `servo3_raw` and `servo1_raw` values. Both must be `800` while disarmed.
 4. Press the physical arm/safety button on the FCU box to release the hardware safety
    state.
-5. Use QGroundControl on the Herelink console to arm once. If the arm is rejected, do not
-   retry. Confirm the FCU remains `Disarmed`, re-engage and confirm the physical safety
-   state, record the rejection and stop for diagnosis.
-6. On an accepted arm, record the arm time, QGroundControl `Armed` indication and the
+5. Before requesting arm, re-read the advancing `SERVO_OUTPUT_RAW` stream and record
+   `C2_SAFETY_RELEASED servo3=N servo1=N time_usec=ADVANCING`. Both outputs must remain
+   `800`. If either changes, re-engage hardware safety and stop without arming.
+6. Use QGroundControl on the Herelink console to arm once. If the armed state changes
+   before that button press, disarm, re-engage hardware safety and stop. If the requested
+   arm is rejected, do not retry. Confirm the FCU remains `Disarmed`, re-engage and confirm
+   the physical safety state, record the rejection and stop for diagnosis.
+7. On an accepted arm, record the arm time, QGroundControl `Armed` indication and the
    actual `servo3_raw` / `servo1_raw` pair while `time_usec` continues advancing. Do not
    move a stick, publish a command or request non-neutral output. Disarm immediately if
    either output persistently departs from the `800` baseline.
-7. Use QGroundControl on the Herelink console to disarm. Record the disarm time, final
+8. Use QGroundControl on the Herelink console to disarm. Record the disarm time, final
    `Disarmed` indication and final live output pair; both outputs must return to `800`.
-8. Re-engage the FCU-box physical safety state and confirm it is safe before touching
+9. Re-engage the FCU-box physical safety state and confirm it is safe before touching
    anything else, then return the control box to its normal powered-down state.
+
+ArduPilot defines `ARMING_RUDDER=2` as rudder arm-or-disarm and permits that path when
+throttle is within its zero deadzone. The repository's numeric `ARMING_RUDDER` records are
+from SITL; the real FCU value is **unknown**. Because C2 deliberately holds neutral
+throttle throughout, it treats rudder arming as potentially enabled: both Herelink sticks
+remain untouched, and an armed-state transition without the intended QGroundControl
+button press is an immediate stop rather than part of the accepted observation.
 
 Paste back exactly, replacing every `N` with the observed value:
 
@@ -659,10 +677,18 @@ C2_PI_ABSENCE=PASS
 C2_WORKSTATION_ABSENCE=PASS ports=8002,8080,9090
 C2_BROWSER=CLOSED
 C2_QGC_INSPECTOR=PASS message=SERVO_OUTPUT_RAW source_system=N source_component=N port=N time_usec=ADVANCING
+C2_SAFETY_RELEASED servo3=N servo1=N time_usec=ADVANCING
 C2_OBSERVATION before=DISARMED servo3_before=N servo1_before=N arm_time=HH:MM:SS armed=ARMED servo3_armed=N servo1_armed=N actuator_movement=NO disarm_time=HH:MM:SS final=DISARMED servo3_after=N servo1_after=N hardware_safety=ON qgc_link=STABLE
 ```
 
-If QGroundControl refuses the one arm request, retain the four gate lines above and paste
+If the Inspector is absent, has no `SERVO_OUTPUT_RAW`, or shows a static `time_usec`, stop
+before releasing hardware safety and retain the two absence verdicts plus browser result:
+
+```text
+C2_QGC_INSPECTOR=FAIL reason=<not-present|no-servo-output-raw|time_usec-static> armed=NO hardware_safety=ON
+```
+
+If QGroundControl refuses the one arm request, retain the five gate lines above and paste
 this terminal result after restoring the physical safety state:
 
 ```text
