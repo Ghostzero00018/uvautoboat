@@ -1453,6 +1453,7 @@ function connectToROS() {
         healthLineTopic = null;
         healthStatusTopic = null;
         resetLiveMavlinkTelemetry();
+        resetPersonStopStatus();
         stopFcuBenchHold();
         liveFcuBenchCommandPublisher = null;
         liveFcuBenchEmergencyPublisher = null;
@@ -1905,14 +1906,7 @@ function subscribeToTopics() {
         try { data = JSON.parse(message.data); }
         catch (e) { logBadJson('/control/status', e); return; }
         if (DEBUG_MODE) console.log('Modular control status:', data);
-        if (data.stop_override !== undefined) {
-            missionState.stopOverride = !!data.stop_override;
-            const el = document.getElementById('stop-override');
-            if (el) {
-                el.textContent = missionState.stopOverride ? 'STOP LATCHED' : 'Inactive';
-                el.className = 'value ' + (missionState.stopOverride ? 'warning' : '');
-            }
-        }
+        applyControlStatus(data);
     });
 
     if (DEBUG_MODE) console.log('Subscribed to all topics (integrated + modular)');
@@ -2080,13 +2074,182 @@ function updateThruster(side, value) {
     const percentage = Math.min(Math.abs(value) / 1000 * 100, 100);
     bar.style.setProperty('--bar-width', percentage + '%');
     
-    // Color based on direction
-    if (value < 0) {
-        bar.classList.add('reverse');
-    } else {
-        bar.classList.remove('reverse');
-    }
+    // Colour by direction. Under a forward-only hull a negative command is not
+    // astern motion — the hull cannot produce it — so it is flagged as an
+    // envelope breach rather than quietly drawn as reverse.
+    bar.classList.remove('reverse', 'envelope-violation');
+    const thrustClass = hullThrustClass(value);
+    if (thrustClass) bar.classList.add(thrustClass);
 }
+
+// ========== DIGITAL TWIN HULL ENVELOPE ==========
+// The simulated boat stands in for a hull whose servo rail is 800/800/2200:
+// neutral is also the minimum, so there is no astern command to send. These
+// helpers keep the readouts inside that envelope and surface the camera-side
+// person hold, both fed by the existing /control/status JSON.
+
+// personStop starts null, not false: before the first controller status
+// arrives the dashboard has no grounds to claim the water is clear, and a
+// green badge asserting it would be a fail-open the operator cannot see.
+// A false verdict is not the same as a checked-and-clear one either, so the
+// badge additionally requires a known verdict backed by a live detector feed
+// before it will go green. In simulation, where no camera runs at all, that
+// means the row honestly stays at Waiting.
+const twinState = {
+    forwardOnly: true,
+    personStop: null,
+    personVerdictKnown: false,
+    personFeedFresh: false,
+    personStatusAt: 0
+};
+
+// A controller that stops publishing looks exactly like one reporting all-clear
+// if we only ever read the last message. Age the reading out instead.
+const PERSON_STATUS_TIMEOUT_MS = 5000;
+
+// Classify a thrust reading against the hull's envelope. Enforcement lives in
+// the controller; this only decides how the bar is drawn, so a violation stays
+// visible instead of being clamped away where nobody would notice it.
+function hullThrustClass(value) {
+    if (value >= 0) return '';
+    return twinState.forwardOnly ? 'envelope-violation' : 'reverse';
+}
+
+// Apply one /control/status message.
+//
+// This is the only entry point from the subscription, and the shape check has
+// to live here rather than in the individual field readers: JSON.parse happily
+// returns null, a number or an array for well-formed JSON, and any property
+// read on those throws out of the callback. Rejecting non-objects once, before
+// anything is dereferenced, is what keeps a malformed status message from
+// taking the handler down — which would freeze every reading it maintains,
+// including an active person hold.
+function applyControlStatus(data) {
+    if (!isStatusObject(data)) {
+        // Still repaint: a rejected message carries no verdict, but it is an
+        // occasion to notice that the last one has aged out, rather than
+        // leaving a stale reading up until the next timer tick.
+        renderPersonStopBadge();
+        return false;
+    }
+
+    applyPersonStopStatus(data);
+
+    // Strict boolean, like the person verdict. Coercion gets this wrong in
+    // both directions: a falsy non-boolean (0, null, "") would clear the
+    // indicator while the controller is still holding, and any non-empty
+    // string — including "false" — would raise it when nothing is latched.
+    if (typeof data.stop_override === 'boolean') {
+        missionState.stopOverride = data.stop_override;
+        const el = document.getElementById('stop-override');
+        if (el) {
+            el.textContent = missionState.stopOverride ? 'STOP LATCHED' : 'Inactive';
+            el.className = 'value ' + (missionState.stopOverride ? 'warning' : '');
+        }
+    }
+    return true;
+}
+
+function isStatusObject(data) {
+    return !!data && typeof data === 'object' && !Array.isArray(data);
+}
+
+// Read the person verdict from a controller status message, or null if the
+// message does not carry a complete one. Validated as a unit: a partial or
+// coerced verdict is not a verdict, and `!!` would make the string "false"
+// mean true. Anything short of three real booleans is treated as no news.
+function readPersonVerdict(data) {
+    if (!isStatusObject(data)) return null;
+    if (typeof data.person_stop !== 'boolean') return null;
+    if (typeof data.person_verdict_known !== 'boolean') return null;
+    if (typeof data.person_feed_fresh !== 'boolean') return null;
+    return {
+        stop: data.person_stop,
+        known: data.person_verdict_known,
+        fresh: data.person_feed_fresh
+    };
+}
+
+// Render the person hold. Returns the hold state so callers can gate on it.
+function applyPersonStopStatus(data) {
+    if (isStatusObject(data) && typeof data.forward_only === 'boolean') {
+        twinState.forwardOnly = data.forward_only;
+    }
+
+    const verdict = readPersonVerdict(data);
+    if (verdict) {
+        twinState.personStop = verdict.stop;
+        twinState.personVerdictKnown = verdict.known;
+        twinState.personFeedFresh = verdict.fresh;
+        // Only a complete verdict restarts the staleness clock. Otherwise a
+        // stream of field-less status messages would keep an old all-clear
+        // alive indefinitely without ever confirming it.
+        twinState.personStatusAt = nowMs();
+    }
+
+    renderPersonStopBadge();
+    return twinState.personStop;
+}
+
+function nowMs() {
+    return Date.now();
+}
+
+// Age out a controller that has gone quiet. Called on a timer as well as on
+// render, because silence produces no message to react to.
+function refreshPersonStopFreshness() {
+    renderPersonStopBadge();
+}
+
+function personStatusIsCurrent() {
+    return twinState.personStatusAt > 0
+        && (nowMs() - twinState.personStatusAt) <= PERSON_STATUS_TIMEOUT_MS;
+}
+
+// Silence produces no message to react to, so the ageing has to be driven by a
+// clock rather than by the subscription.
+setInterval(refreshPersonStopFreshness, 1000);
+
+// Repaint the badge from twinState. Split out so the disconnect path can drop
+// the reading back to unknown without inventing a verdict.
+function renderPersonStopBadge() {
+    const el = document.getElementById('person-stop-status');
+    if (!el) return;
+
+    // A hold is always shown, whatever else is unknown — the safe direction
+    // never waits for corroboration.
+    if (twinState.personStop === true) {
+        el.textContent = 'PERSON — HOLD';
+        el.className = 'value badge critical';
+        return;
+    }
+
+    // "Clear" is a claim about the water, so it needs a verdict that something
+    // actually produced, from a detector that is currently reporting.
+    const evidenced = twinState.personStop === false
+        && twinState.personVerdictKnown
+        && twinState.personFeedFresh
+        && personStatusIsCurrent();
+    if (!evidenced) {
+        el.textContent = 'Waiting';
+        el.className = 'value badge';
+        return;
+    }
+
+    el.textContent = 'Clear';
+    el.className = 'value badge clear';
+}
+
+// A dropped link is not an all-clear. Forget the last verdict rather than
+// leaving a stale one on screen.
+function resetPersonStopStatus() {
+    twinState.personStop = null;
+    twinState.personVerdictKnown = false;
+    twinState.personFeedFresh = false;
+    twinState.personStatusAt = 0;
+    renderPersonStopBadge();
+}
+// ========== END DIGITAL TWIN HULL ENVELOPE ==========
 
 // Simulate mission data (would come from custom topics in real implementation)
 function updateMissionStatus(data) {

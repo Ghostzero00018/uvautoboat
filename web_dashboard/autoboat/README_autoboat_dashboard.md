@@ -392,7 +392,7 @@ Start, Resume, Go Home, Reset, and Emergency Stop prompt a confirmation before a
 | `/planning/waypoints`          | Waypoint list for map                |
 | `/planning/current_target`     | Current navigation target            |
 | `/perception/obstacle_info`    | LiDAR obstacle detection (JSON)      |
-| `/control/status`              | Heading controller status            |
+| `/control/status`              | Heading controller status, including the `person_stop` hold and the `forward_only` hull flag |
 | `/control/anti_stuck_status`   | Anti-stuck escape status             |
 | `/planning/config`              | Current config values (syncs fields) |
 | `/wamv/thrusters/left/thrust`  | Left thruster command feedback       |

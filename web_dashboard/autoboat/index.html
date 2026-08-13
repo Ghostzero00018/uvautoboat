@@ -276,7 +276,12 @@
                     <div class="info-item full-width">
                         <span class="label">Status:</span>
                         <span id="obstacle-status" class="value badge">Clear</span>
-                        <span class="info-tooltip" title="Overall perception verdict: Clear / Warning / Critical (critical triggers reverse)">ℹ️</span>
+                        <span class="info-tooltip" title="Overall perception verdict: Clear / Warning / Critical (critical triggers an avoidance turn; the hull cannot back away)">ℹ️</span>
+                    </div>
+                    <div class="info-item full-width">
+                        <span class="label">Person | Personne:</span>
+                        <span id="person-stop-status" class="value badge">Waiting</span>
+                        <span class="info-tooltip" title="Camera person hold: a person in frame stops the boat and refuses restart commands until the frame is clear">ℹ️</span>
                     </div>
                 </div>
             </div>
@@ -288,12 +293,12 @@
                     <div class="info-item">
                         <span class="label">Left | Gauche:</span>
                         <span id="left-thrust" class="value">-</span>
-                        <span class="info-tooltip" title="Left thruster command (thrust units, signed; negative = reverse)">ℹ️</span>
+                        <span class="info-tooltip" title="Left thruster command (thrust units). The hull has no reverse gear, so a negative reading is an envelope breach, not astern motion">ℹ️</span>
                     </div>
                     <div class="info-item">
                         <span class="label">Right | Droit:</span>
                         <span id="right-thrust" class="value">-</span>
-                        <span class="info-tooltip" title="Right thruster command (thrust units, signed; negative = reverse)">ℹ️</span>
+                        <span class="info-tooltip" title="Right thruster command (thrust units). The hull has no reverse gear, so a negative reading is an envelope breach, not astern motion">ℹ️</span>
                     </div>
                 </div>
                 <div class="thrust-bars">
@@ -791,7 +796,7 @@
                                     <div class="param-item">
                                         <label for="perception-critical-dist">Critical Distance (m):</label>
                                         <input type="number" id="perception-critical-dist" step="any" min="0.5" max="100" value="5.5">
-                                        <span class="info-tooltip" title="Urgency saturates to 1.0 below this distance. Triggers emergency reverse/stop in the controller | Seuil d'urgence critique">ℹ️</span>
+                                        <span class="info-tooltip" title="Urgency saturates to 1.0 below this distance. Triggers the controller's emergency avoidance turn or stop | Seuil d'urgence critique">ℹ️</span>
                                         <span class="param-hint">Emergency threshold</span>
                                     </div>
                                 </div>
@@ -877,8 +882,8 @@
                                     <div class="param-item">
                                         <label for="controller-critical-dist">Critical Distance (m):</label>
                                         <input type="number" id="controller-critical-dist" step="any" min="0.5" max="100" value="6.0">
-                                        <span class="info-tooltip" title="Below this, the controller triggers micro-reverse / panic stop. Should be slightly larger than the perception critical distance | Seuil de recul d'urgence">ℹ️</span>
-                                        <span class="param-hint">Panic/reverse</span>
+                                        <span class="info-tooltip" title="Below this, the controller turns away hard or stops. Should be slightly larger than the perception critical distance | Seuil d'évitement d'urgence">ℹ️</span>
+                                        <span class="param-hint">Panic/avoid</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="controller-safe-dist">Safe Distance (m):</label>
@@ -960,13 +965,13 @@
                                     <div class="param-item">
                                         <label for="controller-reverse-timeout">Reverse Timeout (s):</label>
                                         <input type="number" id="controller-reverse-timeout" step="any" min="0.5" max="30" value="4.0">
-                                        <span class="info-tooltip" title="Maximum duration of a single micro-reverse maneuver. Prevents runaway backward motion | Durée max d'une manœuvre de recul">ℹ️</span>
+                                        <span class="info-tooltip" title="Maximum duration of a single micro-reverse maneuver. Inert while the hull is forward-only | Durée max d'une manœuvre de recul">ℹ️</span>
                                         <span class="param-hint">Reverse duration</span>
                                     </div>
                                     <div class="param-item">
                                         <label for="controller-max-reverse">Max Reverse Distance (m):</label>
                                         <input type="number" id="controller-max-reverse" step="any" min="0" max="50" value="25">
-                                        <span class="info-tooltip" title="Cap on cumulative reverse travel during an escape attempt. Stops the boat from drifting far backward into unknown terrain | Distance max cumulée en recul">ℹ️</span>
+                                        <span class="info-tooltip" title="Cap on cumulative reverse travel during an escape attempt. Inert while the hull is forward-only | Distance max cumulée en recul">ℹ️</span>
                                         <span class="param-hint">Max reverse</span>
                                     </div>
                                 </div>

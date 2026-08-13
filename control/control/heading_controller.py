@@ -73,6 +73,31 @@ REVERSE_BURST_THRUST = -1200.0  # Newtons - CQB micro-reverse pulse during criti
 ESCAPE_TURN_POWER = 450.0    # Newtons - differential thrust for stuck-escape spin-in-place
 
 
+def _read_flag(data, name):
+    """Read one required boolean from an alert payload, strictly."""
+    if name not in data:
+        raise ValueError(f"person alert is missing '{name}'")
+    value = data[name]
+    # Not bool(value): the string "false" is truthy, so coercion would turn a
+    # malformed alert into a confident all-clear.
+    if not isinstance(value, bool):
+        raise ValueError(f'{name} must be a boolean, got {value!r}')
+    return value
+
+
+def read_person_alert(data):
+    """
+    Extract the person verdict and feed freshness from an alert, strictly.
+
+    Both fields must be present and real booleans. Defaulting or coercing
+    either one would let a malformed alert release a safety hold, so anything
+    that is not an explicit verdict raises and the caller keeps its hold.
+    """
+    if not isinstance(data, dict):
+        raise ValueError('person alert must be a JSON object')
+    return _read_flag(data, 'person_detected'), _read_flag(data, 'feed_fresh')
+
+
 # =============================================================================
 # BAYESIAN STATE ESTIMATION FUNDAMENTALS
 # =============================================================================
@@ -232,6 +257,17 @@ class HeadingController(Node):
         # VFH/polar differential steering gain (synced to YAML)
         self.declare_parameter('avoid_diff_gain', 18.0)
         self.declare_parameter('use_vfh_bias', False)    # Enable/disable VFH/polar steering bias
+        # Hull capability flag. The physical boat has no reverse gear: its servo
+        # rail is 800/800/2200 (neutral == minimum), so a negative thrust command
+        # is unrepresentable on the real vehicle. Holding this true keeps the
+        # simulated boat inside the same envelope as the hull it mirrors.
+        # Launch-only by design — not in PARAM_RANGES, so the dashboard cannot
+        # relax a hull limit at runtime.
+        self.declare_parameter('forward_only', True)
+        # How long a person alert stays believable. The monitor publishes at
+        # 5 Hz; past this the feed claim is treated as unknown rather than
+        # carried for ever. Launch-only, like forward_only.
+        self.declare_parameter('person_alert_timeout_s', 3.0)
         # Maximum turn angle during obstacle avoidance (degrees)
         self.declare_parameter('max_avoidance_turn_deg', 45.0)
 
@@ -270,6 +306,10 @@ class HeadingController(Node):
         self.avoid_diff_gain = float(self.get_parameter('avoid_diff_gain').value)
         self.max_avoidance_turn_deg = float(self.get_parameter('max_avoidance_turn_deg').value)
         self.use_vfh_bias = bool(self.get_parameter('use_vfh_bias').value)
+        self.forward_only = bool(self.get_parameter('forward_only').value)
+        self.person_alert_timeout_s = float(
+            self.get_parameter('person_alert_timeout_s').value
+        )
 
         # Simple anti-stuck parameters
         self.stuck_timeout = self.get_parameter('stuck_timeout').value
@@ -295,6 +335,19 @@ class HeadingController(Node):
         self.mission_active = False  # True only when planner is in DRIVING state
         # Highest-priority STOP latch (cleared only by explicit resume/clear)
         self.stop_override = False
+        # Independent person-in-the-water hold, fed by /perception/person_alert.
+        # Deliberately NOT cleared by mission_command: a resume-family command
+        # drops stop_override (see mission_command_callback), so if the person
+        # hold shared that latch an operator could start the boat with someone
+        # still in frame. Only the alert going false releases it.
+        self.person_stop_active = False
+        # False is the safe default for the hold, but it is NOT evidence that
+        # the water is clear — at boot nothing has looked yet. These two carry
+        # that distinction to the dashboard so it cannot show a confident green
+        # badge before any camera has reported.
+        self.person_verdict_known = False
+        self.person_feed_fresh = False
+        self.person_alert_received_at = None
 
         # Obstacle state (from perception)
         self.obstacle_detected = False
@@ -399,6 +452,15 @@ class HeadingController(Node):
             '/planning/emergency_stop',
             self.emergency_stop_latched_callback,
             1
+        )
+
+        # Camera-side person hold. Separate from the E-Stop latch so the two
+        # cannot clear each other; see person_stop_active in the state block.
+        self.create_subscription(
+            String,
+            '/perception/person_alert',
+            self.person_alert_callback,
+            10
         )
 
         # --- PUBLISHERS ---
@@ -550,9 +612,59 @@ class HeadingController(Node):
                 self.position_history.clear()
             self.stop_override = False
 
+    def person_alert_callback(self, msg):
+        """Hold thrust while perception reports a person in the camera frame."""
+        try:
+            detected, feed_fresh = read_person_alert(json.loads(msg.data))
+        except (json.JSONDecodeError, TypeError, ValueError, AttributeError) as e:
+            # Fail closed: an unreadable alert never releases an active hold.
+            # A bare array or number parses fine but has no .get, and an
+            # exception escaping a callback would take the whole node down
+            # mid-mission, leaving the thrusters at their last command.
+            self.get_logger().warn(f"Invalid person alert: {e}")
+            return
+        # Freshness is updated on every valid alert, including ones that do not
+        # change the hold — otherwise a stale camera would never be reported.
+        # The receipt time is stamped locally: the monitor reporting a fresh
+        # feed and then dying would otherwise leave that claim standing here
+        # for ever, since nothing else ever writes this flag.
+        self.person_verdict_known = True
+        self.person_feed_fresh = feed_fresh
+        self.person_alert_received_at = self.get_clock().now()
+
+        if detected == self.person_stop_active:
+            return
+
+        self.person_stop_active = detected
+        if detected:
+            self._reset_all_escape_state()
+            self.stop()
+            self.send_thrust(0.0, 0.0)
+            self.get_logger().warn(
+                "🚸 PERSON DETECTED — thrust held at zero until the frame is clear."
+            )
+        else:
+            self.get_logger().info("✅ Person hold released — frame reported clear.")
+
+    def person_feed_is_fresh(self):
+        """
+        Report whether the camera verdict is still believable.
+
+        Two ways it stops being so: the monitor says its own detector feed went
+        stale, or the monitor itself goes silent. The second is invisible to
+        the alert payload, so it is measured here against the local clock.
+        """
+        if not self.person_feed_fresh or self.person_alert_received_at is None:
+            return False
+        age = (self.get_clock().now() - self.person_alert_received_at).nanoseconds / 1e9
+        return age <= self.person_alert_timeout_s
+
     def emergency_stop_latched_callback(self, msg):
         """Safety-critical E-Stop entry point. Bool(data=True) latches stop_override."""
-        if msg.data:
+        # Idempotent: publishers re-assert this topic so late-joining consumers
+        # learn the boat is held, and a latch that is already set has nothing
+        # left to do. Without this the re-assertions would re-log every tick.
+        if msg.data and not self.stop_override:
             self._latch_emergency_stop("latched topic")
 
     def _latch_emergency_stop(self, source: str):
@@ -781,16 +893,31 @@ class HeadingController(Node):
 
     def control_loop(self):
         """Run PID heading control with obstacle avoidance and anti-stuck handling."""
+        # Person hold outranks every other gate, including the E-Stop latch: a
+        # resume-family command drops stop_override but must never be able to
+        # drive the boat while someone is still in the camera frame.
+        if self.person_stop_active:
+            self.stop()
+            self.send_thrust(0.0, 0.0)
+            self.publish_status("PERSON_STOP")
+            return
+
         # Highest priority STOP latch (works even during escape mode)
         if self.stop_override:
             self.stop()
             self.send_thrust(0.0, 0.0)
+            # Status must keep flowing while stopped, or the last thing the
+            # dashboard heard stays true on screen. Without this the person
+            # badge would still read HOLD after the frame cleared, because the
+            # loop drops into this branch and never speaks again.
+            self.publish_status("STOP_OVERRIDE")
             return
 
         # Check if mission is active - CRITICAL: Check every control loop to catch stops
         if not self.mission_active:
             self.stop()
             self.send_thrust(0.0, 0.0)  # Ensure thrust is zero if mission became inactive
+            self.publish_status("IDLE")
             return
 
         # Check if we have a target
@@ -817,8 +944,16 @@ class HeadingController(Node):
 
         # --- CRITICAL OBSTACLE - REVERSE ---
         if self.is_critical and self.min_obstacle_distance < self.critical_distance:
+            # A hull with no reverse gear cannot back away from a close
+            # contact, so there is nothing to time out of: go straight to the
+            # avoidance turn, which steers away on forward differential alone.
+            # Holding station here instead would be a trap — the boat cannot
+            # then change the geometry that keeps is_critical true, and neither
+            # the anti-stuck escape nor a replan request would ever fire.
+            if self.forward_only:
+                self.force_turn_after_reverse = True
             # If we've already hit reverse limits, skip reverse and go to turning
-            if self.force_turn_after_reverse:
+            elif self.force_turn_after_reverse:
                 self.get_logger().warn(
                     "Reverse limit reached - turning instead of further reversing"
                 )
@@ -1063,6 +1198,16 @@ class HeadingController(Node):
         left_thrust = max(-SAFE_THRUST, min(SAFE_THRUST, left_thrust))
         right_thrust = max(-SAFE_THRUST, min(SAFE_THRUST, right_thrust))
 
+        # Apply the hull envelope before the slew limiter, so its memory and the
+        # drift estimator's commanded-stationary gate both track what is really
+        # published. Clamping only inside send_thrust would let prev_*_thrust
+        # drift to a negative value the thruster never saw, and the limiter
+        # would then spend cycles walking back up through commands that all
+        # publish as zero — one side staying dead after a turn.
+        if self.forward_only:
+            left_thrust = max(0.0, left_thrust)
+            right_thrust = max(0.0, right_thrust)
+
         # Slew-rate limit to avoid sudden reversals/jerk
         left_thrust = self._slew_limit(self.prev_left_thrust, left_thrust)
         right_thrust = self._slew_limit(self.prev_right_thrust, right_thrust)
@@ -1096,6 +1241,14 @@ class HeadingController(Node):
             left = 0.0
             right = 0.0
 
+        # Hull envelope, applied last. Every reverse-capable path in this node
+        # funnels through here — the CQB burst and the escape spin both return
+        # before the ±SAFE_THRUST clamp, so this is the only point that sees
+        # them all. Keep it below the mission_active gate, never above it.
+        if self.forward_only:
+            left = max(0.0, left)
+            right = max(0.0, right)
+
         left_msg = Float64()
         left_msg.data = left
         self.pub_left.publish(left_msg)
@@ -1124,6 +1277,10 @@ class HeadingController(Node):
             {
                 'mode': mode,
                 'stop_override': self.stop_override,
+                'person_stop': bool(self.person_stop_active),
+                'person_verdict_known': bool(self.person_verdict_known),
+                'person_feed_fresh': self.person_feed_is_fresh(),
+                'forward_only': bool(self.forward_only),
                 'avoidance_active': self.avoidance_mode,
                 'obstacle_detected': bool(self.obstacle_detected),
                 'obstacle_distance': _safe(float(self.min_obstacle_distance), 2),
@@ -1240,13 +1397,16 @@ class HeadingController(Node):
             self.last_position = (self.current_x, self.current_y)
             self.stuck_check_time = self.get_clock().now()
         else:
-            # Turn toward clearer side
+            # Turn toward clearer side. Without reverse the boat cannot pivot in
+            # place, so drive one side only: a wider arc, but the same outcome
+            # and the only geometry the real hull can execute.
             turn_power = ESCAPE_TURN_POWER
+            idle_side = 0.0 if self.forward_only else -turn_power
             if self.right_clear > self.left_clear:
-                self.send_thrust(turn_power, -turn_power)
+                self.send_thrust(turn_power, idle_side)
                 direction = "RIGHT"
             else:
-                self.send_thrust(-turn_power, turn_power)
+                self.send_thrust(idle_side, turn_power)
                 direction = "LEFT"
             self.escape_direction = direction
             self.get_logger().info(

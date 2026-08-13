@@ -305,6 +305,168 @@ and earlier diaries untouched.
 - detector, dataset, graph-query or external weekly-diary work;
 - rewriting any earlier diary, dated Timeline row or historical hash.
 
+## Forward-only hull envelope and camera person hold (13/08/2026)
+
+Requested after Block A closed and before Block B was opened, so this sits
+outside the A-E block sequence. Simulation and dashboard surfaces only. No
+physical helper, Pi file, bundle checksum, MAVROS plugin list or view-only
+gate was touched, and nothing here was executed against a vehicle.
+
+### What landed
+
+| Surface | Change |
+| --- | --- |
+| `control/control/heading_controller.py` | `forward_only` parameter, default `true`; non-negative clamp before the slew limiter and again in `send_thrust`; the critical-obstacle branch skips the reverse burst and falls through to the forward differential avoidance turn; escape spin drives one side only; `/perception/person_alert` subscription and a person gate above the E-Stop latch; `person_stop` and `forward_only` added to `/control/status`. |
+| `plan/plan/person_stop_monitor.py` | New node. Reads `/perception/detections`, applies the person-class policy, publishes `/perception/person_alert`, and holds `/planning/emergency_stop` while stopped. |
+| `plan/plan/waypoint_planner.py` | `/perception/person_alert` ingest; `blocked_reason` reports `person_detected`; `start_mission`, `resume_mission` and `go_home` refused while the hold is active. |
+| Both E-Stop latch callbacks | Made idempotent, so a re-asserted latch no longer re-enters the state or re-logs on every message. |
+| `launch/autoboat.launch.yaml` | `forward_only: true` on the controller; the monitor launched with its six parameters. |
+| `web_dashboard/autoboat/` | `person-stop-status` badge; negative thrust drawn as an envelope breach rather than as reverse; thruster and obstacle tooltips reworded. |
+
+### Why the clamp sits in `send_thrust`
+
+Four controller paths can command negative thrust, and two of them — the
+`-1200.0` reverse burst and the `-450.0` escape spin — return before the
+`±SAFE_THRUST` clamp and before the slew limiter. `send_thrust` is the only
+point all of its call sites pass through, so the clamp is applied there,
+below the existing `mission_active` gate rather than above it.
+
+### Why the person hold is a separate flag
+
+`mission_command_callback` drops `stop_override` for any resume-family
+command. A person hold sharing that latch could be cleared by pressing Start
+Mission with someone still in frame. `person_stop_active` is independent and
+is released only by the alert reporting the frame clear.
+
+### The recovery contract
+
+Two mechanisms, deliberately split, because one doing both jobs deadlocks.
+
+The **hold** tracks what the camera can see, with `clear_hold_s` of hysteresis
+against flicker. It rises when a person is in frame and falls when the frame
+has been clear for that long. It never latches.
+
+The **`/planning/emergency_stop` latch**, raised by the monitor on every tick
+while the hold is up, is what stops the boat and what requires an operator to
+act. Releasing the hold does not restart anything; it only restores the
+operator's ability to issue a resume command, which the planner refuses while
+a person is in frame.
+
+So the sequence is: person appears, hold rises, latch stops the boat; person
+leaves, hold falls after the clear window, boat stays stopped; operator
+presses Resume, and only then does it move. Making the hold itself latch would
+break this, because the resume command that clears the latch is exactly the
+command the planner refuses while the hold is up.
+
+This contract is proven for the simulated heading controller and planner only.
+`tools/real_fcu_rc_command_bridge.py` subscribes to the same latch topic, but
+its flag is set once and never cleared, and it does not subscribe to mission
+commands at all — on the physical path a hold would end only by restarting
+that process. The physical helper was not touched and is not wired to this
+node; giving the real path a recovery route is an unanswered design question,
+not something this change delivers.
+
+### Not wired yet
+
+Nothing publishes `/perception/detections`. The camera host publishes an
+annotated image on `/hailo/overlay/image_raw` and no class labels, so the
+monitor is inert until a detections publisher exists. The camera stack runs on
+`ROS_DOMAIN_ID` 12 and the physical command path on 43; covering both in one
+run needs a topology decision that has not been taken. Real-thrust stopping
+therefore remains unproven, and no claim is made about it.
+
+### Corrections made during review
+
+The first draft of this work carried five defects, all found and fixed before
+the change was recorded as complete.
+
+| Defect | Correction |
+| --- | --- |
+| Under `forward_only` the critical-obstacle branch held station and returned, so the boat could never change the geometry keeping `is_critical` true — neither the avoidance turn, the replan request nor the anti-stuck escape could fire. A permanent zero-thrust deadlock. | The branch now skips the reverse bookkeeping and falls through to the avoidance turn, which steers away on forward differential alone. |
+| The hull clamp lived only in `send_thrust`, while `prev_left_thrust` / `prev_right_thrust` stored the pre-clamp value, desynchronising the slew limiter and the drift estimator's commanded-stationary gate. | The clamp is applied before the slew store as well; `send_thrust` remains the final choke point for the paths that bypass that block. |
+| A non-object JSON payload on `/perception/person_alert` parses cleanly but has no `.get`, raising `AttributeError` out of the callback and taking the node down mid-mission. | Both alert callbacks reject non-object payloads and catch the wider exception set. |
+| A detection carrying a null or non-numeric score crashed the monitor, ending every future alert — a silent fail-open on the one node implementing the stopping policy. | Every entry is validated before the frame is accepted, and anything unreadable rejects the whole frame without advancing the feed clock. |
+| The person badge shipped as a solid green `Clear` with no verdict behind it, and a dropped link left the last reading frozen on screen. | The badge ships `Waiting`, and the rosbridge close path resets the verdict to unknown. |
+| An empty JSON object released the hold in all three consumers, and counted as a live frame in the monitor — so `{}` both cleared a safety hold and made a dead detector satisfy the feed watchdog. | The `detections` and `person_detected` fields must now be present, and the verdict must be a real boolean. Absent or non-boolean input is rejected and leaves the hold untouched. |
+| The hold latched by default while the planner refused the resume command that would clear it, so a person walking away left the boat unrecoverable: `person_detected` true forever, planner `EMERGENCY_STOP`, `armed` false. | The hold no longer latches. It tracks what the camera can see with `clear_hold_s` of hysteresis, and `auto_clear` is gone. The operator-must-act property comes from the `/planning/emergency_stop` latch instead, which the monitor raises while held and which a resume command clears in the simulated stack. |
+| A `NaN` score raised no exception and compared false against every threshold, so a person box carrying one read as "no person" while still advancing the freshness clock — a broken detector presenting as a clear waterway. | Every entry, whatever its class, must carry a non-empty string label and a finite score inside `[0, 1]`, booleans excluded. Anything else rejects the whole frame, so the freshness clock does not advance and `require_detection_feed` sees the detector as lost rather than clear. |
+| Neither the `stop_override` nor the idle branch published `/control/status`, so once the loop dropped into them the dashboard's last word stood. After a frame cleared, the person badge stayed red until the operator resumed. | Both branches now publish, as `STOP_OVERRIDE` and `IDLE`. |
+| Structurally malformed detection entries — a null, `{}`, a missing label or score, a boolean score — were skipped rather than rejected, so an unreadable frame advanced the freshness clock and read as clear water. A boolean score also became a full-confidence sighting via `float(True)`. | Every entry must carry a string label and a finite numeric score, booleans excluded. Anything else rejects the frame and leaves the clock untouched. |
+| The badge went green before any camera had looked: the controller starts at `person_stop` false and the idle loop publishes immediately, and in simulation no detector runs at all. A false verdict was being rendered as a checked-and-clear one. | The monitor reports `feed_fresh`, the controller carries it and `person_verdict_known` into `/control/status`, and the dashboard shows `Clear` only for a known verdict backed by a live feed. A hold is still shown unconditionally — the safe direction never waits for corroboration. |
+| `feed_fresh` was read through `bool(...)` on both sides, so the string `"false"` became true; the same message could also release an existing hold. | `person_detected` and `feed_fresh` must both be present and real booleans. Either one malformed rejects the alert outright: an active hold is kept, and a controller or planner without one gains nothing from the message. |
+| The dashboard coerced the three status fields with `!!` and refreshed its staleness clock on every message, so `"false"` rendered green and a stream of field-less `{mode}` messages kept an old all-clear alive past its timeout. | `/control/status` is validated as a unit: a missing field or a non-boolean field yields no verdict at all, and such a message never restarts the staleness clock. An existing `PERSON — HOLD` stays `PERSON — HOLD`; anything else falls back, or times out, to `Waiting`. |
+| The subscription callback still dereferenced the parsed payload after the verdict reader had safely rejected it, so `"null"`, `"42"` or `"[]"` — all well-formed JSON — raised `TypeError` out of the handler. `stop_override` was also still coerced. The helper-level tests could not see any of it, because they called the helper with an already-shaped object. | The handler is now one function, `applyControlStatus`, which rejects non-objects before any property is read and treats `stop_override` as a strict boolean like the rest. Tests drive it through `JSON.parse`, the way the subscription does. |
+| Only an upstream-declared stale feed was handled; upstream going silent was not. After one valid all-clear a dead monitor left `person_feed_fresh` true for ever, republished at 20 Hz, and the dashboard had no age check of its own. | Two independent timeouts, each against a locally stamped receipt time: the controller ages out a silent monitor after `person_alert_timeout_s`, and the dashboard ages out a silent controller after five seconds. Neither can downgrade an active hold. |
+
+Removing `auto_clear` also left a startup log line referring to it, which
+would have raised `AttributeError` the first time the node was launched. Every
+stub test still passed, because they drive unbound methods and never build the
+node. `plan/test/test_person_stop_monitor_construction.py` now constructs the
+real node, parses `launch/autoboat.launch.yaml`, and drives the node's real
+publishers. Its parameter check is bounded: it asserts that every parameter the
+launch file sets is declared by the node and carries the node's default value.
+Parameters the launch file does not set — `publish_rate_hz` today — have no
+drift protection from it.
+
+Three of the new tests were also passing vacuously: the `go_home` refusal was
+being satisfied by a swallowed stub `AttributeError` rather than by the guard,
+the `blocked_reason` release assertion never reached the branch it named, and
+nothing exercised `publish_alert` — the only place this node publishes the
+shared safety latch. All three were rebuilt and confirmed by mutation: deleting
+the guard, or restoring the deadlock, now fails the suite. What that latch does
+downstream on the physical path remains unwired and unproven; see the recovery
+contract above.
+
+### Verification
+
+| Check | Result |
+| --- | --- |
+| `plan` focused suite | 63 passed, 1 skipped |
+| `control` focused suite | 29 passed, 1 skipped |
+| Dashboard suite | 76 passed |
+| Real node construction and launch-file parameter agreement | pass |
+| `node --check app.js` | pass |
+| Launch file parse | 6 nodes |
+| `git diff --check` (tracked changes) | no whitespace errors |
+| `git diff --no-index --check` per new file | no whitespace errors |
+
+### Recorded: how the real thrust is actually unlocked
+
+Stated by the maintainer on 13/08/2026. Recorded here because it was not
+written down anywhere and does not follow from the code. Nothing below was
+executed, and it authorizes nothing.
+
+Two separate human actions gate the physical thrust, in this order:
+
+1. The FCU boots disarmed with the hardware safety engaged.
+2. Press the physical arm/safety button on the FCU box. This is the hardware
+   safety release; `BRD_SAFETY_DEFLT=1` means outputs stay dead until it is
+   done, and no software path can substitute for it.
+3. Wait for the bridge to report `READY_DISARMED`.
+4. Arm from QGroundControl on the Herelink console.
+5. Only then can the servo rail follow a command.
+
+This matches the existing state machine rather than changing it. The bridge
+requires an observed `armed:false → true` transition before it will enter its
+authorized arm epoch, and still passes through disabled and dead-man priming
+before `ACTIVE`.
+
+Two limits worth stating plainly. The bridge observes `/mavros/state.armed`,
+so it can prove a transition happened but not that the arm command came from
+the Herelink console; if that provenance ever becomes an acceptance condition
+it needs separate operator evidence. And the Pi's transmit direction to the
+FCU has never worked, so Herelink remains the only proven command path — a
+dashboard-initiated arm is not on the table today.
+
+Shutdown reverses it: release the command first, disarm from QGroundControl,
+then tear the helper down.
+
+### Effect on Block B
+
+The worktree is no longer clean, and `tools/sitl_digital_twin_runner.sh`
+requires a clean worktree with `HEAD == origin/main`. The corrected SITL
+acceptance stays available once this work is committed and pushed, or stashed.
+
 ## Wrap
 
 One conventional commit subject per logical change, one line, at most 72

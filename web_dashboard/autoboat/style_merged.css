@@ -1427,6 +1427,19 @@ body.camera-viewer-active {
     background: linear-gradient(90deg, #f44336, #d32f2f);
 }
 
+/* Negative thrust on a hull that has no reverse gear: a fault to be seen,
+   not a direction to be drawn. Striped so it cannot be mistaken for a
+   normal reading at a glance. */
+.thrust-fill.envelope-violation {
+    background: repeating-linear-gradient(
+        45deg,
+        #d32f2f,
+        #d32f2f 8px,
+        #7f1d1d 8px,
+        #7f1d1d 16px
+    );
+}
+
 /* ========== MAP ========== */
 #map {
     width: 100%;

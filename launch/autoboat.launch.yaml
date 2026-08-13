@@ -11,6 +11,7 @@
 #   - lidar_perception (Perception) - 3D LIDAR obstacle detection
 #   - waypoint_planner (Planner) - GPS waypoint planning
 #   - heading_controller (Controller) - PID control with obstacle avoidance
+#   - person_stop_monitor - camera person hold; stops the boat while someone is in frame
 #   - waypoint_visualizer - RViz markers for waypoints / current target / boat path
 #   - health_check_service - wraps health_check_autoboat.sh; exposes /health_check/run
 #
@@ -209,6 +210,36 @@ launch:
       value: false        # Disable VFH/polar steering bias by default
     - name: max_avoidance_turn_deg
       value: 45.0         # Maximum obstacle avoidance turn angle (degrees)
+    # Hull envelope
+    - name: forward_only
+      value: true         # The hull has no reverse gear; never command negative thrust
+    - name: person_alert_timeout_s
+      value: 3.0          # Past this, a silent person monitor stops counting as a live feed
+
+# ============================================================================
+# Person Stop Monitor - camera hold policy
+# Reads /perception/detections (JSON from the camera host), decides whether a
+# person is in frame, and publishes /perception/person_alert plus the shared
+# /planning/emergency_stop latch. Inert until a detections publisher exists.
+# ============================================================================
+- node:
+    pkg: plan
+    exec: person_stop_monitor
+    name: person_stop_monitor_node
+    output: screen
+    param:
+    - name: person_class
+      value: person       # The only detector class that stops the boat
+    - name: score_threshold
+      value: 0.5          # Minimum detector confidence for a sighting to count
+    - name: clear_hold_s
+      value: 5.0          # Keep holding this long after the last sighting
+    - name: detection_timeout_s
+      value: 2.0          # A feed older than this counts as absent
+    - name: require_detection_feed
+      value: false        # Simulation has no camera; the real boat sets this true
+    - name: latch_emergency_stop
+      value: true         # Also raise the shared safety latch while held
 
 # ============================================================================
 # Waypoint Visualizer - RViz Visualization (Optional but Recommended)

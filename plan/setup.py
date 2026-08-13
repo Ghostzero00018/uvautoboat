@@ -62,6 +62,7 @@ setup(
             'waypoint_planner = plan.waypoint_planner:main',
             'lidar_perception = plan.lidar_perception:main',
             'waypoint_visualizer = plan.waypoint_visualizer:main',
+            'person_stop_monitor = plan.person_stop_monitor:main',
             'autoboat_cli = plan.autoboat_cli:main',
             'health_check_service = plan.health_check_service:main',
         ],

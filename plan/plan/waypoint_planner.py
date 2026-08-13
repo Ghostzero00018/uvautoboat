@@ -65,6 +65,32 @@ from std_msgs.msg import Bool, String
 from std_srvs.srv import Trigger
 
 
+# Commands that would put the boat back under way. Refused while a person is
+# held; every other command (stop, reset, cancel, joystick_disable) stays
+# available so the operator never loses the ability to stand the boat down.
+RESTART_COMMANDS = ('start_mission', 'resume_mission', 'go_home')
+
+
+def read_person_detected(data):
+    """
+    Extract the person verdict from an alert payload, strictly.
+
+    Both `person_detected` and `feed_fresh` must be present and real booleans;
+    the planner only acts on the first, but a payload whose other half is
+    malformed is not a payload to trust. Defaulting or coercing either field
+    would let a broken publisher release a safety hold — `bool("false")` is
+    true — so anything that is not an explicit verdict raises instead.
+    """
+    if not isinstance(data, dict):
+        raise ValueError('person alert must be a JSON object')
+    for name in ('person_detected', 'feed_fresh'):
+        if name not in data:
+            raise ValueError(f"person alert is missing '{name}'")
+        if not isinstance(data[name], bool):
+            raise ValueError(f'{name} must be a boolean, got {data[name]!r}')
+    return data['person_detected']
+
+
 class AStarSolver:
     """Lightweight 8-connected A* for local detours."""
 
@@ -261,6 +287,11 @@ class WaypointPlanner(Node):
         self.min_obstacle_distance = float('inf')
         self.obstacle_blocking_time = 0.0  # Cumulative time obstacle detected near waypoint
         self.blocked_reason = ""  # Human-readable reason for blockage
+        # Camera-side person hold from /perception/person_alert. The monitor
+        # also raises the shared E-Stop latch, which is what actually stops the
+        # boat; this flag exists so a restart command cannot drive away while
+        # someone is still in frame, and so the dashboard can say why.
+        self.person_stop_active = False
         # Max seconds to wait before auto-detour/skip.
         self.declare_parameter('max_block_time', 30.0)
         self.max_block_time = float(self.get_parameter('max_block_time').value)
@@ -310,6 +341,14 @@ class WaypointPlanner(Node):
             String,
             '/perception/obstacle_info',
             self.obstacle_callback,
+            10
+        )
+
+        # Person hold from the camera-side monitor
+        self.create_subscription(
+            String,
+            '/perception/person_alert',
+            self.person_alert_callback,
             10
         )
 
@@ -472,6 +511,11 @@ class WaypointPlanner(Node):
         """Safety-critical E-Stop entry point. Bool(data=True) latches EMERGENCY_STOP."""
         if not msg.data:
             return
+        # Idempotent: publishers re-assert this topic so late-joining consumers
+        # learn the boat is held. Re-entering a state we are already in would
+        # only re-log and re-publish it every tick.
+        if self.state == "EMERGENCY_STOP":
+            return
         prev_state = self.state
         self.state = "EMERGENCY_STOP"
         self.mission_armed = False
@@ -481,6 +525,32 @@ class WaypointPlanner(Node):
         )
         self.publish_mission_status_timer()
 
+    def person_alert_callback(self, msg):
+        """Track the camera-side person hold and explain it to the dashboard."""
+        try:
+            detected = read_person_detected(json.loads(msg.data))
+        except (json.JSONDecodeError, TypeError, ValueError, AttributeError) as e:
+            # Fail closed: an unreadable alert never releases an active hold.
+            # A bare array or number parses fine but has no .get, and an
+            # exception escaping a callback would take the whole node down.
+            self.get_logger().warn(f"Invalid person alert: {e}")
+            return
+        if detected == self.person_stop_active:
+            return
+
+        self.person_stop_active = detected
+        if detected:
+            self.blocked_reason = "person_detected"
+            self.get_logger().warn(
+                "🚸 Person hold active — restart commands refused until the frame is clear."
+            )
+        else:
+            # Only retract our own explanation; an obstacle reason set by the
+            # planning loop is still the truth about why the boat is stopped.
+            if self.blocked_reason == "person_detected":
+                self.blocked_reason = ""
+            self.get_logger().info("✅ Person hold cleared — restart commands accepted.")
+
     def mission_command_callback(self, msg):
         """Handle mission commands from CLI/dashboard."""
         try:
@@ -488,6 +558,14 @@ class WaypointPlanner(Node):
             command = cmd.get('command', '')
 
             self.get_logger().info(f"MISSION COMMAND: {command}")
+
+            if command in RESTART_COMMANDS and self.person_stop_active:
+                self.get_logger().warn(
+                    f"Refusing '{command}' — person hold active "
+                    "(clear the camera frame first)"
+                )
+                self.publish_mission_status_timer()
+                return
 
             if command == 'confirm_waypoints':
                 if self.waypoints:
