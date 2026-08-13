@@ -572,7 +572,8 @@ only after C1 has passed and fully stopped.
   `PI_SUPERVISOR_EXIT status=0` and `WORKSTATION_TEARDOWN=PASS`; the browser is closed;
   the propellers are physically removed; propulsion power is isolated; the hull is
   restrained; controls are neutral and the Herelink sticks will remain untouched;
-  QGroundControl on the Herelink is connected to the real FCU.
+  QGroundControl on the Herelink is connected to the real FCU; and the external safety
+  LED is visible throughout the transition.
 - **Stop condition:** stop without arming if any C1 process or port remains, the Herelink
   build has no live MAVLink Inspector, `SERVO_OUTPUT_RAW.time_usec` does not advance, or
   the disarmed `servo1_raw` / `servo3_raw` pair is not `800` / `800`. After hardware
@@ -586,8 +587,9 @@ only after C1 has passed and fully stopped.
   `Disarmed` and the physical safety state re-engaged.
 - **Paste-back:** paste both absence verdicts, browser-closed confirmation, the Inspector
   source identity, port and advancing-time verdict, the post-safety-release output pair,
-  and the actual state/PWM observations before arm, while armed and after disarm. If the
-  Inspector gate fails, paste its explicit pre-arm failure result instead.
+  safety LED state, and the actual state/PWM observations before arm, while armed and
+  after disarm. If the Inspector gate fails, paste its explicit pre-arm failure result
+  instead.
 
 From Pi P2, confirm the Pi side of C1 is absent:
 
@@ -643,13 +645,27 @@ sequence:
    view; if it is absent, stop without arming rather than improvising another telemetry
    path.
 3. Select the current vehicle's `SERVO_OUTPUT_RAW`. Record its source system, source
-   component and `port`. Confirm `time_usec` advances over successive updates, then record
-   the actual `servo3_raw` and `servo1_raw` values. Both must be `800` while disarmed.
-4. Press the physical arm/safety button on the FCU box to release the hardware safety
-   state.
-5. Before requesting arm, re-read the advancing `SERVO_OUTPUT_RAW` stream and record
-   `C2_SAFETY_RELEASED servo3=N servo1=N time_usec=ADVANCING`. Both outputs must remain
-   `800`. If either changes, re-engage hardware safety and stop without arming.
+   component and `port`. Confirm both `Count` and `time_usec` advance over successive
+   updates, then record the actual `servo3_raw` and `servo1_raw` values. Both must be `800`
+   while disarmed. Do not change the message rate: the observed `2.0 Hz` stream samples
+   every approximately `500 ms` and cannot exclude a shorter transient.
+4. Press and hold the physical arm/safety button on the FCU box until the external safety
+   LED changes from its intermittent safety-state blink to solid. The LED transition, not
+   a fixed press duration, is the gate. The
+   [CubePilot user manual](https://docs.cubepilot.org/user-guides/autopilot/the-cube-user-manual)
+   documents this press-and-hold/solid-LED behaviour, but it had not previously been
+   observed on this boat; if the transition is not unambiguous, release the button, do
+   not arm and stop. Because real-FCU `BRD_SAFETY_MASK` is unknown, unchanged `800/800`
+   cannot distinguish a registered safety release from a button press that did nothing,
+   nor show whether these two channels were safety-gated. The blinking-to-solid LED
+   transition is therefore the sole discriminator for this state change; there is no
+   fallback if it is ambiguous.
+5. Before requesting arm, re-read the advancing `SERVO_OUTPUT_RAW` stream continuously for
+   `10` seconds, approximately `20` samples at the observed rate. Record
+   `C2_SAFETY_RELEASED servo3=N servo1=N count=ADVANCING time_usec=ADVANCING armed=NO safety_led=SOLID`.
+   Both outputs must remain `800` and QGroundControl must remain `Disarmed`. If either
+   output changes persistently or the armed state changes, restore `Disarmed`, re-engage
+   hardware safety and stop without requesting arm.
 6. Use QGroundControl on the Herelink console to arm once. If the armed state changes
    before that button press, disarm, re-engage hardware safety and stop. If the requested
    arm is rejected, do not retry. Confirm the FCU remains `Disarmed`, re-engage and confirm
@@ -660,8 +676,12 @@ sequence:
    either output persistently departs from the `800` baseline.
 8. Use QGroundControl on the Herelink console to disarm. Record the disarm time, final
    `Disarmed` indication and final live output pair; both outputs must return to `800`.
-9. Re-engage the FCU-box physical safety state and confirm it is safe before touching
-   anything else, then return the control box to its normal powered-down state.
+9. Re-engage the FCU-box physical safety state with a sustained button press and confirm
+   that the LED returns to its intermittent safety-state blink before touching anything
+   else, then return the control box to its normal powered-down state. The
+   [ArduPilot safety-switch documentation](https://ardupilot.org/sub/docs/common-safety-switch-pixhawk.html)
+   defines intermittent blinking as the safety state and solid as outputs enabled once
+   armed.
 
 ArduPilot defines `ARMING_RUDDER=2` as rudder arm-or-disarm and permits that path when
 throttle is within its zero deadzone. The repository's numeric `ARMING_RUDDER` records are
@@ -676,8 +696,9 @@ Paste back exactly, replacing every `N` with the observed value:
 C2_PI_ABSENCE=PASS
 C2_WORKSTATION_ABSENCE=PASS ports=8002,8080,9090
 C2_BROWSER=CLOSED
-C2_QGC_INSPECTOR=PASS message=SERVO_OUTPUT_RAW source_system=N source_component=N port=N time_usec=ADVANCING
-C2_SAFETY_RELEASED servo3=N servo1=N time_usec=ADVANCING
+C2_QGC_INSPECTOR=PASS message=SERVO_OUTPUT_RAW id=N rate=NHz source_system=N source_component=N port=N count=ADVANCING time_usec=ADVANCING
+C2_PREARM_OUTPUT=PASS servo3=N servo1=N armed=NO hardware_safety=ON
+C2_SAFETY_RELEASED servo3=N servo1=N count=ADVANCING time_usec=ADVANCING armed=NO safety_led=SOLID
 C2_OBSERVATION before=DISARMED servo3_before=N servo1_before=N arm_time=HH:MM:SS armed=ARMED servo3_armed=N servo1_armed=N actuator_movement=NO disarm_time=HH:MM:SS final=DISARMED servo3_after=N servo1_after=N hardware_safety=ON qgc_link=STABLE
 ```
 
@@ -702,6 +723,31 @@ or configured `MIN/TRIM/MAX`, so C2 does not prove which physical output is left
 the configured rail, PWM proportionality, dashboard/Pi command transmission, autonomous
 control or thrust. It does not close T0b or T2a: the standalone T0b parameter evidence is
 still absent and Block B remains failed at teardown.
+
+### 13/08/2026 C2 pre-arm checkpoint
+
+The first C2 gates have executed. Pi P2 reported `C2_PI_ABSENCE=PASS`; workstation W2
+reported `C2_WORKSTATION_ABSENCE=PASS ports=8002,8080,9090`; and the dashboard browser was
+closed. Herelink QGroundControl displayed one active vehicle and did not expose a separate
+source-system number. Its Inspector reported message `SERVO_OUTPUT_RAW (36)` at `2.0 Hz`,
+component `1`, port `0`, advancing `Count` and advancing `time_usec`. The field display and
+installed MAVLink dialect agree on `time_usec`=`uint32_t`, `port`=`uint8_t`, and
+`servo1_raw` / `servo3_raw`=`uint16_t`. With the real FCU `Disarmed` and hardware safety
+still engaged, both named raw outputs were `800`:
+
+```text
+C2_QGC_INSPECTOR=PASS message=SERVO_OUTPUT_RAW id=36 rate=2.0Hz source_system=SINGLE_ACTIVE_NOT_DISPLAYED source_component=1 port=0 count=ADVANCING time_usec=ADVANCING
+C2_PREARM_OUTPUT=PASS servo3=800 servo1=800 armed=NO hardware_safety=ON
+```
+
+This is a second live observation path agreeing with C1's MAVROS `800/800` result. It
+confirms the sampled neutral values but cannot exclude a transient between `2.0 Hz`
+frames. No stream-rate parameter or message-interval write was made. Hardware safety has
+not been released and no arm request has been sent. Real-FCU `ARMING_RUDDER`,
+`BRD_SAFETY_MASK` and `BRD_SAFETYOPTION` remain unknown. Consequently, the next
+blinking-to-solid LED transition is the only evidence that can distinguish a registered
+safety release when the sampled output pair remains `800/800`; neither T0b nor T2a
+closes.
 
 ## Temperatures and log copy-back
 

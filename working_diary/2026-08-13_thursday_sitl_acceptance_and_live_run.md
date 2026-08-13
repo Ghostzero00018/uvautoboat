@@ -1229,3 +1229,68 @@ feature. The runbook therefore treats rudder arming as potentially enabled,
 requires both Herelink sticks to remain untouched, and stops on any armed-state
 transition that did not follow the intended QGroundControl button press. This
 clarification changes no parameter and performs no C2 action.
+
+### C2 pre-arm gates - PASS; safety engaged, no arm request
+
+C2 has now begun only through its non-actuating pre-arm gates. Pi P2 found the
+C1 helper and all five Pi children absent:
+
+```text
+C2_PI_ABSENCE=PASS
+```
+
+Workstation W2 had already found ports `8002`, `8080` and `9090` free with the
+named C1 processes absent, and the dashboard browser was confirmed closed:
+
+```text
+C2_WORKSTATION_ABSENCE=PASS ports=8002,8080,9090
+C2_BROWSER=CLOSED
+```
+
+With the real FCU still `Disarmed` and its hardware safety state still engaged,
+Herelink QGroundControl's MAVLink Inspector displayed one active vehicle and no
+separate source-system selector. It reported `SERVO_OUTPUT_RAW (36)` at
+`2.0 Hz`, component `1`, port `0`, an advancing message `Count`, and a single
+`time_usec` field whose displayed value advanced continuously. The operator
+observed `servo1_raw=800` and `servo3_raw=800`. The Inspector showed
+`time_usec` as `uint32_t`, `port` as `uint8_t`, and both raw servo fields as
+`uint16_t`; the installed `pymavlink` common-v2.0 dialect independently matches
+those message and field definitions.
+
+The retained pre-arm evidence is:
+
+```text
+C2_QGC_INSPECTOR=PASS message=SERVO_OUTPUT_RAW id=36 rate=2.0Hz source_system=SINGLE_ACTIVE_NOT_DISPLAYED source_component=1 port=0 count=ADVANCING time_usec=ADVANCING
+C2_PREARM_OUTPUT=PASS servo3=800 servo1=800 armed=NO hardware_safety=ON
+```
+
+This is an independent QGroundControl observation of the same real-hull
+`800/800` neutral pair that C1 observed through MAVROS. It proves the sampled
+values and a continuing message stream; at `2.0 Hz`, approximately one frame
+per `500 ms`, it cannot exclude a shorter transient between frames. No stream
+rate, message interval or FCU parameter was changed.
+
+The next gate remains unexecuted. CubePilot documentation says to press and
+hold the safety button until its LED is solid; ArduPilot documents intermittent
+blinking as the safety-engaged indication and solid as output-enabled once the
+vehicle is armed. The exact press mechanics have not yet been observed on this
+boat, so the LED transition rather than a fixed duration governs the step. The
+external LED will be recorded as an independent indicator, then the Inspector
+must hold `servo3_raw=800` and `servo1_raw=800` for `10` seconds, approximately
+`20` samples, while `Count` and `time_usec` advance and QGroundControl remains
+`Disarmed`:
+
+```text
+C2_SAFETY_RELEASED servo3=800 servo1=800 count=ADVANCING time_usec=ADVANCING armed=NO safety_led=SOLID
+```
+
+Real-FCU `BRD_SAFETY_MASK` and `BRD_SAFETYOPTION` have never been read, so this
+record does not claim which channels the safety switch gates. If the outputs
+remain `800/800`, `SERVO_OUTPUT_RAW` alone cannot distinguish a registered
+safety release from a button press that did nothing, nor decide whether these
+channels were always live through the safety state. The blinking-to-solid LED
+transition is therefore the sole witness to the state change; an ambiguous LED
+has no fallback and ends the attempt before arm. Real-FCU `ARMING_RUDDER` also
+remains unknown, both Herelink sticks remain untouched, hardware safety has not
+yet been released, and no arm request has been made. C2 and Block C remain
+open.

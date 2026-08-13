@@ -244,6 +244,28 @@
 > with confirmed `Disarmed` state plus re-engagement of the FCU-box hardware
 > safety state; an accepted arm has the same required final state after normal
 > QGroundControl disarm. No C2 action has run at this checkpoint.
+>
+> **13/08/2026 C2 pre-arm checkpoint - PASS; hardware safety still engaged.**
+> The Pi P2 absence check passed, the workstation W2 check found ports `8002`,
+> `8080` and `9090` free with the C1 processes absent, and the dashboard browser
+> was confirmed closed. Herelink QGroundControl exposed live
+> `SERVO_OUTPUT_RAW (36)` at `2.0 Hz` for the single active vehicle. The view did
+> not display a separate source-system number; it reported component `1`, port
+> `0`, an advancing message `Count` and an advancing `time_usec`. While the FCU
+> remained `Disarmed` with hardware safety engaged, `servo1_raw` and
+> `servo3_raw` both held `800`. The installed MAVLink dialect confirms
+> `time_usec` as `uint32_t`, `port` as `uint8_t`, and both raw output fields as
+> `uint16_t`. This independently corroborates C1's MAVROS `800/800` observation,
+> but the `2.0 Hz` sampling cannot exclude a transient shorter than the
+> approximately `500 ms` interval. Hardware safety has not been released and no
+> arm request has been made. The next gate records the independent safety LED
+> and requires `800/800` to persist for `10` seconds after safety release but
+> before arm. Because real-FCU `BRD_SAFETY_MASK` is unknown, unchanged
+> `800/800` cannot prove that the switch press registered or identify whether
+> these channels were safety-gated; the blinking-to-solid LED transition is the
+> sole discriminator for the safety-state change. Real-FCU `ARMING_RUDDER`,
+> `BRD_SAFETY_MASK` and
+> `BRD_SAFETYOPTION` remain unknown; C2 and Block C remain open.
 
 ---
 
