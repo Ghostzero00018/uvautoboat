@@ -569,6 +569,126 @@ One limit worth recording: the one-browser-tab rule is operator-enforced only.
 rosbridge shares a single publisher per topic across websocket clients, so the
 `publisher=1` gate reads `1` with two tabs open and cannot detect the second.
 
+## Post-run adjudication helper (13/08/2026)
+
+**Block B remains NOT RUN.** This adds the adjudication step as a tested file
+and changes nothing about how a run is performed.
+
+### Why a file rather than a pasted block
+
+The prepared Terminal 3 extraction was about 120 lines of quoting-sensitive
+shell, executed once, at the least recoverable moment of an unrepeatable run.
+Reviewing it as text found three faults that a file would have made impossible:
+
+| Fault | Effect if it had been run |
+| --- | --- |
+| `ardurover` written with Cyrillic `U+0443` and `U+0440` | `pgrep` can never match, so a surviving simulator reports the host clean - fail-open on the one check that proves teardown finished |
+| Heredoc terminator indented under `<<'PY'` | `here-document delimited by end-of-file`; the whole extraction fails to parse, after the run is over |
+| Conflict patterns interpolated into a wrapper command line | the check matches its own argv and reports a conflict on every clean run |
+
+### The helper
+
+`tools/sitl_digital_twin_adjudicate.sh` takes exactly one absolute run
+directory and never discovers a run on its own, because adjudicating the wrong
+directory is worse than adjudicating none. It is read-only: it does not write
+inside the run directory and does not start, stop or signal any process. The
+focused suite asserts the run directory is byte-identical afterwards.
+
+Every one of the fourteen required artifacts must decode as a JSON object. A
+JSON `null` decodes to Python `None`, which read as "nothing to validate" and
+let a null artifact bypass every check behind it; `None` is now only ever a
+failure sentinel, never a decoded value. The shape is enforced twice
+independently, once where the artifact is printed and once in the verdict
+checks, and the required set is taken from the helper's own array so the printed
+and validated sets cannot drift apart.
+
+It prints the required evidence and control JSON, `supervisor.log`,
+`manifest/commands.tsv`, the manifest and log inventories with log content,
+capture line counts and retained hashes. It then decides independently rather
+than trusting the run's own summary, requiring: verdict `PASS` with
+`session_complete` true and `missing` empty; teardown `pass` true; `cleanup_rc`
+zero with `children_stopped` and `ports_free` true; the seven-item stop order
+written out in full; `evidence_sha256` holding exactly the ten phase artifacts,
+each key resolving inside the run directory and still matching the file on disk;
+`control/teardown_runtime.json` and `control/shutdown_frames.json` agreeing with
+the copies teardown embeds, and `control/disarm_release_frames.json`, which
+teardown does not embed, checked independently - both frame lists holding
+exactly three frames; `cleanup_rc` being integer zero rather than merely equal
+to zero, in verdict, teardown, the embedded runtime and the control runtime,
+since `False == 0` and `0.0 == 0` in Python while the supervisor writes an int;
+`capture_fault` null in both verdict and teardown and equal to each other, with
+no `control/capture_fault.json` present at all; the five ports free on the host
+now; and no conflicting process alive.
+
+The process check excludes this script and its ancestors. A shell that merely
+mentions a pattern on its command line is not a surviving simulator, and
+counting one would report a conflict on every clean run - the same self-match
+hazard that made the pasted block unusable.
+
+Diagnostics keep gathering past the first fault, so a failed run is adjudicated
+in one pass. The final line is always exactly one of `SITL_ADJUDICATION=PASS` or
+`SITL_ADJUDICATION=FAIL`, and the exit status matches it.
+
+An uninspectable host is not a clean host: if `ss` or `pgrep` fails, the
+adjudication fails rather than reporting free.
+
+### Coverage
+
+Twenty-five cases were added to `tools/test_sitl_digital_twin_runner.sh`,
+taking it from the committed baseline of `12` to `37`. Beyond the passing fixture and the argument
+contract they cover a missing artifact, malformed JSON, `pass` false, a reversed
+stop order, tampered evidence caught by hash, an unclean runtime block, a hash
+map reduced to a single artifact, hash keys that escape the run by absolute or
+traversal path, a control runtime contradicting the embedded copy, empty frame
+lists, a non-zero verdict `cleanup_rc` with a recorded capture fault, a
+`control/capture_fault.json` artifact, a `cleanup_rc` written as `false` and as
+`0.0`, every one of the fourteen required artifacts written as `null` in turn,
+an array and a scalar where an object belongs, a simulated `ss` failure, a
+parent process whose argv mentions
+`ardurover` - which must not count as a survivor - and a real temporary process
+named `ardurover`, which proves the pattern matches a live process as a
+homoglyph never would. A whole-file ASCII guard fails on any
+non-ASCII byte.
+
+The passing-fixture case asserts real host state deliberately, since the port
+and process checks cannot be faked. A failure there showing `OCCUPIED` or
+`SURVIVING` means the host is dirty, not the helper.
+
+### Supersedes the Block B instructions above
+
+Append-only correction. Where this section and the Block B instructions earlier
+in this file disagree, this section governs. Two steps are superseded:
+
+| Superseded | Replaced by |
+| --- | --- |
+| Step 8, "release Apply, then press the bench E-Stop once" | Release Apply, then press EMERGENCY STOP once: `btn-emergency-stop` in the Mission Control panel, or the header or footer E-STOP badge. The FCU Bench panel has no E-Stop button. The runner now prints this. |
+| The Terminal 3 inline extraction block | `tools/sitl_digital_twin_adjudicate.sh "$RUN"`, run after Terminal 1 exits, with `RUN` set to the exact `SITL_LOGS=` path. |
+
+There is one execution path. The earlier inline block is incomplete rather than
+wrong: it has no process check at all, so it can neither detect nor misreport a
+surviving simulator. The Cyrillic homoglyph belonged to the expanded handover
+that was withdrawn before it ran, and is recorded above only as the reason this
+step became a tested file.
+
+### Adjudication pin
+
+Separate from the operational pin surfaces. The nine Pi-helper hash
+occurrences, one helper size, two supervisor-hash occurrences and one supervisor
+size - thirteen surfaces in total - are unchanged by this work.
+
+| Field | Value |
+| --- | --- |
+| Path | `tools/sitl_digital_twin_adjudicate.sh` |
+| Size | `19656` bytes |
+| SHA-256 | `790fd46202726d53198fc9444913de421144562cbe1416497a6f3d84333687f3` |
+| Mode | `100755` |
+
+Invocation, the only supported form:
+
+```bash
+tools/sitl_digital_twin_adjudicate.sh "$RUN"
+```
+
 ## Wrap
 
 One conventional commit subject per logical change, one line, at most 72

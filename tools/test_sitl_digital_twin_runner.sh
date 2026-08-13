@@ -376,4 +376,520 @@ set -e
 [ "$TERM_RC" -eq 143 ] || fail_test "pre-child termination returned $TERM_RC"
 pass_case
 
+
+# =============================================================================
+# Post-run adjudication helper
+# =============================================================================
+
+ADJUDICATE="${ADJUDICATE:-$SCRIPT_DIR/sitl_digital_twin_adjudicate.sh}"
+[ -r "$ADJUDICATE" ] || fail_test "adjudication helper missing: $ADJUDICATE"
+bash -n "$ADJUDICATE" || fail_test 'adjudication helper failed bash -n'
+pass_case
+
+# A Cyrillic homoglyph in a process pattern never matches, so the conflict check
+# would pass while the simulator was still running. Guard the whole file.
+if LC_ALL=C grep -qP '[^\x09\x0A\x20-\x7E]' "$ADJUDICATE"; then
+  LC_ALL=C grep -nP '[^\x09\x0A\x20-\x7E]' "$ADJUDICATE" >&2
+  fail_test 'adjudication helper contains non-ASCII bytes'
+fi
+grep -Fqx '  ardurover' "$ADJUDICATE" \
+  || fail_test 'adjudication helper lost the literal ASCII ardurover pattern'
+pass_case
+
+adj_stop_order='["dashboard","rosbridge","bridge","evidence","mavros","mavproxy","sitl"]'
+
+# Build a run directory that a passing acceptance would leave behind.
+adj_make_fixture() {
+  local run="$1"
+  rm -rf "$run"
+  mkdir -p "$run"/{captures,control,evidence,logs,manifest,operator,sitl_state}
+
+  local phase
+  for phase in startup ready_disarmed browser_ready arm positive release \
+    negative estop disarm; do
+    printf '{"schema":"uvautoboat.sitl.evidence.v1","phase":"%s"}\n' "$phase" \
+      >"$run/evidence/$phase.json"
+  done
+  # Faithful to finalize_run: teardown embeds the runtime and shutdown frames
+  # verbatim, so the embedded copies and the control files must agree.
+  adj_runtime='{"cleanup_rc":0,"children_stopped":true,"ports_free":true,"stop_order":'"$adj_stop_order"'}'
+  adj_frames='{"frames":[1,2,3]}'
+  printf '%s\n' "$adj_runtime" >"$run/control/teardown_runtime.json"
+  printf '%s\n' "$adj_frames" >"$run/control/shutdown_frames.json"
+  printf '%s\n' "$adj_frames" >"$run/control/disarm_release_frames.json"
+  printf '{"schema":"uvautoboat.sitl.evidence.v1","phase":"teardown","pass":true,"cleanup_rc":0,"capture_fault":null,"runtime":%s,"shutdown_frames":%s}\n' \
+    "$adj_runtime" "$adj_frames" >"$run/evidence/teardown.json"
+
+  printf 'SITL_PREFLIGHT=PASS\nSITL_SESSION=READY\n' >"$run/supervisor.log"
+  printf 'child\tcommand\nsitl\tardupilot\n' >"$run/manifest/commands.tsv"
+  printf 'revision=test\n' >"$run/manifest/repository.txt"
+  printf 'sitl log line\n' >"$run/logs/sitl.log"
+  printf 'bridge log line\n' >"$run/logs/bridge.log"
+  printf '{"topic":"/mavros/state"}\n' >"$run/captures/mavros_state.jsonl"
+
+  # verdict.json carries the hashes the helper re-verifies, so it is written
+  # last, from the files as they now stand.
+  /usr/bin/python3 - "$run" <<'ADJPY'
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+run = Path(sys.argv[1])
+names = [
+    "startup.json", "ready_disarmed.json", "browser_ready.json", "arm.json",
+    "positive.json", "release.json", "negative.json", "estop.json",
+    "disarm.json", "teardown.json",
+]
+hashes = {
+    f"evidence/{name}": hashlib.sha256(
+        (run / "evidence" / name).read_bytes()
+    ).hexdigest()
+    for name in names
+}
+(run / "evidence" / "verdict.json").write_text(
+    json.dumps({
+        "schema": "uvautoboat.sitl.evidence.v1",
+        "verdict": "PASS",
+        "session_complete": True,
+        "cleanup_rc": 0,
+        "capture_fault": None,
+        "missing": [],
+        "evidence_sha256": hashes,
+    }, indent=2) + "\n",
+    encoding="utf-8",
+)
+ADJPY
+}
+
+adj_tree_digest() {
+  find "$1" -type f -print0 |
+    LC_ALL=C sort -z |
+    xargs -0 sha256sum |
+    sha256sum |
+    cut -d' ' -f1
+}
+
+ADJ_RUN="$TEST_TMP/sitl_digital_twin_20260813_120000"
+
+# --- passing fixture, and the helper must not disturb it ---------------------
+adj_make_fixture "$ADJ_RUN"
+ADJ_BEFORE="$(adj_tree_digest "$ADJ_RUN")"
+set +e
+ADJ_OUTPUT="$(bash "$ADJUDICATE" "$ADJ_RUN" 2>&1)"
+ADJ_RC=$?
+set -e
+ADJ_AFTER="$(adj_tree_digest "$ADJ_RUN")"
+# The passing fixture asserts real host state on purpose: the port and process
+# checks are the half of the contract that cannot be faked. If this case fails
+# with an OCCUPIED or SURVIVING line, the host is dirty, not the helper.
+[ "$ADJ_RC" -eq 0 ] \
+  || fail_test "adjudication rejected a passing fixture (check host state for OCCUPIED/SURVIVING lines): $ADJ_OUTPUT"
+[ "$(grep -c '^SITL_ADJUDICATION=' <<<"$ADJ_OUTPUT")" -eq 1 ] \
+  || fail_test 'adjudication printed more than one final verdict line'
+[ "$(tail -1 <<<"$ADJ_OUTPUT")" = 'SITL_ADJUDICATION=PASS' ] \
+  || fail_test 'passing fixture did not end with SITL_ADJUDICATION=PASS'
+for expected in VERDICT_CHECK=PASS TEARDOWN_CHECK=PASS CONTROL_CROSSCHECK=PASS \
+  'STOP_ORDER_CHECK=PASS order=dashboard,rosbridge,bridge,evidence,mavros,mavproxy,sitl' \
+  SITL_POSTRUN_PORTS=FREE SITL_POSTRUN_PROCESSES=FREE EVIDENCE_HASHES_CHECKED=10; do
+  grep -Fq -- "$expected" <<<"$ADJ_OUTPUT" \
+    || fail_test "adjudication output lost: $expected"
+done
+grep -Fq 'commands.tsv' <<<"$ADJ_OUTPUT" \
+  || fail_test 'adjudication did not print manifest/commands.tsv'
+grep -Fq 'supervisor.log' <<<"$ADJ_OUTPUT" \
+  || fail_test 'adjudication did not print supervisor.log'
+[ "$ADJ_BEFORE" = "$ADJ_AFTER" ] \
+  || fail_test 'adjudication modified the run directory'
+pass_case
+
+# --- argument contract -------------------------------------------------------
+for adj_args in '' 'relative/path' '/nonexistent/adjudication/run' '/tmp /tmp'; do
+  set +e
+  # shellcheck disable=SC2086
+  ADJ_OUTPUT="$(bash "$ADJUDICATE" $adj_args 2>&1)"
+  ADJ_RC=$?
+  set -e
+  [ "$ADJ_RC" -ne 0 ] \
+    || fail_test "adjudication accepted bad arguments: [$adj_args]"
+  [ "$(tail -1 <<<"$ADJ_OUTPUT")" = 'SITL_ADJUDICATION=FAIL' ] \
+    || fail_test "bad arguments did not end with SITL_ADJUDICATION=FAIL: [$adj_args]"
+done
+pass_case
+
+# --- each fault must be rejected, and diagnostics must keep gathering --------
+adj_expect_fail() {
+  local label="$1"
+  set +e
+  ADJ_OUTPUT="$(bash "$ADJUDICATE" "$ADJ_RUN" 2>&1)"
+  ADJ_RC=$?
+  set -e
+  [ "$ADJ_RC" -ne 0 ] || fail_test "adjudication passed despite: $label"
+  [ "$(tail -1 <<<"$ADJ_OUTPUT")" = 'SITL_ADJUDICATION=FAIL' ] \
+    || fail_test "no FAIL verdict for: $label"
+  [ "$(grep -c '^SITL_ADJUDICATION=' <<<"$ADJ_OUTPUT")" -eq 1 ] \
+    || fail_test "more than one verdict line for: $label"
+  grep -Fq 'retained hashes' <<<"$ADJ_OUTPUT" \
+    || fail_test "diagnostics stopped early for: $label"
+}
+
+adj_make_fixture "$ADJ_RUN"
+rm "$ADJ_RUN/evidence/positive.json"
+adj_expect_fail 'missing positive.json'
+grep -Fq 'MISSING: evidence/positive.json' <<<"$ADJ_OUTPUT" \
+  || fail_test 'missing artifact was not named'
+pass_case
+
+adj_make_fixture "$ADJ_RUN"
+printf '{"verdict": "PASS"\n' >"$ADJ_RUN/evidence/verdict.json"
+adj_expect_fail 'malformed verdict.json'
+pass_case
+
+adj_make_fixture "$ADJ_RUN"
+/usr/bin/python3 -c '
+import json, sys
+p = sys.argv[1]
+d = json.load(open(p))
+d["pass"] = False
+json.dump(d, open(p, "w"))
+' "$ADJ_RUN/evidence/teardown.json"
+adj_expect_fail 'teardown pass false'
+grep -Fq 'teardown pass is not true' <<<"$ADJ_OUTPUT" \
+  || fail_test 'false teardown was not named'
+pass_case
+
+adj_make_fixture "$ADJ_RUN"
+/usr/bin/python3 -c '
+import json, sys
+p = sys.argv[1]
+d = json.load(open(p))
+d["runtime"]["stop_order"] = [
+    "sitl", "mavproxy", "mavros", "evidence", "bridge", "rosbridge", "dashboard",
+]
+json.dump(d, open(p, "w"))
+' "$ADJ_RUN/evidence/teardown.json"
+adj_expect_fail 'reversed stop order'
+grep -Fq 'stop_order mismatch' <<<"$ADJ_OUTPUT" \
+  || fail_test 'wrong stop order was not named'
+pass_case
+
+adj_make_fixture "$ADJ_RUN"
+printf '{"schema":"uvautoboat.sitl.evidence.v1","phase":"arm","tampered":true}\n' \
+  >"$ADJ_RUN/evidence/arm.json"
+adj_expect_fail 'evidence hash mismatch'
+grep -Fq 'hash mismatch for evidence/arm.json' <<<"$ADJ_OUTPUT" \
+  || fail_test 'tampered evidence was not detected by hash'
+pass_case
+
+adj_make_fixture "$ADJ_RUN"
+/usr/bin/python3 -c '
+import json, sys
+p = sys.argv[1]
+d = json.load(open(p))
+d["runtime"]["cleanup_rc"] = 1
+d["runtime"]["children_stopped"] = False
+d["runtime"]["ports_free"] = False
+json.dump(d, open(p, "w"))
+' "$ADJ_RUN/evidence/teardown.json"
+adj_expect_fail 'unclean teardown runtime'
+for expected in 'cleanup_rc is 1' 'children_stopped is not true' \
+  'ports_free is not true'; do
+  grep -Fq "$expected" <<<"$ADJ_OUTPUT" \
+    || fail_test "unclean runtime not named: $expected"
+done
+pass_case
+
+# --- an uninspectable socket table is not a clean host -----------------------
+adj_make_fixture "$ADJ_RUN"
+ADJ_STUB_BIN="$TEST_TMP/adj_stub_bin"
+mkdir -p "$ADJ_STUB_BIN"
+printf '#!/bin/sh\necho "ss: simulated failure" >&2\nexit 2\n' >"$ADJ_STUB_BIN/ss"
+chmod +x "$ADJ_STUB_BIN/ss"
+set +e
+ADJ_OUTPUT="$(PATH="$ADJ_STUB_BIN:$PATH" bash "$ADJUDICATE" "$ADJ_RUN" 2>&1)"
+ADJ_RC=$?
+set -e
+[ "$ADJ_RC" -ne 0 ] || fail_test 'adjudication passed while socket inspection failed'
+grep -Fq 'socket inspection failed' <<<"$ADJ_OUTPUT" \
+  || fail_test 'socket inspection failure was not named'
+[ "$(tail -1 <<<"$ADJ_OUTPUT")" = 'SITL_ADJUDICATION=FAIL' ] \
+  || fail_test 'socket inspection failure did not end with FAIL'
+pass_case
+
+# --- the hash map must be the exact ten phase artifacts ----------------------
+adj_make_fixture "$ADJ_RUN"
+/usr/bin/python3 -c '
+import json, sys
+p = sys.argv[1]
+d = json.load(open(p))
+only = "evidence/startup.json"
+d["evidence_sha256"] = {only: d["evidence_sha256"][only]}
+json.dump(d, open(p, "w"))
+' "$ADJ_RUN/evidence/verdict.json"
+adj_expect_fail 'hash map reduced to one artifact'
+grep -Fq 'evidence_sha256 omits evidence/arm.json' <<<"$ADJ_OUTPUT" \
+  || fail_test 'a partial hash map was accepted'
+pass_case
+
+adj_make_fixture "$ADJ_RUN"
+/usr/bin/python3 -c '
+import json, sys
+p = sys.argv[1]
+d = json.load(open(p))
+d["evidence_sha256"]["/etc/hostname"] = "0" * 64
+d["evidence_sha256"]["../../../etc/passwd"] = "0" * 64
+json.dump(d, open(p, "w"))
+' "$ADJ_RUN/evidence/verdict.json"
+adj_expect_fail 'hash map keys escaping the run directory'
+grep -Fq 'escapes the run' <<<"$ADJ_OUTPUT" \
+  || fail_test 'absolute or traversal hash keys were not rejected'
+pass_case
+
+# --- the control artifacts must actually decide ------------------------------
+adj_make_fixture "$ADJ_RUN"
+printf '{"cleanup_rc":9,"children_stopped":false,"ports_free":false,"stop_order":%s}\n' \
+  "$adj_stop_order" >"$ADJ_RUN/control/teardown_runtime.json"
+adj_expect_fail 'control runtime contradicting the embedded copy'
+grep -Fq 'control/teardown_runtime.json disagrees' <<<"$ADJ_OUTPUT" \
+  || fail_test 'a contradicting control runtime was ignored'
+pass_case
+
+adj_make_fixture "$ADJ_RUN"
+printf '{"frames":[]}\n' >"$ADJ_RUN/control/shutdown_frames.json"
+printf '{"frames":[]}\n' >"$ADJ_RUN/control/disarm_release_frames.json"
+adj_expect_fail 'empty frame lists'
+grep -Fq 'control/shutdown_frames.json holds 0 frames' <<<"$ADJ_OUTPUT" \
+  || fail_test 'an empty shutdown frame list was accepted'
+grep -Fq 'control/disarm_release_frames.json holds 0 frames' <<<"$ADJ_OUTPUT" \
+  || fail_test 'an empty disarm release frame list was accepted'
+pass_case
+
+adj_make_fixture "$ADJ_RUN"
+/usr/bin/python3 -c '
+import json, sys
+p = sys.argv[1]
+d = json.load(open(p))
+d["cleanup_rc"] = 9
+d["capture_fault"] = {"error": "capture died"}
+json.dump(d, open(p, "w"))
+' "$ADJ_RUN/evidence/verdict.json"
+adj_expect_fail 'verdict cleanup_rc and capture fault'
+grep -Fq 'verdict cleanup_rc is 9' <<<"$ADJ_OUTPUT" \
+  || fail_test 'a non-zero verdict cleanup_rc was accepted'
+grep -Fq 'verdict capture_fault is' <<<"$ADJ_OUTPUT" \
+  || fail_test 'a recorded capture fault was accepted'
+grep -Fq 'disagree on cleanup_rc' <<<"$ADJ_OUTPUT" \
+  || fail_test 'verdict and teardown were not cross-checked'
+pass_case
+
+adj_make_fixture "$ADJ_RUN"
+printf '{"error":"capture faulted"}\n' >"$ADJ_RUN/control/capture_fault.json"
+adj_expect_fail 'capture fault artifact present'
+grep -Fq 'control/capture_fault.json exists' <<<"$ADJ_OUTPUT" \
+  || fail_test 'a capture fault artifact was ignored'
+pass_case
+
+# --- a cleanup status must be integer zero, not merely equal to it -----------
+# Python treats False == 0 and 0.0 == 0 as true, so equality alone accepts both
+# where the supervisor writes an int (sitl_digital_twin_runner.sh writes %d).
+for adj_bad_rc in 'false' '0.0'; do
+  adj_make_fixture "$ADJ_RUN"
+  /usr/bin/python3 -c '
+import json, sys
+path, raw = sys.argv[1], sys.argv[2]
+value = False if raw == "false" else 0.0
+for name in ("evidence/verdict.json", "evidence/teardown.json"):
+    p = path + "/" + name
+    d = json.load(open(p))
+    d["cleanup_rc"] = value
+    if "runtime" in d:
+        d["runtime"]["cleanup_rc"] = value
+    json.dump(d, open(p, "w"))
+p = path + "/control/teardown_runtime.json"
+d = json.load(open(p))
+d["cleanup_rc"] = value
+json.dump(d, open(p, "w"))
+' "$ADJ_RUN" "$adj_bad_rc"
+  # The hash map must stay consistent, or this would fail for the wrong reason.
+  /usr/bin/python3 -c '
+import hashlib, json, sys
+run = sys.argv[1]
+p = run + "/evidence/verdict.json"
+d = json.load(open(p))
+key = "evidence/teardown.json"
+d["evidence_sha256"][key] = hashlib.sha256(
+    open(run + "/evidence/teardown.json", "rb").read()
+).hexdigest()
+json.dump(d, open(p, "w"))
+' "$ADJ_RUN"
+  adj_expect_fail "cleanup_rc written as $adj_bad_rc"
+  grep -Fq 'not integer 0' <<<"$ADJ_OUTPUT" \
+    || fail_test "a non-integer cleanup_rc was accepted: $adj_bad_rc"
+  for surface in 'verdict cleanup_rc' 'teardown cleanup_rc' \
+    'runtime cleanup_rc' 'control runtime cleanup_rc'; do
+    grep -Fq "$surface" <<<"$ADJ_OUTPUT" \
+      || fail_test "surface not type-checked for $adj_bad_rc: $surface"
+  done
+  pass_case
+done
+
+# --- a parent whose argv mentions a pattern is not a survivor ----------------
+# Without ancestor exclusion the helper matches the shell that launched it and
+# reports a conflict on every clean run. The wrapper stays alive as the parent
+# while the helper runs, with the pattern in its own command line.
+adj_make_fixture "$ADJ_RUN"
+ADJ_PARENT="$TEST_TMP/adj_parent_wrapper.sh"
+cat >"$ADJ_PARENT" <<'WRAPPER'
+#!/bin/bash
+# $1 is a marker consumed only to place a pattern in this process's argv.
+shift
+"$@"
+WRAPPER
+chmod +x "$ADJ_PARENT"
+set +e
+ADJ_OUTPUT="$(bash "$ADJ_PARENT" ardurover "$ADJUDICATE" "$ADJ_RUN" 2>&1)"
+ADJ_RC=$?
+set -e
+[ "$ADJ_RC" -eq 0 ] \
+  || fail_test "a parent mentioning ardurover was treated as a survivor: $ADJ_OUTPUT"
+[ "$(tail -1 <<<"$ADJ_OUTPUT")" = 'SITL_ADJUDICATION=PASS' ] \
+  || fail_test 'ancestor exclusion did not yield a passing adjudication'
+grep -Fq 'matched only this adjudication process tree' <<<"$ADJ_OUTPUT" \
+  || fail_test 'ancestor exclusion did not report why the match was discounted'
+pass_case
+
+# --- every required artifact must decode as a JSON object -------------------
+# JSON null decodes to Python None, which read as "nothing to validate" and let
+# a null artifact bypass every check that followed it.
+adj_required_json=(
+  evidence/startup.json
+  evidence/ready_disarmed.json
+  evidence/browser_ready.json
+  evidence/arm.json
+  evidence/positive.json
+  evidence/release.json
+  evidence/negative.json
+  evidence/estop.json
+  evidence/disarm.json
+  evidence/teardown.json
+  evidence/verdict.json
+  control/disarm_release_frames.json
+  control/shutdown_frames.json
+  control/teardown_runtime.json
+)
+
+# The helper takes its required set from its own array; the two must agree or
+# this coverage silently stops matching what is checked.
+adj_helper_required="$(
+  bash -c '
+    set -uo pipefail
+    eval "$(sed -n "/^ADJ_REQUIRED_JSON=(/,/^)/p" "$1")"
+    printf "%s\n" "${ADJ_REQUIRED_JSON[@]}"
+  ' _ "$ADJUDICATE"
+)"
+[ "$adj_helper_required" = "$(printf '%s\n' "${adj_required_json[@]}")" ] \
+  || fail_test 'helper required-artifact list diverged from its coverage'
+pass_case
+
+# Hashed phase artifacts need the map refreshed, or the case would pass on a
+# hash mismatch instead of on the shape it is meant to pin.
+adj_refresh_hashes() {
+  /usr/bin/python3 -c '
+import hashlib, json, sys
+from pathlib import Path
+run = Path(sys.argv[1])
+p = run / "evidence" / "verdict.json"
+try:
+    d = json.loads(p.read_text(encoding="utf-8"))
+except ValueError:
+    sys.exit(0)
+if not isinstance(d, dict) or not isinstance(d.get("evidence_sha256"), dict):
+    sys.exit(0)
+for key in list(d["evidence_sha256"]):
+    target = run / key
+    if target.is_file():
+        d["evidence_sha256"][key] = hashlib.sha256(target.read_bytes()).hexdigest()
+p.write_text(json.dumps(d), encoding="utf-8")
+' "$1"
+}
+
+for adj_target in "${adj_required_json[@]}"; do
+  adj_make_fixture "$ADJ_RUN"
+  printf 'null\n' >"$ADJ_RUN/$adj_target"
+  adj_refresh_hashes "$ADJ_RUN"
+  adj_expect_fail "null $adj_target"
+  # Two independent layers, asserted separately. The printing loop emits
+  # NOT A JSON OBJECT; only the verdict checks emit an ADJUDICATION_FAIL line,
+  # so matching the bare text would let either layer alone satisfy both.
+  grep -Fq "NOT A JSON OBJECT: $adj_target decoded as NoneType" <<<"$ADJ_OUTPUT" \
+    || fail_test "a null artifact was printed as valid: $adj_target"
+  grep -Fq "ADJUDICATION_FAIL: $adj_target decoded as NoneType" <<<"$ADJ_OUTPUT" \
+    || fail_test "a null artifact was not rejected by the verdict checks: $adj_target"
+done
+pass_case
+
+# One array and one scalar, to pin that the rejection is shape-based rather
+# than a special case for null.
+adj_make_fixture "$ADJ_RUN"
+printf '[1,2,3]\n' >"$ADJ_RUN/evidence/arm.json"
+adj_refresh_hashes "$ADJ_RUN"
+adj_expect_fail 'array where an object belongs'
+grep -Fq 'NOT A JSON OBJECT: evidence/arm.json decoded as list' <<<"$ADJ_OUTPUT" \
+  || fail_test 'a JSON array was printed as valid'
+grep -Fq 'ADJUDICATION_FAIL: evidence/arm.json decoded as list' <<<"$ADJ_OUTPUT" \
+  || fail_test 'a JSON array was accepted by the verdict checks'
+pass_case
+
+adj_make_fixture "$ADJ_RUN"
+printf '42\n' >"$ADJ_RUN/control/shutdown_frames.json"
+adj_expect_fail 'scalar where an object belongs'
+grep -Fq 'NOT A JSON OBJECT: control/shutdown_frames.json decoded as int' \
+  <<<"$ADJ_OUTPUT" || fail_test 'a JSON scalar was printed as valid'
+grep -Fq 'ADJUDICATION_FAIL: control/shutdown_frames.json decoded as int' \
+  <<<"$ADJ_OUTPUT" || fail_test 'a JSON scalar was accepted by the verdict checks'
+pass_case
+
+# --- a real surviving ardurover process must be caught -----------------------
+# Proves the pattern matches a live process, which a homoglyph never would.
+adj_make_fixture "$ADJ_RUN"
+# Short-lived on purpose. The helper is invoked immediately, and a longer
+# sleep would leave an ardurover-matching orphan behind an interrupted suite
+# run, failing the NEXT run's passing-fixture case for no real reason.
+ADJ_FAKE="$TEST_TMP/ardurover"
+printf '#!/bin/sh\nsleep 5\n' >"$ADJ_FAKE"
+chmod +x "$ADJ_FAKE"
+# Output discarded: the fake's own shell announces its killed sleep child.
+"$ADJ_FAKE" >/dev/null 2>&1 &
+ADJ_FAKE_PID=$!
+# Dropped from the job table: bash announces a signalled job on its own stderr
+# when it reaps one, which no redirection around the kill can capture.
+disown "$ADJ_FAKE_PID" 2>/dev/null || true
+adj_kill_fake() {
+  if [ -n "${ADJ_FAKE_PID:-}" ] && kill -0 "$ADJ_FAKE_PID" 2>/dev/null; then
+    pkill -P "$ADJ_FAKE_PID" 2>/dev/null || true
+    kill "$ADJ_FAKE_PID" 2>/dev/null || true
+    local waited=0
+    while kill -0 "$ADJ_FAKE_PID" 2>/dev/null && [ "$waited" -lt 50 ]; do
+      sleep 0.1
+      waited=$((waited + 1))
+    done
+  fi
+}
+trap 'adj_kill_fake; rm -rf "$TEST_TMP"' EXIT
+sleep 0.2
+set +e
+ADJ_OUTPUT="$(bash "$ADJUDICATE" "$ADJ_RUN" 2>&1)"
+ADJ_RC=$?
+set -e
+adj_kill_fake
+trap 'rm -rf "$TEST_TMP"' EXIT
+[ "$ADJ_RC" -ne 0 ] \
+  || fail_test 'adjudication passed with a live ardurover process'
+grep -Fq 'SURVIVING ardurover' <<<"$ADJ_OUTPUT" \
+  || fail_test 'live ardurover process was not reported'
+grep -Fq 'a conflicting process survived' <<<"$ADJ_OUTPUT" \
+  || fail_test 'surviving process did not fail the adjudication'
+pass_case
+
+
 printf 'PASS cases=%d\n' "$CASE_COUNT"
