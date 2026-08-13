@@ -607,6 +607,9 @@ os.replace(temporary, path)
   printf 'cd %q\n' "$REPO_ROOT"
   printf '%q %q --run-dir %q --action %q\n\n' \
     '/home/ghostzero/venv-ardupilot/bin/python' "$SITL_OPERATOR" "$RUN_DIR" "$action"
+  printf 'Do NOT interrupt that command. It claims the gate before it opens the\n'
+  printf 'link, and the claim outlives Ctrl+C, so a re-run is refused and this\n'
+  printf 'phase can only time out. Let it finish or fail on its own.\n\n'
   log "SITL_OPERATOR_GATE=OPEN action=$action deadline_unix_ns=$deadline_ns"
 }
 
@@ -948,7 +951,9 @@ run_sitl_digital_twin() {
   printf 'Browser phase: hold Apply at steering -0.04 and throttle 0.09.\n'
   sitl_wait_for_file negative "$RUN_DIR/evidence/negative.json" || exit 1
   set_supervisor_phase estop
-  printf 'Browser phase: release Apply, then press the FCU bench E-Stop once.\n'
+  printf 'Browser phase: release Apply, then press EMERGENCY STOP once.\n'
+  printf '  The E-Stop is in the Mission Control panel (btn-emergency-stop), or the\n'
+  printf '  header/footer E-STOP badge. The FCU Bench panel has no E-Stop button.\n'
   sitl_wait_for_file estop "$RUN_DIR/evidence/estop.json" || exit 1
 
   set_supervisor_phase disarm

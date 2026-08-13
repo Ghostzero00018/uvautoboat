@@ -341,9 +341,25 @@ def _event_time(event: Optional[Mapping[str, Any]]) -> int:
     return int(event.get("received_unix_ns", 0)) if event else 0
 
 
+# Command demands reach this recorder as float32 and are read back widened.
+# `sensor_msgs/Joy.axes` is `float32[]`, so a dashboard demand of 0.10 arrives
+# as 0.10000000149011612, and the bridge copies that same quantised value into
+# its status JSON. A tolerance tighter than float32 rounding can therefore never
+# match a real frame: 0.10, 0.08 and 0.09 miss by 1.5e-9, 1.8e-9 and 3.6e-9.
+#
+# 1e-6 is above that noise and still four orders of magnitude below the 0.01
+# slider step, so an adjacent slider position remains distinguishable.
+FLOAT32_COMMAND_TOLERANCE = 1e-6
+
+
 def _close_float(actual: Any, expected: float) -> bool:
     try:
-        return math.isclose(float(actual), expected, rel_tol=0.0, abs_tol=1e-9)
+        return math.isclose(
+            float(actual),
+            expected,
+            rel_tol=0.0,
+            abs_tol=FLOAT32_COMMAND_TOLERANCE,
+        )
     except (TypeError, ValueError):
         return False
 

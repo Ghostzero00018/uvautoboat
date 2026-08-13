@@ -267,6 +267,13 @@ GATE_OUTPUT="$(bash -c '
 ' _ "$PREFLIGHT" "$RUNNER" "$RUN_DIR_PATH")"
 grep -Fq -- '--action arm' <<<"$GATE_OUTPUT" \
   || fail_test 'operator gate did not print the exact one-shot action'
+# The claim file outlives Ctrl+C, so an interrupted command can never be
+# re-run and the phase can only time out. The warning is load-bearing safety
+# text printed beside a command the operator runs against an armed vehicle.
+grep -Fq 'Do NOT interrupt that command' <<<"$GATE_OUTPUT" \
+  || fail_test 'operator gate dropped the do-not-interrupt warning'
+grep -Fq 'claims the gate before it opens the' <<<"$GATE_OUTPUT" \
+  || fail_test 'operator gate no longer explains why interrupting is fatal'
 /usr/bin/python3 -c '
 import json, pathlib, sys
 path = pathlib.Path(sys.argv[1])
@@ -280,6 +287,19 @@ assert (gate["target_system"], gate["target_component"]) == (1, 1)
 assert len(gate["nonce"]) == 32
 ' "$RUN_DIR_PATH/operator/arm.gate.json" "$RUN_DIR_PATH" \
   || fail_test 'operator gate content changed'
+pass_case
+
+# The FCU Bench panel has no E-Stop; the control lives in Mission Control. An
+# operator hunting for a button that does not exist is doing so mid-run with an
+# armed vehicle, so the prompt must name the real one.
+grep -Fq 'btn-emergency-stop' "$RUNNER" \
+  || fail_test 'E-Stop prompt no longer names the Mission Control control'
+grep -Fq 'Mission Control panel' "$RUNNER" \
+  || fail_test 'E-Stop prompt no longer names the panel that holds it'
+grep -Fq 'FCU Bench panel has no E-Stop' "$RUNNER" \
+  || fail_test 'E-Stop prompt no longer rules out the bench panel'
+! grep -Fq 'bench E-Stop once' "$RUNNER" \
+  || fail_test 'E-Stop prompt reverted to the non-existent bench control'
 pass_case
 
 CLEANUP_FUNCTION="$(extract_function "$RUNNER" sitl_cleanup)"

@@ -467,6 +467,108 @@ The worktree is no longer clean, and `tools/sitl_digital_twin_runner.sh`
 requires a clean worktree with `HEAD == origin/main`. The corrected SITL
 acceptance stays available once this work is committed and pushed, or stashed.
 
+## Block B correction - float32 command evidence (13/08/2026)
+
+**Block B was NOT RUN.** A handover was prepared, reviewed against source, and
+withdrawn before anything started. No simulator, MAVProxy, MAVROS, bridge,
+rosbridge, dashboard, browser or operator command was executed, and the vehicle
+was never armed. What follows is a static defect found during that review.
+
+### The defect
+
+`/command_ingress/rc_axes` is a `sensor_msgs/Joy`, whose `axes` field is
+`float32[]`. A dashboard demand of `0.10` is therefore quantised in transit and
+read back widened, and the bridge copies the same quantised value into its
+status JSON. The evidence comparator compared those values with
+`rel_tol=0.0, abs_tol=1e-9` - a bound tighter than float32 rounding itself, so
+three of the four demanded axis values could never match:
+
+| Demand | After float32 | Absolute error | Within `1e-9` |
+| --- | --- | --- | --- |
+| `+0.10` | `0.10000000149011612` | `1.49e-09` | no |
+| `0.08` | `0.07999999821186066` | `1.79e-09` | no |
+| `0.09` | `0.09000000357627869` | `3.58e-09` | no |
+| `-0.04` | `-0.03999999910593033` | `8.94e-10` | yes |
+
+Both halves of each gate failed: the Joy axes and the bridge's echoed status
+carry the same rounding. The run would have reached `SITL_SESSION=READY`,
+completed safety-off and a live arm, then blocked in `sitl_wait_for_file
+positive` for the full `SITL_OPERATOR_TIMEOUT_SECONDS`, emitted
+`SITL_PHASE_FAIL phase=positive rc=1 reason=timeout`, exited `1`, and finalised
+a `FAIL` verdict - after the vehicle had been armed.
+
+The focused suite could not see it. Its `joy()` and `status_payload()` fixtures
+built plain Python dicts holding float64, so no assertion ever crossed the
+float32 boundary that a real message forces.
+
+### The fix
+
+A named `FLOAT32_COMMAND_TOLERANCE = 1e-6`, with `rel_tol=0.0` retained. That is
+above float32 noise and still four orders of magnitude below the `0.01` slider
+step, so an adjacent slider position stays distinguishable. The demanded axis
+values are unchanged.
+
+The fixtures now quantise through `struct.pack('f')`, so the ordered-capture
+assertions fail against the old bound and pass against the new one. Three cases
+were added: float32 rounding alone opens the positive gate, an adjacent `0.01`
+step on either axis does not, and the tolerance sits between the two scales.
+Both directions were confirmed by mutation - `1e-9` fails three tests, `0.02`
+fails five. The tolerance is also pinned outright at `1e-6`, because the two
+bounds admit a range and the value inside it is a choice; the upper bound is
+asserted against `0.01 / 10_000`, since a `* 100` bound would prove only two
+orders of magnitude and still admit `5e-5`.
+
+The two operator-facing safety prompts are asserted by the runner's focused
+suite rather than left as prose: deleting the do-not-interrupt warning, or
+reverting the E-Stop prompt to the non-existent bench control, each fails a
+named case.
+
+### Corrected E-Stop location
+
+The runner previously said "press the FCU bench E-Stop once". The FCU Bench
+panel contains only `btn-fcu-loop-neutral` and `btn-fcu-loop-hold`; there is no
+E-Stop in it. The control is `btn-emergency-stop` in the Mission Control panel,
+or the header and footer E-STOP badges. The prompt now names it.
+
+### Never interrupt a printed operator command
+
+`sitl_operator_once.py` claims its gate with `O_EXCL` before opening the MAVLink
+link, and `KeyboardInterrupt` is not caught by its `except Exception`. Ctrl+C
+therefore leaves a claim file with no result, every re-run is refused as already
+claimed, and the phase can only time out. The runner now prints this warning
+beside each operator command. The recovery logic itself is untouched and remains
+separate hardening.
+
+### Expanded adjudication capture
+
+The prepared Terminal 3 extraction covered `evidence/`, `control/` and
+`captures/` only. A contested or failed run also needs:
+
+- `supervisor.log` - the durable record of supervisor phase transitions,
+  `SITL_PHASE_FAIL` lines, the stop sequence, `SITL_LOGS` and
+  `SITL_SUPERVISOR_EXIT`;
+- `logs/` - per-child output, `bridge.log` and `sitl.log` above all;
+- `manifest/commands.tsv` - the exact child command vectors, whose hash appears
+  in `startup.json` but whose content does not.
+
+Two markers never reach `supervisor.log` and must be read from the terminal:
+`SITL_MAVROS=READY`, which the snapshot subprocess writes to
+`logs/mavros_snapshot.log`, and `SITL_VERDICT`, which finalize prints on its own
+stdout. A post-run grep of `supervisor.log` finds eight of the ten.
+
+### Confirmed unaffected
+
+`296f1794` does not touch this run. The SITL supervisor starts exactly seven
+children - `sitl`, `mavproxy`, `mavros`, `bridge`, `evidence`, `rosbridge`,
+`dashboard` - and never launches `launch/autoboat.launch.yaml`, so the person
+monitor, planner and controller are absent from the graph. `waypoint_planner`
+appears only in the conflict-detection list. `tools/sitl_digital_twin_evidence.py`
+is in no pinned bundle, so no checksum is regenerated.
+
+One limit worth recording: the one-browser-tab rule is operator-enforced only.
+rosbridge shares a single publisher per topic across websocket clients, so the
+`publisher=1` gate reads `1` with two tabs open and cannot detect the second.
+
 ## Wrap
 
 One conventional commit subject per logical change, one line, at most 72

@@ -8,6 +8,7 @@ import inspect
 import json
 import os
 from pathlib import Path
+import struct
 import sys
 import tempfile
 import unittest
@@ -103,6 +104,19 @@ def valid_snapshot_values():
     return values
 
 
+def as_float32(value):
+    """
+    Quantise as the wire does.
+
+    `sensor_msgs/Joy.axes` is `float32[]`, so a browser's float64 demand is
+    rounded on the way through rosbridge and read back widened. The bridge then
+    copies that already-quantised value into its status JSON, so both sides of
+    every command assertion carry the rounding. Fixtures that skip this step
+    compare numbers no real run can produce.
+    """
+    return struct.unpack("f", struct.pack("f", float(value)))[0]
+
+
 def status_payload(state, *, armed, steering=0.0, throttle=0.0, left=1500, right=1500):
     return {
         "state": state,
@@ -111,7 +125,10 @@ def status_payload(state, *, armed, steering=0.0, throttle=0.0, left=1500, right
         "connected": True,
         "armed": armed,
         "mode": "MANUAL",
-        "command": {"steering": steering, "throttle": throttle},
+        "command": {
+            "steering": as_float32(steering),
+            "throttle": as_float32(throttle),
+        },
         "feedback_fresh": True,
         "resolved": {
             "steering_rc": 1,
@@ -131,7 +148,7 @@ def status_payload(state, *, armed, steering=0.0, throttle=0.0, left=1500, right
 def joy(steering, throttle, enabled):
     return {
         "header": {"frame_id": MODULE.FRAME_ID, "stamp": {"sec": 1, "nanosec": 0}},
-        "axes": [steering, throttle],
+        "axes": [as_float32(steering), as_float32(throttle)],
         "buttons": [1 if enabled else 0],
     }
 
@@ -146,21 +163,31 @@ def operator_result(action, sent_time):
 
 
 class EvidenceTrackerTest(unittest.TestCase):
-    def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory()
-        self.run_dir = Path(self.temporary.name)
+    def new_fixture(self):
+        """
+        Build an independent run directory and tracker.
+
+        Registered with addCleanup rather than tearDown, so a test that needs
+        several independent runs can ask for them without re-entering the test
+        lifecycle. Each directory is removed deterministically at test end
+        instead of being reclaimed by the garbage collector, which is what
+        emits ResourceWarning.
+        """
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        run_dir = Path(temporary.name)
         for directory in ("captures", "control", "evidence", "manifest", "operator"):
-            (self.run_dir / directory).mkdir()
-        (self.run_dir / "manifest" / "repository.txt").write_text(
+            (run_dir / directory).mkdir()
+        (run_dir / "manifest" / "repository.txt").write_text(
             "revision=test\n", encoding="utf-8"
         )
         MODULE.atomic_write_json(
-            self.run_dir / "manifest" / "mavros_snapshot.json", snapshot()
+            run_dir / "manifest" / "mavros_snapshot.json", snapshot()
         )
-        self.tracker = MODULE.EvidenceTracker(self.run_dir, snapshot())
+        return run_dir, MODULE.EvidenceTracker(run_dir, snapshot())
 
-    def tearDown(self):
-        self.temporary.cleanup()
+    def setUp(self):
+        self.run_dir, self.tracker = self.new_fixture()
 
     def write_operator(self, action, sent_time):
         MODULE.atomic_write_json(
@@ -192,6 +219,74 @@ class EvidenceTrackerTest(unittest.TestCase):
         self.tracker.ingest(
             "/mavros/rc/override", {"channels": channels}, timestamp
         )
+
+    def drive_to_armed_neutral(self):
+        """Advance the capture to the point where the positive gate is next."""
+        self.ingest_state(False, 100)
+        self.ingest_status(
+            status_payload("WAITING_DISARMED_NEUTRAL_RC", armed=False), 101
+        )
+        self.write_operator("safety-off", 110)
+        self.ingest_state(False, 120)
+        self.ingest_status(status_payload("READY_DISARMED", armed=False), 121)
+        self.tracker.set_command_publisher_count(1)
+        self.tracker.ingest("/command_ingress/rc_axes", joy(0.0, 0.0, False), 130)
+        self.write_operator("arm", 140)
+        self.ingest_state(True, 150)
+        self.ingest_status(status_payload("ARMED_NEUTRAL", armed=True), 151)
+
+    def test_float32_rounding_alone_opens_the_positive_gate(self):
+        # The demanded 0.10 / 0.08 miss a 1e-9 bound by 1.5e-9 and 1.8e-9 once
+        # the wire has rounded them, which is what made this gate unreachable.
+        self.assertGreater(
+            abs(as_float32(0.10) - 0.10), 1e-9,
+            "fixture no longer crosses a float32 boundary",
+        )
+        self.drive_to_armed_neutral()
+        self.tracker.ingest("/command_ingress/rc_axes", joy(0.10, 0.08, True), 160)
+        self.ingest_status(
+            status_payload(
+                "ACTIVE", armed=True, steering=0.10, throttle=0.08,
+                left=1600, right=1400
+            ),
+            161,
+        )
+        self.assertTrue((self.run_dir / "evidence" / "positive.json").is_file())
+
+    def test_an_adjacent_slider_step_does_not_open_the_positive_gate(self):
+        # One 0.01 step away on either axis must still be rejected: the widened
+        # tolerance absorbs float32 noise, not a wrong slider position.
+        for steering, throttle in ((0.11, 0.08), (0.09, 0.08),
+                                   (0.10, 0.09), (0.10, 0.07)):
+            with self.subTest(steering=steering, throttle=throttle):
+                self.run_dir, self.tracker = self.new_fixture()
+                self.drive_to_armed_neutral()
+                self.tracker.ingest(
+                    "/command_ingress/rc_axes", joy(steering, throttle, True), 160
+                )
+                self.ingest_status(
+                    status_payload(
+                        "ACTIVE", armed=True, steering=steering, throttle=throttle,
+                        left=1600, right=1400
+                    ),
+                    161,
+                )
+                self.assertFalse(
+                    (self.run_dir / "evidence" / "positive.json").is_file()
+                )
+
+    def test_command_tolerance_is_wider_than_float32_noise_and_far_below_a_step(self):
+        tolerance = MODULE.FLOAT32_COMMAND_TOLERANCE
+        # Pinned outright: the two bounds below admit a range, and the value
+        # inside that range is a deliberate choice, not an accident.
+        self.assertEqual(tolerance, 1e-6)
+        # Lower bound: every demanded value must survive float32 rounding.
+        for demand in (0.10, 0.08, 0.09, -0.04):
+            self.assertLess(abs(as_float32(demand) - demand), tolerance, demand)
+        # Upper bound: a 0.01 slider step is four orders of magnitude out, so
+        # the tolerance may not exceed 0.01 / 10_000. Asserting * 100 would
+        # only prove two orders and would still admit 5e-5.
+        self.assertLessEqual(tolerance * 10_000, 0.01)
 
     def test_complete_ordered_capture_reaches_one_passing_verdict(self):
         self.ingest_state(False, 100)
