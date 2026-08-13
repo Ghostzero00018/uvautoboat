@@ -229,6 +229,102 @@ RECORD_START_LINE="$(grep -n 'sitl_start_child evidence' <<<"$RUN_FUNCTION" | cu
 pass_case
 
 set +e
+MAVPROXY_READY_OUTPUT="$(bash -c '
+  source "$1"
+  source "$2"
+  RUN_DIR="$3/mavproxy-ready"
+  mkdir -p "$RUN_DIR/logs"
+  ss() {
+    printf "%s\n" "ESTAB 0 0 127.0.0.1:5760 127.0.0.1:40123"
+  }
+  printf "%s\n" "Detected vehicle 1:1 on link 0" >"$RUN_DIR/logs/mavproxy.log"
+  sitl_mavproxy_ready \
+    || { printf "%s\n" "exact vehicle identity was rejected"; exit 1; }
+  wrong_markers=(
+    "Detected vehicle 2:1 on link 0"
+    "Detected vehicle 11:1 on link 0"
+    "Detected vehicle 1:2 on link 0"
+    "Detected vehicle 1:1 on link 1"
+  )
+  for marker in "${wrong_markers[@]}"; do
+    printf "%s\n" "$marker" >"$RUN_DIR/logs/mavproxy.log"
+    if sitl_mavproxy_ready; then
+      printf "%s\n" "wrong vehicle identity was accepted: $marker"
+      exit 1
+    fi
+  done
+' _ "$PREFLIGHT" "$RUNNER" "$TEST_TMP" 2>&1)"
+MAVPROXY_READY_RC=$?
+set -e
+[ "$MAVPROXY_READY_RC" -eq 0 ] \
+  || fail_test "MAVProxy readiness identity contract failed: $MAVPROXY_READY_OUTPUT"
+pass_case
+
+MAVPROXY_LINK_SOURCE="$(bash -c '
+  source "$1"
+  source "$2"
+  mavproxy_python="${SITL_MAVPROXY%/*}/python"
+  "$mavproxy_python" -c "
+import inspect
+import MAVProxy.modules.mavproxy_link as mavproxy_link
+print(inspect.getsourcefile(mavproxy_link))
+"
+' _ "$PREFLIGHT" "$RUNNER")"
+[ -r "$MAVPROXY_LINK_SOURCE" ] \
+  || fail_test "installed MAVProxy link producer is unreadable: $MAVPROXY_LINK_SOURCE"
+set +e
+CHILD_LOG_CONTRACT_OUTPUT="$(/usr/bin/python3 -c '
+import pathlib
+import re
+import sys
+
+runner = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
+matches = re.findall(
+    r"grep -F(?:q|c)? '\''([^'\'']+)'\'' \"\$RUN_DIR/logs/([^\"]+)\.log\"",
+    runner,
+)
+fixed_grep_references = re.findall(
+    r"grep -F(?:q|c)? [^\n]+ \"\$RUN_DIR/logs/[^\"]+\.log\"",
+    runner,
+)
+if len(matches) != len(fixed_grep_references):
+    raise SystemExit("a child-log fixed-string consumer is not contract-checked")
+actual = {(child, marker) for marker, child in matches}
+expected = {
+    ("mavproxy", "Detected vehicle 1:1 on link 0"),
+    ("bridge", "live guard resolved:"),
+    ("evidence", "SITL_CAPTURE=READY subscriptions=5"),
+}
+if actual != expected:
+    raise SystemExit(
+        f"child-log consumer literals changed: actual={sorted(actual)!r}"
+    )
+
+mavproxy = pathlib.Path(sys.argv[2]).read_text(encoding="utf-8")
+bridge = pathlib.Path(sys.argv[3]).read_text(encoding="utf-8")
+evidence = pathlib.Path(sys.argv[4]).read_text(encoding="utf-8")
+producer_requirements = (
+    (
+        "MAVProxy",
+        "print(\"Detected vehicle {0}:{1} on link {2}\".format(sysid, compid, master.linknum))",
+        mavproxy,
+    ),
+    ("bridge", "f\"live guard resolved:", bridge),
+    ("evidence", "\"SITL_CAPTURE=READY subscriptions=5 ", evidence),
+)
+for child, producer_literal, source in producer_requirements:
+    if producer_literal not in source:
+        raise SystemExit(f"{child} no longer produces its consumed child-log literal")
+' "$RUNNER" "$MAVPROXY_LINK_SOURCE" \
+  "$SCRIPT_DIR/real_fcu_rc_command_bridge.py" \
+  "$SCRIPT_DIR/sitl_digital_twin_evidence.py" 2>&1)"
+CHILD_LOG_CONTRACT_RC=$?
+set -e
+[ "$CHILD_LOG_CONTRACT_RC" -eq 0 ] \
+  || fail_test "child-log producer contract failed: $CHILD_LOG_CONTRACT_OUTPUT"
+pass_case
+
+set +e
 MAVROS_PARSE_OUTPUT="$(bash -c '
   source "$1"
   source "$2"

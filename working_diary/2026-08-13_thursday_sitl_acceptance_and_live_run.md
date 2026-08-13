@@ -800,3 +800,103 @@ Block B is closed while these edits are uncommitted. A retry requires the
 changes to land and push, followed by a fresh clean/synced certification and
 free-port/process check. Do not reuse the failed run directory and do not start
 Block C.
+
+## Block B second execution and MAVProxy readiness correction (13/08/2026)
+
+**Outcome: FAIL, NOT RERUN.** The second execution used pre-edit baseline
+`ad8461ac4629b5e36beba45b2f5a19c83ef9d60b` and created:
+
+```text
+/home/ghostzero/Desktop/sitl_digital_twin_20260813_151522
+```
+
+The runner passed the corrected two-listener gate and printed the required
+runtime repair signal:
+
+```text
+SITL_PROCESS=READY frame=motorboat-skid instance=0 ports=5760,5762
+```
+
+This proves the `tcp:0:wait` deadlock from the first execution is removed. The
+runner then started workstation-local MAVProxy, but its readiness gate timed
+out after `45 s`:
+
+```text
+SITL_PHASE_FAIL phase=mavproxy rc=1 reason=timeout
+SITL_SUPERVISOR_EXIT status=1 trigger=exit signal=none stop_phase=mavproxy-start failed_phase=none cleanup_rc=0 finalize_rc=1
+```
+
+No operator gate opened. MAVROS, the command bridge, evidence recorder,
+rosbridge, dashboard, browser and arm phase were not reached. The Pi and
+physical FCU were not involved. `logs/mavproxy.log` nevertheless proves that
+the relay connected to `tcp:127.0.0.1:5760`, received the vehicle heartbeat and
+continued receiving live autopilot output:
+
+```text
+Detected vehicle 1:1 on link 0
+MANUAL> AP: ArduPilot Ready
+```
+
+The control runtime recorded `cleanup_rc=0`, `children_stopped=true`,
+`ports_free=true` and stop order `mavproxy, sitl`. This partial teardown is the
+first runtime proof of the explicit success return added after the first
+execution. It is not proof of the complete seven-child stop order.
+
+### Unsatisfiable MAVProxy marker
+
+The connection was healthy; the readiness text contract was impossible. The
+runner launched MAVProxy with `--target-system=1` but waited only for:
+
+```text
+online system 1
+```
+
+Installed MAVProxy `1.8.74` guards that message in
+`MAVProxy/modules/mavproxy_link.py` with
+`self.settings.target_system == 0`. The runner fixes the target to `1`, so the
+branch at line `743` cannot execute. The same module emits the observed
+`Detected vehicle {system}:{component} on link {link}` message independently at
+line `990`.
+
+The readiness predicate still requires exactly one established connection
+whose local port is `5760`, then now requires the exact fixed identity string:
+
+```text
+Detected vehicle 1:1 on link 0
+```
+
+The complete literal rejects the wrong system, component and link. In
+particular, the fixed `Detected vehicle ` prefix prevents system `11` from
+matching system `1` as a substring.
+
+### Child-log producer contract
+
+The runner has three unique fixed-string consumers for child logs, not two:
+
+- `mavproxy.log`: `Detected vehicle 1:1 on link 0`;
+- `bridge.log`: `live guard resolved:`;
+- `evidence.log`: `SITL_CAPTURE=READY subscriptions=5`.
+
+The focused suite now enumerates that exact consumer set and checks each
+producer source. The MAVProxy source is resolved from the interpreter beside
+the configured `mavproxy.py`; the bridge and evidence producers are checked in
+their tracked source files. A consumer addition or wording drift therefore
+requires an explicit producer contract update.
+
+The exact identity case failed first against the previous predicate:
+
+```text
+FAIL: MAVProxy readiness identity contract failed: exact vehicle identity was rejected
+```
+
+After the one-line predicate correction, the host-context focused suite passed
+`cases=40`. The passing identity is tested alongside wrong system `2`, boundary
+system `11`, wrong component `2` and wrong link `1`. Both shell files pass
+`bash -n`. No simulator, MAVProxy, middleware or other Block B child was
+started by these checks.
+
+The adjudication helper and the thirteen Pi/supervisor operational pin surfaces
+are unchanged. Block B is closed while these edits are uncommitted. A third
+execution requires commit, push, clean/synced certification and fresh
+port/process checks. Do not reuse either failed run directory. Block C remains
+closed.

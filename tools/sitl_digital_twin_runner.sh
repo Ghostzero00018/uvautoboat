@@ -501,7 +501,7 @@ sitl_mavproxy_ready() {
   local state
   state="$(ss -H -nt state established 'sport = :5760')" || return 1
   [ "$(awk 'NF {count++} END {print count+0}' <<<"$state")" -eq 1 ] || return 1
-  grep -Fq 'online system 1' "$RUN_DIR/logs/mavproxy.log"
+  grep -Fq 'Detected vehicle 1:1 on link 0' "$RUN_DIR/logs/mavproxy.log"
 }
 
 sitl_log_has_bridge_guard() {
