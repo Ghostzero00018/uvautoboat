@@ -1155,3 +1155,21 @@ C2_OBSERVATION before=DISARMED servo3_before=N servo1_before=N arm_time=HH:MM:SS
 No C2 process, Inspector check, hardware-safety release or arm request was run
 while making this documentation correction. Production code, both physical
 helpers and the two operational pin surfaces remain unchanged.
+
+### C2 rejected-arm restoration clarification - NOT RUN
+
+Final handover review found one incomplete exit path. The one permitted arm
+request occurs after the physical safety state is released, but the rejection
+branch previously said only to avoid a retry and stop for diagnosis. It now
+requires the operator to confirm that the FCU remains `Disarmed`, re-engage and
+confirm the physical safety state, then report:
+
+```text
+C2_ARM=REJECTED retry=NO final=DISARMED hardware_safety=ON
+```
+
+The general stop condition now states that every exit after physical-safety
+release, whether the arm is rejected, accepted normally or aborted on an
+unexpected observation, must end with confirmed `Disarmed` state and the
+physical safety state re-engaged. This clarification is documentation only;
+C2 remains **NOT RUN**.

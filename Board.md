@@ -240,9 +240,10 @@
 > `SERVO*_FUNCTION` nor configured `MIN/TRIM/MAX`, so it cannot establish the
 > left/right assignment or rail and cannot close T0b or T2a. The standalone T0b
 > evidence remains absent and Block B remains failed at teardown. The C2 absence
-> check now names `serve_dashboard.py`; a rejected arm is not retried; and an
-> accepted arm ends with QGroundControl disarm followed by re-engagement of the
-> FCU-box hardware safety state. No C2 action has run at this checkpoint.
+> check now names `serve_dashboard.py`. A rejected arm is not retried and ends
+> with confirmed `Disarmed` state plus re-engagement of the FCU-box hardware
+> safety state; an accepted arm has the same required final state after normal
+> QGroundControl disarm. No C2 action has run at this checkpoint.
 
 ---
 

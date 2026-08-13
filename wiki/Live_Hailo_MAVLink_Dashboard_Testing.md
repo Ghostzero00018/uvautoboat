@@ -578,7 +578,9 @@ only after C1 has passed and fully stopped.
   the disarmed `servo1_raw` / `servo3_raw` pair is not `800` / `800`. Do not retry a
   rejected arm. After an accepted arm, disarm immediately on a persistent departure from
   the observed neutral pair, unexpected actuator movement, a non-neutral control, loss
-  of the QGroundControl link, or any state other than the requested bounded arm.
+  of the QGroundControl link, or any state other than the requested bounded arm. Once the
+  physical safety state has been released, every exit path must end with the FCU confirmed
+  `Disarmed` and the physical safety state re-engaged.
 - **Paste-back:** paste both absence verdicts, browser-closed confirmation, the Inspector
   source identity, port and advancing-time verdict, and the actual state/PWM observations
   before arm, while armed and after disarm.
@@ -639,7 +641,8 @@ sequence:
 4. Press the physical arm/safety button on the FCU box to release the hardware safety
    state.
 5. Use QGroundControl on the Herelink console to arm once. If the arm is rejected, do not
-   retry; record the rejection and stop for diagnosis.
+   retry. Confirm the FCU remains `Disarmed`, re-engage and confirm the physical safety
+   state, record the rejection and stop for diagnosis.
 6. On an accepted arm, record the arm time, QGroundControl `Armed` indication and the
    actual `servo3_raw` / `servo1_raw` pair while `time_usec` continues advancing. Do not
    move a stick, publish a command or request non-neutral output. Disarm immediately if
@@ -659,10 +662,11 @@ C2_QGC_INSPECTOR=PASS message=SERVO_OUTPUT_RAW source_system=N source_component=
 C2_OBSERVATION before=DISARMED servo3_before=N servo1_before=N arm_time=HH:MM:SS armed=ARMED servo3_armed=N servo1_armed=N actuator_movement=NO disarm_time=HH:MM:SS final=DISARMED servo3_after=N servo1_after=N hardware_safety=ON qgc_link=STABLE
 ```
 
-If QGroundControl refuses the one arm request, paste instead:
+If QGroundControl refuses the one arm request, retain the four gate lines above and paste
+this terminal result after restoring the physical safety state:
 
 ```text
-C2_ARM=REJECTED retry=NO
+C2_ARM=REJECTED retry=NO final=DISARMED hardware_safety=ON
 ```
 
 C2 proves only the observed Herelink/QGroundControl-to-FCU arm/disarm transition with
