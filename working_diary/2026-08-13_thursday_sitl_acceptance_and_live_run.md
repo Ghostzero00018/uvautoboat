@@ -1343,3 +1343,121 @@ expanded Block C. Block B remains failed at teardown; T0b and T2a remain open;
 and this result does not establish output-function assignments, configured
 rails, PWM proportionality, dashboard/Pi command transmission, powered
 actuator movement or thrust.
+
+## End-of-day closeout
+
+### Published state and audit baseline
+
+The C2 result landed and was pushed as
+`26d68a05684ad4c4d3a81fa73739bc3019d78c3b`, subject
+`docs: record the C2 arm-disarm observation`. Before this closeout edit,
+`HEAD == main == origin/main`, divergence was `0/0`, the index and worktree
+were clean, and `git diff --check` reported no whitespace error. Ten commits,
+not eight, carry the repository work dated 13/08/2026.
+
+The two operational artifacts and the independent adjudicator remain pinned:
+
+| Artifact | Size | SHA-256 |
+| --- | ---: | --- |
+| `tools/pi_live_hailo_mavlink_dashboard.sh` | `73,862` bytes | `a72cd04d37984d692cdfecb73456d55bc7bb6f0b4fd69d69ba79447fc3594a97` |
+| `tools/live_dashboard_preflight.sh` | `29,058` bytes | `d101ec5840c1358e0475fff33989af9b3f3431231859c0e0e1c2ffa0fafab82a` |
+| `tools/sitl_digital_twin_adjudicate.sh` | `19,656` bytes | `790fd46202726d53198fc9444913de421144562cbe1416497a6f3d84333687f3` |
+
+The operational surface count is still exactly `13`: nine Pi-helper hashes,
+one Pi-helper size, two workstation-supervisor hashes and one supervisor size.
+The physical deployment bundle also verifies against
+`config/real_fcu_digital_twin_bundle.sha256`. That current manifest includes
+today's bridge change; no later end-of-day documentation edit changed a bundle
+member.
+
+### Fresh end-of-day verification
+
+The end-of-day checks ran after the C2 result commit, without starting a live
+service or contacting the FCU:
+
+| Check | Result |
+| --- | --- |
+| `plan` package tests | `63 passed, 1 skipped` |
+| `control` package tests | `29 passed, 1 skipped` |
+| Complete dashboard suite and `node --check` | `76 passed`; syntax pass |
+| SITL evidence suite | `12 passed` |
+| SITL runner/adjudicator contract suite | `PASS cases=40` |
+| Workstation live-dashboard preflight suite | `PASS cases=13` |
+| Pi live-dashboard lifecycle suite | pass |
+| Real-FCU command-bridge suite | `22 passed` |
+| Physical-helper contract suite | `PASS cases=14` |
+| Relevant shell syntax and Python compilation | pass |
+
+A host-context inspection found TCP `5760`, `5762`, `8002`, `8080` and
+`9090` free, UDP `14600` free, and no matching simulator, MAVProxy, MAVROS,
+rosbridge, dashboard, bridge, evidence-recorder or live-helper process. The
+workstation filesystem had `22 GB` free. This is an end-of-day snapshot, not a
+substitute for remeasurement tomorrow.
+
+The retained C1 logs were rechecked. W1 still ends with
+`WORKSTATION_TEARDOWN=PASS` and exit status `0`; copied P1 still ends with
+`TEARDOWN=PASS`, exit status `0`, zero command messages, observed disarmed
+state and a `68.3 °C` thermal maximum. The Hailo traceback is the expected
+`KeyboardInterrupt` after the operator's teardown signal. The optional MAVROS
+`AUTOPILOT_VERSION` requests timed out and MAVProxy could not decode its
+terrain file list, but telemetry continued and the C1 contract passed. Those
+messages are not hidden failures; the request timeout is also consistent with
+the still-open Pi-to-FCU request/response question that T0b must settle.
+
+### Closure verdict
+
+Today's bounded objectives close as follows:
+
+| Surface | End-of-day status |
+| --- | --- |
+| C1 real Pi/FCU/camera view-only telemetry | **PASS** |
+| C2 external safety release and QGroundControl arm/disarm observation | **PASS** |
+| Expanded Block C | **PASS** |
+| Block B functional command path | reached every acceptance phase |
+| Block B automatic teardown and verdict | **FAIL** - array lifetime defect remains in source |
+| Physical-helper planned operator stop | **BLOCKED** - current handlers preserve exit status `130` |
+| T0a powered-down TX-path inspection | **NOT RUN** |
+| T0b Pi-to-FCU request/response and safety-parameter evidence | **NOT RUN** |
+| T2a/T2b guarded physical dashboard command loop | **NOT RUN** |
+| Person detection stopping real and virtual paths | **NOT WIRED** |
+
+The repository and workstation are therefore clean, but the overall digital
+twin is not fully closed loop. `tools/sitl_digital_twin_runner.sh` still loses
+its declared arrays when it is sourced inside
+`run_sitl_digital_twin_entry`; the successful return then reaches the EXIT
+trap with no `CHILD_NAMES` array. The narrow correction remains global array
+declarations plus a regression covering source-inside-function, successful
+return and EXIT teardown.
+
+The physical helper audit found a second lifecycle blocker not covered by its
+`14` contract cases. Both intended operator-stop handlers exit `130`; their
+cleanup functions preserve that incoming status even when final disarmed state,
+child shutdown, port release and serial release all succeed. Consequently the
+documented `Ctrl+C` shutdown can print `cleanup_rc=0` but has no normal
+`status=0` completion path or PASS marker. The test suite checks child stop
+order but not this end-to-end operator-stop result. A live run must not be
+called a clean acceptance until that contract is red-covered and resolved.
+
+The physical helper also still needs T0a/T0b and a live
+function/channel/rail record before the tier policy permits T2a. The Hailo
+stack publishes only the annotated image, no `/perception/detections`, and the
+camera and physical-command helpers remain on separate ROS domains. No claim
+of real person-stop, simultaneous virtual/physical boat motion, powered
+actuator movement or thrust is made.
+
+Earlier `C2 NOT RUN` and `C2 and Block C remain open` lines in this diary and
+`Board.md` are dated append-only states. The later C2 result sections
+explicitly supersede them; they are not current status and are not rewritten.
+No unexplained placeholder or merge marker was found in the current surfaces.
+The retained `HH:MM:SS` text is a historical submitted value and is explicitly
+normalised as `NOT_RECORDED` by the later C2 result.
+
+The control-box power state is not observable from the repository or the
+workstation. Power-down remains an operator action to complete and visually
+confirm before leaving; tomorrow starts by confirming the control box is off,
+not by assuming it.
+
+The sole next-day scaffold is
+`working_diary/2026-08-14_friday_real_fcu_dashboard_command_feedback_acceptance.md`.
+It is a morning-only, approval-gated plan. This closeout does not start any of
+its blocks.
