@@ -139,10 +139,12 @@ start the physical run at the end of the available window.
 | **A** | Certification, source review, pins, static checks and equipment inventory | Explicit start approval; read-only, starts no service |
 | **B1** | Repair the Block B array-lifetime teardown defect | Separate code-change approval; red-green coverage, commit and push |
 | **B2** | Give the physical helpers a normal-success operator-stop contract | Separate code-change approval; red-green coverage, bundle regeneration and push |
+| **B3a** | Make a T2a-only session reachable and fix the T2a-to-T2b transition model | Separate code-change approval; red-green coverage, manifest regenerated in the same commit, push |
+| **B3b** | Make T0b retain the live `RCMAP_*`, `SERVO*_FUNCTION` and rail values | Separate code-change approval; red-green coverage, manifest regenerated in the same commit, push |
 | **C** | Re-run the full workstation SITL acceptance | Separate user-run approval; teardown and independent adjudication must both pass |
 | **D0** | Powered-down T0a TX-path inspection | Separate physical approval; controller and propulsion remain powered down |
 | **D1** | Deploy the pinned physical bundle and run T0b only | Separate user-run approval; request/response and retained parameter evidence must pass |
-| **E** | Real-FCU dashboard command/feedback run, including T2a then T2b | Separate approval for T2a and another for T2b; all prior gates green |
+| **E** | Real-FCU dashboard command/feedback run, including T2a then T2b | Separate approval for T2a and another for T2b; requires B3a and B3b landed and deployed, and all prior gates green |
 | **F** | Copy evidence, document bounded claims and close | After the live state is settled |
 
 ### Block A - certify and prepare only
@@ -186,8 +188,63 @@ coverage of this defect.
 Required verification: `bash -n` on both physical helpers, the complete
 physical-helper suite, bridge compilation and focused suite if its surface
 changes, `git diff --check`, and regeneration of
-`config/real_fcu_digital_twin_bundle.sha256` last. Commit, push and redeploy the
-result before any physical helper starts.
+`config/real_fcu_digital_twin_bundle.sha256` within this same commit, before
+the suite is run green. Commit and push. Deployment does not happen here; D1
+deploys once, after the last B3 commit has landed.
+
+### Block B3 - make the staged T2 approval and the T2a evidence actually reachable
+
+Two independent defects block Block E as planned. Each needs its own
+code-change approval; neither is authorized by approving the other, and
+declining either one closes Block E rather than downgrading it.
+
+**B3a - staged T2 approval.** `rfcu_pi_require_run_gates` demands
+`REAL_FCU_T2A_APPROVED` and `REAL_FCU_T2B_APPROVED` together before `run`
+starts, and the helper offers only `check|probe|run`. A T2a-only session is
+therefore unreachable: the morning could either approve T2b before T2a has been
+observed, which contradicts the tier policy, or fail closed. T2a needs an
+executable state that reaches externally-commanded arm/disarm and measured
+neutral output with no command path capable of a non-neutral demand, while T2b
+continues to require both flags. The red case must prove that the T2a-only
+invocation is rejected today and that, after the change, it neither starts a
+non-neutral command path nor lets a T2b-only or flagless invocation through.
+The design is part of this block, not assumed here.
+
+**The transition from T2a to T2b is two full sessions.** A running process
+cannot be promoted by editing the environment it was started with, and the
+T2a close-out deliberately ends in a powered-down bench, so no live session
+survives for an in-session promotion to act on. The T2a-only session is closed
+out in full, including control-box power-down, and its result recorded. Only
+then is T2b proposed for its own approval; if it is granted, the bench is
+powered back up and a second complete session starts with both flags set.
+
+In-session promotion is explicitly not implemented. It would add a runtime
+command path that raises a live armed vehicle's authority level, which is a
+larger and less auditable surface than a second start-up is worth for one
+bench measurement. B3a therefore adds no promotion mechanism, and the helper
+keeps a single approval decision taken before start-up.
+
+**B3b - T0b live mapping evidence.** The T0b artifact does not retain the live
+`RCMAP_*`, `SERVO*_FUNCTION` and resolved RC/servo rail values that the tier
+policy requires before T2a. The probe already force-pulls the full parameter
+set; this change reads additional names out of that existing MAVROS parameter
+cache and retains them in the artifact. It introduces no write to the flight
+controller and no new write mechanism. It does request more parameter names
+than the current artifact records, which is within T0b's read-only scope. The
+red case must fail against an artifact missing those values.
+
+Each commit that touches a bundle member regenerates
+`config/real_fcu_digital_twin_bundle.sha256` **within that same commit**: the
+physical-helper suite verifies the manifest against current repository bytes,
+so a commit that changes a member without regenerating leaves the suite red and
+the commit not self-consistent. That applies to B2, B3a and B3b alike.
+**Deployment is the separate thing that happens once**, in D1, from whichever
+manifest the last landed B3 commit produced.
+
+If either change is declined or does not reach green, stop before Block E and
+record the blocker. Do not reinterpret C2's `SERVO_OUTPUT_RAW 800/800` or the
+bridge's channel-only log as the missing mapping proof, and do not set both T2
+flags together to get a run started.
 
 ### Block C - make Block B actually pass
 
@@ -230,12 +287,16 @@ The evidence must retain actual values for `BRD_SAFETY_DEFLT`,
 `BRD_SAFETY_MASK` and `BRD_SAFETYOPTION`. A timeout is evidence that the
 Pi-to-FCU request path is still unavailable; stop without arming or retrying.
 
-One evidence gap must be resolved before T2a. The current T0b artifact does not
-retain the live `RCMAP_*`, `SERVO*_FUNCTION` and resolved RC/servo rail values,
-while the tier policy requires function, channel and rail confirmation. Do not
-reinterpret C2's `SERVO_OUTPUT_RAW 800/800` or the bridge's channel-only log as
-that proof. Use a separately approved, red-covered read-only evidence change,
-regenerate the bundle last and redeploy it; otherwise stop before Block E.
+Because B3 lands before this block, the bundle transferred here is the final
+one and this probe run is the one that must produce the live `RCMAP_*`,
+`SERVO*_FUNCTION` and resolved RC/servo rail values that the tier policy
+requires before T2a. If those values are absent from the artifact, T2a's
+precondition is unmet: stop before Block E and record it. Do not reinterpret
+C2's `SERVO_OUTPUT_RAW 800/800` or the bridge's channel-only log as that proof.
+
+A timed-out or refused parameter path is a T0b result, not a reason to advance.
+T1, the `BRD_SER1_RTSCTS` link-configuration write, is not authorized today: if
+D1 fails on flow control, stop and record it rather than issuing a `PARAM_SET`.
 
 ### Block E - fully armed real-FCU dashboard loop
 
@@ -251,10 +312,25 @@ neutral and untouched. The dashboard bench-condition checkbox records the
 operator's attestation; it is not a physical interlock. Any propeller-fitted
 state is T3a, is out of scope and stops Block E.
 
+The two tiers are two separate sessions, not one run with a mid-course change.
+T2a is steps 1 to 4 followed by 7a, running under the B3a T2a-only path, which
+cannot carry a non-neutral demand. Step 7a powers the bench down, so nothing of
+that session survives into T2b.
+
+T2b is proposed for its own approval only after T2a has been observed, closed
+out and recorded. If it is granted, the bench is powered back up and T2b runs
+**steps 1 to 6 followed by 7b** - the full sequence again, with both flags set,
+a fresh `READY_DISARMED`, a fresh browser tab and a fresh capture. Steps 5 and
+6 are what distinguishes T2b, but they are not the whole of it, and they are
+never reached without repeating steps 1 to 4 in the new session. A running
+process is never promoted by editing the environment it was started with.
+
 The handover must provide all seven operational fields for every terminal. Use
 a separate workstation capture terminal before arm and retain
 `/command_ingress/rc_axes`, `/command_ingress/status` and FCU state through
-neutral, arm, each active demand, release, E-Stop, disarm and teardown. A
+every phase the approved tier actually reaches - for T2a that is neutral, arm,
+disarm and teardown, and for T2b it additionally covers each active demand,
+release and E-Stop. A
 browser observation without this capture is not a closed evidence loop.
 Long or quoting-sensitive capture logic must be a tested repository helper,
 not an improvised terminal block. Preparing that helper is a separately
@@ -277,8 +353,28 @@ Required order:
    returns to measured neutral before the next demand.
 6. End the command sequence with the FCU-bench E-Stop. It latches; do not try
    to resume after it.
-7. Disarm normally in QGroundControl, observe `armed:false`, restore hardware
-   safety, then stop Pi first, workstation second and browser last.
+7. Close out using the matching sequence below. The T2a session runs steps 1 to
+   4 and then 7a. The T2b session, if approved, runs steps 1 to 6 and then 7b;
+   steps 5 and 6 are what distinguishes it, not the whole of it.
+
+Close-out is ordered and recorded, not a wind-down. Record the time of each
+step. Use exactly one of these two sequences:
+
+**7a - T2a close-out.** Used whenever the run ends after step 4, whether or not
+T2b is approved afterwards. Confirm measured output is still at neutral and
+that no demand was ever issued, disarm normally in QGroundControl, observe
+`armed:false`, restore hardware safety, stop Pi first, workstation second and
+browser last, then power down the control box and confirm propulsion power is
+still isolated. There is no E-Stop latch to confirm here, because step 6 did
+not run. T2a is not complete until that powered-down state is observed and
+recorded.
+
+**7b - T2b close-out.** Used only when steps 5 and 6 ran. Release the browser
+demand and confirm measured neutral, confirm the step 6 E-Stop latch is
+holding, disarm normally in QGroundControl, observe `armed:false`, restore
+hardware safety, stop Pi first, workstation second and browser last, then power
+down the control box and confirm propulsion power is still isolated. T2b is not
+complete until that powered-down state is observed and recorded.
 
 Stop immediately on mapping or rail drift, non-`MANUAL` mode, stale state or
 feedback, more or fewer than one command publisher, output above neutral before
@@ -316,8 +412,13 @@ the Hailo overlay carries pixels rather than class events, and the camera and
 physical command paths use different ROS domains. Adding that bridge is a
 separate implementation task, not a checkbox in this run.
 
+T1 is not authorized. No parameter is written on the real controller at any
+point today, `BRD_SER1_RTSCTS` included, even if D0 shows the wiring intact and
+D1 then fails on flow control. That combination ends the physical morning at
+D1; it does not license a link-configuration write.
+
 No propeller-on, powered-thrust, static-propeller or on-water tier is included.
-If Block B, T0a, T0b, live map/rail evidence, equipment or time fails its gate,
+If Block B, B3, T0a, T0b, live map/rail evidence, equipment or time fails its gate,
 use the remainder of the morning to retain logs and document the blocker. Do
 not substitute a manual unrecorded command path.
 
