@@ -179,6 +179,9 @@ completion. The current handlers unconditionally enter with status `130`, so
 `cleanup_rc=0` alone cannot make the run pass. Define one explicit
 operator-requested success path after the final disarmed gate and keep early or
 armed interrupts non-zero.
+The red case must exercise the actual operator-stop handler and fail while it
+still exits `130`; calling cleanup directly with a synthetic status `0` is not
+coverage of this defect.
 
 Required verification: `bash -n` on both physical helpers, the complete
 physical-helper suite, bridge compilation and focused suite if its surface
@@ -240,6 +243,13 @@ This block uses the guarded physical pair on ROS domain `43`: direct-serial
 MAVROS and the bridge on the Pi, loopback rosbridge/dashboard on the
 workstation. The camera/Hailo stack on domain `12` and SITL on domain `42` are
 absent. The helpers reject overlap.
+
+Block E is limited to the propellers-removed T2a/T2b bench tiers. Before step
+1, confirm that the propellers remain removed, propulsion power remains
+isolated, the hull restraint is fitted, and Herelink sticks and trims are
+neutral and untouched. The dashboard bench-condition checkbox records the
+operator's attestation; it is not a physical interlock. Any propeller-fitted
+state is T3a, is out of scope and stops Block E.
 
 The handover must provide all seven operational fields for every terminal. Use
 a separate workstation capture terminal before arm and retain
