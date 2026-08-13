@@ -279,7 +279,11 @@ sitl_build_commands() {
     -u FASTDDS_DEFAULT_PROFILES_FILE -u FASTRTPS_DEFAULT_PROFILES_FILE
     -u CYCLONEDDS_URI
     "$SITL_ROVER_BINARY"
-    -S --model motorboat-skid --speedup 1 --slave 0
+    -S --model motorboat-skid
+    # The Rover default is tcp:0:wait, which blocks initialization before
+    # SERIAL1 opens. Keep both listener endpoints explicit and non-blocking.
+    --serial0 tcp:0 --serial1 tcp:2
+    --speedup 1 --slave 0
     --defaults "$rover_defaults,$RUN_DIR/manifest/sitl.params"
     --sim-address=127.0.0.1 -I0
   )
@@ -741,6 +745,7 @@ sitl_children_stopped_once() {
   for ((i=0; i<${#CHILD_PGIDS[@]}; i++)); do
     group_alive "${CHILD_PGIDS[$i]}" && return 1
   done
+  return 0
 }
 
 sitl_ports_free_once() {

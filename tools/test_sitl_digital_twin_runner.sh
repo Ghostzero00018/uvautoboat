@@ -164,6 +164,10 @@ PARAM_BLOCK="$(sed -n '/^PARAMS_BEGIN$/,/^PARAMS_END$/{/^PARAMS_/d;p}' <<<"$STAT
 SITL_COMMAND_LINE="$(grep '^SITL_COMMAND=' <<<"$STATE_OUTPUT")"
 grep -Fq -- '/home/ghostzero/ardupilot/build/sitl/bin/ardurover -S --model motorboat-skid' \
   <<<"$SITL_COMMAND_LINE" || fail_test 'SITL command does not directly launch the pinned Rover'
+grep -Fq -- '--serial0 tcp:0 --serial1 tcp:2' <<<"$SITL_COMMAND_LINE" \
+  || fail_test 'SITL command does not open both MAVLink listeners without blocking on SERIAL0'
+! grep -Fq -- 'tcp:0:wait' <<<"$SITL_COMMAND_LINE" \
+  || fail_test 'SITL command still blocks initialization while waiting for the MAVProxy connection'
 grep -Fq -- "--chdir=$TEST_TMP/sitl_digital_twin_" <<<"$SITL_COMMAND_LINE" \
   || fail_test 'SITL command does not own the run-specific state directory'
 grep -Fq -- '/sitl_state' <<<"$SITL_COMMAND_LINE" \
@@ -332,6 +336,36 @@ grep -Fq 'os.replace(temporary, path)' <<<"$TEARDOWN_REQUEST_FUNCTION" \
   || fail_test 'teardown request is exposed before its JSON is complete'
 grep -Fq 'click Neutral Now once' "$RUNNER" \
   || fail_test 'browser prompt does not name the exact neutral control'
+pass_case
+
+set +e
+CLEAN_CHILDREN_OUTPUT="$(bash -c '
+  source "$1"
+  source "$2"
+  RUN_DIR="$3/clean-teardown"
+  mkdir -p "$RUN_DIR/control"
+  CHILD_PGIDS=(41001 41002)
+  SITL_STOP_ORDER=(dashboard rosbridge bridge evidence mavros mavproxy sitl)
+  group_alive() { return 1; }
+  ss() { return 0; }
+  sitl_write_teardown_runtime 0
+' _ "$PREFLIGHT" "$RUNNER" "$TEST_TMP" 2>&1)"
+CLEAN_CHILDREN_RC=$?
+set -e
+[ "$CLEAN_CHILDREN_RC" -eq 0 ] \
+  || fail_test "clean child groups were reported as alive: $CLEAN_CHILDREN_OUTPUT"
+/usr/bin/python3 -c '
+import json, pathlib, sys
+runtime = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+assert runtime["cleanup_rc"] == 0
+assert runtime["children_stopped"] is True
+assert runtime["ports_free"] is True
+assert runtime["stop_order"] == [
+    "dashboard", "rosbridge", "bridge", "evidence",
+    "mavros", "mavproxy", "sitl",
+]
+' "$TEST_TMP/clean-teardown/control/teardown_runtime.json" \
+  || fail_test 'clean teardown runtime did not retain its successful state'
 pass_case
 
 printf '%s\n' '{"action":"arm","success":true}' >"$RUN_DIR_PATH/operator/arm.json"

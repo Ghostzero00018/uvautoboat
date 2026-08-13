@@ -709,3 +709,94 @@ Record the pre-edit baseline while drafting. If a landed implementation revision
 must be recorded, append it in a later documentation commit; do not attempt to
 record that documentation commit's own SHA. This series has produced three
 self-referential revision claims that were stale the moment they landed.
+
+## Block B first execution and runner corrections (13/08/2026)
+
+**Outcome: FAIL, NOT RERUN.** The first execution used pre-edit baseline
+`cb6524c6f05134c5fb973fe9a215652ed6176d5c` and created:
+
+```text
+/home/ghostzero/Desktop/sitl_digital_twin_20260813_145244
+```
+
+The preflight passed, the direct Rover child started under the supervisor and
+its output reached `logs/sitl.log`. The run then failed at the first listener
+gate after `45 s`:
+
+```text
+SITL_PHASE_FAIL phase=sitl-listener rc=1 reason=timeout
+SITL_VERDICT=FAIL
+SITL_SUPERVISOR_EXIT status=1 trigger=exit signal=none stop_phase=sitl-start failed_phase=none cleanup_rc=1 finalize_rc=1
+```
+
+No operator gate opened. Safety-off, browser startup, arm, command demand,
+E-Stop and disarm were not reached; MAVProxy, MAVROS, the command bridge,
+evidence recorder, rosbridge and dashboard never started. The only child was
+Rover, and the supervisor stopped it. A later host check found all five Block B
+ports free and no conflicting process. The user-run adjudicator exited `1` with
+`SITL_ADJUDICATION=FAIL` and independently reported the same clean host state.
+
+### Listener-order deadlock
+
+The earlier 11/08 failure never launched Rover directly, so it could not expose
+this ordering defect. This run did. `logs/sitl.log` ends with:
+
+```text
+bind port 5760 for SERIAL0
+SERIAL0 on TCP port 5760
+Waiting for connection ....
+```
+
+The pinned ArduPilot source defaults SERIAL0 to `tcp:0:wait` and SERIAL1 to
+`tcp:2`. The `wait` flag blocks in `accept()` after opening `5760`, before Rover
+finishes initialisation and opens `5762`. The runner simultaneously required
+both listeners before it started the MAVProxy client for `5760`. Neither side
+could advance.
+
+Accepting only `5760` is not a repair: the one-shot operator helper requires
+`tcp:127.0.0.1:5762`. The direct Rover command now makes both endpoints
+explicit as `--serial0 tcp:0 --serial1 tcp:2`. Removing `wait` from SERIAL0
+allows initialisation to continue while retaining the strict requirement that
+the same pinned Rover PID owns both listeners before MAVProxy starts. This is a
+source-level correction only until the user-run acceptance reaches
+`SITL_PROCESS=READY`.
+
+### Teardown-accounting defect
+
+The run also exposed a separate defect that would fail a fully successful
+acceptance. `sitl_children_stopped_once()` returned the status of its final
+false `group_alive` check because it had no explicit success return. A clean
+set of stopped process groups therefore produced `children_stopped=false` and
+forced `cleanup_rc=1` even though the host was clean. The function now returns
+`0` after checking every registered group.
+
+The focused teardown case drives `sitl_write_teardown_runtime 0` with two
+registered but absent groups and free sockets, then requires exact JSON:
+`cleanup_rc=0`, `children_stopped=true`, `ports_free=true` and the complete
+seven-item stop order.
+
+### Red-green evidence and retry gate
+
+The command case failed first against the prior runner with:
+
+```text
+FAIL: SITL command does not open both MAVLink listeners without blocking on SERIAL0
+```
+
+After only the serial arguments changed, the independent teardown case still
+failed with:
+
+```text
+FAIL: clean child groups were reported as alive
+```
+
+After the explicit success return, the focused host-context suite passed
+`cases=38`. No simulator or downstream child was started by these checks. The
+adjudication helper remains byte-identical at its `19656`-byte, `100755`,
+SHA-256 `790fd46202726d53198fc9444913de421144562cbe1416497a6f3d84333687f3`
+pin; the thirteen Pi/supervisor operational pin surfaces are unchanged.
+
+Block B is closed while these edits are uncommitted. A retry requires the
+changes to land and push, followed by a fresh clean/synced certification and
+free-port/process check. Do not reuse the failed run directory and do not start
+Block C.
