@@ -266,6 +266,25 @@
 > sole discriminator for the safety-state change. Real-FCU `ARMING_RUDDER`,
 > `BRD_SAFETY_MASK` and
 > `BRD_SAFETYOPTION` remain unknown; C2 and Block C remain open.
+>
+> **13/08/2026 C2 result - PASS; expanded Block C PASS.** The external safety
+> LED changed from blinking to solid, independently confirming safety release.
+> Before arm, the FCU remained `Disarmed` and QGroundControl held
+> `SERVO3 800` / `SERVO1 800` for `10` seconds with advancing `Count` and
+> `time_usec`. One QGroundControl arm request then reached an observed `Armed`
+> state; the same sampled `800/800` pair held for the bounded `10`-second armed
+> window with a stable link and untouched Herelink sticks. QGroundControl
+> disarm returned an observed `Disarmed` state and `800/800`; a sustained safety
+> button press restored the blinking hardware-safety indication. Propulsion
+> power was isolated, so `NO_PROPULSION_POWER_ISOLATED` records the physical
+> isolation condition rather than proving command-path behaviour. The operator
+> did not record the wall-clock arm and disarm times; the durable record uses
+> `NOT_RECORDED`, and no repeat arm is warranted solely to obtain timestamps.
+> The evidence is operator-observed at `2.0 Hz`, so it cannot exclude a shorter
+> transient and carries no saved C2 telemetry artifact. C1 and C2 together pass
+> today's expanded Block C. This does not close Block B, T0b or T2a, establish
+> the configured output functions or rail, prove dashboard/Pi command
+> transmission, or demonstrate powered actuator movement or thrust.
 
 ---
 

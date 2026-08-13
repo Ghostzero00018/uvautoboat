@@ -698,9 +698,14 @@ C2_WORKSTATION_ABSENCE=PASS ports=8002,8080,9090
 C2_BROWSER=CLOSED
 C2_QGC_INSPECTOR=PASS message=SERVO_OUTPUT_RAW id=N rate=NHz source_system=N source_component=N port=N count=ADVANCING time_usec=ADVANCING
 C2_PREARM_OUTPUT=PASS servo3=N servo1=N armed=NO hardware_safety=ON
-C2_SAFETY_RELEASED servo3=N servo1=N count=ADVANCING time_usec=ADVANCING armed=NO safety_led=SOLID
-C2_OBSERVATION before=DISARMED servo3_before=N servo1_before=N arm_time=HH:MM:SS armed=ARMED servo3_armed=N servo1_armed=N actuator_movement=NO disarm_time=HH:MM:SS final=DISARMED servo3_after=N servo1_after=N hardware_safety=ON qgc_link=STABLE
+C2_SAFETY_RELEASED servo3=N servo1=N count=ADVANCING time_usec=ADVANCING armed=NO safety_led=SOLID duration=10s actuator_movement=NO_PROPULSION_POWER_ISOLATED
+C2_OBSERVATION before=DISARMED servo3_before=N servo1_before=N arm_time=HH:MM:SS armed=ARMED servo3_armed=N servo1_armed=N armed_duration=10s actuator_movement=NO_PROPULSION_POWER_ISOLATED disarm_time=HH:MM:SS final=DISARMED servo3_after=N servo1_after=N count=ADVANCING time_usec=ADVANCING hardware_safety=ON safety_led=BLINKING qgc_link=STABLE
 ```
+
+`NO_PROPULSION_POWER_ISOLATED` records why powered actuator movement was impossible; it
+is not evidence that the command path behaved correctly. If the operator misses either
+wall-clock time, record `NOT_RECORDED` rather than retaining the template or repeating an
+arm solely to obtain a timestamp.
 
 If the Inspector is absent, has no `SERVO_OUTPUT_RAW`, or shows a static `time_usec`, stop
 before releasing hardware safety and retain the two absence verdicts plus browser result:
@@ -714,6 +719,20 @@ this terminal result after restoring the physical safety state:
 
 ```text
 C2_ARM=REJECTED retry=NO final=DISARMED hardware_safety=ON
+```
+
+If the Inspector stops updating after safety release, restore `Disarmed` and the blinking
+safety state, then paste:
+
+```text
+C2_SAFETY_RELEASE=FAIL reason=inspector-frozen count=STATIC time_usec=STATIC arm_request=NOT_SENT final=DISARMED hardware_safety=ON safety_led=BLINKING
+```
+
+If review cannot be immediate or the operator must leave the bench after a successful
+safety-release observation, restore the blinking safety state before pausing:
+
+```text
+C2_REVIEW_HOLD final=DISARMED hardware_safety=ON safety_led=BLINKING
 ```
 
 C2 proves only the observed Herelink/QGroundControl-to-FCU arm/disarm transition with
@@ -747,6 +766,35 @@ not been released and no arm request has been sent. Real-FCU `ARMING_RUDDER`,
 `BRD_SAFETY_MASK` and `BRD_SAFETYOPTION` remain unknown. Consequently, the next
 blinking-to-solid LED transition is the only evidence that can distinguish a registered
 safety release when the sampled output pair remains `800/800`; neither T0b nor T2a
+closes.
+
+### 13/08/2026 C2 final result
+
+The operator then completed the bounded observation. Hardware-safety release was
+discriminated by the external LED changing from blinking to solid. While QGroundControl
+still reported `Disarmed`, the Inspector held `800/800` for `10` seconds with advancing
+`Count` and `time_usec`:
+
+```text
+C2_SAFETY_RELEASED servo3=800 servo1=800 count=ADVANCING time_usec=ADVANCING armed=NO safety_led=SOLID duration=10s actuator_movement=NO_PROPULSION_POWER_ISOLATED
+```
+
+One QGroundControl arm request produced an observed `Armed` state. Both raw output fields
+remained `800` for the bounded `10`-second armed window while `Count` and `time_usec`
+advanced and the link remained stable. QGroundControl disarm restored an observed
+`Disarmed` state, the output pair remained `800/800`, and the physical safety button was
+held until the LED returned to blinking:
+
+```text
+C2_OBSERVATION before=DISARMED servo3_before=800 servo1_before=800 arm_time=NOT_RECORDED armed=ARMED servo3_armed=800 servo1_armed=800 armed_duration=10s actuator_movement=NO_PROPULSION_POWER_ISOLATED disarm_time=NOT_RECORDED final=DISARMED servo3_after=800 servo1_after=800 count=ADVANCING time_usec=ADVANCING hardware_safety=ON safety_led=BLINKING qgc_link=STABLE
+```
+
+The submitted line retained the `HH:MM:SS` placeholders, so the two wall-clock times are
+honestly recorded as `NOT_RECORDED`; the arm is not repeated for missing timestamps. The
+no-movement field is a statement of physical power isolation, not output-path evidence.
+C2 is operator-observed rather than artifact-backed, and `2.0 Hz` sampling cannot exclude
+a transient between frames. C1 and C2 together pass the expanded Block C. Block B remains
+failed at teardown, and the missing parameter/function evidence means neither T0b nor T2a
 closes.
 
 ## Temperatures and log copy-back

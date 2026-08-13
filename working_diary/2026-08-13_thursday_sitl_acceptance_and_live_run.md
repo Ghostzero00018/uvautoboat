@@ -1294,3 +1294,52 @@ has no fallback and ends the attempt before arm. Real-FCU `ARMING_RUDDER` also
 remains unknown, both Herelink sticks remain untouched, hardware safety has not
 yet been released, and no arm request has been made. C2 and Block C remain
 open.
+
+### C2 safety-release and arm/disarm observation - PASS
+
+The operator completed the remaining C2 transitions with the propellers removed,
+propulsion power isolated, hull restrained and Herelink sticks untouched. The
+external safety LED changed from blinking to solid, providing the only
+discriminator that the safety-button press registered while the sampled raw
+output pair remained unchanged. With QGroundControl still reporting
+`Disarmed`, the Inspector held the pair at `servo3_raw=800` and
+`servo1_raw=800` for `10` seconds while both `Count` and `time_usec` advanced:
+
+```text
+C2_SAFETY_RELEASED servo3=800 servo1=800 count=ADVANCING time_usec=ADVANCING armed=NO safety_led=SOLID duration=10s actuator_movement=NO_PROPULSION_POWER_ISOLATED
+```
+
+One QGroundControl arm request then produced an observed `Armed` state. The
+same sampled `800/800` pair held for the bounded `10`-second armed window;
+`Count` and `time_usec` continued advancing and the QGroundControl link remained
+stable. QGroundControl disarm returned the FCU to an observed `Disarmed` state,
+the pair remained `800/800`, and a sustained press restored the external LED to
+its blinking hardware-safety indication:
+
+```text
+C2_OBSERVATION before=DISARMED servo3_before=800 servo1_before=800 arm_time=NOT_RECORDED armed=ARMED servo3_armed=800 servo1_armed=800 armed_duration=10s actuator_movement=NO_PROPULSION_POWER_ISOLATED disarm_time=NOT_RECORDED final=DISARMED servo3_after=800 servo1_after=800 count=ADVANCING time_usec=ADVANCING hardware_safety=ON safety_led=BLINKING qgc_link=STABLE
+```
+
+The operator's submitted line retained literal `HH:MM:SS` values. Those fields
+are therefore normalized to `NOT_RECORDED`; no repeat arm is justified solely
+to obtain wall-clock timestamps. `NO_PROPULSION_POWER_ISOLATED` records that
+powered actuator motion was impossible because propulsion power was isolated.
+It is not evidence that the command path behaved correctly.
+
+ArduPilot source keeps arming and the safety switch as independent conditions:
+`is_armed_and_safety_off()` requires both `is_armed()` and a safety state other
+than `SAFETY_DISARMED`. The recorded real-FCU `ARMING_REQUIRE=1` means the safety
+release did not itself arm the vehicle. `AP_Notify` separately distinguishes
+outputs-suppressed/disarmed and outputs-not-suppressed/disarmed in its traffic
+light override description; the external safety-switch blinking/solid
+interpretation comes from the CubePilot and ArduPilot safety-switch guidance,
+not from that traffic-light parameter.
+
+This is an operator-observed result with no separately saved C2 telemetry
+artifact. The `2.0 Hz` Inspector sampling proves the displayed samples and
+continuity but cannot exclude a transient between approximately `500 ms`
+frames. C2 passes its bounded arm/disarm observation, and C1 plus C2 pass the
+expanded Block C. Block B remains failed at teardown; T0b and T2a remain open;
+and this result does not establish output-function assignments, configured
+rails, PWM proportionality, dashboard/Pi command transmission, powered
+actuator movement or thrust.
