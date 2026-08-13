@@ -1,16 +1,18 @@
 # Live Hailo and MAVROS Dashboard Testing
 
-This runbook uses two foreground commands for the live, view-only dashboard demo. The
-workstation supervisor starts rosbridge, `web_video_server`, and the dashboard, then
-prints the complete Pi command. The Pi helper owns MAVProxy, MAVROS, Hailo, and the
-D435I.
+Block C has two sequential phases. C1 uses two foreground commands for the live,
+view-only dashboard demo. The workstation supervisor starts rosbridge,
+`web_video_server`, and the dashboard, then prints the complete Pi command. The Pi
+helper owns MAVProxy, MAVROS, Hailo, and the D435I. C2 is a real-FCU arm/disarm
+observation performed only after the complete C1 Pi-first teardown; it runs no
+repository helper.
 
 The image and telemetry paths are separate:
 
 - `web_video_server` subscribes to `/hailo/overlay/image_raw` and serves MJPEG to the
   browser;
-- rosbridge carries the five direct MAVROS subscriptions used by the temporary state,
-  GPS, IMU, battery, and RC panel.
+- rosbridge carries the six direct MAVROS subscriptions used by the temporary state,
+  GPS, IMU, battery, RC-input and thrust-output panel.
 
 The expanded camera viewer is accepted only while `LIVE_MAVLINK_VIEW_ONLY=true`. Its
 full-screen overlay and focus trap cover the current E-Stop button and shortcuts. Do not
@@ -192,7 +194,10 @@ table.
 
 - Workstation and Pi are on the same `IoT IMT Nord Europe` link. Internet access is not
   required; OpenStreetMap background tiles may be absent.
-- Control box is powered, the FCU is disarmed, and propulsion is isolated.
+- Control box is powered, the FCU is disarmed, and propulsion is isolated for C1.
+- For C2, the propellers are removed, propulsion power is isolated, the hull is
+  restrained and every operator control is neutral before any hardware safety release
+  or QGroundControl arm action.
 - D435I and Hailo hardware are connected to the Pi.
 - Pi Terminal P1 is opened from the active Pi desktop or Remmina session, has a
   nonempty `DISPLAY`, and can create an OpenCV window. Do not use an SSH-only terminal
@@ -459,12 +464,10 @@ and verify:
   panels are inert, while Mission History, tuning expanders, health clear/auto-scroll,
   export, and copy controls remain usable;
 - dashboard command and configuration writes remain blocked;
-- **Expected blocked string for mission commands**: clicking a mission action such as `HOLD` should emit
-  exactly one toast/console line:
-  `LIVE MAVLINK VIEW-ONLY: blocked mission command hold`
-- **Expected blocked string for emergency stop**: clicking emergency stop should emit only
-  `LIVE MAVLINK VIEW-ONLY: blocked dashboard emergency-stop publish` and return `false`
-  immediately; the zero-thrust and latch publish strings are not reachable while view-only is true.
+- do not click mission, joystick or E-Stop controls to seek a blocked-write message.
+  The shipped view-only initialisation makes these controls both inert and disabled, so
+  their click handlers do not run. The blocked mission-command and dashboard E-Stop
+  strings are source-level guards, not observable click criteria in this build;
 - exactly one Hailo `/stream?...` request is present and remains continuously active;
 - image click, Enter/Space on the image, and the Enlarge button open the same viewer;
 - Close receives focus, Tab stays inside the viewer, and Escape closes it and restores
@@ -552,6 +555,124 @@ completion, with a separate `180`-second absolute deadline. `elapsed` is their c
 wall time. Any `STOP: final verification exceeded 180s during ...` marker fails the run;
 `PI_SOURCE_WINDOW=COMPLETE` must not follow it.
 
+## Block C2 - post-teardown real-FCU arm/disarm observation
+
+This is part of Block C, not a concurrent extension of the view-only graph. It starts
+only after C1 has passed and fully stopped.
+
+- **Host and terminal:** Pi P2 is a new one-shot absence-check terminal; workstation W2
+  is a new one-shot absence-check terminal; the control box and Herelink console perform
+  the observation. No C1 foreground terminal is reused and C2 starts no repository
+  process.
+- **Working directory and environment:** P2 uses `/home/imt-aqua-drone`; W2 uses
+  `/home/ghostzero/seal_ws/src/uvautoboat`. Neither terminal sources ROS, activates a
+  Python environment or sets a Block C environment variable. The controller-local C2
+  actions have no shell working directory or environment.
+- **Prerequisites:** C1 has emitted Pi `TEARDOWN=PASS`,
+  `PI_SUPERVISOR_EXIT status=0` and `WORKSTATION_TEARDOWN=PASS`; the browser is closed;
+  the propellers are physically removed; propulsion power is isolated; the hull is
+  restrained; controls are neutral; QGroundControl on the Herelink is connected to the
+  real FCU.
+- **Stop condition:** stop without arming if any C1 process or port remains, the Herelink
+  build has no live MAVLink Inspector, `SERVO_OUTPUT_RAW.time_usec` does not advance, or
+  the disarmed `servo1_raw` / `servo3_raw` pair is not `800` / `800`. Do not retry a
+  rejected arm. After an accepted arm, disarm immediately on a persistent departure from
+  the observed neutral pair, unexpected actuator movement, a non-neutral control, loss
+  of the QGroundControl link, or any state other than the requested bounded arm.
+- **Paste-back:** paste both absence verdicts, browser-closed confirmation, the Inspector
+  source identity, port and advancing-time verdict, and the actual state/PWM observations
+  before arm, while armed and after disarm.
+
+From Pi P2, confirm the Pi side of C1 is absent:
+
+```bash
+(
+  set -euo pipefail
+  cd /home/imt-aqua-drone
+
+  processes="$(pgrep -af -- \
+    '[p]i_live_hailo_mavlink_dashboard|[m]avproxy|[m]avros|[h]ailo_ros_wrapper|[d]ashboard_safety_monitor|[t]hermal_watchdog' \
+    || true)"
+  if [ -n "$processes" ]; then
+    printf '%s\n' "$processes"
+    printf 'C2_PI_ABSENCE=FAIL\n'
+    exit 1
+  fi
+
+  printf 'C2_PI_ABSENCE=PASS\n'
+)
+```
+
+From workstation W2, confirm the workstation side and all three C1 ports are absent. The
+bracketed patterns prevent the inspection command from matching itself:
+
+```bash
+(
+  set -euo pipefail
+  cd /home/ghostzero/seal_ws/src/uvautoboat
+
+  ports="$(ss -H -ltn '( sport = :8002 or sport = :8080 or sport = :9090 )')"
+  processes="$(pgrep -af -- \
+    '[p]i_live_hailo_mavlink_dashboard|[l]ive_dashboard_preflight|[r]osbridge|[w]eb_video_server|[s]erve_dashboard[.]py|[m]avproxy|[m]avros' \
+    || true)"
+  if [ -n "$ports" ] || [ -n "$processes" ]; then
+    printf '%s\n' "$ports" "$processes"
+    printf 'C2_WORKSTATION_ABSENCE=FAIL\n'
+    exit 1
+  fi
+
+  printf 'C2_WORKSTATION_ABSENCE=PASS ports=8002,8080,9090\n'
+)
+```
+
+After both verdicts pass and the browser is closed, perform the bounded controller-local
+sequence:
+
+1. Confirm QGroundControl reports the real FCU disarmed and all controls are neutral.
+2. Before releasing hardware safety, open the QGroundControl application menu, select
+   Analyze Tools and then MAVLink Inspector. Herelink builds may omit this desktop-oriented
+   view; if it is absent, stop without arming rather than improvising another telemetry
+   path.
+3. Select the current vehicle's `SERVO_OUTPUT_RAW`. Record its source system, source
+   component and `port`. Confirm `time_usec` advances over successive updates, then record
+   the actual `servo3_raw` and `servo1_raw` values. Both must be `800` while disarmed.
+4. Press the physical arm/safety button on the FCU box to release the hardware safety
+   state.
+5. Use QGroundControl on the Herelink console to arm once. If the arm is rejected, do not
+   retry; record the rejection and stop for diagnosis.
+6. On an accepted arm, record the arm time, QGroundControl `Armed` indication and the
+   actual `servo3_raw` / `servo1_raw` pair while `time_usec` continues advancing. Do not
+   move a stick, publish a command or request non-neutral output. Disarm immediately if
+   either output persistently departs from the `800` baseline.
+7. Use QGroundControl on the Herelink console to disarm. Record the disarm time, final
+   `Disarmed` indication and final live output pair; both outputs must return to `800`.
+8. Re-engage the FCU-box physical safety state and confirm it is safe before touching
+   anything else, then return the control box to its normal powered-down state.
+
+Paste back exactly, replacing every `N` with the observed value:
+
+```text
+C2_PI_ABSENCE=PASS
+C2_WORKSTATION_ABSENCE=PASS ports=8002,8080,9090
+C2_BROWSER=CLOSED
+C2_QGC_INSPECTOR=PASS message=SERVO_OUTPUT_RAW source_system=N source_component=N port=N time_usec=ADVANCING
+C2_OBSERVATION before=DISARMED servo3_before=N servo1_before=N arm_time=HH:MM:SS armed=ARMED servo3_armed=N servo1_armed=N actuator_movement=NO disarm_time=HH:MM:SS final=DISARMED servo3_after=N servo1_after=N hardware_safety=ON qgc_link=STABLE
+```
+
+If QGroundControl refuses the one arm request, paste instead:
+
+```text
+C2_ARM=REJECTED retry=NO
+```
+
+C2 proves only the observed Herelink/QGroundControl-to-FCU arm/disarm transition with
+the propulsion path physically disconnected, plus the current raw output values on the
+two named message fields. `SERVO_OUTPUT_RAW` does not carry output-function assignments
+or configured `MIN/TRIM/MAX`, so C2 does not prove which physical output is left/right,
+the configured rail, PWM proportionality, dashboard/Pi command transmission, autonomous
+control or thrust. It does not close T0b or T2a: the standalone T0b parameter evidence is
+still absent and Block B remains failed at teardown.
+
 ## Temperatures and log copy-back
 
 Pi logs are written under
@@ -585,6 +706,11 @@ scp -r "${PI_SSH}:hailo_coco_overlay_2026-07-10/logs/${RUN_NAME}" \
 ls -la "$HOME/Desktop/test_logs_folder/$RUN_NAME"
 ```
 
+`thermal_peak_mc.txt` is the precise run-wide thermal-watchdog maximum and governs when
+it differs from the rounded `temp=... peak=...` supervisor samples. A copied directory
+without a source-side checksum manifest can be inspected as received, but the copy alone
+does not establish byte-for-byte identity with the remote directory.
+
 The workstation run directory is already under `~/Desktop`. Retain its service logs,
 arrival samples, and `w5_live_rates.log` with the matching Pi run directory and Pi
 `supervisor.log`.
@@ -599,11 +725,26 @@ Report:
 - `PI_TEMP_START_MC`, `PI_TEMP_PEAK_MC`, and `PI_TEMP_POST_MC`;
 - `PI_SOURCE_HOLD=STOP operator-requested`, Pi `TEARDOWN=PASS`, and
   `PI_SUPERVISOR_EXIT status=0 ...` plus `WORKSTATION_TEARDOWN=PASS`;
-- both exact run directories and the copy-back result.
+- both exact run directories and the copy-back result;
+- C2 Inspector source, component and port, advancing `time_usec`, actual `servo3_raw` /
+  `servo1_raw` values before arm, while armed and after disarm, arm/disarm times, actuator
+  movement result, final hardware-safety state and whether the single arm request was
+  accepted or rejected.
 
-This procedure proves bounded simultaneous view-only delivery only. It does not prove
-full endurance, an optimized image profile, a GPS fix, custom maritime detector
-accuracy, or any dashboard-to-FCU write path.
+C1 proves bounded simultaneous view-only delivery. C2 separately proves an observed
+controller-local real-FCU arm/disarm transition after C1 teardown. Neither proves full
+endurance, an optimized image profile, a GPS fix, custom maritime detector accuracy,
+dashboard/Pi command transmission, servo mapping, PWM magnitude or thrust.
+
+### Recorded C1 result on 13/08/2026
+
+Workstation run `live_dashboard_workstation_20260813_165355` and Pi run
+`live_dashboard_20260813_165410` passed C1. Seven topics arrived and passed the bounded
+rate probes; all six browser freshness badges were live; the Hailo stream was visible;
+the command sentinel recorded zero messages; the FCU remained disarmed; and the final
+real-boat output sample was `SERVO3 800` / `SERVO1 800`. The precise Pi thermal maximum
+was `68.3 °C`. Pi teardown and exit completed before the workstation stop began, and
+both supervisors exited with status `0`. C2 remained **NOT RUN** at this checkpoint.
 
 ## Related pages
 

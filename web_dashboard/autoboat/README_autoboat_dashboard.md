@@ -366,7 +366,9 @@ Perception and Controller share the `/planning/set_config` topic. Parameters wit
 2. Set lanes/length/width in Route Configuration
 3. Click **Generate Waypoints** — waypoints appear on map, state -> WAITING_CONFIRM
 4. Click **Confirm Waypoints** — state -> READY
-5. Click **Start Mission**, confirm the prompt — state -> DRIVING, boat navigates
+5. In a write-enabled simulation build, click **Start Mission** and confirm the prompt
+   — state -> DRIVING, boat navigates. The shipped
+   `LIVE_MAVLINK_VIEW_ONLY=true` build keeps this control inert and disabled.
 6. Monitor: waypoint progress, obstacle clearance, trajectory on map
 
 ### Controls During Mission
@@ -379,7 +381,12 @@ Perception and Controller share the `/planning/set_config` topic. Parameters wit
 | **Go Home**        | Navigate back to spawn point                                    |
 | **Reset**          | Clear waypoints, return to INIT                                 |
 
-Start, Resume, Go Home, Reset, and Emergency Stop prompt a confirmation before acting (accidental-click guard); Stop acts immediately.
+In a write-enabled simulation build, Start, Resume, Go Home, Reset, and Emergency Stop
+prompt before acting, while Stop acts immediately. In the shipped
+`LIVE_MAVLINK_VIEW_ONLY=true` build these Mission Control actions are inert and disabled,
+so their prompts and blocked-write handlers are not reachable by clicking. The explicit
+FCU bench E-Stop is the exception: it is re-enabled by the bench URL and latches without
+a confirmation prompt.
 
 ## ROS Topics
 

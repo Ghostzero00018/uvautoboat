@@ -201,6 +201,48 @@
 >
 > Diaries for 24/07/2026 and 07/08/2026 record the former policy and are left
 > unchanged as history.
+>
+> **13/08/2026 Block C scope supersession - sequential live arm.** The
+> maintainer explicitly expanded today's Block C to include a real-FCU
+> arm/disarm observation. Block C now has two non-overlapping phases. C1 is the
+> established Pi/workstation view-only telemetry run and retains its
+> `armed:false` runtime contract. C2 begins only after C1 has recorded Pi
+> `TEARDOWN=PASS`, workstation `WORKSTATION_TEARDOWN=PASS`, and the browser is
+> closed. No C1 process may remain when C2 starts because the Pi helper aborts
+> on `armed:true` by design.
+>
+> C2 uses the maintainer-stated physical sequence: propellers removed,
+> propulsion power isolated, hull restrained and controls neutral; release the
+> FCU-box hardware safety state; arm from QGroundControl on the Herelink;
+> observe the armed state without sending a non-neutral input; disarm from
+> QGroundControl; then confirm the disarmed state. No repository helper runs or
+> transmits during C2. This makes the live arm/disarm observation part of Block
+> C for 13/08/2026; it does not enable a dashboard/Pi arm path, authorize thrust
+> or a non-neutral command, or alter the view-only helper.
+>
+> **13/08/2026 C1 result - PASS; C2 NOT RUN.** The transferred Pi helper
+> matched its tracked size and digest. The workstation recorded seven-topic
+> arrival, seven passing `10`-second rate probes and six fresh browser telemetry
+> badges; the Hailo image streamed correctly in the Pi and browser views. The Pi
+> command sentinel recorded zero messages, the FCU remained disarmed and raw
+> thrust output remained neutral at real-boat `SERVO3 800` / `SERVO1 800`.
+> Shutdown was Pi first with `TEARDOWN=PASS` and exit status `0`, followed by
+> workstation `WORKSTATION_TEARDOWN=PASS` and exit status `0`. A subsequent
+> host-context check found workstation ports `8002`, `8080`, `9090` and the six
+> C1 process patterns absent. This closes C1 only. The separately sequenced C2
+> arm/disarm observation has not run, so Block C as expanded above remains open.
+>
+> **13/08/2026 C2 pre-execution evidence correction - NOT RUN.** C2 now requires
+> the Herelink build to expose a live `SERVO_OUTPUT_RAW` view before hardware
+> safety is released. Its `time_usec` must advance, and the actual `servo3_raw`
+> / `servo1_raw` values must be recorded before arm, while armed and after
+> disarm. This is current raw-output evidence only: the message carries neither
+> `SERVO*_FUNCTION` nor configured `MIN/TRIM/MAX`, so it cannot establish the
+> left/right assignment or rail and cannot close T0b or T2a. The standalone T0b
+> evidence remains absent and Block B remains failed at teardown. The C2 absence
+> check now names `serve_dashboard.py`; a rejected arm is not retried; and an
+> accepted arm ends with QGroundControl disarm followed by re-engagement of the
+> FCU-box hardware safety state. No C2 action has run at this checkpoint.
 
 ---
 

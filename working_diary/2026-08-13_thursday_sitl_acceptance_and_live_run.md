@@ -866,7 +866,7 @@ Detected vehicle 1:1 on link 0
 ```
 
 The complete literal rejects the wrong system, component and link. In
-particular, the fixed `Detected vehicle ` prefix prevents system `11` from
+particular, the fixed `Detected vehicle` prefix prevents system `11` from
 matching system `1` as a substring.
 
 ### Child-log producer contract
@@ -900,3 +900,258 @@ are unchanged. Block B is closed while these edits are uncommitted. A third
 execution requires commit, push, clean/synced certification and fresh
 port/process checks. Do not reuse either failed run directory. Block C remains
 closed.
+
+## Block B third execution and Block C scope supersession
+
+### Block B third execution - functional path complete, teardown failed
+
+The third user-run attempt used
+`/home/ghostzero/Desktop/sitl_digital_twin_20260813_153821`. It reached every
+functional acceptance phase:
+
+- `SITL_PROCESS=READY` with listeners `5760,5762`;
+- `SITL_MAVPROXY=READY`, `SITL_MAVROS=READY`, the bridge guard and evidence
+  capture ready;
+- safety-off, browser publisher/disabled-frame readiness and
+  `SITL_SESSION=READY`;
+- normal arm, positive `+0.10/0.08`, release, negative `-0.04/0.09`, the FCU
+  bench E-Stop and normal disarm;
+- `SITL_ACCEPTANCE=COMPLETE teardown=pending`.
+
+The E-Stop produced the expected `FCU bench emergency stop latched` feedback;
+this is a status toast, not a confirmation dialog. Disarm is retained in both
+`operator/disarm.json` and `evidence/disarm.json`, and
+`control/disarm_release_frames.json` contains the three release frames.
+
+Automatic teardown then terminated at
+`tools/sitl_digital_twin_runner.sh:676` with `sitl: unbound variable`. The
+successful return path had sourced the runner inside
+`run_sitl_digital_twin_entry`; its plain `declare -A` and `declare -a` arrays
+were therefore function-local. They disappeared before the script-level EXIT
+trap used them. Earlier failure paths exited while that function scope was
+still active, which is why they did not expose the lifecycle defect.
+
+The run produced neither `evidence/teardown.json` nor
+`evidence/verdict.json`, so Block B remains **FAIL at teardown** and the
+independent adjudicator was not run. A run-specific, checksum-verified manual
+cleanup stopped the six remaining child groups with `SIGINT`; SITL was already
+absent. It ended with:
+
+```text
+SITL_MANUAL_CLEANUP=PASS run_dir=/home/ghostzero/Desktop/sitl_digital_twin_20260813_153821 ports=free
+```
+
+Fresh host inspection then found TCP `5760`, `5762`, `8002`, `9090` and UDP
+`14600` free and all twelve Block B conflict patterns absent. The browser was
+closed. This measured state replaces the missing teardown artifact only as the
+clean-host prerequisite for today's Block C; it does not turn Block B into a
+pass. The narrow future runner repair remains global array declarations plus a
+regression for function-scope source, successful return and EXIT teardown.
+
+### Block C now includes the real-FCU live arm observation
+
+The maintainer explicitly expanded today's Block C. Its passing contract now
+contains two sequential phases:
+
+1. **C1 - view-only telemetry:** transfer and verify the stale Pi helper, run
+   the established workstation/Pi supervisors, require seven-topic arrival and
+   six fresh browser badges, then stop Pi first, workstation second and browser
+   last.
+2. **C2 - real-FCU arm/disarm:** only after C1 records Pi `TEARDOWN=PASS`,
+   `PI_SUPERVISOR_EXIT status=0`, workstation `WORKSTATION_TEARDOWN=PASS`, and
+   a fresh absence check. With propellers removed, propulsion power isolated,
+   hull restrained and controls neutral, release the FCU-box hardware safety
+   state, arm from QGroundControl on the Herelink, observe the armed state
+   without non-neutral input, then disarm from QGroundControl and observe the
+   disarmed state.
+
+C2 is part of Block C for 13/08/2026 and is not assigned a separate block name.
+It cannot overlap C1: `tools/pi_live_hailo_mavlink_dashboard.sh` requires
+`armed:false`, rechecks it during the run and aborts on `armed:true`. No helper
+is weakened or changed, and no repository process runs during C2.
+
+Source review also invalidated both planned click discriminators. View-only
+initialisation makes the Mission Control buttons, including E-Stop and joystick
+enable, inert and disabled before a click can dispatch. The named `hold`
+mission command has no dashboard caller; the only HOLD control is the separate
+FCU-bench control. Therefore neither blocked-write string is an observable
+browser criterion in C1. The view-only evidence is the static final-send guard,
+disabled/inert control state and the runtime command sentinel reporting zero
+messages. The runbook now states this instead of asking the operator to click an
+unreachable path.
+
+This scope revision and runbook preparation are documentation only. Block C has
+not started at the time of this entry. The pre-edit repository baseline is
+`fe69c089e093f2fa46e09926342a9a879dfdcdbc`; the two operational helper pins
+remain `73,862` bytes / `a72cd04d37984d692cdfecb73456d55bc7bb6f0b4fd69d69ba79447fc3594a97`
+and `29,058` bytes / `d101ec5840c1358e0475fff33989af9b3f3431231859c0e0e1c2ffa0fafab82a`.
+
+### C1 operator result recorded before artifact review
+
+C1 subsequently ran with workstation directory
+`/home/ghostzero/Desktop/live_dashboard_workstation_20260813_165355` and Pi
+directory
+`/home/imt-aqua-drone/hailo_coco_overlay_2026-07-10/logs/live_dashboard_20260813_165410`.
+Before launch, the stale Pi helper was replaced with the tracked `73,862`-byte
+copy and verified at
+`a72cd04d37984d692cdfecb73456d55bc7bb6f0b4fd69d69ba79447fc3594a97`
+on `imtaquadrone-desktop` (`10.120.2.249`).
+
+The pasted workstation rate output reports seven passing `10`-second probes:
+
+| Topic | Samples | Mean rate |
+| --- | ---: | ---: |
+| `/hailo/overlay/image_raw` | `73` | `7.34 Hz` |
+| `/mavros/state` | `10` | `1.00 Hz` |
+| `/mavros/global_position/raw/fix` | `10` | `1.00 Hz` |
+| `/mavros/imu/data` | `10` | `1.00 Hz` |
+| `/mavros/battery` | `10` | `1.00 Hz` |
+| `/mavros/rc/in` | `10` | `1.00 Hz` |
+| `/mavros/rc/out` | `10` | `1.00 Hz` |
+
+The Pi transcript reached `COMMAND_SENTINEL=PASS messages=0`,
+`PI_SOURCE_WINDOW=COMPLETE target=120s monitored=120s final_verification=100s
+elapsed=220s peak=66C` and `PI_SOURCE_HOLD=ACTIVE`. Its final raw output sample
+was left `SERVO3 800`, right `SERVO1 800`, delta `0`. The operator reported
+the Hailo overlay streaming correctly in both required views, one continuing
+browser stream, working viewer controls, `Connected`, all six freshness badges
+`Live` at `0.4 s`, `Disarmed`, mode `HOLD`, system state `Critical (5)`, and
+neutral raw output `800/800`. GPS `No fix (-1)` with `100.00 m` horizontal
+accuracy was retained as telemetry state rather than treated as transport loss.
+
+Shutdown followed the required order. Pi P1 first recorded
+`PI_SOURCE_HOLD=STOP operator-requested`, `TEARDOWN=PASS` and
+`PI_SUPERVISOR_EXIT status=0 ... cleanup_rc=0`; workstation W1 then recorded
+`WORKSTATION_TEARDOWN=PASS` and `SUPERVISOR_EXIT status=0 ... cleanup_rc=0`.
+The Pi directory was copied to
+`/home/ghostzero/Desktop/test_logs_folder/live_dashboard_20260813_165410`;
+the operator's copy command reported `P1_LOG_COPY=PASS`, `20` files and `912K`.
+
+These are operator-pasted results pending the local W1/Pi artifact review
+below. They establish the C1 handoff state but do not close all of Block C:
+the separately sequenced C2 live arm/disarm observation has not yet run.
+
+### C1 local artifact audit - PASS
+
+The retained workstation directory contains `12` files and the copied Pi tree
+contains `20` files. The copied Pi tree has `848,384` apparent bytes; the
+operator's filesystem-allocation report was `912K`. No source-side checksum
+manifest was created on the Pi, so this review establishes the contents of the
+received copy but does not claim cryptographic identity for the complete remote
+and local trees.
+
+The principal local evidence pins are:
+
+| Artifact | SHA-256 |
+| --- | --- |
+| W1 `supervisor.log` | `35c99b8ae9668f43631a8befed4a42b61bfabdf14c98627c3dcdd9181d16860b` |
+| W1 `w5_live_rates.log` | `fc6e00a414003a3f2c0ff7e892d1b5c02acdda7b5b18923e1a8a9723164c45b2` |
+| copied P1 `supervisor.log` | `c22b8b2bdbde2892ed03e75368591a5a4857ee564e04d8fd6851bf1e7dfe2655` |
+| copied P1 `thermal_peak_mc.txt` | `26980c4904f0d71f11c56b7a41fa57ceb17f47863aa71d98b06c5b267961ce09` |
+| copied P1 `safety_monitor.log` | `410f916d69cf8f31a68be6813af54319f0bf55902d95afde13869c9cb19a563f` |
+
+W1 independently records `WORKSTATION_RUNTIME_PREFLIGHT=PASS`,
+`PI_DATA_ARRIVED=PASS topics=7`, `W5_RATE_PROBES=PASS topics=7`, supervision,
+and an orderly `SIGINT` teardown ending in `WORKSTATION_TEARDOWN=PASS` and
+`SUPERVISOR_EXIT status=0 ... failed_phase=none cleanup_rc=0`. The arrival logs
+contain one bounded sample run for every required topic: overlay `7.49 Hz`, RC
+input `0.99 Hz`, and the other five telemetry topics `1.00 Hz`. The later W5
+probe matches the operator-pasted rates. Rosbridge had one concurrent browser
+client: the first client disconnected before its replacement connected after
+the hard refresh. Its `rosapi` exit code `-2` and the web-video-server signal
+handler occur only after the supervisor initiated the intended `SIGINT`
+teardown.
+
+The copied P1 supervisor records the command sentinel ready with zero
+publishers, `COMMAND_SENTINEL=PASS messages=0`, the complete `220`-second source
+window, the live hold, and exit status `0`. The retained state sample is
+`connected:true`, `armed:false`, mode `HOLD`, system status `5`; battery is
+present at `16.061 V`; RC input has zero channels with raw RSSI `255`; and raw
+output is the real-boat neutral pair `SERVO3 800` / `SERVO1 800`. The safety
+monitor log contains only its readiness line and the thermal-watchdog log is
+empty. There is no `FCU_ARMED`, command violation, terminal source failure or
+thermal stop marker.
+
+Several daemonless graph queries transiently reported publisher count `0` for
+state, IMU or RC output. Each recovered inside the helper's three-attempt
+source check: no topic reached the terminal third-attempt failure, all six
+source samples had already passed, the helper continued, and W1 later received
+and rate-probed all six telemetry topics. The final
+`PI_SOURCE_STACK_READY=PASS mavros_topics=2` value is only the count from that
+single final graph snapshot; it is not the six-topic acceptance count.
+
+The exact thermal-watchdog maximum is `68,300 mC` (`68.3 °C`). It supersedes
+the coarser supervisor samples whose displayed maximum was `66C`; no thermal
+abort occurred. The repeated MAVROS no-fix warning agrees with the retained GPS
+sample and does not indicate transport loss. MAVROS also exhausted the optional
+`AUTOPILOT_VERSION` query and used its default capabilities, while telemetry
+continued. MAVProxy's terrain file-list decode warning did not interrupt the
+link. Hailo published at least `5,000` frames before its final
+`KeyboardInterrupt`, whose stack occurs after the operator's `SIGINT` and is
+therefore teardown output rather than a live-window crash.
+
+Timestamp comparison proves the required shutdown order. P1 recorded
+`TEARDOWN=PASS` at `1786633663.993761` and exit status `0` at
+`1786633663.994201`. W1 did not begin its stop until `1786633673.481508`,
+`9.487307 s` after the Pi exit, and then completed its own teardown. A fresh
+host-context check after both exits found TCP `8002`, `8080`, `9090` free and
+all six checked C1 process patterns absent.
+
+C1 is therefore **PASS** for bounded simultaneous view-only image and six-topic
+telemetry delivery, zero dashboard command messages, observed disarmed state,
+neutral raw output and Pi-first teardown. This does not establish a GPS fix,
+servo proportionality, dashboard/Pi command transmission, autonomous control
+or thrust. C2 remains **NOT RUN**, so the expanded Block C is not yet closed.
+
+### C2 pre-execution handover correction - NOT RUN
+
+Review before the live arm found that the initial C2 handover omitted
+`serve_dashboard.py` from the workstation process pattern even though
+`tools/live_dashboard_preflight.sh` both lists it as a conflict and starts it
+as the port-`8002` dashboard child. The revised W2 absence check names that
+process explicitly, retains the `8002`, `8080`, `9090` listener check and uses
+bracketed patterns to avoid self-match. A separate P2 one-shot check covers the
+Pi helper, MAVProxy, MAVROS, Hailo wrapper, command safety monitor and thermal
+watchdog. Both checks run in subshells, source no ROS environment and start no
+service.
+
+The bounded observation now has an additional pre-arm gate. Before releasing
+the FCU-box hardware safety state, the operator must verify that the installed
+Herelink QGroundControl build exposes MAVLink Inspector, select the current
+vehicle's `SERVO_OUTPUT_RAW`, record its source system, source component and
+`port`, and observe `time_usec` advancing. A visible but frozen row is not live
+evidence. The actual `servo3_raw` and `servo1_raw` values are recorded rather
+than pre-filled; both must be `800` while disarmed or the arm does not proceed.
+
+Only one QGroundControl arm request is permitted. A rejection is recorded as
+`C2_ARM=REJECTED retry=NO` and ends the attempt. If accepted, the operator
+records the arm time, `Armed` indication and live raw pair without moving a
+control or requesting non-neutral output. A persistent departure from the
+observed `800` baseline, unexpected actuator movement or QGroundControl link
+loss requires immediate disarm. After normal disarm, the final live pair and
+time are recorded, both outputs must be `800`, and the physical FCU-box safety
+state is re-engaged and confirmed before anything else is touched.
+
+This observation cannot close the tier prerequisites. `SERVO_OUTPUT_RAW`
+contains current output values but no `SERVO*_FUNCTION` assignment and no
+configured `MIN/TRIM/MAX`; it therefore proves neither left/right function
+mapping nor the complete rail. After its full parameter pull, the current T0b
+implementation retains and validates only the three `BRD_SAFETY_*` values; its
+standalone evidence remains absent, and Block B remains failed at teardown. C2
+can add the first armed raw-output observation for this hull under today's
+explicit scope exception, but it is not T0b or T2a closure and must not be
+reported as such.
+
+The corrected paste-back contract is:
+
+```text
+C2_PI_ABSENCE=PASS
+C2_WORKSTATION_ABSENCE=PASS ports=8002,8080,9090
+C2_BROWSER=CLOSED
+C2_QGC_INSPECTOR=PASS message=SERVO_OUTPUT_RAW source_system=N source_component=N port=N time_usec=ADVANCING
+C2_OBSERVATION before=DISARMED servo3_before=N servo1_before=N arm_time=HH:MM:SS armed=ARMED servo3_armed=N servo1_armed=N actuator_movement=NO disarm_time=HH:MM:SS final=DISARMED servo3_after=N servo1_after=N hardware_safety=ON qgc_link=STABLE
+```
+
+No C2 process, Inspector check, hardware-safety release or arm request was run
+while making this documentation correction. Production code, both physical
+helpers and the two operational pin surfaces remain unchanged.
