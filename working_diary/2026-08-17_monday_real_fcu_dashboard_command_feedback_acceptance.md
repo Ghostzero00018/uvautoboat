@@ -1,11 +1,12 @@
-# Friday 14/08/2026 - real-FCU dashboard command/feedback acceptance
+# Monday 17/08/2026 - real-FCU dashboard command/feedback acceptance
 
-> **PRE-DIARY - NOT STARTED.** Written at the close of 13/08/2026 for a
-> morning-only test window. This file authorises nothing by itself. Every code
-> change, simulator run, powered inspection, T0b probe, arm and non-neutral
-> demand needs the separate approval named below.
+> **PRE-DIARY - NOT STARTED.** Moved unchanged in substance from the 14/08/2026
+> scaffold, which was never started, and re-scoped from a morning-only window to
+> a full working day. This file authorises nothing by itself. Every code change,
+> simulator run, powered inspection, T0b probe, arm and non-neutral demand needs
+> the separate approval named below.
 
-## Morning objective
+## Objective
 
 Obtain an honest, machine-readable real-FCU dashboard command/feedback result
 with the FCU externally armed from QGroundControl on the Herelink. The
@@ -25,13 +26,21 @@ external operator actions. Because propulsion power stays isolated, this can
 prove the real command and measured-feedback path while armed, but it cannot
 prove powered motor movement or thrust.
 
-## Starting state from 13/08/2026
+## Starting state
+
+The last technical work is still 13/08/2026. Friday 14/08/2026 went to the
+internship report and produced no code, configuration, test, simulator run, Pi
+session, control-box contact or hardware evidence; see
+`working_diary/2026-08-14_friday_internship_report_writing.md`. Nothing below
+was invalidated over the weekend, but every host-state figure in it is now
+several days old and must be re-measured rather than reasoned from.
 
 - Minimum known-good ancestor while drafting this file:
-  `26d68a05684ad4c4d3a81fa73739bc3019d78c3b`, subject
-  `docs: record the C2 arm-disarm observation`. The commit carrying this
-  pre-diary will be later and is deliberately not predicted. Tomorrow certify
-  the pushed `main` and inspect every intervening commit.
+  `7df816715f81c457fc97231633d66e3341e52788`, subject
+  `docs: add staged T2 gate and close-out order to Friday plan`, timestamped
+  `2026-08-13 21:33:05 +0200`. The commit carrying this pre-diary will be later
+  and is deliberately not predicted. On Monday certify the pushed `main` and
+  inspect every intervening commit.
 - C1 and C2 pass the expanded Block C. C1 has copied Pi logs and retained W1
   logs; C2 is operator-observed at `2.0 Hz` with no separately saved telemetry
   artifact.
@@ -47,13 +56,15 @@ prove powered motor movement or thrust.
   function assignments or configured rails, so this did not close T0b or T2a.
 - The physical helper bundle verifies locally, but no deployed Pi copy of that
   four-file bundle is certified. Only the separate view-only helper was
-  transferred on 13/08/2026.
+  transferred on 13/08/2026, and no source change since then has invalidated
+  it.
 - The physical helpers have no normal-success operator-stop result. Their
   current `Ctrl+C` handlers exit `130`, and cleanup preserves that status even
   when `cleanup_rc=0`; the `14`-case suite checks stop order but not a clean
   planned completion.
-- End-of-day host state: the relevant ports were free, matching processes were
-  absent and the workstation had `22 GB` free. Recheck all three tomorrow.
+- Host state was last observed at the close of 13/08/2026: relevant ports free,
+  matching processes absent, `22 GB` free on the workstation. That snapshot is
+  now stale. Re-measure all three before any block starts.
 
 ### Current pins
 
@@ -78,24 +89,26 @@ complete relative-path bundle before any Pi invocation.
 
 ## Read first
 
-1. This file in full. Do not create another 14/08 diary.
+1. This file in full. Do not create another 17/08 diary.
 2. The final four sections of
    `working_diary/2026-08-13_thursday_sitl_acceptance_and_live_run.md`,
    including the Block B third execution, C1 artifact review, C2 result and
    end-of-day closeout.
-3. `Board.md` from the T0a-T3b tier table through the 12/08 T0b mismatch and
+3. `working_diary/2026-08-14_friday_internship_report_writing.md`, which records
+   why this plan moved and confirms that nothing technical changed on 14/08.
+4. `Board.md` from the T0a-T3b tier table through the 12/08 T0b mismatch and
    13/08 C2 result.
-4. `working_diary/2026-08-11_tuesday_digital_twin_thrust_loop_and_helper_integration.md`
+5. `working_diary/2026-08-11_tuesday_digital_twin_thrust_loop_and_helper_integration.md`
    from `Guarded physical-FCU workstation/Pi helper pair` through
    `Physical graph-isolation correction`.
-5. `tools/live_dashboard_preflight.sh`,
+6. `tools/live_dashboard_preflight.sh`,
    `tools/sitl_digital_twin_runner.sh`,
    `tools/sitl_digital_twin_adjudicate.sh` and the SITL focused suites.
-6. `tools/real_fcu_digital_twin_workstation.sh`,
+7. `tools/real_fcu_digital_twin_workstation.sh`,
    `tools/real_fcu_digital_twin_pi.sh`,
    `tools/real_fcu_rc_command_bridge.py`, both MAVROS plugin allowlists, the
    bundle manifest and their focused suites.
-7. `web_dashboard/autoboat/app.js` FCU-bench path and
+8. `web_dashboard/autoboat/app.js` FCU-bench path and
    `web_dashboard/autoboat/README_autoboat_dashboard.md` before browser use.
 
 ## Repository certification
@@ -110,7 +123,7 @@ git log --oneline -12
 git status --short --branch
 git rev-parse HEAD main origin/main
 git rev-list --left-right --count main...origin/main
-git merge-base --is-ancestor 26d68a05684ad4c4d3a81fa73739bc3019d78c3b HEAD
+git merge-base --is-ancestor 7df816715f81c457fc97231633d66e3341e52788 HEAD
 ```
 
 | Result | Action |
@@ -126,38 +139,49 @@ pin surfaces, at least `10 GB` free disk, and these unused endpoints: TCP
 `5760`, `5762`, `8002`, `8080`, `9090`; UDP `14600`; Pi serial `/dev/ttyAMA0` before
 the physical helper owns it. Confirm no simulator, MAVProxy, MAVROS,
 rosbridge, dashboard, command bridge, evidence recorder or live helper process
-survives. Do not reuse a 13/08 run directory.
+survives. Do not reuse a 13/08 run directory; 14/08 produced none.
 
-## Morning sequence and approvals
+## Day sequence and approvals
 
-The order is binding. Blocks never overlap. Reserve enough of the morning for
-normal disarm, both helper teardowns, log copy-back and documentation; do not
-start the physical run at the end of the available window.
+The order is binding. Blocks never overlap.
+
+Unlike the 14/08 scaffold, this is a full working day rather than a single
+morning, so there is enough time to attempt the complete gated chain below
+without deliberately compressing close-out. Any of B1 to D1 can still fail its
+gate and end the chain there. That is extra room, not
+permission to relax a gate. Two rules
+still bind the clock: reserve enough of the day for normal disarm, both helper
+teardowns, control-box power-down, log copy-back and documentation, and do not
+start a physical session late in the available window. Block E may need **two**
+complete sessions, and the second one only begins if the first has been closed
+out and recorded.
 
 | Block | Scope | Approval and pass gate |
 | --- | --- | --- |
 | **A** | Certification, source review, pins, static checks and equipment inventory | Explicit start approval; read-only, starts no service |
 | **B1** | Repair the Block B array-lifetime teardown defect | Separate code-change approval; red-green coverage, commit and push |
 | **B2** | Give the physical helpers a normal-success operator-stop contract | Separate code-change approval; red-green coverage, bundle regeneration and push |
-| **B3a** | Make a T2a-only session reachable and fix the T2a-to-T2b transition model | Separate code-change approval; red-green coverage, manifest regenerated in the same commit, push |
+| **B3a** | Make a T2a-only session reachable | Separate code-change approval; red-green coverage, manifest regenerated in the same commit, push |
 | **B3b** | Make T0b retain the live `RCMAP_*`, `SERVO*_FUNCTION` and rail values | Separate code-change approval; red-green coverage, manifest regenerated in the same commit, push |
 | **C** | Re-run the full workstation SITL acceptance | Separate user-run approval; teardown and independent adjudication must both pass |
 | **D0** | Powered-down T0a TX-path inspection | Separate physical approval; controller and propulsion remain powered down |
 | **D1** | Deploy the pinned physical bundle and run T0b only | Separate user-run approval; request/response and retained parameter evidence must pass |
-| **E** | Real-FCU dashboard command/feedback run, including T2a then T2b | Separate approval for T2a and another for T2b; requires B3a and B3b landed and deployed, and all prior gates green |
+| **E** | Real-FCU dashboard command/feedback run, T2a then T2b as two sessions | Separate approval for T2a and another for T2b; requires B3a and B3b landed and deployed, and all prior gates green |
 | **F** | Copy evidence, document bounded claims and close | After the live state is settled |
 
 ### Block A - certify and prepare only
 
-Re-run only checks invalidated by a source or environment change. The fresh
-13/08 package and helper suites may be reused while `HEAD` and dependencies are
-unchanged; any code edit reopens the checks for its changed surface.
+Re-run only checks invalidated by a source or environment change. The 13/08
+package and helper suites may be reused while `HEAD` and dependencies are
+unchanged; every commit since the last suite run is documentation-only, so the
+reuse is legitimate, but confirm that in the same turn rather than assuming it.
+Any code edit reopens the checks for its changed surface.
 
 Before leaving Block A, confirm the control box starts powered off, propellers
 are removed, propulsion power is isolated, the hull restraint is fitted,
 Herelink sticks and trims are neutral, QGroundControl can show live FCU state,
 and the external safety indication is understood. Equipment absence moves the
-morning to the documentation fallback; it does not relax a gate.
+day to the documentation fallback; it does not relax a gate.
 
 ### Block B1 - fix the already-diagnosed SITL teardown defect
 
@@ -201,7 +225,7 @@ declining either one closes Block E rather than downgrading it.
 **B3a - staged T2 approval.** `rfcu_pi_require_run_gates` demands
 `REAL_FCU_T2A_APPROVED` and `REAL_FCU_T2B_APPROVED` together before `run`
 starts, and the helper offers only `check|probe|run`. A T2a-only session is
-therefore unreachable: the morning could either approve T2b before T2a has been
+therefore unreachable: the day could either approve T2b before T2a has been
 observed, which contradicts the tier policy, or fail closed. T2a needs an
 executable state that reaches externally-commanded arm/disarm and measured
 neutral output with no command path capable of a non-neutral demand, while T2b
@@ -243,8 +267,10 @@ manifest the last landed B3 commit produced.
 
 If either change is declined or does not reach green, stop before Block E and
 record the blocker. Do not reinterpret C2's `SERVO_OUTPUT_RAW 800/800` or the
-bridge's channel-only log as the missing mapping proof, and do not set both T2
-flags together to get a run started.
+bridge's channel-only log as the missing mapping proof. Never set both T2 flags
+merely to bypass B3a, before T2a has been closed out, or before separate T2b
+approval; after those gates pass, the fresh T2b session is the only permitted
+both-flags case.
 
 ### Block C - make Block B actually pass
 
@@ -256,8 +282,8 @@ browser. A pass requires the full functional sequence, automatic teardown,
 `tools/sitl_digital_twin_adjudicate.sh "$RUN"` ending
 `SITL_ADJUDICATION=PASS`.
 
-Any failure ends Block C without a same-morning retry. Preserve the run and use
-the remaining time for diagnosis. Block E stays closed on a failed Block C.
+Any failure ends Block C without a same-day retry. Preserve the run and use the
+remaining time for diagnosis. Block E stays closed on a failed Block C.
 
 ### Block D0 - T0a powered-down inspection
 
@@ -271,7 +297,7 @@ that flag from historical assumption.
 
 Transfer the complete four-file bundle with its relative paths and verify the
 manifest on the Pi. The current `probe` demands the T2 mechanical-condition
-flags even though T0b policy does not. Tomorrow's bench is expected to satisfy
+flags even though T0b policy does not. Monday's bench is expected to satisfy
 those conditions, so the probe can run without weakening that implementation.
 
 T0b must start disarmed with hardware safety engaged. It may receive heartbeat,
@@ -330,8 +356,8 @@ a separate workstation capture terminal before arm and retain
 `/command_ingress/rc_axes`, `/command_ingress/status` and FCU state through
 every phase the approved tier actually reaches - for T2a that is neutral, arm,
 disarm and teardown, and for T2b it additionally covers each active demand,
-release and E-Stop. A
-browser observation without this capture is not a closed evidence loop.
+release and E-Stop. A browser observation without this capture is not a closed
+evidence loop.
 Long or quoting-sensitive capture logic must be a tested repository helper,
 not an improvised terminal block. Preparing that helper is a separately
 approved code change before Block E; its focused test must prove ordered
@@ -382,7 +408,7 @@ an approved demand, an unexpected armed transition, a rejected arm, a command
 phase that does not reach measured feedback, QGroundControl link loss, helper
 child exit or any requirement to guess. Release the browser demand first, use
 QGroundControl to disarm, restore hardware safety and preserve logs. Do not
-rerun the live block that morning.
+rerun the live block that day.
 
 A passing result must include, at minimum:
 
@@ -403,7 +429,7 @@ disarmed evidence. Paste back both supervisors, the capture path,
 QGroundControl arm/disarm observations, browser demand/measured values and both
 cleanup results.
 
-## Explicit non-goals and morning fallback
+## Explicit non-goals and fallback
 
 This test does not run a virtual SITL boat concurrently with the real FCU.
 Those supervisors cannot overlap and Block C must be fully down first. It also
@@ -414,19 +440,20 @@ separate implementation task, not a checkbox in this run.
 
 T1 is not authorized. No parameter is written on the real controller at any
 point today, `BRD_SER1_RTSCTS` included, even if D0 shows the wiring intact and
-D1 then fails on flow control. That combination ends the physical morning at
-D1; it does not license a link-configuration write.
+D1 then fails on flow control. That combination ends the physical work at D1;
+it does not license a link-configuration write.
 
 No propeller-on, powered-thrust, static-propeller or on-water tier is included.
-If Block B, B3, T0a, T0b, live map/rail evidence, equipment or time fails its gate,
-use the remainder of the morning to retain logs and document the blocker. Do
+If Block B, B3, T0a, T0b, live map/rail evidence, equipment or time fails its
+gate, use the remainder of the day to retain logs and document the blocker. Do
 not substitute a manual unrecorded command path.
 
 ## Wrap
 
-Append results only to this file. Preserve the 13/08 diary and dated Board rows
-as history. Record pre-edit baselines, never predict the commit that contains
-its own closeout. Stage explicit paths, run `git diff --check` and the checks
-required by every changed surface, inspect staged content, use one-line
-conventional subjects no longer than 72 characters, then push and certify a
-clean `HEAD == main == origin/main` before the morning ends.
+Append results only to this file. Preserve the 13/08 and 14/08 diaries and
+dated Board rows as history. Record pre-edit baselines, never predict the
+commit that contains its own closeout. Stage explicit paths, run
+`git diff --check` and the checks required by every changed surface, inspect
+staged content, use one-line conventional subjects no longer than 72
+characters, then push and certify a clean `HEAD == main == origin/main` before
+the day ends.

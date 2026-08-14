@@ -1461,3 +1461,11 @@ The sole next-day scaffold is
 `working_diary/2026-08-14_friday_real_fcu_dashboard_command_feedback_acceptance.md`.
 It is a morning-only, approval-gated plan. This closeout does not start any of
 its blocks.
+
+## Addendum - 14/08/2026 deferral
+
+The unstarted scaffold named above moved to
+`working_diary/2026-08-17_monday_real_fcu_dashboard_command_feedback_acceptance.md`.
+The canonical 14/08 record is
+`working_diary/2026-08-14_friday_internship_report_writing.md`.
+No block of the deferred plan started on 14/08.
