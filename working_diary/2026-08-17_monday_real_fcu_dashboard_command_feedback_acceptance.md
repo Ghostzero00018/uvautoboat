@@ -156,6 +156,10 @@ start a physical session late in the available window. Block E may need **two**
 complete sessions, and the second one only begins if the first has been closed
 out and recorded.
 
+Every advance from B1 through E requires the gate shown in its row. F is the
+exception: it is a mandatory close-out rather than a gated advance, and it runs
+whether the chain completed or a blocker ended it early.
+
 | Block | Scope | Approval and pass gate |
 | --- | --- | --- |
 | **A** | Certification, source review, pins, static checks and equipment inventory | Explicit start approval; read-only, starts no service |
@@ -167,21 +171,28 @@ out and recorded.
 | **D0** | Powered-down T0a TX-path inspection | Separate physical approval; controller and propulsion remain powered down |
 | **D1** | Deploy the pinned physical bundle and run T0b only | Separate user-run approval; request/response and retained parameter evidence must pass |
 | **E** | Real-FCU dashboard command/feedback run, T2a then T2b as two sessions | Separate approval for T2a and another for T2b; requires B3a and B3b landed and deployed, and all prior gates green |
-| **F** | Copy evidence, document bounded claims and close | After the live state is settled |
+| **F** | Copy evidence, document bounded claims and close | Mandatory close-out, not a gated advance; runs after the live state settles or after a blocker ends the chain |
 
 ### Block A - certify and prepare only
 
 Re-run only checks invalidated by a source or environment change. The 13/08
-package and helper suites may be reused while `HEAD` and dependencies are
-unchanged; every commit since the last suite run is documentation-only, so the
-reuse is legitimate, but confirm that in the same turn rather than assuming it.
-Any code edit reopens the checks for its changed surface.
+package and helper suites may be reused while their covered source and
+dependencies remain unchanged; `HEAD` itself is not the criterion, since it has
+already advanced through documentation commits. No source file changed after
+`fe69c089e093f2fa46e09926342a9a879dfdcdbc` on 13/08, and the later commits
+through `d11589a` are documentation-only, which is what makes the reuse
+legitimate. Confirm that from git in the same turn rather than assuming it. Any
+code edit reopens the checks for its changed surface.
 
-Before leaving Block A, confirm the control box starts powered off, propellers
-are removed, propulsion power is isolated, the hull restraint is fitted,
-Herelink sticks and trims are neutral, QGroundControl can show live FCU state,
-and the external safety indication is understood. Equipment absence moves the
-day to the documentation fallback; it does not relax a gate.
+**Block A keeps the control box powered off.** Confirm that it starts powered
+off, that the propellers are removed, propulsion power is isolated, the hull
+restraint is fitted, and the Herelink sticks and trims are neutral. Confirm that
+QGroundControl and the Herelink are available and that the external safety
+indication is understood, and rely on the retained 13/08 evidence for what live
+FCU state looks like. **Any fresh live-state check requires the controller to be
+powered, so it belongs to D1 or E under their own approvals, never to Block A.**
+Equipment absence moves the day to the documentation fallback; it does not relax
+a gate.
 
 ### Block B1 - fix the already-diagnosed SITL teardown defect
 
