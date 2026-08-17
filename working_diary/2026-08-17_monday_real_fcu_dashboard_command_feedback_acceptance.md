@@ -854,3 +854,64 @@ four-file manifest was not regenerated. The three pinned artifacts and `13`
 operational pin surfaces remain untouched. No supervisor, simulator, browser,
 Pi, FCU or control-box path ran for this change; no physical capture result is
 claimed. Block C, D0, D1 and E remain closed.
+
+### Block C workstation simulator acceptance - PASS
+
+The pre-edit baseline for this appended Block C record is
+`ea8429daab7b7e7c1ba1234589b9899a7135c83c`; no commit containing this text is
+predicted here. On 17/08/2026, the user ran the full workstation supervisor at
+`/home/ghostzero/Desktop/sitl_digital_twin_20260817_162407` on isolated ROS
+domain `42`. No Pi, real FCU or control-box process participated.
+
+The first safety-off command was split before `--action` and failed during
+argument parsing, before `load_gate()` or `claim_gate()` could run. It therefore
+claimed no gate and performed no vehicle action. The corrected one-line command
+used the still-open gate and succeeded. The retained operator artifacts record
+`success:true` for safety-off, arm and disarm, each against its unique gate.
+
+The machine-readable browser phases cover the full requested path. The run
+reached disarmed `READY_DISARMED`, armed `ARMED_NEUTRAL`, positive `ACTIVE` at
+steering `+0.10` and throttle `0.08`, neutral release, negative `ACTIVE` at
+steering `-0.04` and throttle `0.09`, latched `EMERGENCY_STOP`, then accepted
+normal disarm. Measured `SERVO1`/`SERVO3` output was `1585`/`1485` in the
+positive phase, returned to `1500`/`1500`, became `1520`/`1559` in the negative
+phase and returned to `1500`/`1500` for E-Stop. The differential changed sign
+between the two active phases, and there was no third active demand.
+
+Automatic teardown stopped `dashboard`, `rosbridge`, `bridge`, `evidence`,
+`mavros`, `mavproxy` and `sitl` in that exact order. The retained teardown has
+`"pass":true`, `cleanup_rc:0`, `children_stopped:true` and `ports_free:true`.
+The final verdict has `verdict:"PASS"`, `missing:[]` and
+`session_complete:true`; all ten recorded evidence digests match their files.
+The supervisor exited with status `0`, `cleanup_rc=0` and `finalize_rc=0`.
+Independent adjudication ended with `SITL_ADJUDICATION=PASS` and status `0`;
+a second read-only adjudication produced the same result without changing the
+run-directory tree digest. This is the end-to-end Block B1 confirmation that
+the automatic EXIT path now retains its runner state and produces teardown and
+verdict artifacts.
+
+The run also makes the platform boundary concrete. Its captured parameter
+snapshot resolves steering `RC1`, throttle `RC3`, left `SERVO1_FUNCTION=73`
+and right `SERVO3_FUNCTION=74`, with both RC and servo rails at
+`1000`/`1500`/`2000`. The tracked historical real-boat record instead assigns
+left function `73` to `SERVO3` and right function `74` to `SERVO1`, with
+`800`/`800`/`2200` output rails. Those historical real-boat values are not a
+current T0b result: D1 must still read this controller's live `RCMAP_*`,
+`SERVO*_FUNCTION`, RC rails and servo rails. No simulator channel assignment,
+trim or PWM value may be carried into T2a or T2b.
+
+Block C is closed as PASS. D0 has now received separate approval, but its
+powered-down inspection has not yet been performed. D1 and E remain closed.
+
+### Block D0 powered-down T0a inspection - PASS
+
+On 17/08/2026, the operator reported the controller and Pi powered off,
+propulsion isolated, propellers removed and no physical changes made. With the
+path de-energised, the operator inspected `Pi TXD (GPIO14) -> Cube SERIAL1 RX`
+and reported both connector seating and end-to-end continuity as PASS.
+
+This operator-attested physical result closes T0a. It permits
+`REAL_FCU_T0A_COMPLETE=1` to be supplied later only within an approved D1
+session; the flag was not set during D0. No bundle transfer, helper start,
+controller power-up, parameter write or wiring change occurred. D1 and E remain
+closed pending their separate approvals.
