@@ -5,6 +5,10 @@
 > a full working day. This file authorises nothing by itself. Every code change,
 > simulator run, powered inspection, T0b probe, arm and non-neutral demand needs
 > the separate approval named below.
+>
+> **Superseded by the execution record below.** This banner is retained as the
+> imported scaffold state; the day was executed on 17/08/2026 and its results
+> are appended from `Execution record - Blocks A and B1` onward.
 
 ## Objective
 

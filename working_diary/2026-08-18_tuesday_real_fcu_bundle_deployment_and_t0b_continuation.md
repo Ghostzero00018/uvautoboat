@@ -81,7 +81,7 @@ Re-verify the four bundle members and their manifest:
 | `config/mavros_real_fcu_t0b_plugins.yaml` | `79` bytes | `5e6008314216785f2de53a617ffec72913e52acbef00645a417f19d7279e7a94` |
 
 Also recheck the three operational artifact pins from the 17/08 diary, the
-`13` production pin surfaces, free disk, the six reserved ports and the scoped
+`13` operational pin surfaces, free disk, the six reserved ports and the scoped
 process list. Reuse the landed suite results only if no covered source or
 dependency changed: SITL helper `41` cases, physical helper `22` cases,
 command bridge `26` tests and capture helper `13` tests.
