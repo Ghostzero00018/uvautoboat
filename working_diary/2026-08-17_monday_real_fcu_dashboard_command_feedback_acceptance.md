@@ -915,3 +915,45 @@ This operator-attested physical result closes T0a. It permits
 session; the flag was not set during D0. No bundle transfer, helper start,
 controller power-up, parameter write or wiring change occurred. D1 and E remain
 closed pending their separate approvals.
+
+### End-of-day close-out - D1 deferred before execution
+
+The pre-edit baseline for this appended close-out is
+`50ae386437f1a8bf5b7c2c4fa07e9f55c3f50de4`; no commit containing this text is
+predicted here. At 17:09 on 17/08/2026, the operator ended the live work and
+moved the unfinished physical sequence to 18/08/2026.
+
+D1 received user-run approval, but no transfer, deployed-bundle verification,
+Pi `check`, controller probe or T0b artifact was reported. The handover stopped
+while replacing the proposed interactive SSH terminal with the operator's
+existing Remmina Pi terminal. There is therefore no certified deployed copy of
+the four-file physical bundle, and D1 remains **NOT RUN**. No D1 retry or
+substitute command path occurred. T0b, T2a and T2b remain open; Block E did not
+start.
+
+The workstation close-out found no matching simulator, MAVProxy, MAVROS,
+rosbridge, dashboard, physical-helper, bridge or capture process. TCP ports
+`5760`, `5762`, `8002`, `8080` and `9090` plus UDP port `14600` were free. Free
+space at 17:14 was `23,011,820 KiB`. The repository was clean and synchronized
+at the pre-edit baseline; the current four-file manifest verified `4/4`. The
+only 17/08 supervisor directory was the passing Block C run at
+`/home/ghostzero/Desktop/sitl_digital_twin_20260817_162407`; no workstation
+real-FCU run directory was created.
+
+The durable day result is bounded: the code and focused-test blocks landed;
+Block C passed its complete simulator path, automatic teardown and independent
+adjudication; and the operator-attested powered-down D0 inspection closed T0a.
+No real-controller parameter response, dashboard command/feedback result or
+real-FCU command was obtained. The physical power-down state at this close-out
+still requires the operator's explicit confirmation before the day is fully
+closed.
+
+The sole 18/08 continuation diary resumes at certification and D1. It must not
+repeat Blocks B, C or D0, and it must not carry the 17/08 D1 approval across the
+day boundary without a fresh user-run confirmation after certification.
+
+After the machine-side close-out, the operator explicitly confirmed the
+end-of-day physical state: controller and Pi off, propulsion isolated, hardware
+safety restored, propellers removed, hull restrained, and controls neutral.
+This confirmation closes the 17/08 physical shutdown. D1 remains **NOT RUN**;
+its deployment, `check`, probe and T0b evidence move to 18/08.
