@@ -621,3 +621,43 @@ unchanged and all four verify against repository bytes. The two deployed
 view-only artifacts and their `13` operational pin surfaces remain untouched.
 No live supervisor, simulator, browser, Pi or control-box path ran for this
 correction. The physical normal-success result remains unproven.
+
+### Block B2 marker-format correction after `7e97a0a`
+
+The pre-edit baseline for this appended correction is
+`7e97a0af3ea54482b18f77ba61599d5b0600da3b`; no commit containing this text is
+predicted here. After that revision landed, an operator-run isolated ROS Jazzy
+format probe established that the exact `ros2 topic echo --once` invocation
+retains a trailing YAML document separator:
+
+```text
+data: REAL_FCU_WORKSTATION_STOPPED final=disarmed children=stopped ports=free
+---
+```
+
+The landed validator parsed those bytes as one mapping followed by one empty
+document and rejected them because it counted both documents. Its focused stub
+had omitted the separator, so the `19`-case green result did not establish that
+a live Jazzy marker could pass. The same capture also merged stderr into the
+evidence file, allowing unrelated middleware diagnostics to corrupt otherwise
+valid marker YAML. Therefore the physical normal-success path remained
+unreachable in `7e97a0a`; the earlier success-marker list described intended
+source behaviour, not a live-capable result.
+
+The corrected fixture emits the byte-faithful trailing separator and a separate
+stderr warning. It first reproduced merged-stream evidence corruption. After
+stderr was routed to `logs/workstation_stop_capture.log`, the fixture separately
+reproduced rejection of the valid trailing empty document. The validator now
+drops only empty YAML documents before requiring exactly one mapping with only
+the exact expected `data` value. Altered data and duplicate non-empty documents
+remain rejected, and the actual operator-stop regression now uses the real
+separator format.
+
+The complete physical-helper suite passes at `19` cases, shell syntax and diff
+checks pass, and the regenerated bundle manifest records
+`e20961a7643025fe005122e927c93de9ebbc3db3dac63a174e0fc62cd85197f1`
+for `tools/real_fcu_digital_twin_pi.sh`. The other three bundle hashes remain
+unchanged and all four verify against repository bytes. The two deployed
+view-only artifacts and their `13` operational pin surfaces remain untouched.
+The isolated format probe contacted no helper, FCU or Pi and does not close the
+still-unproven physical normal-success result. Block B3a remains closed.

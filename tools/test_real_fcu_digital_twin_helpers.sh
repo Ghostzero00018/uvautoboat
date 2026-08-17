@@ -393,22 +393,35 @@ pass_case
 PI_CAPTURE_DIR="$TEST_TMP/pi-capture-marker"
 PI_CAPTURE_OUTPUT="$PI_CAPTURE_DIR/workstation_stop.yaml"
 PI_CAPTURE_ARGS="$PI_CAPTURE_DIR/ros2.args"
-mkdir -p "$PI_CAPTURE_DIR"
+PI_CAPTURE_WARNING='test rmw warning'
+mkdir -p "$PI_CAPTURE_DIR/logs"
 bash -c '
   set -euo pipefail
   source "$1"
+  RFCU_PI_RUN_DIR="$2"
   RFCU_PI_READY_TIMEOUT_SECONDS=7
-  RFCU_PI_TEST_ROS2_ARGS="$3"
+  RFCU_PI_TEST_ROS2_ARGS="$4"
+  RFCU_PI_TEST_WARNING="$5"
   ros2() {
     printf "%s\n" "$@" >"$RFCU_PI_TEST_ROS2_ARGS"
-    printf "data: %s\n" "$RFCU_PI_WORKSTATION_STOP_MESSAGE"
+    printf "data: %s\n---\n" "$RFCU_PI_WORKSTATION_STOP_MESSAGE"
+    printf "%s\n" "$RFCU_PI_TEST_WARNING" >&2
   }
-  rfcu_pi_capture_workstation_stop_marker "$2"
-  rfcu_pi_workstation_stop_marker_file_is_valid "$2"
-' _ "$PI_HELPER" "$PI_CAPTURE_OUTPUT" "$PI_CAPTURE_ARGS"
+  rfcu_pi_capture_workstation_stop_marker "$3"
+' _ "$PI_HELPER" "$PI_CAPTURE_DIR" "$PI_CAPTURE_OUTPUT" \
+  "$PI_CAPTURE_ARGS" "$PI_CAPTURE_WARNING"
 EXPECTED_PI_CAPTURE_ARGS=$'topic\necho\n--once\n--timeout\n7\n--full-length\n--qos-history\nkeep_last\n--qos-depth\n1\n--qos-reliability\nreliable\n--qos-durability\nvolatile\n/real_fcu/workstation_stop\nstd_msgs/msg/String'
 [ "$(cat "$PI_CAPTURE_ARGS")" = "$EXPECTED_PI_CAPTURE_ARGS" ] \
   || fail_test 'Pi stop marker is not a bounded reliable volatile subscription'
+EXPECTED_PI_CAPTURE_OUTPUT=$'data: REAL_FCU_WORKSTATION_STOPPED final=disarmed children=stopped ports=free\n---'
+[ "$(cat "$PI_CAPTURE_OUTPUT")" = "$EXPECTED_PI_CAPTURE_OUTPUT" ] \
+  || fail_test 'Pi stop-marker evidence merged stderr into the ROS payload'
+grep -Fxq "$PI_CAPTURE_WARNING" \
+  "$PI_CAPTURE_DIR/logs/workstation_stop_capture.log" \
+  || fail_test 'Pi stop-marker stderr was not retained separately'
+bash -c 'source "$1"; rfcu_pi_workstation_stop_marker_file_is_valid "$2"' \
+  _ "$PI_HELPER" "$PI_CAPTURE_OUTPUT" \
+  || fail_test 'Pi rejected the byte-faithful ROS stop marker'
 printf 'data: unexpected\n' >"$PI_CAPTURE_OUTPUT"
 set +e
 bash -c 'source "$1"; rfcu_pi_workstation_stop_marker_file_is_valid "$2"' \
@@ -518,9 +531,9 @@ run_pi_operator_stop_case() {
     }
     rfcu_pi_capture_workstation_stop_marker() {
       if [ "$RFCU_PI_TEST_WORKSTATION_MARKER" -eq 1 ]; then
-        printf "data: %s\n" "$RFCU_PI_WORKSTATION_STOP_MESSAGE" >"$1"
+        printf "data: %s\n---\n" "$RFCU_PI_WORKSTATION_STOP_MESSAGE" >"$1"
       else
-        printf "data: unexpected\n" >"$1"
+        printf "data: unexpected\n---\n" >"$1"
       fi
     }
     ros2() {

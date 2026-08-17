@@ -406,14 +406,19 @@ rfcu_pi_capture_workstation_stop_marker() {
   ros2 topic echo --once --timeout "$RFCU_PI_READY_TIMEOUT_SECONDS" \
     --full-length --qos-history keep_last --qos-depth 1 \
     --qos-reliability reliable --qos-durability volatile \
-    "$RFCU_PI_WORKSTATION_STOP_TOPIC" std_msgs/msg/String >"$output" 2>&1
+    "$RFCU_PI_WORKSTATION_STOP_TOPIC" std_msgs/msg/String >"$output" \
+      2>"$RFCU_PI_RUN_DIR/logs/workstation_stop_capture.log"
 }
 
 rfcu_pi_workstation_stop_marker_file_is_valid() {
   /usr/bin/python3 -c '
 import sys
 import yaml
-values = list(yaml.safe_load_all(open(sys.argv[1], encoding="utf-8")))
+values = [
+    value
+    for value in yaml.safe_load_all(open(sys.argv[1], encoding="utf-8"))
+    if value is not None
+]
 if (
     len(values) != 1
     or not isinstance(values[0], dict)
