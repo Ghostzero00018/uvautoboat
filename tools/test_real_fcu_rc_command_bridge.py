@@ -138,6 +138,73 @@ class BridgeFunctionsTest(unittest.TestCase):
         self.assertEqual(guard.left_servo_rail.trim, 800)
         self.assertEqual(guard.throttle_rail.trim, 1500)
 
+    def test_t0b_evidence_rejects_the_legacy_three_parameter_artifact(self):
+        legacy_values = {
+            "BRD_SAFETY_DEFLT": 1,
+            "BRD_SAFETY_MASK": 0,
+            "BRD_SAFETYOPTION": 0,
+        }
+        with self.assertRaisesRegex(MODULE.GuardError, "RCMAP_ROLL"):
+            MODULE.t0b_evidence_payload(
+                legacy_values, "/dev/ttyAMA0", 43, "t0b_parameters.txt"
+            )
+
+    def test_t0b_evidence_reuses_live_mapping_and_rail_resolution(self):
+        source = valid_parameters()
+        discovery_names = MODULE.t0b_discovery_parameter_names()
+        discovery = {name: source[name] for name in discovery_names}
+        self.assertEqual(MODULE.discover_channels(discovery), (1, 3, 3, 1))
+
+        rail_names = MODULE.t0b_rail_parameter_names(discovery)
+        values = {
+            name: source[name]
+            for name in (
+                "BRD_SAFETY_DEFLT",
+                "BRD_SAFETY_MASK",
+                "BRD_SAFETYOPTION",
+                *discovery_names,
+                *rail_names,
+            )
+        }
+        evidence = MODULE.t0b_evidence_payload(
+            values, "/dev/ttyAMA0", 43, "t0b_parameters.txt"
+        )
+        self.assertEqual(evidence["schema"], "uvautoboat.real_fcu.t0b.v2")
+        self.assertEqual(evidence["parameter_reads"], 41)
+        self.assertEqual(len(evidence["recorded_parameters"]), 41)
+        self.assertEqual(
+            evidence["safety_parameters"],
+            {
+                "BRD_SAFETY_DEFLT": 1,
+                "BRD_SAFETY_MASK": 0,
+                "BRD_SAFETYOPTION": 0,
+            },
+        )
+        self.assertEqual(
+            evidence["rcmap"], {"RCMAP_ROLL": 1, "RCMAP_THROTTLE": 3}
+        )
+        self.assertEqual(len(evidence["servo_functions"]), 16)
+        self.assertEqual(
+            evidence["resolved"],
+            {
+                "steering_rc": 1,
+                "throttle_rc": 3,
+                "left_servo": 3,
+                "right_servo": 1,
+            },
+        )
+        self.assertEqual(evidence["rc_rails"]["steering"]["trim"], 1500)
+        self.assertEqual(evidence["rc_rails"]["throttle"]["trim"], 1500)
+        self.assertEqual(evidence["servo_rails"]["left"]["trim"], 800)
+        self.assertEqual(evidence["servo_rails"]["right"]["trim"], 800)
+
+        missing_rail = dict(values)
+        del missing_rail["RC1_TRIM"]
+        with self.assertRaisesRegex(MODULE.GuardError, "RC1_TRIM"):
+            MODULE.t0b_evidence_payload(
+                missing_rail, "/dev/ttyAMA0", 43, "t0b_parameters.txt"
+            )
+
     def test_rejects_duplicate_throttle_function(self):
         values = valid_parameters()
         values["SERVO2_FUNCTION"] = 73
@@ -312,6 +379,9 @@ class BridgeNodeStateMachineTest(unittest.TestCase):
         self.assertEqual(
             parameter_client.requests[1], parameter_client.requests[2]
         )
+        source = inspect.getsource(self.node._resolve_live_guard)
+        self.assertIn("t0b_discovery_parameter_names()", source)
+        self.assertIn("t0b_rail_parameter_names(discovery)", source)
 
     def test_startup_armed_abort_emits_no_override(self):
         now = 100.0

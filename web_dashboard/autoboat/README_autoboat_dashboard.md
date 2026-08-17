@@ -239,7 +239,10 @@ tools/real_fcu_digital_twin_pi.sh check|probe|run-t2a|run
 
 `check` performs bounded preflight and static verification without starting the
 loop. `probe` is the separately approved read-only T0b request/response and
-safety-state check. `run-t2a` requires T2a approval while rejecting T2b approval;
+safety-state check. After one forced MAVROS cache pull, it retains the three
+safety parameters, both `RCMAP_*` values, all `SERVO1..16_FUNCTION` values and
+the resolved RC and servo rails as a validated `41`-parameter T0b artifact.
+`run-t2a` requires T2a approval while rejecting T2b approval;
 it exposes no dashboard command publisher or bridge command subscription and
 holds the resolved live RC trims while armed. `run` requires both T2 approvals
 and enables the separately approved closed-loop demand path. Neither mode arms,
@@ -529,4 +532,4 @@ Part of the uvautoboat project — Apache License 2.0.
 
 Built with [roslibjs](http://robotwebtools.org/), [Leaflet.js](https://leafletjs.com/), [OpenStreetMap](https://www.openstreetmap.org/).
 
-Last updated: 10/08/2026
+Last updated: 17/08/2026

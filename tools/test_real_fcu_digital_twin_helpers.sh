@@ -291,6 +291,10 @@ pass_case
 
 T0B_FUNCTION="$(extract_function "$PI_HELPER" rfcu_pi_capture_t0b)"
 [ -n "$T0B_FUNCTION" ] || fail_test 'T0b capture function is missing'
+T0B_READ_FUNCTION="$(extract_function "$PI_HELPER" rfcu_pi_read_t0b_parameter)"
+[ -n "$T0B_READ_FUNCTION" ] || fail_test 'T0b parameter-read function is missing'
+grep -Fq 'ros2 param get /mavros/param' <<<"$T0B_READ_FUNCTION" \
+  || fail_test 'T0b parameter helper is not read-only MAVROS cache access'
 for literal in \
   '/mavros/state' \
   '/mavros/sys_status' \
@@ -300,12 +304,118 @@ for literal in \
   'BRD_SAFETY_DEFLT' \
   'BRD_SAFETY_MASK' \
   'BRD_SAFETYOPTION' \
+  't0b-discovery-parameters' \
+  't0b-rail-parameters' \
+  't0b-write-evidence' \
   '32768'; do
   grep -Fq "$literal" <<<"$T0B_FUNCTION" \
     || fail_test "T0b capture is missing: $literal"
 done
 ! grep -Eiq 'param(eter)?[_ -]?set|set_mode|arming|motor.test|rc.override|create_publisher|publish\(' \
-  <<<"$T0B_FUNCTION" || fail_test 'T0b capture contains a forbidden write path'
+  <<<"$T0B_FUNCTION$T0B_READ_FUNCTION" \
+  || fail_test 'T0b capture contains a forbidden write path'
+
+T0B_READ_FAIL_DIR="$TEST_TMP/t0b-read-failure"
+mkdir -p "$T0B_READ_FAIL_DIR/evidence"
+: >"$T0B_READ_FAIL_DIR/evidence/t0b_parameters.txt"
+set +e
+bash -c '
+  source "$1"
+  RFCU_PI_RUN_DIR="$2"
+  RFCU_PI_SUPERVISOR_LOG="$2/supervisor.log"
+  : >"$RFCU_PI_SUPERVISOR_LOG"
+  timeout() { return 1; }
+  if rfcu_pi_read_t0b_parameter RCMAP_ROLL \
+      "$2/evidence/t0b_parameters.txt"; then
+    exit 0
+  else
+    exit $?
+  fi
+' _ "$PI_HELPER" "$T0B_READ_FAIL_DIR" >/dev/null 2>&1
+T0B_READ_FAIL_RC=$?
+set -e
+[ "$T0B_READ_FAIL_RC" -ne 0 ] \
+  || fail_test 'T0b cache-read failure returned success from a conditional caller'
+[ ! -s "$T0B_READ_FAIL_DIR/evidence/t0b_parameters.txt" ] \
+  || fail_test 'T0b cache-read failure appended an invalid parameter value'
+pass_case
+
+T0B_CASE_DIR="$TEST_TMP/t0b-artifact"
+mkdir -p "$T0B_CASE_DIR/evidence" "$T0B_CASE_DIR/logs"
+T0B_CAPTURE_OUTPUT="$(bash -c '
+  set -euo pipefail
+  source "$1"
+  RFCU_PI_RUN_DIR="$2"
+  RFCU_PI_SUPERVISOR_LOG="$2/supervisor.log"
+  ROS_DOMAIN_ID=43
+  : >"$RFCU_PI_SUPERVISOR_LOG"
+
+  rfcu_pi_capture_topic() {
+    case "$1" in
+      /mavros/state) printf "connected: true\narmed: false\n---\n" >"$3" ;;
+      /mavros/sys_status) printf "sensors_enabled: 0\n---\n" >"$3" ;;
+      *) return 1 ;;
+    esac
+  }
+  rfcu_pi_state_file_is_connected_disarmed() { return 0; }
+  timeout() {
+    shift
+    if [ "$1" = ros2 ] && [ "$2" = service ] && [ "$3" = call ]; then
+      printf "success=True\n"
+      return 0
+    fi
+    [ "$1" = ros2 ] && [ "$2" = param ] && [ "$3" = get ] || return 1
+    case "$5" in
+      BRD_SAFETY_DEFLT) value=1 ;;
+      BRD_SAFETY_MASK|BRD_SAFETYOPTION) value=0 ;;
+      RCMAP_ROLL) value=1 ;;
+      RCMAP_THROTTLE) value=3 ;;
+      SERVO1_FUNCTION) value=74 ;;
+      SERVO3_FUNCTION) value=73 ;;
+      SERVO*_FUNCTION) value=0 ;;
+      RC1_MIN|RC3_MIN) value=1000 ;;
+      RC1_TRIM|RC3_TRIM) value=1500 ;;
+      RC1_MAX|RC3_MAX) value=2000 ;;
+      RC1_DZ|RC3_DZ) value=30 ;;
+      RC1_REVERSED|RC3_REVERSED|RC1_OPTION|RC3_OPTION) value=0 ;;
+      SERVO1_MIN|SERVO3_MIN|SERVO1_TRIM|SERVO3_TRIM) value=800 ;;
+      SERVO1_MAX|SERVO3_MAX) value=2200 ;;
+      SERVO1_REVERSED|SERVO3_REVERSED) value=0 ;;
+      *) printf "unexpected parameter: %s\n" "$5" >&2; return 1 ;;
+    esac
+    printf "Integer value is: %s\n" "$value"
+  }
+
+  rfcu_pi_capture_t0b
+' _ "$PI_HELPER" "$T0B_CASE_DIR" 2>&1)" \
+  || fail_test "T0b artifact capture failed: $T0B_CAPTURE_OUTPUT"
+grep -Fq 'REAL_FCU_T0B=PASS serial=/dev/ttyAMA0 parameter_reads=41 safety=ON mapping=retained rails=retained' \
+  <<<"$T0B_CAPTURE_OUTPUT" || fail_test 'T0b pass marker does not retain the expanded read count'
+/usr/bin/python3 -c '
+import json
+import sys
+payload = json.load(open(sys.argv[1], encoding="utf-8"))
+assert payload["schema"] == "uvautoboat.real_fcu.t0b.v2"
+assert payload["parameter_reads"] == 41
+assert len(payload["recorded_parameters"]) == 41
+assert payload["rcmap"] == {"RCMAP_ROLL": 1, "RCMAP_THROTTLE": 3}
+assert len(payload["servo_functions"]) == 16
+assert payload["resolved"] == {
+    "steering_rc": 1,
+    "throttle_rc": 3,
+    "left_servo": 3,
+    "right_servo": 1,
+}
+assert payload["rc_rails"]["steering"]["trim"] == 1500
+assert payload["rc_rails"]["throttle"]["trim"] == 1500
+assert payload["servo_rails"]["left"]["trim"] == 800
+assert payload["servo_rails"]["right"]["trim"] == 800
+' "$T0B_CASE_DIR/evidence/t0b.json" \
+  || fail_test 'T0b artifact is missing mapping or rail evidence'
+[ "$(grep -cE '^[A-Z][A-Z0-9_]*=' \
+  "$T0B_CASE_DIR/evidence/t0b_parameters.txt")" -eq 41 ] \
+  || fail_test 'T0b parameter record does not contain exactly 41 values'
+pass_case
 
 RUN_FUNCTION="$(extract_function "$PI_HELPER" rfcu_pi_run)"
 PROBE_START_LINE="$(line_number_once "$RUN_FUNCTION" \

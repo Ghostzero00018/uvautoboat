@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import pathlib
 import signal
 import sys
 import time
@@ -188,6 +189,163 @@ def _servo_rail(values: Mapping[str, float], channel: int) -> ServoRail:
     if rail.reversed not in (0, 1):
         raise GuardError(f"{prefix}REVERSED must be 0 or 1")
     return rail
+
+
+def t0b_discovery_parameter_names() -> tuple[str, ...]:
+    return (
+        "RCMAP_ROLL",
+        "RCMAP_THROTTLE",
+        *(f"SERVO{channel}_FUNCTION" for channel in range(1, 17)),
+    )
+
+
+def t0b_rail_parameter_names(values: Mapping[str, float]) -> tuple[str, ...]:
+    steering, throttle, left, right = discover_channels(values)
+    names = []
+    for channel in (steering, throttle):
+        names.extend(
+            f"RC{channel}_{suffix}"
+            for suffix in ("MIN", "TRIM", "MAX", "DZ", "REVERSED", "OPTION")
+        )
+    for channel in (left, right):
+        names.extend(
+            f"SERVO{channel}_{suffix}"
+            for suffix in ("MIN", "TRIM", "MAX", "REVERSED")
+        )
+    return tuple(names)
+
+
+def read_t0b_parameter_file(path: str) -> Dict[str, float]:
+    values: Dict[str, float] = {}
+    for line_number, line in enumerate(
+        pathlib.Path(path).read_text(encoding="utf-8").splitlines(), start=1
+    ):
+        name, separator, encoded = line.partition("=")
+        if not separator or not name or not encoded:
+            raise GuardError(f"invalid T0b parameter line {line_number}")
+        if name in values:
+            raise GuardError(f"duplicate T0b parameter {name}")
+        try:
+            value = float(encoded)
+        except ValueError as exc:
+            raise GuardError(f"invalid T0b parameter {name}: {encoded}") from exc
+        if not math.isfinite(value):
+            raise GuardError(f"invalid T0b parameter {name}: {encoded}")
+        values[name] = value
+    return values
+
+
+def _rc_rail_evidence(
+    values: Mapping[str, float], channel: int, rail: RcRail
+) -> Dict[str, int]:
+    return {
+        "channel": channel,
+        "minimum": rail.minimum,
+        "trim": rail.trim,
+        "maximum": rail.maximum,
+        "dead_zone": rail.dead_zone,
+        "reversed": rail.reversed,
+        "option": exact_int(
+            f"RC{channel}_OPTION", require_value(values, f"RC{channel}_OPTION")
+        ),
+    }
+
+
+def _servo_rail_evidence(
+    channel: int, function: int, rail: ServoRail
+) -> Dict[str, int]:
+    return {
+        "channel": channel,
+        "function": function,
+        "minimum": rail.minimum,
+        "trim": rail.trim,
+        "maximum": rail.maximum,
+        "reversed": rail.reversed,
+    }
+
+
+def t0b_evidence_payload(
+    values: Mapping[str, float], serial: str, domain: int, parameters_file: str
+) -> Dict[str, object]:
+    steering, throttle, left, right = discover_channels(values)
+    expected_names = {
+        "BRD_SAFETY_DEFLT",
+        "BRD_SAFETY_MASK",
+        "BRD_SAFETYOPTION",
+        *t0b_discovery_parameter_names(),
+        *t0b_rail_parameter_names(values),
+    }
+    missing = sorted(expected_names - set(values))
+    unexpected = sorted(set(values) - expected_names)
+    if missing:
+        raise GuardError(f"T0b evidence is missing parameters: {','.join(missing)}")
+    if unexpected:
+        raise GuardError(
+            f"T0b evidence has unexpected parameters: {','.join(unexpected)}"
+        )
+
+    domain_id = exact_int("ROS domain", domain)
+    if domain_id != 43:
+        raise GuardError(f"T0b evidence requires ROS domain 43, got {domain_id}")
+    if not serial:
+        raise GuardError("T0b evidence serial path is empty")
+
+    safety_parameters = {
+        name: exact_int(name, require_value(values, name))
+        for name in (
+            "BRD_SAFETY_DEFLT",
+            "BRD_SAFETY_MASK",
+            "BRD_SAFETYOPTION",
+        )
+    }
+    if safety_parameters["BRD_SAFETY_DEFLT"] != 1:
+        raise GuardError("BRD_SAFETY_DEFLT must be 1")
+
+    steering_rail = _rc_rail(values, steering)
+    throttle_rail = _rc_rail(values, throttle)
+    left_rail = _servo_rail(values, left)
+    right_rail = _servo_rail(values, right)
+    servo_functions = {
+        name: exact_int(name, require_value(values, name))
+        for name in t0b_discovery_parameter_names()
+        if name.startswith("SERVO")
+    }
+    recorded_parameters = {
+        name: exact_int(name, require_value(values, name))
+        for name in sorted(expected_names)
+    }
+
+    return {
+        "schema": "uvautoboat.real_fcu.t0b.v2",
+        "pass": True,
+        "domain": domain_id,
+        "serial": serial,
+        "safety_motor_outputs_bit": 32768,
+        "safety_motor_outputs_enabled": False,
+        "parameter_reads": len(expected_names),
+        "parameters_file": parameters_file,
+        "safety_parameters": safety_parameters,
+        "rcmap": {
+            "RCMAP_ROLL": steering,
+            "RCMAP_THROTTLE": throttle,
+        },
+        "servo_functions": servo_functions,
+        "resolved": {
+            "steering_rc": steering,
+            "throttle_rc": throttle,
+            "left_servo": left,
+            "right_servo": right,
+        },
+        "rc_rails": {
+            "steering": _rc_rail_evidence(values, steering, steering_rail),
+            "throttle": _rc_rail_evidence(values, throttle, throttle_rail),
+        },
+        "servo_rails": {
+            "left": _servo_rail_evidence(left, 73, left_rail),
+            "right": _servo_rail_evidence(right, 74, right_rail),
+        },
+        "recorded_parameters": recorded_parameters,
+    }
 
 
 def resolve_guard(values: Mapping[str, float]) -> LiveGuard:
@@ -466,22 +624,13 @@ class RealFcuRcCommandBridge(Node):
             "FS_OPTIONS", "FS_GCS_ENABLE", "FS_GCS_TIMEOUT",
         }
         base_names.update(f"RC{channel}_OPTION" for channel in range(1, 17))
-        base_names.update(f"SERVO{channel}_FUNCTION" for channel in range(1, 17))
+        base_names.update(t0b_discovery_parameter_names())
         self._refresh_parameter_cache(pull_client)
         discovery = self._pull(parameter_client, sorted(base_names))
-        steering, throttle, left, right = discover_channels(discovery)
+        discover_channels(discovery)
 
         dynamic_names = set(base_names)
-        for channel in (steering, throttle):
-            dynamic_names.update(
-                f"RC{channel}_{suffix}"
-                for suffix in ("MIN", "TRIM", "MAX", "DZ", "REVERSED", "OPTION")
-            )
-        for channel in (left, right):
-            dynamic_names.update(
-                f"SERVO{channel}_{suffix}"
-                for suffix in ("MIN", "TRIM", "MAX", "REVERSED")
-            )
+        dynamic_names.update(t0b_rail_parameter_names(discovery))
         dynamic_names.add("DDS_ENABLE")
 
         self._refresh_parameter_cache(pull_client)
@@ -832,5 +981,59 @@ def main(args: Optional[Sequence[str]] = None) -> None:
             rclpy.shutdown()
 
 
+def run_t0b_command(args: Sequence[str]) -> None:
+    command = args[0]
+    if command == "t0b-discovery-parameters":
+        if len(args) != 1:
+            raise GuardError("usage: t0b-discovery-parameters")
+        print(*t0b_discovery_parameter_names(), sep="\n")
+        return
+    if command == "t0b-rail-parameters":
+        if len(args) != 2:
+            raise GuardError("usage: t0b-rail-parameters PARAMETERS_FILE")
+        print(*t0b_rail_parameter_names(read_t0b_parameter_file(args[1])), sep="\n")
+        return
+    if command == "t0b-write-evidence":
+        if len(args) != 5:
+            raise GuardError(
+                "usage: t0b-write-evidence PARAMETERS_FILE OUTPUT SERIAL DOMAIN"
+            )
+        parameters_path, output_path, serial, encoded_domain = args[1:]
+        try:
+            domain = int(encoded_domain)
+        except ValueError as exc:
+            raise GuardError(f"invalid ROS domain: {encoded_domain}") from exc
+        payload = t0b_evidence_payload(
+            read_t0b_parameter_file(parameters_path),
+            serial,
+            domain,
+            pathlib.Path(parameters_path).name,
+        )
+        pathlib.Path(output_path).write_text(
+            json.dumps(payload, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        return
+    raise GuardError(f"unknown T0b command: {command}")
+
+
+def cli(args: Optional[Sequence[str]] = None) -> int:
+    argv = list(sys.argv[1:] if args is None else args)
+    t0b_commands = {
+        "t0b-discovery-parameters",
+        "t0b-rail-parameters",
+        "t0b-write-evidence",
+    }
+    if argv and argv[0] in t0b_commands:
+        try:
+            run_t0b_command(argv)
+        except (GuardError, OSError) as exc:
+            print(f"real_fcu_rc_command_bridge: {exc}", file=sys.stderr)
+            return 2
+        return 0
+    main(argv)
+    return 0
+
+
 if __name__ == "__main__":
-    main()
+    raise SystemExit(cli())

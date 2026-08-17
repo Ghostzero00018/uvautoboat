@@ -714,3 +714,63 @@ untouched.
 No supervisor, simulator, browser, Pi, FCU or control-box path ran during B3a.
 This is a source and focused-test result only: no T2a physical result is claimed,
 B3b remains closed, and Blocks C, D0, D1 and E have not advanced.
+
+### Block B3b source and focused-test result - PASS
+
+The pre-edit baseline for this appended B3b record is
+`780f615150c057a9c7a6c2269fbab953c1d0bee8`; no commit containing this text is
+predicted here. The focused physical-helper red failed with `T0b capture is
+missing: t0b-discovery-parameters` against that source. The bridge suite then
+ran `26` tests with the two intended errors because the shared T0b parameter
+plan and evidence builder did not exist. These failures established that the
+probe retained neither the mapping nor the configured rails.
+
+The T0b probe still performs one forced MAVROS parameter-cache pull and uses
+only read-only `ros2 param get /mavros/param` requests afterwards. It now asks
+the command bridge's offline resolver for the `18` discovery names: both
+`RCMAP_*` parameters and all `SERVO1..16_FUNCTION` parameters. The existing
+`discover_channels` implementation resolves the steering and throttle RC
+channels plus the unique servo functions `73` and `74`, after which the same
+bridge implementation requests `20` channel-specific rail names. Those are
+the six RC values `MIN`, `TRIM`, `MAX`, `DZ`, `REVERSED` and `OPTION` for each
+resolved RC channel, and the four servo values `MIN`, `TRIM`, `MAX` and
+`REVERSED` for each resolved output channel.
+
+Together with the three safety parameters, the validated
+`uvautoboat.real_fcu.t0b.v2` artifact retains exactly `41` named values, the
+complete function table, the resolved channel mapping and both RC-input and
+servo-output rails. The evidence builder reuses `discover_channels`,
+`_rc_rail` and `_servo_rail`; the live bridge guard now obtains its discovery
+and dynamic rail name plans from the same functions. Missing, duplicate,
+unexpected, non-finite, ambiguous or invalid mapping and rail values fail
+closed. The source marker that supersedes the earlier three-read plan is:
+
+```text
+REAL_FCU_T0B=PASS serial=/dev/ttyAMA0 parameter_reads=41 safety=ON mapping=retained rails=retained
+```
+
+The final review added a red case that forced a cache-read failure while calling
+the new parameter helper from a shell conditional. Before correction, the
+helper relied on `errexit`, returned success and appended an empty value in that
+context. It now returns explicitly after every name, duplicate, read, parse and
+record failure. The regression requires a non-zero result and an unchanged
+parameter record.
+
+The complete physical-helper suite passes at `21` cases and the bridge suite
+passes all `26` tests. Shell syntax checks pass for both physical helpers and
+the physical-helper suite; Python compilation passes for the bridge and its
+focused suite. The four-file manifest verifies all entries against the current
+repository bytes and now records
+`38e41d7dc8181e0f289d3b89c6e374e37cf020cf34e7b03f3cf955981a8efafd`
+for `tools/real_fcu_digital_twin_pi.sh` and
+`cf6668139999308b65a2f8af7ef70f74e226c9bd6c1ac82545bc6c1d0bbb59d7`
+for `tools/real_fcu_rc_command_bridge.py`. Both allowlist hashes remain
+unchanged. The dashboard README now describes the retained `41`-parameter T0b
+artifact.
+
+No supervisor, simulator, browser, Pi, FCU or control-box path ran during B3b.
+No controller parameter write or new write mechanism was introduced. The three
+pinned artifacts and the `13` operational pin surfaces remain untouched. This
+is a source and focused-test result only: T0b remains open until a separately
+approved D1 probe retains this controller's live artifact. The separate
+capture-helper change and Blocks C, D0, D1 and E have not advanced.

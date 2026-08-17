@@ -471,11 +471,40 @@ print(match.group(1))
 ' "$1"
 }
 
+rfcu_pi_read_t0b_parameter() {
+  local parameter="$1" parameters_file="$2" parameter_file value
+  if ! [[ "$parameter" =~ ^[A-Z][A-Z0-9_]*$ ]]; then
+    rfcu_pi_fail "invalid T0b parameter name: $parameter"
+    return 1
+  fi
+  if grep -Fq "$parameter=" "$parameters_file"; then
+    rfcu_pi_fail "duplicate T0b parameter request: $parameter"
+    return 1
+  fi
+  parameter_file="$RFCU_PI_RUN_DIR/evidence/t0b_${parameter}.txt"
+  if ! timeout 8 ros2 param get /mavros/param "$parameter" \
+      >"$parameter_file" 2>&1; then
+    rfcu_pi_fail "T0b parameter read failed: $parameter"
+    return 1
+  fi
+  if ! value="$(rfcu_pi_parameter_value "$parameter_file")"; then
+    rfcu_pi_fail "T0b parameter value is missing: $parameter"
+    return 1
+  fi
+  if ! printf '%s=%s\n' "$parameter" "$value" >>"$parameters_file"; then
+    rfcu_pi_fail "T0b parameter record failed: $parameter"
+    return 1
+  fi
+}
+
 rfcu_pi_capture_t0b() {
   local state_file="$RFCU_PI_RUN_DIR/evidence/t0b_state.yaml"
   local sys_status_file="$RFCU_PI_RUN_DIR/evidence/t0b_sys_status.yaml"
   local pull_file="$RFCU_PI_RUN_DIR/evidence/t0b_param_pull.txt"
-  local parameter_file parameter value default_value
+  local parameters_file="$RFCU_PI_RUN_DIR/evidence/t0b_parameters.txt"
+  local resolver_log="$RFCU_PI_RUN_DIR/logs/t0b_resolver.log"
+  local parameter default_value discovery_output rail_output parameter_reads
+  local -a discovery_parameters=() rail_parameters=()
   rfcu_pi_capture_topic /mavros/state mavros_msgs/msg/State "$state_file" 8 \
     || rfcu_pi_fail 'T0b did not receive a MAVROS state sample'
   rfcu_pi_state_file_is_connected_disarmed "$state_file" \
@@ -497,36 +526,58 @@ if not isinstance(enabled, int) or enabled & 32768:
     || rfcu_pi_fail 'T0b MAVROS parameter pull failed'
   grep -Eq 'success[=:][[:space:]]*(True|true)' "$pull_file" \
     || rfcu_pi_fail 'T0b MAVROS parameter pull was not successful'
-  : >"$RFCU_PI_RUN_DIR/evidence/t0b_parameters.txt"
+  : >"$parameters_file"
+  : >"$resolver_log"
   for parameter in BRD_SAFETY_DEFLT BRD_SAFETY_MASK BRD_SAFETYOPTION; do
-    parameter_file="$RFCU_PI_RUN_DIR/evidence/t0b_${parameter}.txt"
-    timeout 8 ros2 param get /mavros/param "$parameter" >"$parameter_file" 2>&1 \
-      || rfcu_pi_fail "T0b parameter read failed: $parameter"
-    value="$(rfcu_pi_parameter_value "$parameter_file")" \
-      || rfcu_pi_fail "T0b parameter value is missing: $parameter"
-    printf '%s=%s\n' "$parameter" "$value" \
-      >>"$RFCU_PI_RUN_DIR/evidence/t0b_parameters.txt"
+    rfcu_pi_read_t0b_parameter "$parameter" "$parameters_file" || return 1
+  done
+  if ! discovery_output="$(/usr/bin/python3 "$RFCU_PI_BRIDGE" \
+      t0b-discovery-parameters 2>>"$resolver_log")"; then
+    rfcu_pi_fail 'T0b discovery parameter plan failed'
+    return 1
+  fi
+  mapfile -t discovery_parameters <<<"$discovery_output"
+  if [ "${#discovery_parameters[@]}" -ne 18 ]; then
+    rfcu_pi_fail 'T0b discovery parameter plan must contain 18 names'
+    return 1
+  fi
+  for parameter in "${discovery_parameters[@]}"; do
+    rfcu_pi_read_t0b_parameter "$parameter" "$parameters_file" || return 1
+  done
+  if ! rail_output="$(/usr/bin/python3 "$RFCU_PI_BRIDGE" \
+      t0b-rail-parameters "$parameters_file" 2>>"$resolver_log")"; then
+    rfcu_pi_fail 'T0b live mapping resolution failed'
+    return 1
+  fi
+  mapfile -t rail_parameters <<<"$rail_output"
+  if [ "${#rail_parameters[@]}" -ne 20 ]; then
+    rfcu_pi_fail 'T0b resolved rail plan must contain 20 names'
+    return 1
+  fi
+  for parameter in "${rail_parameters[@]}"; do
+    rfcu_pi_read_t0b_parameter "$parameter" "$parameters_file" || return 1
   done
   default_value="$(sed -n 's/^BRD_SAFETY_DEFLT=//p' \
-    "$RFCU_PI_RUN_DIR/evidence/t0b_parameters.txt")"
-  [ "$default_value" = 1 ] || [ "$default_value" = 1.0 ] \
-    || rfcu_pi_fail "BRD_SAFETY_DEFLT is not 1: $default_value"
-  /usr/bin/python3 -c '
-import json
-import pathlib
-import sys
-payload = {
-    "schema": "uvautoboat.real_fcu.t0b.v1",
-    "pass": True,
-    "domain": int(sys.argv[3]),
-    "serial": sys.argv[2],
-    "safety_motor_outputs_bit": 32768,
-    "safety_motor_outputs_enabled": False,
-    "parameters_file": "t0b_parameters.txt",
-}
-pathlib.Path(sys.argv[1]).write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-' "$RFCU_PI_RUN_DIR/evidence/t0b.json" "$RFCU_PI_SERIAL" "$ROS_DOMAIN_ID"
-  rfcu_pi_log "REAL_FCU_T0B=PASS serial=$RFCU_PI_SERIAL parameter_reads=3 safety=ON"
+    "$parameters_file")"
+  if [ "$default_value" != 1 ] && [ "$default_value" != 1.0 ]; then
+    rfcu_pi_fail "BRD_SAFETY_DEFLT is not 1: $default_value"
+    return 1
+  fi
+  if ! /usr/bin/python3 "$RFCU_PI_BRIDGE" t0b-write-evidence \
+      "$parameters_file" "$RFCU_PI_RUN_DIR/evidence/t0b.json" \
+      "$RFCU_PI_SERIAL" "$ROS_DOMAIN_ID" 2>>"$resolver_log"; then
+    rfcu_pi_fail 'T0b mapping and rail artifact validation failed'
+    return 1
+  fi
+  if ! parameter_reads="$(grep -cE '^[A-Z][A-Z0-9_]*=' "$parameters_file")"; then
+    rfcu_pi_fail 'T0b parameter record is empty'
+    return 1
+  fi
+  if [ "$parameter_reads" -ne 41 ]; then
+    rfcu_pi_fail "T0b parameter record has $parameter_reads values instead of 41"
+    return 1
+  fi
+  rfcu_pi_log "REAL_FCU_T0B=PASS serial=$RFCU_PI_SERIAL parameter_reads=$parameter_reads safety=ON mapping=retained rails=retained"
 }
 
 rfcu_pi_verify_telemetry() {
