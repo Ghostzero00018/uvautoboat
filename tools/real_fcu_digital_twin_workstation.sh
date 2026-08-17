@@ -15,11 +15,15 @@ RFCU_WS_POLL_SECONDS="${REAL_FCU_POLL_SECONDS:-1}"
 RFCU_WS_DOMAIN_ID='43'
 RFCU_WS_DISCOVERY_RANGE='SUBNET'
 RFCU_WS_LOCALHOST_ONLY='0'
+RFCU_WS_STOP_TOPIC='/real_fcu/workstation_stop'
+RFCU_WS_STOP_MESSAGE='REAL_FCU_WORKSTATION_STOPPED final=disarmed children=stopped ports=free'
 RFCU_WS_RUN_DIR=''
 RFCU_WS_SUPERVISOR_LOG=''
 RFCU_WS_SUPERVISOR_PGID=''
 RFCU_WS_CLEANING=0
 RFCU_WS_STARTED=0
+RFCU_WS_READY_REACHED=0
+RFCU_WS_OPERATOR_STOP_REQUESTED=0
 
 declare -a RFCU_WS_CHILD_NAMES=()
 declare -a RFCU_WS_CHILD_PIDS=()
@@ -204,6 +208,8 @@ rfcu_ws_init_state() {
   RFCU_WS_CHILD_INDEX=()
   RFCU_WS_CLEANING=0
   RFCU_WS_STARTED=0
+  RFCU_WS_READY_REACHED=0
+  RFCU_WS_OPERATOR_STOP_REQUESTED=0
   RFCU_WS_SUPERVISOR_PGID="$(ps -o pgid= -p $$ | tr -d ' ')" \
     || rfcu_ws_fail 'cannot determine workstation supervisor process group'
   [[ "$RFCU_WS_SUPERVISOR_PGID" =~ ^[1-9][0-9]*$ ]] \
@@ -384,6 +390,35 @@ print(
 ' "$status_json"
 }
 
+rfcu_ws_status_is_final_disarmed() {
+  /usr/bin/python3 -c '
+import json
+import sys
+
+status = json.loads(sys.argv[1])
+if not (
+    status.get("state") in ("READY_DISARMED", "EMERGENCY_STOP")
+    and status.get("connected") is True
+    and status.get("armed") is False
+    and status.get("mode") == "MANUAL"
+    and status.get("feedback_fresh") is True
+):
+    raise SystemExit(1)
+' "$1"
+}
+
+rfcu_ws_publish_stop_marker() {
+  local command_timeout=$((RFCU_WS_READY_TIMEOUT_SECONDS + 5))
+  timeout "$command_timeout" \
+    ros2 topic pub --once --wait-matching-subscriptions 1 \
+      --max-wait-time-secs "$RFCU_WS_READY_TIMEOUT_SECONDS" \
+      --qos-history keep_last --qos-depth 1 \
+      --qos-reliability reliable --qos-durability volatile \
+      "$RFCU_WS_STOP_TOPIC" std_msgs/msg/String \
+      "{data: \"$RFCU_WS_STOP_MESSAGE\"}" \
+      >"$RFCU_WS_RUN_DIR/logs/workstation_stop_marker.log" 2>&1
+}
+
 rfcu_ws_wait_bridge_ready() {
   local deadline=$((SECONDS + RFCU_WS_READY_TIMEOUT_SECONDS)) status_json bench_url
   while [ "$SECONDS" -lt "$deadline" ]; do
@@ -401,19 +436,51 @@ rfcu_ws_wait_bridge_ready() {
 }
 
 rfcu_ws_cleanup() {
-  local incoming_rc=$? cleanup_rc=0 final_rc
+  local incoming_rc=$? cleanup_rc=0 final_rc operator_candidate=0
+  local operator_success=0 status_json
   [ "$RFCU_WS_CLEANING" -eq 0 ] || return "$incoming_rc"
   RFCU_WS_CLEANING=1
   trap - EXIT INT TERM
   set +e
+  if [ "$RFCU_WS_OPERATOR_STOP_REQUESTED" -eq 1 ] \
+      && [ "$RFCU_WS_READY_REACHED" -eq 1 ]; then
+    if ! rfcu_ws_children_alive; then
+      rfcu_ws_log_error 'REAL_FCU_WORKSTATION_CHILDREN=FAIL expected=alive-before-stop'
+      cleanup_rc=1
+    elif status_json="$(rfcu_ws_status_json_once)" \
+        && rfcu_ws_status_is_final_disarmed "$status_json"; then
+      printf '%s\n' "$status_json" \
+        >"$RFCU_WS_RUN_DIR/evidence/final_status.json"
+      rfcu_ws_log 'REAL_FCU_WORKSTATION_FINAL_STATE=PASS connected=true armed=false'
+      operator_candidate=1
+    else
+      rfcu_ws_log_error 'REAL_FCU_WORKSTATION_FINAL_STATE=FAIL expected=connected,disarmed'
+      cleanup_rc=1
+    fi
+  fi
   rfcu_ws_stop_child dashboard || cleanup_rc=1
   rfcu_ws_stop_child rosbridge || cleanup_rc=1
   if [ "$RFCU_WS_STARTED" -eq 1 ]; then
     rfcu_ws_loopback_listener_ready 8002 && cleanup_rc=1
     rfcu_ws_loopback_listener_ready 9090 && cleanup_rc=1
   fi
+  if [ "$incoming_rc" -eq 130 ] && [ "$operator_candidate" -eq 1 ] \
+      && [ "$cleanup_rc" -eq 0 ]; then
+    if rfcu_ws_publish_stop_marker; then
+      rfcu_ws_log "REAL_FCU_WORKSTATION_STOP_MARKER=PASS topic=$RFCU_WS_STOP_TOPIC"
+      operator_success=1
+    else
+      rfcu_ws_log_error "REAL_FCU_WORKSTATION_STOP_MARKER=FAIL topic=$RFCU_WS_STOP_TOPIC"
+      cleanup_rc=1
+    fi
+  fi
   final_rc="$incoming_rc"
-  [ "$final_rc" -ne 0 ] || final_rc="$cleanup_rc"
+  if [ "$incoming_rc" -eq 130 ] && [ "$operator_success" -eq 1 ] \
+      && [ "$cleanup_rc" -eq 0 ]; then
+    final_rc=0
+  elif [ "$final_rc" -eq 0 ]; then
+    final_rc="$cleanup_rc"
+  fi
   [ -z "$RFCU_WS_RUN_DIR" ] \
     || rfcu_ws_log "REAL_FCU_WORKSTATION_LOGS=$RFCU_WS_RUN_DIR"
   rfcu_ws_log "REAL_FCU_WORKSTATION_EXIT status=$final_rc cleanup_rc=$cleanup_rc"
@@ -421,6 +488,7 @@ rfcu_ws_cleanup() {
 }
 
 rfcu_ws_on_interrupt() {
+  RFCU_WS_OPERATOR_STOP_REQUESTED=1
   rfcu_ws_log 'operator stop requested'
   exit 130
 }
@@ -463,6 +531,7 @@ rfcu_ws_run() {
   rfcu_ws_log "REAL_FCU_BENCH_URL=$RFCU_WS_BENCH_URL"
   rfcu_ws_log 'REAL_FCU_WORKSTATION_READY=PASS telemetry=state,GPS,IMU,battery,RC-input,thrust-output'
   rfcu_ws_log 'planned stop: externally disarm first, then press Ctrl+C in the Pi terminal, then here'
+  RFCU_WS_READY_REACHED=1
 
   while rfcu_ws_children_alive; do
     sleep "$RFCU_WS_POLL_SECONDS" || true

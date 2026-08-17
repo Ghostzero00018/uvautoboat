@@ -20,6 +20,8 @@ RFCU_PI_POLL_SECONDS="${REAL_FCU_POLL_SECONDS:-1}"
 RFCU_PI_DOMAIN_ID='43'
 RFCU_PI_DISCOVERY_RANGE='SUBNET'
 RFCU_PI_LOCALHOST_ONLY='0'
+RFCU_PI_WORKSTATION_STOP_TOPIC='/real_fcu/workstation_stop'
+RFCU_PI_WORKSTATION_STOP_MESSAGE='REAL_FCU_WORKSTATION_STOPPED final=disarmed children=stopped ports=free'
 RFCU_PI_MOTOR_OUTPUTS_BIT=32768
 RFCU_PI_RUN_DIR=''
 RFCU_PI_RUN_MODE='none'
@@ -27,6 +29,8 @@ RFCU_PI_SUPERVISOR_LOG=''
 RFCU_PI_SUPERVISOR_PGID=''
 RFCU_PI_CLEANING=0
 RFCU_PI_BRIDGE_STARTED=0
+RFCU_PI_READY_REACHED=0
+RFCU_PI_OPERATOR_STOP_REQUESTED=0
 
 declare -a RFCU_PI_CHILD_NAMES=()
 declare -a RFCU_PI_CHILD_PIDS=()
@@ -237,6 +241,8 @@ rfcu_pi_init_state() {
   RFCU_PI_CHILD_ACTIVE=()
   RFCU_PI_CLEANING=0
   RFCU_PI_BRIDGE_STARTED=0
+  RFCU_PI_READY_REACHED=0
+  RFCU_PI_OPERATOR_STOP_REQUESTED=0
   RFCU_PI_SUPERVISOR_PGID="$(ps -o pgid= -p $$ | tr -d ' ')" \
     || rfcu_pi_fail 'cannot determine Pi supervisor process group'
   [[ "$RFCU_PI_SUPERVISOR_PGID" =~ ^[1-9][0-9]*$ ]] \
@@ -393,6 +399,37 @@ state = values[0]
 if state.get("connected") is not True or state.get("armed") is not False:
     raise SystemExit(1)
 ' "$1"
+}
+
+rfcu_pi_capture_workstation_stop_marker() {
+  local output="$1"
+  ros2 topic echo --once --timeout "$RFCU_PI_READY_TIMEOUT_SECONDS" \
+    --full-length --qos-history keep_last --qos-depth 1 \
+    --qos-reliability reliable --qos-durability volatile \
+    "$RFCU_PI_WORKSTATION_STOP_TOPIC" std_msgs/msg/String >"$output" 2>&1
+}
+
+rfcu_pi_workstation_stop_marker_file_is_valid() {
+  /usr/bin/python3 -c '
+import sys
+import yaml
+values = list(yaml.safe_load_all(open(sys.argv[1], encoding="utf-8")))
+if (
+    len(values) != 1
+    or not isinstance(values[0], dict)
+    or set(values[0]) != {"data"}
+    or values[0]["data"] != sys.argv[2]
+):
+    raise SystemExit(1)
+' "$1" "$RFCU_PI_WORKSTATION_STOP_MESSAGE"
+}
+
+rfcu_pi_wait_workstation_stop_marker() {
+  local output="$RFCU_PI_RUN_DIR/evidence/workstation_stop.yaml"
+  rfcu_pi_active_children_alive || return 1
+  rfcu_pi_capture_workstation_stop_marker "$output" || return 1
+  rfcu_pi_active_children_alive || return 1
+  rfcu_pi_workstation_stop_marker_file_is_valid "$output"
 }
 
 rfcu_pi_wait_connected_disarmed() {
@@ -573,7 +610,7 @@ rfcu_pi_wait_workstation_nodes() {
 }
 
 rfcu_pi_cleanup() {
-  local incoming_rc=$? cleanup_rc=0 final_rc final_state
+  local incoming_rc=$? cleanup_rc=0 final_rc final_state operator_success=0
   [ "$RFCU_PI_CLEANING" -eq 0 ] || return "$incoming_rc"
   RFCU_PI_CLEANING=1
   trap - EXIT INT TERM
@@ -586,6 +623,17 @@ rfcu_pi_cleanup() {
       cleanup_rc=1
     else
       rfcu_pi_log 'REAL_FCU_FINAL_STATE=PASS connected=true armed=false'
+      if [ "$RFCU_PI_OPERATOR_STOP_REQUESTED" -eq 1 ] \
+          && [ "$RFCU_PI_READY_REACHED" -eq 1 ]; then
+        rfcu_pi_log 'waiting for workstation operator stop before bridge shutdown'
+        if rfcu_pi_wait_workstation_stop_marker; then
+          rfcu_pi_log "REAL_FCU_WORKSTATION_STOP=PASS marker=received topic=$RFCU_PI_WORKSTATION_STOP_TOPIC"
+          operator_success=1
+        else
+          rfcu_pi_log_error 'REAL_FCU_WORKSTATION_STOP=FAIL marker=missing-or-invalid'
+          cleanup_rc=1
+        fi
+      fi
     fi
   fi
   rfcu_pi_stop_child bridge || cleanup_rc=1
@@ -593,13 +641,19 @@ rfcu_pi_cleanup() {
   rfcu_pi_stop_child mavros-probe || cleanup_rc=1
   rfcu_pi_serial_is_free || cleanup_rc=1
   final_rc="$incoming_rc"
-  [ "$final_rc" -ne 0 ] || final_rc="$cleanup_rc"
+  if [ "$incoming_rc" -eq 130 ] && [ "$operator_success" -eq 1 ] \
+      && [ "$cleanup_rc" -eq 0 ]; then
+    final_rc=0
+  elif [ "$final_rc" -eq 0 ]; then
+    final_rc="$cleanup_rc"
+  fi
   [ -z "$RFCU_PI_RUN_DIR" ] || rfcu_pi_log "REAL_FCU_PI_LOGS=$RFCU_PI_RUN_DIR"
   rfcu_pi_log "REAL_FCU_PI_EXIT status=$final_rc cleanup_rc=$cleanup_rc"
   exit "$final_rc"
 }
 
 rfcu_pi_on_interrupt() {
+  RFCU_PI_OPERATOR_STOP_REQUESTED=1
   rfcu_pi_log 'operator stop requested; neutral/release precedes MAVROS shutdown'
   exit 130
 }
@@ -674,6 +728,7 @@ rfcu_pi_run() {
     || rfcu_pi_fail 'bridge did not reach fresh READY_DISARMED after the manual safety gate'
   rfcu_pi_wait_workstation_nodes \
     || rfcu_pi_fail 'workstation rosbridge/rosapi nodes were not discovered'
+  RFCU_PI_READY_REACHED=1
   rfcu_pi_log 'REAL_FCU_PI_READY=PASS bridge=READY_DISARMED workstation=visible'
   rfcu_pi_log 'arming remains external; planned stop requires external disarm before Ctrl+C'
 

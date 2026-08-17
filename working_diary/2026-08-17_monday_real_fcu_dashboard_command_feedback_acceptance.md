@@ -522,3 +522,102 @@ divergence `0/0`. This closes the diagnosed runner source defect and its focused
 regression. It does not claim that a separately approved full simulator run has
 yet produced passing automatic teardown and final verdict; that remains the
 Block C acceptance gate.
+
+### Block B2 source and focused-test result - PASS
+
+The pre-edit baseline for this appended B2 record is
+`f2704c9b0fd051580b33d5d1fc3bb1be7ba681b7`; no commit containing this text is
+predicted here. The first actual-signal regression sent `SIGINT` through each
+helper's installed operator-stop handler. Before the fix, the workstation and
+Pi each completed cleanup with `cleanup_rc=0` but retained status `130`, exactly
+reproducing the missing normal-success path.
+
+Review of the first green implementation found and reproduced a workstation
+false pass: a cached disarmed value survived a failed fresh-status query and
+allowed `status=0` while the injected current vehicle state was armed. That
+implementation did not land. The corrected regression sets the obsolete cached
+value to disarmed, makes the cleanup query fail, invokes the actual `SIGINT`
+handler and requires status `130` with `cleanup_rc=1`.
+
+The corrected contract uses no periodic workstation status polling. On an
+operator stop after readiness, the Pi captures fresh connected-and-disarmed FCU
+state and keeps the bridge and MAVROS alive while it waits for the workstation
+rosbridge nodes to disappear. The workstation requires its children still
+alive, obtains one fresh command-ingress status, accepts only connected,
+disarmed, `MANUAL`, feedback-fresh `READY_DISARMED` or `EMERGENCY_STOP`, retains
+that status, then stops dashboard before rosbridge. The Pi then stops bridge
+before MAVROS and requires the serial endpoint free. Missing, stale, armed,
+early, child-failed, port-occupied, serial-occupied or cross-supervisor timeout
+paths remain non-zero.
+
+The complete physical-helper suite passes at `17` cases. The actual success
+markers in this source state are:
+
+```text
+REAL_FCU_FINAL_STATE=PASS connected=true armed=false
+REAL_FCU_WORKSTATION_FINAL_STATE=PASS connected=true armed=false
+REAL_FCU_WORKSTATION_EXIT status=0 cleanup_rc=0
+REAL_FCU_WORKSTATION_STOP=PASS nodes=absent
+REAL_FCU_PI_EXIT status=0 cleanup_rc=0
+```
+
+The regenerated four-file manifest now records
+`6b2cc9a1bdf60883dc03837e8cf85767d05e2dbfa16be16909f60580c95814d6`
+for `tools/real_fcu_digital_twin_pi.sh`; the other three bundle hashes are
+unchanged and all four verify against repository bytes. Neither deployed
+view-only artifact changed, so the `13` operational pin surfaces remain
+unchanged. No supervisor, simulator, browser, Pi, control box or other live
+hardware path ran during B2. A physical normal-success result remains unproven
+until its separately gated session is executed and retained.
+
+### Block B2 coordination correction before landing
+
+The first staged B2 result above is superseded before landing. Its Pi-side
+shutdown decision accepted one ROS graph snapshot that omitted the workstation
+nodes. The actual Pi `SIGINT` handler was exercised with the workstation still
+represented as running but one incomplete snapshot injected. Before the
+correction it falsely emitted:
+
+```text
+REAL_FCU_WORKSTATION_STOP=PASS nodes=absent
+REAL_FCU_PI_EXIT status=0 cleanup_rc=0
+```
+
+The corrected source no longer uses graph absence as shutdown proof. After a
+fresh connected-and-disarmed Pi capture, the Pi keeps the bridge and MAVROS
+alive and opens a bounded reliable, volatile subscription on
+`/real_fcu/workstation_stop`. The workstation obtains and retains its fresh
+final disarmed status, confirms its children alive, stops dashboard before
+rosbridge, confirms both loopback ports free, and only then publishes the exact
+one-shot marker to the waiting Pi subscription. The Pi validates the exact
+payload, retains it as `evidence/workstation_stop.yaml`, then stops bridge
+before MAVROS and confirms the serial endpoint free. Missing or altered marker
+data, a failed publication, dead children, occupied ports or an occupied serial
+endpoint all preserve status `130` with `cleanup_rc=1`.
+
+The final staged source success markers are:
+
+```text
+REAL_FCU_FINAL_STATE=PASS connected=true armed=false
+REAL_FCU_WORKSTATION_FINAL_STATE=PASS connected=true armed=false
+REAL_FCU_WORKSTATION_STOP_MARKER=PASS topic=/real_fcu/workstation_stop
+REAL_FCU_WORKSTATION_EXIT status=0 cleanup_rc=0
+REAL_FCU_WORKSTATION_STOP=PASS marker=received topic=/real_fcu/workstation_stop
+REAL_FCU_PI_EXIT status=0 cleanup_rc=0
+```
+
+The regression still invokes the actual operator-stop handlers. It now injects
+both the incomplete graph snapshot and invalid marker data and requires the Pi
+path to fail closed. Separate checks cover the bounded QoS command arguments,
+exact payload validation, publication failure, fresh disarmed evidence, child
+and endpoint failures, teardown order and both normal-success paths. The
+complete physical-helper suite passes at `19` cases, and the required shell
+syntax and diff checks pass.
+
+The regenerated four-file manifest now records
+`501caf6c79a991977dbc056afba6d3a88ac32a72194da9aad3d1e067e36deafe`
+for `tools/real_fcu_digital_twin_pi.sh`; the other three bundle hashes remain
+unchanged and all four verify against repository bytes. The two deployed
+view-only artifacts and their `13` operational pin surfaces remain untouched.
+No live supervisor, simulator, browser, Pi or control-box path ran for this
+correction. The physical normal-success result remains unproven.

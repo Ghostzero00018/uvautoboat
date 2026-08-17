@@ -31,6 +31,15 @@ extract_function() {
   ' "$file"
 }
 
+line_number_once() {
+  local text="$1" literal="$2" label="$3"
+  local -a matches=()
+  mapfile -t matches < <(grep -nF -- "$literal" <<<"$text")
+  [ "${#matches[@]}" -eq 1 ] \
+    || fail_test "$label expected one match, found ${#matches[@]}"
+  printf '%s\n' "${matches[0]%%:*}"
+}
+
 [ -r "$WORKSTATION_HELPER" ] \
   || fail_test "workstation helper missing: $WORKSTATION_HELPER"
 [ -r "$PI_HELPER" ] || fail_test "Pi helper missing: $PI_HELPER"
@@ -253,11 +262,16 @@ done
   <<<"$T0B_FUNCTION" || fail_test 'T0b capture contains a forbidden write path'
 
 RUN_FUNCTION="$(extract_function "$PI_HELPER" rfcu_pi_run)"
-PROBE_START_LINE="$(grep -n 'rfcu_pi_start_child mavros-probe' <<<"$RUN_FUNCTION" | cut -d: -f1)"
-T0B_LINE="$(grep -n 'rfcu_pi_capture_t0b' <<<"$RUN_FUNCTION" | cut -d: -f1)"
-PROBE_STOP_LINE="$(grep -n 'rfcu_pi_stop_child mavros-probe' <<<"$RUN_FUNCTION" | cut -d: -f1)"
-MAVROS_LINE="$(grep -n 'rfcu_pi_start_child mavros ' <<<"$RUN_FUNCTION" | cut -d: -f1)"
-BRIDGE_LINE="$(grep -n 'rfcu_pi_start_child bridge' <<<"$RUN_FUNCTION" | cut -d: -f1)"
+PROBE_START_LINE="$(line_number_once "$RUN_FUNCTION" \
+  'rfcu_pi_start_child mavros-probe' 'Pi probe start')"
+T0B_LINE="$(line_number_once "$RUN_FUNCTION" \
+  'rfcu_pi_capture_t0b' 'Pi T0b capture')"
+PROBE_STOP_LINE="$(line_number_once "$RUN_FUNCTION" \
+  'rfcu_pi_stop_child mavros-probe' 'Pi probe stop')"
+MAVROS_LINE="$(line_number_once "$RUN_FUNCTION" \
+  'rfcu_pi_start_child mavros ' 'Pi MAVROS start')"
+BRIDGE_LINE="$(line_number_once "$RUN_FUNCTION" \
+  'rfcu_pi_start_child bridge' 'Pi bridge start')"
 [ -n "$PROBE_START_LINE" ] && [ -n "$T0B_LINE" ] && [ -n "$PROBE_STOP_LINE" ] \
   && [ -n "$MAVROS_LINE" ] && [ -n "$BRIDGE_LINE" ] \
   && [ "$PROBE_START_LINE" -lt "$T0B_LINE" ] \
@@ -285,6 +299,37 @@ for invalid_status in \
 done
 pass_case
 
+for valid_final_status in \
+  '{"state":"READY_DISARMED","connected":true,"armed":false,"mode":"MANUAL","feedback_fresh":true}' \
+  '{"state":"EMERGENCY_STOP","connected":true,"armed":false,"mode":"MANUAL","feedback_fresh":true}'; do
+  bash -c 'source "$1"; rfcu_ws_status_is_final_disarmed "$2"' \
+    _ "$WORKSTATION_HELPER" "$valid_final_status" \
+    || fail_test "valid final-disarmed status was rejected: $valid_final_status"
+done
+for invalid_final_status in \
+  '{"state":"ACTIVE","connected":true,"armed":true,"mode":"MANUAL","feedback_fresh":true}' \
+  '{"state":"READY_DISARMED","connected":true,"armed":false,"mode":"MANUAL","feedback_fresh":false}'; do
+  set +e
+  bash -c 'source "$1"; rfcu_ws_status_is_final_disarmed "$2"' \
+    _ "$WORKSTATION_HELPER" "$invalid_final_status" >/dev/null 2>&1
+  INVALID_FINAL_RC=$?
+  set -e
+  [ "$INVALID_FINAL_RC" -ne 0 ] \
+    || fail_test "unsafe final status was accepted: $invalid_final_status"
+done
+WS_RUN_FUNCTION="$(extract_function "$WORKSTATION_HELPER" rfcu_ws_run)"
+WS_READY_WAIT_LINE="$(line_number_once "$WS_RUN_FUNCTION" \
+  'rfcu_ws_wait_bridge_ready' 'workstation ready wait')"
+WS_READY_FLAG_LINE="$(line_number_once "$WS_RUN_FUNCTION" \
+  'RFCU_WS_READY_REACHED=1' 'workstation ready flag')"
+PI_READY_FLAG_LINE="$(line_number_once "$RUN_FUNCTION" \
+  'RFCU_PI_READY_REACHED=1' 'Pi ready flag')"
+[ -n "$WS_READY_WAIT_LINE" ] && [ -n "$WS_READY_FLAG_LINE" ] \
+  && [ -n "$PI_READY_FLAG_LINE" ] \
+  && [ "$WS_READY_WAIT_LINE" -lt "$WS_READY_FLAG_LINE" ] \
+  || fail_test 'normal-success gates are not wired into both run paths'
+pass_case
+
 EXPECTED_PLUGINS=$'sys_status\nparam\nglobal_position\nimu\nrc_io'
 ACTUAL_PLUGINS="$(sed -n 's/^      - //p' "$PLUGIN_YAML")"
 [ "$ACTUAL_PLUGINS" = "$EXPECTED_PLUGINS" ] \
@@ -296,17 +341,328 @@ ACTUAL_PROBE_PLUGINS="$(sed -n 's/^      - //p' "$PROBE_PLUGIN_YAML")"
 pass_case
 
 PI_CLEANUP="$(extract_function "$PI_HELPER" rfcu_pi_cleanup)"
-PI_BRIDGE_STOP="$(grep -n 'rfcu_pi_stop_child bridge' <<<"$PI_CLEANUP" | cut -d: -f1)"
-PI_MAVROS_STOP="$(grep -n 'rfcu_pi_stop_child mavros ||' <<<"$PI_CLEANUP" | cut -d: -f1)"
+PI_BRIDGE_STOP="$(line_number_once "$PI_CLEANUP" \
+  'rfcu_pi_stop_child bridge' 'Pi bridge stop')"
+PI_MAVROS_STOP="$(line_number_once "$PI_CLEANUP" \
+  'rfcu_pi_stop_child mavros ||' 'Pi MAVROS stop')"
+PI_WORKSTATION_MARKER="$(line_number_once "$PI_CLEANUP" \
+  'rfcu_pi_wait_workstation_stop_marker' 'Pi workstation-stop marker wait')"
 [ -n "$PI_BRIDGE_STOP" ] && [ -n "$PI_MAVROS_STOP" ] \
+  && [ -n "$PI_WORKSTATION_MARKER" ] \
+  && [ "$PI_WORKSTATION_MARKER" -lt "$PI_BRIDGE_STOP" ] \
   && [ "$PI_BRIDGE_STOP" -lt "$PI_MAVROS_STOP" ] \
-  || fail_test 'Pi cleanup does not stop the bridge before MAVROS'
+  || fail_test 'Pi cleanup does not wait for workstation then stop bridge before MAVROS'
+! grep -Fq 'rfcu_pi_wait_workstation_nodes_gone' "$PI_HELPER" \
+  || fail_test 'Pi cleanup still accepts a negative graph snapshot as shutdown proof'
 WS_CLEANUP="$(extract_function "$WORKSTATION_HELPER" rfcu_ws_cleanup)"
-WS_DASHBOARD_STOP="$(grep -n 'rfcu_ws_stop_child dashboard' <<<"$WS_CLEANUP" | cut -d: -f1)"
-WS_ROSBRIDGE_STOP="$(grep -n 'rfcu_ws_stop_child rosbridge' <<<"$WS_CLEANUP" | cut -d: -f1)"
-[ -n "$WS_DASHBOARD_STOP" ] && [ -n "$WS_ROSBRIDGE_STOP" ] \
+WS_FINAL_PROBE="$(line_number_once "$WS_CLEANUP" \
+  'rfcu_ws_status_json_once' 'workstation final-state probe')"
+WS_DASHBOARD_STOP="$(line_number_once "$WS_CLEANUP" \
+  'rfcu_ws_stop_child dashboard' 'workstation dashboard stop')"
+WS_ROSBRIDGE_STOP="$(line_number_once "$WS_CLEANUP" \
+  'rfcu_ws_stop_child rosbridge' 'workstation rosbridge stop')"
+WS_MARKER_PUBLISH="$(line_number_once "$WS_CLEANUP" \
+  'rfcu_ws_publish_stop_marker' 'workstation stop-marker publish')"
+[ -n "$WS_FINAL_PROBE" ] && [ -n "$WS_DASHBOARD_STOP" ] \
+  && [ -n "$WS_ROSBRIDGE_STOP" ] && [ -n "$WS_MARKER_PUBLISH" ] \
+  && [ "$WS_FINAL_PROBE" -lt "$WS_DASHBOARD_STOP" ] \
   && [ "$WS_DASHBOARD_STOP" -lt "$WS_ROSBRIDGE_STOP" ] \
-  || fail_test 'workstation cleanup does not stop dashboard before rosbridge'
+  && [ "$WS_ROSBRIDGE_STOP" -lt "$WS_MARKER_PUBLISH" ] \
+  || fail_test 'workstation cleanup does not probe, stop children, then publish its marker'
+pass_case
+
+WS_PUBLISH_DIR="$TEST_TMP/ws-publish-marker"
+WS_PUBLISH_ARGS="$WS_PUBLISH_DIR/timeout.args"
+mkdir -p "$WS_PUBLISH_DIR/logs"
+bash -c '
+  set -euo pipefail
+  source "$1"
+  RFCU_WS_RUN_DIR="$2"
+  RFCU_WS_READY_TIMEOUT_SECONDS=7
+  RFCU_WS_TEST_TIMEOUT_ARGS="$3"
+  timeout() {
+    printf "%s\n" "$@" >"$RFCU_WS_TEST_TIMEOUT_ARGS"
+  }
+  rfcu_ws_publish_stop_marker
+' _ "$WORKSTATION_HELPER" "$WS_PUBLISH_DIR" "$WS_PUBLISH_ARGS"
+EXPECTED_WS_PUBLISH_ARGS=$'12\nros2\ntopic\npub\n--once\n--wait-matching-subscriptions\n1\n--max-wait-time-secs\n7\n--qos-history\nkeep_last\n--qos-depth\n1\n--qos-reliability\nreliable\n--qos-durability\nvolatile\n/real_fcu/workstation_stop\nstd_msgs/msg/String\n{data: "REAL_FCU_WORKSTATION_STOPPED final=disarmed children=stopped ports=free"}'
+[ "$(cat "$WS_PUBLISH_ARGS")" = "$EXPECTED_WS_PUBLISH_ARGS" ] \
+  || fail_test 'workstation stop marker is not a bounded reliable volatile publication'
+pass_case
+
+PI_CAPTURE_DIR="$TEST_TMP/pi-capture-marker"
+PI_CAPTURE_OUTPUT="$PI_CAPTURE_DIR/workstation_stop.yaml"
+PI_CAPTURE_ARGS="$PI_CAPTURE_DIR/ros2.args"
+mkdir -p "$PI_CAPTURE_DIR"
+bash -c '
+  set -euo pipefail
+  source "$1"
+  RFCU_PI_READY_TIMEOUT_SECONDS=7
+  RFCU_PI_TEST_ROS2_ARGS="$3"
+  ros2() {
+    printf "%s\n" "$@" >"$RFCU_PI_TEST_ROS2_ARGS"
+    printf "data: %s\n" "$RFCU_PI_WORKSTATION_STOP_MESSAGE"
+  }
+  rfcu_pi_capture_workstation_stop_marker "$2"
+  rfcu_pi_workstation_stop_marker_file_is_valid "$2"
+' _ "$PI_HELPER" "$PI_CAPTURE_OUTPUT" "$PI_CAPTURE_ARGS"
+EXPECTED_PI_CAPTURE_ARGS=$'topic\necho\n--once\n--timeout\n7\n--full-length\n--qos-history\nkeep_last\n--qos-depth\n1\n--qos-reliability\nreliable\n--qos-durability\nvolatile\n/real_fcu/workstation_stop\nstd_msgs/msg/String'
+[ "$(cat "$PI_CAPTURE_ARGS")" = "$EXPECTED_PI_CAPTURE_ARGS" ] \
+  || fail_test 'Pi stop marker is not a bounded reliable volatile subscription'
+printf 'data: unexpected\n' >"$PI_CAPTURE_OUTPUT"
+set +e
+bash -c 'source "$1"; rfcu_pi_workstation_stop_marker_file_is_valid "$2"' \
+  _ "$PI_HELPER" "$PI_CAPTURE_OUTPUT" >/dev/null 2>&1
+INVALID_MARKER_RC=$?
+set -e
+[ "$INVALID_MARKER_RC" -ne 0 ] || fail_test 'Pi accepted an unexpected stop marker'
+printf 'data: %s\n---\ndata: duplicate\n' \
+  'REAL_FCU_WORKSTATION_STOPPED final=disarmed children=stopped ports=free' \
+  >"$PI_CAPTURE_OUTPUT"
+set +e
+bash -c 'source "$1"; rfcu_pi_workstation_stop_marker_file_is_valid "$2"' \
+  _ "$PI_HELPER" "$PI_CAPTURE_OUTPUT" >/dev/null 2>&1
+DUPLICATE_MARKER_RC=$?
+set -e
+[ "$DUPLICATE_MARKER_RC" -ne 0 ] || fail_test 'Pi accepted duplicate stop markers'
+pass_case
+
+run_ws_operator_stop_case() {
+  local case_dir="$1" ready_reached="$2" cached_disarmed="$3"
+  local final_state="$4" cleanup_ok="${5:-1}" children_alive="${6:-1}"
+  local marker_ok="${7:-1}"
+  bash -c '
+    set -euo pipefail
+    source "$1"
+    RFCU_WS_RUN_DIR="$2"
+    mkdir -p "$RFCU_WS_RUN_DIR/evidence"
+    RFCU_WS_SUPERVISOR_LOG="$RFCU_WS_RUN_DIR/supervisor.log"
+    : >"$RFCU_WS_SUPERVISOR_LOG"
+    RFCU_WS_CLEANING=0
+    RFCU_WS_STARTED=1
+    RFCU_WS_READY_REACHED="$3"
+    RFCU_WS_FINAL_DISARMED="$4"
+    RFCU_WS_OPERATOR_STOP_REQUESTED=0
+    RFCU_WS_TEST_FINAL_STATE="$5"
+    RFCU_WS_TEST_CLEANUP_OK="$6"
+    RFCU_WS_TEST_CHILDREN_ALIVE="$7"
+    RFCU_WS_TEST_MARKER_OK="$8"
+    rfcu_ws_status_json_once() {
+      case "$RFCU_WS_TEST_FINAL_STATE" in
+        disarmed)
+          printf "%s\n" "{\"state\":\"READY_DISARMED\",\"connected\":true,\"armed\":false,\"mode\":\"MANUAL\",\"feedback_fresh\":true}"
+          ;;
+        emergency-stop)
+          printf "%s\n" "{\"state\":\"EMERGENCY_STOP\",\"connected\":true,\"armed\":false,\"mode\":\"MANUAL\",\"feedback_fresh\":true}"
+          ;;
+        armed)
+          printf "%s\n" "{\"state\":\"ACTIVE\",\"connected\":true,\"armed\":true,\"mode\":\"MANUAL\",\"feedback_fresh\":true}"
+          ;;
+        missing) return 1 ;;
+        *) return 2 ;;
+      esac
+    }
+    rfcu_ws_stop_child() {
+      printf "%s\n" "$1" >>"$RFCU_WS_RUN_DIR/stop.trace"
+      return 0
+    }
+    rfcu_ws_children_alive() {
+      [ "$RFCU_WS_TEST_CHILDREN_ALIVE" -eq 1 ]
+    }
+    rfcu_ws_loopback_listener_ready() {
+      [ "$RFCU_WS_TEST_CLEANUP_OK" -eq 0 ] && return 0
+      return 1
+    }
+    rfcu_ws_publish_stop_marker() {
+      [ "$RFCU_WS_TEST_MARKER_OK" -eq 1 ]
+    }
+    trap rfcu_ws_cleanup EXIT
+    trap rfcu_ws_on_interrupt INT
+    kill -INT "$$"
+  ' _ "$WORKSTATION_HELPER" "$case_dir" "$ready_reached" "$cached_disarmed" \
+    "$final_state" "$cleanup_ok" "$children_alive" "$marker_ok"
+}
+
+run_pi_operator_stop_case() {
+  local case_dir="$1" ready_reached="$2" bridge_started="$3"
+  local final_disarmed="$4" cleanup_ok="${5:-1}"
+  local workstation_marker="${6:-1}"
+  bash -c '
+    set -euo pipefail
+    source "$1"
+    RFCU_PI_RUN_DIR="$2"
+    mkdir -p "$RFCU_PI_RUN_DIR/evidence"
+    RFCU_PI_SUPERVISOR_LOG="$RFCU_PI_RUN_DIR/supervisor.log"
+    : >"$RFCU_PI_SUPERVISOR_LOG"
+    RFCU_PI_RUN_MODE=run
+    RFCU_PI_CLEANING=0
+    RFCU_PI_READY_REACHED="$3"
+    RFCU_PI_BRIDGE_STARTED="$4"
+    RFCU_PI_OPERATOR_STOP_REQUESTED=0
+    RFCU_PI_TEST_FINAL_DISARMED="$5"
+    RFCU_PI_TEST_CLEANUP_OK="$6"
+    RFCU_PI_TEST_WORKSTATION_MARKER="$7"
+    rfcu_pi_capture_topic() {
+      : >"$3"
+      return 0
+    }
+    rfcu_pi_state_file_is_connected_disarmed() {
+      [ "$RFCU_PI_TEST_FINAL_DISARMED" -eq 1 ]
+    }
+    rfcu_pi_stop_child() {
+      printf "%s\n" "$1" >>"$RFCU_PI_RUN_DIR/stop.trace"
+      return 0
+    }
+    rfcu_pi_serial_is_free() {
+      [ "$RFCU_PI_TEST_CLEANUP_OK" -eq 1 ]
+    }
+    rfcu_pi_capture_workstation_stop_marker() {
+      if [ "$RFCU_PI_TEST_WORKSTATION_MARKER" -eq 1 ]; then
+        printf "data: %s\n" "$RFCU_PI_WORKSTATION_STOP_MESSAGE" >"$1"
+      else
+        printf "data: unexpected\n" >"$1"
+      fi
+    }
+    ros2() {
+      if [ "${1:-}:${2:-}" = node:list ]; then
+        printf 'node-list\n' >>"$RFCU_PI_RUN_DIR/graph.trace"
+        printf "%s\n" /mavros
+        return 0
+      fi
+      return 1
+    }
+    trap rfcu_pi_cleanup EXIT
+    trap rfcu_pi_on_interrupt INT
+    kill -INT "$$"
+  ' _ "$PI_HELPER" "$case_dir" "$ready_reached" "$bridge_started" \
+    "$final_disarmed" "$cleanup_ok" "$workstation_marker"
+}
+
+set +e
+WS_EARLY_OUTPUT="$(run_ws_operator_stop_case \
+  "$TEST_TMP/ws-operator-early" 0 1 disarmed 2>&1)"
+WS_EARLY_RC=$?
+WS_ARMED_OUTPUT="$(run_ws_operator_stop_case \
+  "$TEST_TMP/ws-operator-armed" 1 0 armed 2>&1)"
+WS_ARMED_RC=$?
+WS_STALE_OUTPUT="$(run_ws_operator_stop_case \
+  "$TEST_TMP/ws-operator-stale" 1 1 missing 2>&1)"
+WS_STALE_RC=$?
+PI_EARLY_OUTPUT="$(run_pi_operator_stop_case \
+  "$TEST_TMP/pi-operator-early" 0 0 1 2>&1)"
+PI_EARLY_RC=$?
+PI_ARMED_OUTPUT="$(run_pi_operator_stop_case \
+  "$TEST_TMP/pi-operator-armed" 1 1 0 2>&1)"
+PI_ARMED_RC=$?
+WS_CLEANUP_OUTPUT="$(run_ws_operator_stop_case \
+  "$TEST_TMP/ws-operator-cleanup-fail" 1 1 disarmed 0 2>&1)"
+WS_CLEANUP_RC=$?
+WS_CHILD_OUTPUT="$(run_ws_operator_stop_case \
+  "$TEST_TMP/ws-operator-child-fail" 1 1 disarmed 1 0 2>&1)"
+WS_CHILD_RC=$?
+WS_MARKER_OUTPUT="$(run_ws_operator_stop_case \
+  "$TEST_TMP/ws-operator-marker-fail" 1 1 disarmed 1 1 0 2>&1)"
+WS_MARKER_RC=$?
+PI_CLEANUP_OUTPUT="$(run_pi_operator_stop_case \
+  "$TEST_TMP/pi-operator-cleanup-fail" 1 1 1 0 2>&1)"
+PI_CLEANUP_RC=$?
+PI_COORDINATION_OUTPUT="$(run_pi_operator_stop_case \
+  "$TEST_TMP/pi-operator-coordination-fail" 1 1 1 1 0 2>&1)"
+PI_COORDINATION_RC=$?
+set -e
+[ "$WS_EARLY_RC" -eq 130 ] \
+  || fail_test "early workstation operator stop returned $WS_EARLY_RC: $WS_EARLY_OUTPUT"
+[ "$WS_ARMED_RC" -eq 130 ] \
+  || fail_test "armed workstation operator stop returned $WS_ARMED_RC: $WS_ARMED_OUTPUT"
+[ "$WS_STALE_RC" -eq 130 ] \
+  || fail_test "stale workstation operator stop returned $WS_STALE_RC: $WS_STALE_OUTPUT"
+[ "$PI_EARLY_RC" -eq 130 ] \
+  || fail_test "early Pi operator stop returned $PI_EARLY_RC: $PI_EARLY_OUTPUT"
+[ "$PI_ARMED_RC" -eq 130 ] \
+  || fail_test "armed Pi operator stop returned $PI_ARMED_RC: $PI_ARMED_OUTPUT"
+[ "$WS_CLEANUP_RC" -eq 130 ] \
+  || fail_test "workstation cleanup failure returned $WS_CLEANUP_RC: $WS_CLEANUP_OUTPUT"
+[ "$WS_CHILD_RC" -eq 130 ] \
+  || fail_test "workstation child failure returned $WS_CHILD_RC: $WS_CHILD_OUTPUT"
+[ "$WS_MARKER_RC" -eq 130 ] \
+  || fail_test "workstation marker failure returned $WS_MARKER_RC: $WS_MARKER_OUTPUT"
+[ "$PI_CLEANUP_RC" -eq 130 ] \
+  || fail_test "Pi cleanup failure returned $PI_CLEANUP_RC: $PI_CLEANUP_OUTPUT"
+[ "$PI_COORDINATION_RC" -eq 130 ] \
+  || fail_test "Pi coordination failure returned $PI_COORDINATION_RC: $PI_COORDINATION_OUTPUT"
+grep -Fq 'REAL_FCU_WORKSTATION_EXIT status=130 cleanup_rc=0' \
+  <<<"$WS_EARLY_OUTPUT" || fail_test 'early workstation stop lost status 130'
+grep -Fq 'REAL_FCU_WORKSTATION_FINAL_STATE=FAIL expected=connected,disarmed' \
+  <<<"$WS_ARMED_OUTPUT" || fail_test 'armed workstation state was not rejected'
+grep -Fq 'REAL_FCU_WORKSTATION_EXIT status=130 cleanup_rc=1' \
+  <<<"$WS_ARMED_OUTPUT" || fail_test 'armed workstation stop lost status 130'
+grep -Fq 'REAL_FCU_WORKSTATION_FINAL_STATE=FAIL expected=connected,disarmed' \
+  <<<"$WS_STALE_OUTPUT" || fail_test 'missing workstation state was not rejected'
+grep -Fq 'REAL_FCU_WORKSTATION_EXIT status=130 cleanup_rc=1' \
+  <<<"$WS_STALE_OUTPUT" || fail_test 'stale workstation state passed cleanup'
+grep -Fq 'REAL_FCU_PI_EXIT status=130 cleanup_rc=0' \
+  <<<"$PI_EARLY_OUTPUT" || fail_test 'early Pi stop lost status 130'
+grep -Fq 'REAL_FCU_FINAL_STATE=FAIL expected=connected,disarmed' \
+  <<<"$PI_ARMED_OUTPUT" || fail_test 'armed Pi stop did not reject final state'
+grep -Fq 'REAL_FCU_PI_EXIT status=130 cleanup_rc=1' \
+  <<<"$PI_ARMED_OUTPUT" || fail_test 'armed Pi stop did not retain failure status'
+grep -Fq 'REAL_FCU_WORKSTATION_EXIT status=130 cleanup_rc=1' \
+  <<<"$WS_CLEANUP_OUTPUT" || fail_test 'occupied workstation port passed cleanup'
+grep -Fq 'REAL_FCU_WORKSTATION_CHILDREN=FAIL expected=alive-before-stop' \
+  <<<"$WS_CHILD_OUTPUT" || fail_test 'workstation child failure was not reported'
+grep -Fq 'REAL_FCU_WORKSTATION_EXIT status=130 cleanup_rc=1' \
+  <<<"$WS_CHILD_OUTPUT" || fail_test 'workstation child failure passed cleanup'
+grep -Fq 'REAL_FCU_WORKSTATION_STOP_MARKER=FAIL topic=/real_fcu/workstation_stop' \
+  <<<"$WS_MARKER_OUTPUT" || fail_test 'workstation marker failure was not reported'
+grep -Fq 'REAL_FCU_WORKSTATION_EXIT status=130 cleanup_rc=1' \
+  <<<"$WS_MARKER_OUTPUT" || fail_test 'workstation marker failure passed cleanup'
+grep -Fq 'REAL_FCU_PI_EXIT status=130 cleanup_rc=1' \
+  <<<"$PI_CLEANUP_OUTPUT" || fail_test 'occupied Pi serial endpoint passed cleanup'
+grep -Fq 'REAL_FCU_PI_EXIT status=130 cleanup_rc=1' \
+  <<<"$PI_COORDINATION_OUTPUT" || fail_test 'Pi passed before workstation shutdown'
+grep -Fq 'REAL_FCU_WORKSTATION_STOP=FAIL marker=missing-or-invalid' \
+  <<<"$PI_COORDINATION_OUTPUT" || fail_test 'Pi coordination failure was not reported'
+[ ! -e "$TEST_TMP/pi-operator-coordination-fail/graph.trace" ] \
+  || fail_test 'Pi coordination still queried graph absence during cleanup'
+pass_case
+
+set +e
+WS_OPERATOR_OUTPUT="$(run_ws_operator_stop_case \
+  "$TEST_TMP/ws-operator-success" 1 1 disarmed 2>&1)"
+WS_OPERATOR_RC=$?
+PI_OPERATOR_OUTPUT="$(run_pi_operator_stop_case \
+  "$TEST_TMP/pi-operator-success" 1 1 1 2>&1)"
+PI_OPERATOR_RC=$?
+set -e
+[ "$WS_OPERATOR_RC" -eq 0 ] && [ "$PI_OPERATOR_RC" -eq 0 ] \
+  || fail_test "normal operator stop remained non-zero: workstation=$WS_OPERATOR_RC Pi=$PI_OPERATOR_RC workstation_output=[$WS_OPERATOR_OUTPUT] Pi_output=[$PI_OPERATOR_OUTPUT]"
+grep -Fq 'operator stop requested' <<<"$WS_OPERATOR_OUTPUT" \
+  || fail_test 'workstation operator-stop handler did not run'
+grep -Fq 'operator stop requested' <<<"$PI_OPERATOR_OUTPUT" \
+  || fail_test 'Pi operator-stop handler did not run'
+grep -Fq 'REAL_FCU_WORKSTATION_FINAL_STATE=PASS connected=true armed=false' \
+  <<<"$WS_OPERATOR_OUTPUT" || fail_test 'workstation lost fresh final disarmed state'
+grep -Fq 'REAL_FCU_WORKSTATION_EXIT status=0 cleanup_rc=0' \
+  <<<"$WS_OPERATOR_OUTPUT" || fail_test 'workstation operator stop did not pass'
+grep -Fq 'REAL_FCU_WORKSTATION_STOP_MARKER=PASS topic=/real_fcu/workstation_stop' \
+  <<<"$WS_OPERATOR_OUTPUT" || fail_test 'workstation did not publish its stop marker'
+grep -Fq 'REAL_FCU_FINAL_STATE=PASS connected=true armed=false' \
+  <<<"$PI_OPERATOR_OUTPUT" || fail_test 'Pi operator stop lost final disarmed state'
+grep -Fq 'REAL_FCU_PI_EXIT status=0 cleanup_rc=0' \
+  <<<"$PI_OPERATOR_OUTPUT" || fail_test 'Pi operator stop did not pass'
+grep -Fq 'REAL_FCU_WORKSTATION_STOP=PASS marker=received topic=/real_fcu/workstation_stop' \
+  <<<"$PI_OPERATOR_OUTPUT" || fail_test 'Pi did not retain workstation shutdown'
+grep -Fq 'REAL_FCU_WORKSTATION_STOPPED final=disarmed children=stopped ports=free' \
+  "$TEST_TMP/pi-operator-success/evidence/workstation_stop.yaml" \
+  || fail_test 'Pi workstation-stop artifact is missing the exact marker'
+grep -Fq '"armed":false' \
+  "$TEST_TMP/ws-operator-success/evidence/final_status.json" \
+  || fail_test 'workstation final status artifact is missing disarmed state'
+[ "$(cat "$TEST_TMP/ws-operator-success/stop.trace")" = $'dashboard\nrosbridge' ] \
+  || fail_test 'workstation operator-stop order changed'
+[ "$(cat "$TEST_TMP/pi-operator-success/stop.trace")" = \
+    $'bridge\nmavros\nmavros-probe' ] \
+  || fail_test 'Pi operator-stop order changed'
 pass_case
 
 printf '%s  %s\n' "$EXPECTED_VIEW_ONLY_SHA256" "$VIEW_ONLY_HELPER" | sha256sum -c - \
