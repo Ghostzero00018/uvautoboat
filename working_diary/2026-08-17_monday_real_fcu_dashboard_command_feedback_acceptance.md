@@ -468,3 +468,57 @@ commit that contains its own closeout. Stage explicit paths, run
 staged content, use one-line conventional subjects no longer than 72
 characters, then push and certify a clean `HEAD == main == origin/main` before
 the day ends.
+
+## Execution record - Blocks A and B1
+
+The `PRE-DIARY - NOT STARTED` banner above records the imported scaffold state.
+Execution began on 17/08/2026 under the block approvals recorded outside this
+file. The pre-edit baseline for this appended record is
+`8a8b75be7a897df12f53e269a5a8cf7937b8e0d3`; no commit containing this text is
+predicted here.
+
+### Block A result - PASS
+
+Remote certification established a clean
+`HEAD == main == origin/main == ef638c17fa84716de838b8bad4a94e1da1d2a326`
+with divergence `0/0` before B1. The three pinned artifacts matched their
+recorded sizes and SHA-256 values, the physical bundle manifest verified all
+four repository files, and the `13` operational pin surfaces remained exactly
+`9` helper-hash, `1` helper-size, `2` supervisor-hash and `1`
+supervisor-size surfaces. Static shell, Python, JavaScript and MAVROS allowlist
+checks passed without starting a service.
+
+Fresh host inspection found TCP `5760`, `5762`, `8002`, `8080`, `9090` and UDP
+`14600` free, with all named simulator, MAVProxy, MAVROS, rosbridge, dashboard,
+bridge, evidence-recorder and live-helper process patterns absent. Free disk was
+`23,031,112 KiB`, above the `10 GB` floor. The operator confirmed the complete
+powered-down inventory: control box off, propellers removed, propulsion power
+isolated, hull restrained, Herelink sticks and trims neutral, QGroundControl and
+the Herelink available, and the external safety indication understood. No fresh
+live-FCU state check was attempted in Block A.
+
+The source-reuse statement in the Block A scaffold was valid at its
+pre-B1 baseline but is superseded after the approved B1 change. The most recent
+commit touching a non-Markdown tracked file is now
+`8a8b75be7a897df12f53e269a5a8cf7937b8e0d3`. That commit changes only the SITL
+runner and its focused test. Reuse remains bounded to unchanged covered
+surfaces; the changed SITL surface was re-run in B1.
+
+### Block B1 result - PASS for the landed source change
+
+The new regression sourced the runner inside a function, returned before the
+script-level EXIT trap and reproduced the retained failure as
+`sitl_digital_twin_runner.sh: line 676: sitl: unbound variable`. Changing all
+ten runner array declarations to `declare -gA` or `declare -ga` retained their
+state for EXIT cleanup. The complete focused suite then passed at `41` cases,
+including the seven-child stop order, passing teardown, empty verdict missing
+set and final status `0`; the required shell syntax and diff checks also passed.
+
+The change landed and was pushed as
+`8a8b75be7a897df12f53e269a5a8cf7937b8e0d3`, subject
+`fix(sitl): preserve runner arrays through EXIT cleanup`. Post-push
+certification established clean local and remote parity at that revision with
+divergence `0/0`. This closes the diagnosed runner source defect and its focused
+regression. It does not claim that a separately approved full simulator run has
+yet produced passing automatic teardown and final verdict; that remains the
+Block C acceptance gate.
