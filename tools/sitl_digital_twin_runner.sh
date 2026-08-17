@@ -44,16 +44,16 @@ SITL_CONFLICT_PATTERNS=(
   'real_fcu_digital_twin_pi.sh'
 )
 
-declare -A SITL_CHILD_INDEX=()
-declare -A SITL_CHILD_ACTIVE=()
-declare -a SITL_STOP_ORDER=()
-declare -a SITL_SITL_COMMAND=()
-declare -a SITL_MAVPROXY_COMMAND=()
-declare -a SITL_MAVROS_COMMAND=()
-declare -a SITL_BRIDGE_COMMAND=()
-declare -a SITL_EVIDENCE_COMMAND=()
-declare -a SITL_ROSBRIDGE_COMMAND=()
-declare -a SITL_DASHBOARD_COMMAND=()
+declare -gA SITL_CHILD_INDEX=()
+declare -gA SITL_CHILD_ACTIVE=()
+declare -ga SITL_STOP_ORDER=()
+declare -ga SITL_SITL_COMMAND=()
+declare -ga SITL_MAVPROXY_COMMAND=()
+declare -ga SITL_MAVROS_COMMAND=()
+declare -ga SITL_BRIDGE_COMMAND=()
+declare -ga SITL_EVIDENCE_COMMAND=()
+declare -ga SITL_ROSBRIDGE_COMMAND=()
+declare -ga SITL_DASHBOARD_COMMAND=()
 
 SITL_SESSION_COMPLETE=0
 SITL_OPERATOR_GATE_OPEN=0

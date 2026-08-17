@@ -434,6 +434,93 @@ grep -Fq 'click Neutral Now once' "$RUNNER" \
   || fail_test 'browser prompt does not name the exact neutral control'
 pass_case
 
+FUNCTION_SCOPE_DIR="$TEST_TMP/function-scope-exit"
+set +e
+FUNCTION_SCOPE_OUTPUT="$(bash -c '
+  set -euo pipefail
+  source "$1"
+
+  run_function_scope_case() {
+    source "$2"
+    RUN_DIR="$3"
+    mkdir -p "$RUN_DIR/control" "$RUN_DIR/evidence"
+    SUPERVISOR_LOG="$RUN_DIR/supervisor.log"
+    : >"$SUPERVISOR_LOG"
+    for phase in startup ready_disarmed browser_ready arm positive release \
+      negative estop disarm; do
+      printf "%s\n" "{}" >"$RUN_DIR/evidence/$phase.json"
+    done
+    printf "%s\n" "{\"frames\":[{},{},{}]}" \
+      >"$RUN_DIR/control/shutdown_frames.json"
+
+    CHILD_NAMES=(sitl mavproxy mavros bridge evidence rosbridge dashboard)
+    CHILD_PIDS=(51001 51002 51003 51004 51005 51006 51007)
+    CHILD_PGIDS=(51001 51002 51003 51004 51005 51006 51007)
+    CLEANING=0
+    FINAL_RC=0
+    SUPERVISOR_PHASE=acceptance-complete
+    SUPERVISOR_STOP_TRIGGER=none
+    SUPERVISOR_STOP_SIGNAL=none
+    SUPERVISOR_STOP_PHASE=none
+    SUPERVISOR_FAILED_PHASE=none
+    SITL_ARM_GATE_OPENED=0
+    SITL_CHILDREN_STARTED=1
+    SITL_SESSION_COMPLETE=1
+
+    group_alive() { return 1; }
+    ss() { return 0; }
+    stop_group() {
+      printf "%s\n" "$1" >>"$RUN_DIR/control/stop.trace"
+      return 0
+    }
+
+    trap sitl_cleanup EXIT
+    return 0
+  }
+
+  run_function_scope_case "$1" "$2" "$3"
+' _ "$PREFLIGHT" "$RUNNER" "$FUNCTION_SCOPE_DIR" 2>&1)"
+FUNCTION_SCOPE_RC=$?
+set -e
+[ "$FUNCTION_SCOPE_RC" -eq 0 ] \
+  || fail_test "function-scoped runner EXIT cleanup failed rc=$FUNCTION_SCOPE_RC: $FUNCTION_SCOPE_OUTPUT"
+grep -Fq 'SITL_VERDICT=PASS' <<<"$FUNCTION_SCOPE_OUTPUT" \
+  || fail_test "function-scoped runner did not create a passing verdict: $FUNCTION_SCOPE_OUTPUT"
+grep -Fq 'SITL_SUPERVISOR_EXIT status=0' <<<"$FUNCTION_SCOPE_OUTPUT" \
+  || fail_test 'function-scoped runner cleanup did not exit successfully'
+/usr/bin/python3 - "$FUNCTION_SCOPE_DIR" <<'PYFUNCTIONSCOPE'
+import json
+import pathlib
+import sys
+
+run_dir = pathlib.Path(sys.argv[1])
+expected = [
+    "dashboard", "rosbridge", "bridge", "evidence",
+    "mavros", "mavproxy", "sitl",
+]
+runtime = json.loads(
+    (run_dir / "control" / "teardown_runtime.json").read_text(encoding="utf-8")
+)
+teardown = json.loads(
+    (run_dir / "evidence" / "teardown.json").read_text(encoding="utf-8")
+)
+verdict = json.loads(
+    (run_dir / "evidence" / "verdict.json").read_text(encoding="utf-8")
+)
+trace = (run_dir / "control" / "stop.trace").read_text(
+    encoding="utf-8"
+).splitlines()
+assert trace == expected
+assert runtime["stop_order"] == expected
+assert runtime["children_stopped"] is True
+assert runtime["ports_free"] is True
+assert runtime["cleanup_rc"] == 0
+assert teardown["pass"] is True
+assert verdict["verdict"] == "PASS"
+assert verdict["missing"] == []
+PYFUNCTIONSCOPE
+pass_case
+
 set +e
 CLEAN_CHILDREN_OUTPUT="$(bash -c '
   source "$1"
