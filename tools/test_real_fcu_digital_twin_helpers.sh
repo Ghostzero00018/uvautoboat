@@ -10,6 +10,8 @@ PLUGIN_YAML="${3:-$REPO_ROOT/config/mavros_real_fcu_closed_loop_plugins.yaml}"
 PROBE_PLUGIN_YAML="${4:-$REPO_ROOT/config/mavros_real_fcu_t0b_plugins.yaml}"
 BUNDLE_MANIFEST="$REPO_ROOT/config/real_fcu_digital_twin_bundle.sha256"
 VIEW_ONLY_HELPER="$SCRIPT_DIR/pi_live_hailo_mavlink_dashboard.sh"
+CAPTURE_HELPER="$SCRIPT_DIR/real_fcu_command_feedback_capture.py"
+CAPTURE_TEST="$SCRIPT_DIR/test_real_fcu_command_feedback_capture.py"
 EXPECTED_VIEW_ONLY_SHA256='a72cd04d37984d692cdfecb73456d55bc7bb6f0b4fd69d69ba79447fc3594a97'
 CASE_COUNT=0
 
@@ -48,8 +50,18 @@ line_number_once() {
   || fail_test "T0b plugin YAML missing: $PROBE_PLUGIN_YAML"
 [ -r "$BUNDLE_MANIFEST" ] \
   || fail_test "Pi bundle manifest missing: $BUNDLE_MANIFEST"
+[ -r "$CAPTURE_HELPER" ] \
+  || fail_test "command/feedback capture helper missing: $CAPTURE_HELPER"
+[ -r "$CAPTURE_TEST" ] \
+  || fail_test "command/feedback capture test missing: $CAPTURE_TEST"
 bash -n "$WORKSTATION_HELPER"
 bash -n "$PI_HELPER"
+pass_case
+
+WORKSTATION_CHECK_FUNCTION="$(extract_function "$WORKSTATION_HELPER" rfcu_ws_check)"
+grep -Fq 'test_real_fcu_command_feedback_capture.py' \
+  <<<"$WORKSTATION_CHECK_FUNCTION" \
+  || fail_test 'workstation check does not run the capture-helper suite'
 pass_case
 
 set +e

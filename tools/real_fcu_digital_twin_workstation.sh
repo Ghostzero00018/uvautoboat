@@ -505,9 +505,11 @@ rfcu_ws_check() {
   rfcu_ws_require_command node
   bash "$RFCU_WS_SCRIPT_DIR/test_real_fcu_digital_twin_helpers.sh"
   python3 -m unittest "$RFCU_WS_SCRIPT_DIR/test_real_fcu_rc_command_bridge.py"
+  python3 -m unittest \
+    "$RFCU_WS_SCRIPT_DIR/test_real_fcu_command_feedback_capture.py"
   node --check "$RFCU_WS_DASHBOARD_DIR/app.js"
   node --test --test-isolation=none "$RFCU_WS_DASHBOARD_DIR"/test/*.test.js
-  rfcu_ws_log 'REAL_FCU_WORKSTATION_CHECK=PASS tests=helper,bridge,dashboard runtime=not-started ports=8002,9090'
+  rfcu_ws_log 'REAL_FCU_WORKSTATION_CHECK=PASS tests=helper,bridge,capture,dashboard runtime=not-started ports=8002,9090'
 }
 
 rfcu_ws_run() {

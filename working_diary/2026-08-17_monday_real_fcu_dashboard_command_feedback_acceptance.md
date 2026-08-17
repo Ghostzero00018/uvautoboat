@@ -774,3 +774,83 @@ pinned artifacts and the `13` operational pin surfaces remain untouched. This
 is a source and focused-test result only: T0b remains open until a separately
 approved D1 probe retains this controller's live artifact. The separate
 capture-helper change and Blocks C, D0, D1 and E have not advanced.
+
+### Command/feedback capture-helper source and focused-test result - PASS
+
+The pre-edit baseline for this appended capture-helper record is
+`b4b9f14055c2b8cf67b92d34f9f54aab2954c9df`; no commit containing this text is
+predicted here. The first focused red failed because
+`tools/real_fcu_command_feedback_capture.py` did not exist. A separate
+physical-helper red then failed because the workstation `check` path did not
+run the new focused suite.
+
+The new workstation-only helper uses native `rclpy` subscriptions for
+`/command_ingress/rc_axes`, `/command_ingress/status` and `/mavros/state`. Its
+application surface has no publisher or service client; ROS logging and
+parameter services are disabled. It does not invoke `ros2 topic echo`, so YAML
+document separators and partial YAML documents are not part of its evidence
+format, and it has no controller-write path. The helper requires domain `43`,
+subnet discovery and non-localhost transport, plus a clean
+`HEAD == main == origin/main`, before creating a timestamped run directory
+outside the repository.
+
+All three topics share one JSONL stream containing only completely committed
+records. Every record has one global sequence number plus Unix and monotonic
+receipt times taken in the same callback. Joy and MAVROS State records also
+retain their source-header timestamp; the headerless bridge status records a
+null source timestamp rather than inferring one. Status JSON is retained both
+as the original String payload and as a decoded object. Helper diagnostics use
+`logs/capture.log` and are never merged into `evidence/events.jsonl`.
+
+The initial implementation exposed seven further red cases during review. An
+injected interrupt could leave an unverified partial final record, a merely
+received invalid status could trigger the streams-ready marker, and an
+immediate stop at initial disarmed readiness could produce a clean-endpoint
+pass without covering arm and disarm. The default reliable Joy subscription
+could also miss a best-effort publisher. Finally, incomplete decoded status
+objects carrying only phase names could satisfy the ordered-state list, and a
+ROS node-destruction exception could bypass later cleanup and verdict writing.
+The MAVROS State subscription also inherited reliable shorthand, which could
+receive no state samples if that publisher offered best-effort reliability.
+The corrected writer blocks termination signals while committing one binary
+JSONL record, rolls a failed write back to the last complete byte boundary,
+then restores signal delivery. The Joy subscription now matches the bridge's
+best-effort, depth-one contract. MAVROS State requests best-effort at depth ten,
+which accepts either offered reliability, while bridge status retains its
+matching reliable default. Structural and phase-semantic validation keeps
+incomplete status objects out of the ordered sequence. Cleanup attempts both
+node destruction and context shutdown and folds either error into the retained
+fail-closed verdict. The readiness marker requires valid, connected, disarmed
+`MANUAL` status and FCU state with tier-matched authority.
+
+On operator stop, the atomic verdict requires an armed FCU sample and the
+ordered bridge-state subsequence for the selected tier. T2a requires
+`READY_DISARMED`, `ARMED_NEUTRAL`, final `READY_DISARMED`, and zero command
+frames. T2b requires `READY_DISARMED`, `ARMED_NEUTRAL`, `ACTIVE`, final
+`EMERGENCY_STOP`, and at least one retained command frame. Both tiers require
+the final bridge status and final MAVROS State to be connected, disarmed and
+`MANUAL`; invalid status evidence or a runtime failure keeps the verdict false.
+The manifest retains the exact helper hash, repository refs, ROS environment,
+tier and topic list. A passing foreground stop emits:
+
+```text
+REAL_FCU_CAPTURE_FINAL=PASS tier=T2A|T2B final=disarmed events=<count> run_dir=<path>
+```
+
+The focused capture suite passes all `13` tests. It covers exact ROS
+environment rejection, application-subscription topology, global ordering,
+uniform receipt timestamps, command-topic and state-topic QoS, real ROS
+message-header conversion, partial-write rollback, cleanup-error retention,
+valid readiness, T2a and T2b success, armed/invalid-status failure, incomplete
+phase objects, missing tier sequence and the tier command-frame rules. The
+complete physical-helper suite passes at `22` cases after adding the capture
+suite to the workstation `check` path. Python compilation, shell syntax for
+both physical helpers and the physical-helper suite, the unchanged four-file
+bundle's `4/4` hash check and the repository diff check all pass. The dashboard
+README documents the helper and its evidence contract.
+
+The capture helper and workstation helper are not Pi bundle members, so the
+four-file manifest was not regenerated. The three pinned artifacts and `13`
+operational pin surfaces remain untouched. No supervisor, simulator, browser,
+Pi, FCU or control-box path ran for this change; no physical capture result is
+claimed. Block C, D0, D1 and E remain closed.

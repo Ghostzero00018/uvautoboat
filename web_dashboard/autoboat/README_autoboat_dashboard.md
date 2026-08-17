@@ -250,6 +250,30 @@ disarms, changes mode, writes parameters or issues a software safety release.
 Those actions remain outside the helpers, and external disarm is required before
 stopping them.
 
+The separately started workstation capture helper is:
+
+```text
+tools/real_fcu_command_feedback_capture.py t2a|t2b [--output-root PATH]
+```
+
+Its application surface consists only of subscriptions for
+`/command_ingress/rc_axes`, `/command_ingress/status` and `/mavros/state`;
+ROS logging and parameter services are disabled. One global JSONL stream gives
+every message a sequence number plus uniform Unix and monotonic receipt times;
+the Joy and MAVROS State source-header times are also retained. Bridge status
+has no source header, so its source time is recorded as null rather than
+inferred. The Joy subscription matches the bridge's best-effort, depth-one QoS,
+and MAVROS State uses best-effort at depth ten so it can receive either offered
+reliability. Bridge status retains the reliable default that matches its
+publisher. Diagnostics are written to a separate log and never merged into the
+evidence stream. On operator stop, an atomic verdict requires an armed FCU
+sample, structurally valid phase evidence, the tier's ordered bridge-state
+sequence, tier-matched authority and a final connected, disarmed `MANUAL`
+status and FCU state. T2a fails if any command frame was observed; T2b fails if
+none was observed, and any ROS cleanup error fails the retained verdict. The
+helper creates no application publisher, service client or controller-write
+path and is not a member of the four-file Pi deployment bundle.
+
 Deploy the Pi helper, command bridge and both physical MAVROS allowlists with
 their `tools/` and `config/` layout intact. The exact four-file set is pinned by
 `config/real_fcu_digital_twin_bundle.sha256`. Do not replace or extend
@@ -459,6 +483,7 @@ direct E-Stop topic.
 | `style_merged.css`            | Unified stylesheet                         |
 | `README_autoboat_dashboard.md` | This file                                  |
 | `../../tools/real_fcu_rc_command_bridge.py` | Default-inhibited MAVROS RC bridge and measured-output status |
+| `../../tools/real_fcu_command_feedback_capture.py` | Subscriber-only ordered evidence capture for the physical bench tiers |
 | `../../tools/real_fcu_digital_twin_workstation.sh` | Loopback rosbridge/dashboard supervisor for the guarded physical loop |
 | `../../tools/real_fcu_digital_twin_pi.sh` | Direct-serial T0b probe and separately gated physical-loop supervisor |
 | `../../tools/test_real_fcu_digital_twin_helpers.sh` | Focused static contract suite for both physical helpers |
