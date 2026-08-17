@@ -98,10 +98,11 @@ the operator in a real Pi terminal opened through Remmina; there is no
 interactive SSH terminal. A workstation `scp` transfer is acceptable only as
 the byte-preserving transport. Do not substitute reflowed terminal text.
 
-Keep propellers removed, propulsion isolated, the hull restrained, hardware
-safety engaged and the controller disarmed. Power only the control electronics
-needed for the approved session. Do not release safety, arm, change mode or
-write a parameter.
+Keep the propellers removed, propulsion isolated and the hull restrained. After
+powering only the control electronics needed for the approved session, confirm
+that the controller is disarmed and the hardware safety state is ON (safe);
+leave that state unchanged. Do not release safety, arm, change mode or write a
+parameter.
 
 The deployment root is
 `/home/imt-aqua-drone/uvautoboat_real_fcu_bundle_20260818`. It must not already
@@ -154,8 +155,11 @@ and document the blocker.
 ## Block E - only after D1 passes
 
 Block E remains separately gated. T2a is a fresh neutral-only session using
-`run-t2a`; it contains no command publisher or non-neutral demand and ends in
-a recorded powered-down state. T2b is a second complete session only after
+`run-t2a`. It creates no browser-command subscription and accepts no
+non-neutral demand; it still creates the guarded RC-override publisher and
+publishes the controller's live trim values while armed. T2a must separately
+verify that the observed outputs remain at those trims. It ends in a recorded
+powered-down state. T2b is a second complete session only after
 T2a is closed and recorded and separate T2b approval is granted. Never set
 both T2 flags to bypass T2a. Do not start a physical session late in the
 available window.
