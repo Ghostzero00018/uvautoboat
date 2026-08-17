@@ -234,15 +234,18 @@ entry points are:
 
 ```text
 tools/real_fcu_digital_twin_workstation.sh check|run
-tools/real_fcu_digital_twin_pi.sh check|probe|run
+tools/real_fcu_digital_twin_pi.sh check|probe|run-t2a|run
 ```
 
 `check` performs bounded preflight and static verification without starting the
 loop. `probe` is the separately approved read-only T0b request/response and
-safety-state check. `run` is the separately approved closed-loop phase; it does
-not arm, disarm, change mode, write parameters or issue a software safety
-release. Those actions remain outside the helpers, and external disarm is
-required before stopping them.
+safety-state check. `run-t2a` requires T2a approval while rejecting T2b approval;
+it exposes no dashboard command publisher or bridge command subscription and
+holds the resolved live RC trims while armed. `run` requires both T2 approvals
+and enables the separately approved closed-loop demand path. Neither mode arms,
+disarms, changes mode, writes parameters or issues a software safety release.
+Those actions remain outside the helpers, and external disarm is required before
+stopping them.
 
 Deploy the Pi helper, command bridge and both physical MAVROS allowlists with
 their `tools/` and `config/` layout intact. The exact four-file set is pinned by

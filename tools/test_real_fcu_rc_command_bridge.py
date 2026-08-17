@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import inspect
+import json
 import os
 import pathlib
 import sys
@@ -17,6 +18,7 @@ from mavros_msgs.msg import State
 from rcl_interfaces.msg import ParameterType, ParameterValue
 from rclpy.signals import SignalHandlerOptions
 from std_msgs.msg import Bool
+from sensor_msgs.msg import Joy
 
 
 MODULE_PATH = pathlib.Path(__file__).with_name("real_fcu_rc_command_bridge.py")
@@ -97,6 +99,19 @@ class BridgeFunctionsTest(unittest.TestCase):
             MODULE.validate_ros_domain("", "42")
         with self.assertRaisesRegex(MODULE.GuardError, "ROS_DOMAIN_ID must be 43"):
             MODULE.validate_ros_domain("43", "42")
+
+    def test_neutral_only_authority_is_explicit_and_omits_command_subscription(self):
+        source = inspect.getsource(MODULE.RealFcuRcCommandBridge.__init__)
+        self.assertIn('declare_parameter("neutral_only", False)', source)
+        self.assertIn("if not self.neutral_only:", source)
+        self.assertGreater(
+            source.index("if not self.neutral_only:"),
+            source.index("self.override_pub = self.create_publisher"),
+        )
+        self.assertGreater(
+            source.index("self.create_subscription(Joy, COMMAND_TOPIC"),
+            source.index("if not self.neutral_only:"),
+        )
 
     def test_decodes_integer_double_and_missing_ros_parameters(self):
         integer = ParameterValue(
@@ -325,6 +340,32 @@ class BridgeNodeStateMachineTest(unittest.TestCase):
         self.assertEqual(channels[guard.steering_channel - 1], guard.steering_rail.trim)
         self.assertEqual(channels[guard.throttle_channel - 1], guard.throttle_rail.trim)
         self.assertEqual(self.node.fault, "FEEDBACK_INVALID")
+
+    def test_neutral_only_authority_rejects_commands_and_publishes_trims(self):
+        now = 100.0
+        self.node.neutral_only = True
+        self.node._command_cb(Joy())
+        self.assertEqual(self.node.fault, "NEUTRAL_ONLY")
+        self.assertEqual(self.node.last_command, (0.0, 0.0, False))
+
+        self.node.latest_state = self.vehicle(True)
+        self.node.latest_state_at = now
+        self.node.arm_epoch_authorized = True
+        self.node.armed_enable_primed = True
+        self.node.last_command = (0.1, 0.1, True)
+        self.node.last_command_at = now
+        self.set_valid_feedback(now)
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now), \
+                mock.patch.object(self.node, "count_publishers", return_value=1):
+            self.node._tick()
+        channels = self.node.override_pub.messages[-1].channels
+        guard = self.node.guard
+        self.assertEqual(channels[guard.steering_channel - 1], guard.steering_rail.trim)
+        self.assertEqual(channels[guard.throttle_channel - 1], guard.throttle_rail.trim)
+        self.assertEqual(self.node.fault, "ARMED_NEUTRAL")
+        status = json.loads(self.node.status_pub.messages[-1].data)
+        self.assertIs(status["neutral_only"], True)
+        self.assertEqual(status["command"], {"steering": 0.0, "throttle": 0.0})
 
     def test_one_hertz_state_stream_does_not_false_trip(self):
         now = 100.0

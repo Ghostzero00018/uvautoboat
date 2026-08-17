@@ -11,8 +11,9 @@ This bridge deliberately has no arm, disarm, mode, parameter-write, motor-test
 or raw-servo-command path.  Arming remains an external operator action.  The
 node is inert unless ``allow_real_fcu`` is explicitly true, an explicit
 ``expected_domain_id`` matches ``ROS_DOMAIN_ID``, every live guard passes twice,
-the vehicle was first observed disarmed in MANUAL, and exactly one command
-publisher exists.
+and the vehicle was first observed disarmed in MANUAL.  Demand-enabled sessions
+also require exactly one command publisher; neutral-only sessions create no
+command subscription and hold live RC trims while armed.
 """
 
 from __future__ import annotations
@@ -352,6 +353,9 @@ class RealFcuRcCommandBridge(Node):
         self.expected_domain_id = str(
             self.declare_parameter("expected_domain_id", "").value
         )
+        self.neutral_only = bool(
+            self.declare_parameter("neutral_only", False).value
+        )
         self.max_steering = float(self.declare_parameter("max_steering", 0.20).value)
         self.max_throttle = float(self.declare_parameter("max_throttle", 0.12).value)
         if not (0.0 < self.max_steering <= 0.20):
@@ -392,13 +396,14 @@ class RealFcuRcCommandBridge(Node):
 
         self.guard = self._resolve_live_guard()
         self.override_pub = self.create_publisher(OverrideRCIn, OVERRIDE_TOPIC, 10)
-        command_qos = QoSProfile(
-            history=HistoryPolicy.KEEP_LAST,
-            depth=1,
-            reliability=ReliabilityPolicy.BEST_EFFORT,
-            durability=DurabilityPolicy.VOLATILE,
-        )
-        self.create_subscription(Joy, COMMAND_TOPIC, self._command_cb, command_qos)
+        if not self.neutral_only:
+            command_qos = QoSProfile(
+                history=HistoryPolicy.KEEP_LAST,
+                depth=1,
+                reliability=ReliabilityPolicy.BEST_EFFORT,
+                durability=DurabilityPolicy.VOLATILE,
+            )
+            self.create_subscription(Joy, COMMAND_TOPIC, self._command_cb, command_qos)
         self.create_subscription(
             Bool, "/planning/emergency_stop", self._emergency_cb, 10
         )
@@ -550,6 +555,12 @@ class RealFcuRcCommandBridge(Node):
         self.latest_rc_out_at = time.monotonic()
 
     def _command_cb(self, message: Joy) -> None:
+        if self.neutral_only:
+            self.armed_enable_primed = False
+            self.last_command = (0.0, 0.0, False)
+            self.last_command_at = 0.0
+            self.fault = "NEUTRAL_ONLY"
+            return
         if self.emergency_stop_latched:
             self.fault = "EMERGENCY_STOP"
             return
@@ -647,6 +658,7 @@ class RealFcuRcCommandBridge(Node):
             "connected": bool(self.latest_state and self.latest_state.connected),
             "armed": bool(self.latest_state and self.latest_state.armed),
             "mode": self.latest_state.mode if self.latest_state else "",
+            "neutral_only": self.neutral_only,
             "command": {"steering": steering, "throttle": throttle},
             "feedback_fresh": bool(
                 guard is not None
@@ -763,6 +775,8 @@ class RealFcuRcCommandBridge(Node):
             requested_steering, requested_throttle, enabled = self.last_command
             if not feedback_fresh:
                 state = "FEEDBACK_INVALID"
+            elif self.neutral_only:
+                state = "ARMED_NEUTRAL"
             elif (fresh and enabled and self.armed_enable_primed
                     and self.count_publishers(COMMAND_TOPIC) == 1):
                 steering = requested_steering

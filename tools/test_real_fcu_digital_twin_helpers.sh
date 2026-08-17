@@ -64,8 +64,10 @@ grep -Fq 'check|run' <<<"$WORKSTATION_USAGE" \
   || fail_test 'workstation usage does not expose check and run'
 [ "$PI_USAGE_RC" -eq 2 ] \
   || fail_test "Pi helper returned $PI_USAGE_RC instead of 2"
-grep -Fq 'check|probe|run' <<<"$PI_USAGE" \
-  || fail_test 'Pi usage does not expose check, probe and run'
+grep -Fq 'check|probe|run-t2a|run' <<<"$PI_USAGE" \
+  || fail_test 'Pi usage does not expose the distinct T2a-only run'
+grep -Fq '1:run-t2a) rfcu_pi_run run-t2a' "$PI_HELPER" \
+  || fail_test 'Pi main does not dispatch the T2a-only run'
 pass_case
 
 TEST_TMP="$(mktemp -d)"
@@ -134,12 +136,16 @@ COMMAND_OUTPUT="$(bash -c '
   RFCU_PI_RUN_DIR="$3/pi"
   mkdir -p "$RFCU_WS_RUN_DIR" "$RFCU_PI_RUN_DIR"
   rfcu_ws_build_commands
+  RFCU_PI_RUN_MODE=run-t2a
+  rfcu_pi_build_commands
+  printf "PI_T2A_BRIDGE=%s\n" "${RFCU_PI_BRIDGE_COMMAND[*]}"
+  RFCU_PI_RUN_MODE=run
   rfcu_pi_build_commands
   printf "WS_ROSBRIDGE=%s\n" "${RFCU_WS_ROSBRIDGE_COMMAND[*]}"
   printf "WS_DASHBOARD=%s\n" "${RFCU_WS_DASHBOARD_COMMAND[*]}"
   printf "PI_MAVROS=%s\n" "${RFCU_PI_MAVROS_COMMAND[*]}"
   printf "PI_PROBE_MAVROS=%s\n" "${RFCU_PI_PROBE_MAVROS_COMMAND[*]}"
-  printf "PI_BRIDGE=%s\n" "${RFCU_PI_BRIDGE_COMMAND[*]}"
+  printf "PI_T2B_BRIDGE=%s\n" "${RFCU_PI_BRIDGE_COMMAND[*]}"
 ' _ "$WORKSTATION_HELPER" "$PI_HELPER" "$TEST_TMP")"
 grep -Fq 'address:=127.0.0.1' <<<"$COMMAND_OUTPUT" \
   || fail_test 'rosbridge is not loopback-only'
@@ -169,6 +175,14 @@ grep -Fq 'max_steering:=0.20' <<<"$COMMAND_OUTPUT" \
   || fail_test 'Pi bridge steering bound changed'
 grep -Fq 'max_throttle:=0.12' <<<"$COMMAND_OUTPUT" \
   || fail_test 'Pi bridge throttle bound changed'
+grep -Fq 'PI_T2A_BRIDGE=' <<<"$COMMAND_OUTPUT" \
+  && grep -Fq 'neutral_only:=true' \
+    <<<"$(grep -F 'PI_T2A_BRIDGE=' <<<"$COMMAND_OUTPUT")" \
+  || fail_test 'T2a bridge command is not explicitly neutral-only'
+grep -Fq 'PI_T2B_BRIDGE=' <<<"$COMMAND_OUTPUT" \
+  && grep -Fq 'neutral_only:=false' \
+    <<<"$(grep -F 'PI_T2B_BRIDGE=' <<<"$COMMAND_OUTPUT")" \
+  || fail_test 'T2b bridge command lost demand-enabled authority'
 ! grep -Eiq 'mavproxy|udp(out)?://|--out=' <<<"$COMMAND_OUTPUT" \
   || fail_test 'physical command path still contains a relay or UDP fanout'
 pass_case
@@ -241,6 +255,38 @@ env \
   REAL_FCU_PROPULSION_ISOLATED=1 \
   bash -c 'source "$1"; rfcu_pi_require_run_gates' _ "$PI_HELPER" \
   || fail_test 'complete run gate was rejected'
+
+env \
+  REAL_FCU_T0A_COMPLETE=1 \
+  REAL_FCU_T0B_APPROVED=1 \
+  REAL_FCU_T2A_APPROVED=1 \
+  REAL_FCU_T2B_APPROVED=0 \
+  REAL_FCU_START_DISARMED=1 \
+  REAL_FCU_SAFETY_ON=1 \
+  REAL_FCU_PROPELLERS_REMOVED=1 \
+  REAL_FCU_HULL_RESTRAINED=1 \
+  REAL_FCU_PROPULSION_ISOLATED=1 \
+  bash -c 'source "$1"; rfcu_pi_require_t2a_run_gates' _ "$PI_HELPER" \
+  || fail_test 'T2a-only gate was rejected'
+for approval_pair in '0 0' '0 1' '1 1'; do
+  read -r t2a_approved t2b_approved <<<"$approval_pair"
+  set +e
+  T2A_GATE_OUTPUT="$(env \
+    REAL_FCU_T0A_COMPLETE=1 \
+    REAL_FCU_T0B_APPROVED=1 \
+    REAL_FCU_T2A_APPROVED="$t2a_approved" \
+    REAL_FCU_T2B_APPROVED="$t2b_approved" \
+    REAL_FCU_START_DISARMED=1 \
+    REAL_FCU_SAFETY_ON=1 \
+    REAL_FCU_PROPELLERS_REMOVED=1 \
+    REAL_FCU_HULL_RESTRAINED=1 \
+    REAL_FCU_PROPULSION_ISOLATED=1 \
+    bash -c 'source "$1"; rfcu_pi_require_t2a_run_gates' _ "$PI_HELPER" 2>&1)"
+  T2A_GATE_RC=$?
+  set -e
+  [ "$T2A_GATE_RC" -ne 0 ] \
+    || fail_test "T2a gate accepted approvals $t2a_approved/$t2b_approved"
+done
 pass_case
 
 T0B_FUNCTION="$(extract_function "$PI_HELPER" rfcu_pi_capture_t0b)"
@@ -281,11 +327,30 @@ BRIDGE_LINE="$(line_number_once "$RUN_FUNCTION" \
   || fail_test 'run does not separate T0b from the full MAVROS/bridge session'
 pass_case
 
-READY_STATUS='{"state":"READY_DISARMED","ready":true,"connected":true,"armed":false,"mode":"MANUAL","feedback_fresh":true,"resolved":{"steering_rc":1,"throttle_rc":3,"left_servo":3,"right_servo":1}}'
+READY_STATUS='{"state":"READY_DISARMED","ready":true,"connected":true,"armed":false,"mode":"MANUAL","feedback_fresh":true,"neutral_only":false,"resolved":{"steering_rc":1,"throttle_rc":3,"left_servo":3,"right_servo":1}}'
 BENCH_URL="$(bash -c 'source "$1"; rfcu_ws_bench_url_from_status "$2"' \
   _ "$WORKSTATION_HELPER" "$READY_STATUS")"
 [ "$BENCH_URL" = 'http://127.0.0.1:8002/?enable_fcu_bench_control=1&thrust_left_servo=3&thrust_right_servo=1' ] \
   || fail_test "workstation helper emitted an unexpected bench URL: $BENCH_URL"
+T2A_READY_STATUS='{"state":"READY_DISARMED","ready":true,"connected":true,"armed":false,"mode":"MANUAL","feedback_fresh":true,"neutral_only":true,"resolved":{"steering_rc":1,"throttle_rc":3,"left_servo":3,"right_servo":1}}'
+T2A_BENCH_URL="$(bash -c 'source "$1"; rfcu_ws_bench_url_from_status "$2"' \
+  _ "$WORKSTATION_HELPER" "$T2A_READY_STATUS")"
+[ "$T2A_BENCH_URL" = 'http://127.0.0.1:8002/?thrust_left_servo=3&thrust_right_servo=1' ] \
+  || fail_test "T2a workstation URL exposed bench commands: $T2A_BENCH_URL"
+bash -c 'source "$1"; rfcu_pi_status_is_ready "$2" false' \
+  _ "$PI_HELPER" "$READY_STATUS" \
+  || fail_test 'Pi rejected demand-enabled readiness for full run'
+bash -c 'source "$1"; rfcu_pi_status_is_ready "$2" true' \
+  _ "$PI_HELPER" "$T2A_READY_STATUS" \
+  || fail_test 'Pi rejected neutral-only readiness for T2a'
+if bash -c 'source "$1"; rfcu_pi_status_is_ready "$2" false' \
+    _ "$PI_HELPER" "$T2A_READY_STATUS"; then
+  fail_test 'full run accepted neutral-only bridge readiness'
+fi
+if bash -c 'source "$1"; rfcu_pi_status_is_ready "$2" true' \
+    _ "$PI_HELPER" "$READY_STATUS"; then
+  fail_test 'T2a accepted demand-enabled bridge readiness'
+fi
 for invalid_status in \
   '{"state":"STARTUP_ARMED","ready":false,"connected":true,"armed":true,"mode":"MANUAL","feedback_fresh":true,"resolved":{"left_servo":3,"right_servo":1}}' \
   '{"state":"READY_DISARMED","ready":true,"connected":true,"armed":false,"mode":"MANUAL","feedback_fresh":true,"resolved":{"left_servo":3,"right_servo":3}}' \
@@ -500,6 +565,7 @@ run_pi_operator_stop_case() {
   local case_dir="$1" ready_reached="$2" bridge_started="$3"
   local final_disarmed="$4" cleanup_ok="${5:-1}"
   local workstation_marker="${6:-1}"
+  local run_mode="${7:-run}"
   bash -c '
     set -euo pipefail
     source "$1"
@@ -507,7 +573,7 @@ run_pi_operator_stop_case() {
     mkdir -p "$RFCU_PI_RUN_DIR/evidence"
     RFCU_PI_SUPERVISOR_LOG="$RFCU_PI_RUN_DIR/supervisor.log"
     : >"$RFCU_PI_SUPERVISOR_LOG"
-    RFCU_PI_RUN_MODE=run
+    RFCU_PI_RUN_MODE="$8"
     RFCU_PI_CLEANING=0
     RFCU_PI_READY_REACHED="$3"
     RFCU_PI_BRIDGE_STARTED="$4"
@@ -548,7 +614,7 @@ run_pi_operator_stop_case() {
     trap rfcu_pi_on_interrupt INT
     kill -INT "$$"
   ' _ "$PI_HELPER" "$case_dir" "$ready_reached" "$bridge_started" \
-    "$final_disarmed" "$cleanup_ok" "$workstation_marker"
+    "$final_disarmed" "$cleanup_ok" "$workstation_marker" "$run_mode"
 }
 
 set +e
@@ -646,9 +712,14 @@ WS_OPERATOR_RC=$?
 PI_OPERATOR_OUTPUT="$(run_pi_operator_stop_case \
   "$TEST_TMP/pi-operator-success" 1 1 1 2>&1)"
 PI_OPERATOR_RC=$?
+PI_T2A_OPERATOR_OUTPUT="$(run_pi_operator_stop_case \
+  "$TEST_TMP/pi-t2a-operator-success" 1 1 1 1 1 run-t2a 2>&1)"
+PI_T2A_OPERATOR_RC=$?
 set -e
 [ "$WS_OPERATOR_RC" -eq 0 ] && [ "$PI_OPERATOR_RC" -eq 0 ] \
   || fail_test "normal operator stop remained non-zero: workstation=$WS_OPERATOR_RC Pi=$PI_OPERATOR_RC workstation_output=[$WS_OPERATOR_OUTPUT] Pi_output=[$PI_OPERATOR_OUTPUT]"
+[ "$PI_T2A_OPERATOR_RC" -eq 0 ] \
+  || fail_test "T2a operator stop remained non-zero: $PI_T2A_OPERATOR_OUTPUT"
 grep -Fq 'operator stop requested' <<<"$WS_OPERATOR_OUTPUT" \
   || fail_test 'workstation operator-stop handler did not run'
 grep -Fq 'operator stop requested' <<<"$PI_OPERATOR_OUTPUT" \
@@ -663,6 +734,8 @@ grep -Fq 'REAL_FCU_FINAL_STATE=PASS connected=true armed=false' \
   <<<"$PI_OPERATOR_OUTPUT" || fail_test 'Pi operator stop lost final disarmed state'
 grep -Fq 'REAL_FCU_PI_EXIT status=0 cleanup_rc=0' \
   <<<"$PI_OPERATOR_OUTPUT" || fail_test 'Pi operator stop did not pass'
+grep -Fq 'REAL_FCU_PI_EXIT status=0 cleanup_rc=0' \
+  <<<"$PI_T2A_OPERATOR_OUTPUT" || fail_test 'T2a operator stop did not pass'
 grep -Fq 'REAL_FCU_WORKSTATION_STOP=PASS marker=received topic=/real_fcu/workstation_stop' \
   <<<"$PI_OPERATOR_OUTPUT" || fail_test 'Pi did not retain workstation shutdown'
 grep -Fq 'REAL_FCU_WORKSTATION_STOPPED final=disarmed children=stopped ports=free' \

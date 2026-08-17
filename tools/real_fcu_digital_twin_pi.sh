@@ -66,7 +66,7 @@ rfcu_pi_fail() {
 }
 
 rfcu_pi_usage() {
-  printf 'usage: %s check|probe|run\n' "${0##*/}" >&2
+  printf 'usage: %s check|probe|run-t2a|run\n' "${0##*/}" >&2
   return 2
 }
 
@@ -106,6 +106,13 @@ rfcu_pi_require_run_gates() {
   for name in REAL_FCU_T2A_APPROVED REAL_FCU_T2B_APPROVED; do
     rfcu_pi_require_flag "$name" || return 1
   done
+}
+
+rfcu_pi_require_t2a_run_gates() {
+  rfcu_pi_require_probe_gates || return 1
+  rfcu_pi_require_flag REAL_FCU_T2A_APPROVED || return 1
+  [ "${REAL_FCU_T2B_APPROVED:-0}" = 0 ] \
+    || rfcu_pi_fail 'REAL_FCU_T2B_APPROVED must be 0 for run-t2a'
 }
 
 rfcu_pi_configure_ros_environment() {
@@ -259,7 +266,8 @@ rfcu_pi_init_state() {
 }
 
 rfcu_pi_build_commands() {
-  local serial_url="serial://$RFCU_PI_SERIAL:$RFCU_PI_BAUD"
+  local serial_url="serial://$RFCU_PI_SERIAL:$RFCU_PI_BAUD" neutral_only=true
+  [ "$RFCU_PI_RUN_MODE" != run ] || neutral_only=false
   RFCU_PI_PROBE_MAVROS_COMMAND=(
     ros2 run mavros mavros_node --ros-args
     --params-file "$RFCU_PI_APM_CONFIG"
@@ -282,6 +290,7 @@ rfcu_pi_build_commands() {
     /usr/bin/python3 "$RFCU_PI_BRIDGE" --ros-args
     -p 'allow_real_fcu:=true'
     -p 'expected_domain_id:="43"'
+    -p "neutral_only:=$neutral_only"
     -p 'max_steering:=0.20'
     -p 'max_throttle:=0.12'
   )
@@ -567,6 +576,7 @@ rfcu_pi_status_is_ready() {
 import json
 import sys
 status = json.loads(sys.argv[1])
+expected_neutral_only = sys.argv[2] == "true"
 if not (
     status.get("state") == "READY_DISARMED"
     and status.get("ready") is True
@@ -574,6 +584,7 @@ if not (
     and status.get("armed") is False
     and status.get("mode") == "MANUAL"
     and status.get("feedback_fresh") is True
+    and status.get("neutral_only") is expected_neutral_only
 ):
     raise SystemExit(1)
 resolved = status.get("resolved") or {}
@@ -582,15 +593,17 @@ if not all(isinstance(value, int) and 1 <= value <= 16 for value in values):
     raise SystemExit(1)
 if values[0] == values[1] or values[2] == values[3]:
     raise SystemExit(1)
-' "$1"
+' "$1" "$2"
 }
 
 rfcu_pi_wait_bridge_ready() {
-  local deadline=$((SECONDS + RFCU_PI_READY_TIMEOUT_SECONDS)) status_json
+  local deadline=$((SECONDS + RFCU_PI_READY_TIMEOUT_SECONDS))
+  local status_json expected_neutral_only=false
+  [ "$RFCU_PI_RUN_MODE" != run-t2a ] || expected_neutral_only=true
   while [ "$SECONDS" -lt "$deadline" ]; do
     rfcu_pi_active_children_alive || return 1
     if status_json="$(rfcu_pi_status_json_once)" \
-        && rfcu_pi_status_is_ready "$status_json"; then
+        && rfcu_pi_status_is_ready "$status_json" "$expected_neutral_only"; then
       printf '%s\n' "$status_json" \
         >"$RFCU_PI_RUN_DIR/evidence/ready_status.json"
       return 0
@@ -620,7 +633,8 @@ rfcu_pi_cleanup() {
   RFCU_PI_CLEANING=1
   trap - EXIT INT TERM
   set +e
-  if [ "$RFCU_PI_RUN_MODE" = run ] && [ "$RFCU_PI_BRIDGE_STARTED" -eq 1 ]; then
+  if [[ "$RFCU_PI_RUN_MODE" == run || "$RFCU_PI_RUN_MODE" == run-t2a ]] \
+      && [ "$RFCU_PI_BRIDGE_STARTED" -eq 1 ]; then
     final_state="$RFCU_PI_RUN_DIR/evidence/final_state.yaml"
     if ! rfcu_pi_capture_topic /mavros/state mavros_msgs/msg/State "$final_state" 3 \
         || ! rfcu_pi_state_file_is_connected_disarmed "$final_state"; then
@@ -694,8 +708,24 @@ rfcu_pi_probe() {
 }
 
 rfcu_pi_run() {
-  RFCU_PI_RUN_MODE=run
-  rfcu_pi_require_run_gates
+  local tier authority
+  RFCU_PI_RUN_MODE="$1"
+  case "$RFCU_PI_RUN_MODE" in
+    run-t2a)
+      rfcu_pi_require_t2a_run_gates || return 1
+      tier=T2a
+      authority=neutral-only
+      ;;
+    run)
+      rfcu_pi_require_run_gates || return 1
+      tier=T2b
+      authority=demand-enabled
+      ;;
+    *)
+      rfcu_pi_fail "unsupported run mode: $RFCU_PI_RUN_MODE"
+      return 1
+      ;;
+  esac
   rfcu_pi_static_preflight
   rfcu_pi_init_state
   rfcu_pi_build_commands
@@ -703,7 +733,7 @@ rfcu_pi_run() {
   trap rfcu_pi_cleanup EXIT
   trap rfcu_pi_on_interrupt INT
   trap rfcu_pi_on_term TERM
-  rfcu_pi_log "REAL_FCU_PI_START mode=run domain=$RFCU_PI_DOMAIN_ID discovery=SUBNET run_dir=$RFCU_PI_RUN_DIR"
+  rfcu_pi_log "REAL_FCU_PI_START mode=$RFCU_PI_RUN_MODE tier=$tier authority=$authority domain=$RFCU_PI_DOMAIN_ID discovery=SUBNET run_dir=$RFCU_PI_RUN_DIR"
 
   rfcu_pi_start_child mavros-probe "$RFCU_PI_RUN_DIR/logs/mavros_probe.log" \
     "${RFCU_PI_PROBE_MAVROS_COMMAND[@]}"
@@ -734,7 +764,7 @@ rfcu_pi_run() {
   rfcu_pi_wait_workstation_nodes \
     || rfcu_pi_fail 'workstation rosbridge/rosapi nodes were not discovered'
   RFCU_PI_READY_REACHED=1
-  rfcu_pi_log 'REAL_FCU_PI_READY=PASS bridge=READY_DISARMED workstation=visible'
+  rfcu_pi_log "REAL_FCU_PI_READY=PASS tier=$tier authority=$authority bridge=READY_DISARMED workstation=visible"
   rfcu_pi_log 'arming remains external; planned stop requires external disarm before Ctrl+C'
 
   while rfcu_pi_active_children_alive; do
@@ -747,7 +777,8 @@ rfcu_pi_main() {
   case "$#:${1:-}" in
     1:check) rfcu_pi_check ;;
     1:probe) rfcu_pi_probe ;;
-    1:run) rfcu_pi_run ;;
+    1:run-t2a) rfcu_pi_run run-t2a ;;
+    1:run) rfcu_pi_run run ;;
     *) rfcu_pi_usage ;;
   esac
 }

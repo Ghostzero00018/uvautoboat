@@ -376,17 +376,19 @@ required = (
 if not all(required):
     raise SystemExit(1)
 resolved = status.get("resolved") or {}
+neutral_only = status.get("neutral_only")
 left = resolved.get("left_servo")
 right = resolved.get("right_servo")
 if not (
-    isinstance(left, int) and isinstance(right, int)
+    isinstance(neutral_only, bool)
+    and isinstance(left, int) and isinstance(right, int)
     and 1 <= left <= 16 and 1 <= right <= 16 and left != right
 ):
     raise SystemExit(1)
-print(
-    "http://127.0.0.1:8002/?enable_fcu_bench_control=1"
-    f"&thrust_left_servo={left}&thrust_right_servo={right}"
-)
+query = f"thrust_left_servo={left}&thrust_right_servo={right}"
+if not neutral_only:
+    query = "enable_fcu_bench_control=1&" + query
+print("http://127.0.0.1:8002/?" + query)
 ' "$status_json"
 }
 

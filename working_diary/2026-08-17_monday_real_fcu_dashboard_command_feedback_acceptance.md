@@ -661,3 +661,56 @@ unchanged and all four verify against repository bytes. The two deployed
 view-only artifacts and their `13` operational pin surfaces remain untouched.
 The isolated format probe contacted no helper, FCU or Pi and does not close the
 still-unproven physical normal-success result. Block B3a remains closed.
+
+### Block B3a source and focused-test result - PASS
+
+The pre-edit baseline for this appended B3a record is
+`9270d9e752a1c04d03525f00f474af8db7f24cd9`; no commit containing this text is
+predicted here. Before the approved edit began on 17/08/2026, the operator
+confirmed that the FCU and control box were powered down, propulsion was
+isolated, propellers were removed, hardware safety was restored and the Pi
+helper had not been started.
+
+The focused red helper check failed because the Pi usage and dispatcher exposed
+no distinct T2a-only run. The bridge suite ran `24` tests with the two intended
+failures: the bridge declared no neutral-only authority parameter, and its
+command callback handled an injected message instead of rejecting that path as
+neutral-only. These failures established the two B3a reachability and authority
+defects against the landed baseline.
+
+The Pi helper now exposes `run-t2a` as a separate start-up mode. It requires the
+common physical and probe gates plus `REAL_FCU_T2A_APPROVED=1`, and accepts only
+`REAL_FCU_T2B_APPROVED=0` or an unset T2b flag. Flagless, T2b-only and
+both-flags T2a invocations fail closed. The existing `run` mode still requires
+both T2 approval flags. There is no runtime promotion mechanism; moving from
+T2a to T2b still requires a fully closed and powered-down T2a session followed
+by a separately approved fresh start.
+
+For `run-t2a`, the Pi starts the bridge with `neutral_only:=true`. The bridge
+creates no `/command_ingress/rc_axes` subscription, defensively rejects any
+direct callback invocation, reports `neutral_only:true` in its retained status
+and keeps the resolved steering and throttle RC rails at trim while the vehicle
+is validly armed. The workstation derives its browser URL from that status and
+omits `enable_fcu_bench_control=1`, so the dashboard creates no command
+publisher. The Pi readiness gate requires the status authority to match the
+selected run mode. Full `run` passes `neutral_only:=false` and retains the
+separately gated demand-enabled path.
+
+The actual operator-stop regression now also covers `run-t2a` and requires the
+B2 final-disarmed evidence, workstation stop marker and status `0` cleanup path.
+The complete physical-helper suite passes at `19` cases. The bridge suite passes
+all `24` tests, Python compilation and shell syntax checks pass, and the current
+dashboard README records the four Pi entry points and their distinct authority.
+
+The regenerated physical bundle manifest records
+`fa4b4bad47b24f6bbf9b001e048ec9444fa9c08b4b3cdc6ca20805e73610a277`
+for `tools/real_fcu_digital_twin_pi.sh` and
+`bcfdb4fa105b7d59539355cea459220ca27f9b87095d323fe4df181dedeb10f3`
+for `tools/real_fcu_rc_command_bridge.py`. Both MAVROS allowlist hashes remain
+unchanged and all four manifest entries verify against repository bytes. The
+two deployed view-only artifacts and their `13` operational pin surfaces remain
+untouched.
+
+No supervisor, simulator, browser, Pi, FCU or control-box path ran during B3a.
+This is a source and focused-test result only: no T2a physical result is claimed,
+B3b remains closed, and Blocks C, D0, D1 and E have not advanced.
