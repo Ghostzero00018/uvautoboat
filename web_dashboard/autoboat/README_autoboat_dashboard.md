@@ -139,8 +139,12 @@ separately gated `run` mode restarts MAVROS with `sys_status`, `param`,
 `global_position`, `imu` and `rc_io`, verifies the six dashboard telemetry
 signals, and starts the bounded bridge. The workstation owns only loopback
 rosbridge and dashboard services and emits the servo-mapped bench URL only after
-fresh `READY_DISARMED` feedback. This pair is prepared and **NOT RUN**. T0a link
-inspection and separate T0b/T2 approvals remain mandatory before physical use.
+fresh `READY_DISARMED` feedback. Powered-down connector seating and end-to-end
+`Pi TXD (GPIO14) -> Cube SERIAL1 RX` continuity passed on 17/08/2026, closing
+T0a. On 18/08/2026, the bundle deployment and non-actuating Pi `check` passed.
+The first T0b probe opened direct serial and received an ArduPilot heartbeat but
+did not complete the MAVROS parameter-list exchange, so T0b and both T2 tiers
+remain open. No parameter was written and the bridge did not start.
 
 The expanded camera viewer owns pointer and keyboard focus while open. It now
 contains its own E-Stop button, so the explicit FCU bench stop path remains
@@ -243,9 +247,12 @@ safety-state check. After one forced MAVROS cache pull, it retains the three
 safety parameters, both `RCMAP_*` values, all `SERVO1..16_FUNCTION` values and
 the resolved RC and servo rails as a validated `41`-parameter T0b artifact.
 `run-t2a` requires T2a approval while rejecting T2b approval;
-it exposes no dashboard command publisher or bridge command subscription and
-holds the resolved live RC trims while armed. `run` requires both T2 approvals
-and enables the separately approved closed-loop demand path. Neither mode arms,
+it creates the guarded RC-override publisher, creates no bridge subscription to
+browser demand, accepts no non-neutral demand and publishes the resolved live RC
+trims while armed. T2a acceptance must separately compare the observed output
+values against the live servo trims retained by T0b; the capture verdict does
+not perform that equality check by itself. `run` requires both T2 approvals and
+enables the separately approved closed-loop demand path. Neither mode arms,
 disarms, changes mode, writes parameters or issues a software safety release.
 Those actions remain outside the helpers, and external disarm is required before
 stopping them.
@@ -280,9 +287,10 @@ their `tools/` and `config/` layout intact. The exact four-file set is pinned by
 `tools/pi_live_hailo_mavlink_dashboard.sh`; it remains the established
 view-only Hailo/telemetry path.
 
-No physical mode is currently accepted for routine use. T0a physical link
-inspection is still the first hardware step, followed by distinct approval for
-T0b and the T2 command tiers.
+No physical mode is currently accepted for routine use. T0a passed on
+17/08/2026. T0b is the first open physical gate and remains incomplete after the
+18/08/2026 probe; both T2 command tiers stay blocked behind its live mapping and
+rail evidence.
 
 ### FCU Bench Command/Feedback Component
 
@@ -557,4 +565,4 @@ Part of the uvautoboat project — Apache License 2.0.
 
 Built with [roslibjs](http://robotwebtools.org/), [Leaflet.js](https://leafletjs.com/), [OpenStreetMap](https://www.openstreetmap.org/).
 
-Last updated: 17/08/2026
+Last updated: 18/08/2026
