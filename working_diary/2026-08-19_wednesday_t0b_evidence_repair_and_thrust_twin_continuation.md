@@ -147,7 +147,17 @@ unrelated tests and do not widen the suite beyond these two behaviours.
 Run the full focused suites afterwards and record the case counts. Stop and
 report before Block C.
 
+The complete suite cannot be green at this point: it verifies the manifest
+against repository bytes, and the helper change invalidates that until Block C
+regenerates it. The suite is expected to remain red **only** at the manifest
+check. Any additional failure blocks Block C and must be resolved under a
+separately approved scope.
+
 ## Block C - regenerate the manifest and re-pin
+
+Block C requires separate approval. Do not commit the Block B changes alone.
+After regenerating the manifest and obtaining a green complete suite, commit the
+helper, its tests and the manifest together.
 
 Changing the Pi helper changes its digest, which invalidates
 `config/real_fcu_digital_twin_bundle.sha256` and every copy verified against
