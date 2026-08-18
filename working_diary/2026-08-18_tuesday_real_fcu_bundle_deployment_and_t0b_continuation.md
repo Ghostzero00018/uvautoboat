@@ -4,6 +4,10 @@
 continues the unfinished 17/08 sequence at D1; it does not reopen completed
 source blocks, Block C or D0.
 
+**Superseded by the execution record below.** This banner is retained as the
+imported scaffold state; the day was executed on 18/08/2026 and its results are
+appended from `18/08/2026 execution record` onward.
+
 The pre-edit repository baseline while drafting this scaffold is
 `50ae386437f1a8bf5b7c2c4fa07e9f55c3f50de4`. This file does not predict the
 commit that contains the 17/08 close-out or this scaffold. At day start,
