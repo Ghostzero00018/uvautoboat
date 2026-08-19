@@ -393,8 +393,26 @@ rfcu_pi_active_children_alive() {
 
 rfcu_pi_capture_topic() {
   local topic="$1" message_type="$2" output="$3" timeout_seconds="${4:-8}"
+  local output_stem="$output" output_suffix=''
+  local attempt=1 attempt_output diagnostic_output
+  if [[ "$output" == *.yaml ]]; then
+    output_stem="${output%.yaml}"
+    output_suffix='.yaml'
+  fi
+  while :; do
+    printf -v attempt_output '%s.attempt-%03d%s' \
+      "$output_stem" "$attempt" "$output_suffix"
+    printf -v diagnostic_output '%s.attempt-%03d.stderr.log' \
+      "$output_stem" "$attempt"
+    if [ ! -e "$attempt_output" ] && [ ! -e "$diagnostic_output" ]; then
+      break
+    fi
+    attempt=$((attempt + 1))
+  done
   ros2 topic echo --once --timeout "$timeout_seconds" --full-length \
-    --qos-profile best_available "$topic" "$message_type" >"$output" 2>&1
+    --qos-profile best_available "$topic" "$message_type" \
+    2>"$diagnostic_output" | tee "$attempt_output" \
+    2>>"$diagnostic_output" >"$output"
 }
 
 rfcu_pi_state_file_is_connected_disarmed() {

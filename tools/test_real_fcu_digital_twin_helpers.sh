@@ -327,6 +327,81 @@ done
   <<<"$T0B_FUNCTION$T0B_READ_FUNCTION" \
   || fail_test 'T0b capture contains a forbidden write path'
 
+CAPTURE_TOPIC_REGRESSION_FAILURES=0
+
+CAPTURE_TOPIC_DIAGNOSTIC_DIR="$TEST_TMP/capture-topic-diagnostic"
+mkdir -p "$CAPTURE_TOPIC_DIAGNOSTIC_DIR/evidence"
+set +e
+CAPTURE_TOPIC_DIAGNOSTIC_OUTPUT="$(bash -c '
+  set -euo pipefail
+  source "$1"
+  ros2() {
+    printf "connected: true\narmed: false\n---\n"
+    printf "controlled diagnostic\n" >&2
+  }
+  tee() {
+    command tee "$@"
+    printf "controlled tee diagnostic\n" >&2
+  }
+  rfcu_pi_capture_topic /mavros/state mavros_msgs/msg/State \
+    "$2/evidence/state.yaml" 3
+' _ "$PI_HELPER" "$CAPTURE_TOPIC_DIAGNOSTIC_DIR" 2>&1)"
+CAPTURE_TOPIC_DIAGNOSTIC_RC=$?
+set -e
+if [ "$CAPTURE_TOPIC_DIAGNOSTIC_RC" -eq 0 ] \
+    && [ -f "$CAPTURE_TOPIC_DIAGNOSTIC_DIR/evidence/state.yaml" ] \
+    && [ "$(cat "$CAPTURE_TOPIC_DIAGNOSTIC_DIR/evidence/state.yaml")" = \
+      $'connected: true\narmed: false\n---' ] \
+    && [ -z "$CAPTURE_TOPIC_DIAGNOSTIC_OUTPUT" ] \
+    && [ -f "$CAPTURE_TOPIC_DIAGNOSTIC_DIR/evidence/state.attempt-001.stderr.log" ] \
+    && [ "$(cat "$CAPTURE_TOPIC_DIAGNOSTIC_DIR/evidence/state.attempt-001.stderr.log")" = \
+      $'controlled diagnostic\ncontrolled tee diagnostic' ]; then
+  pass_case
+else
+  printf 'FAIL: capture-topic diagnostic contaminated evidence or was not retained separately: rc=%s output=[%s]\n' \
+    "$CAPTURE_TOPIC_DIAGNOSTIC_RC" "$CAPTURE_TOPIC_DIAGNOSTIC_OUTPUT" >&2
+  CAPTURE_TOPIC_REGRESSION_FAILURES=$((CAPTURE_TOPIC_REGRESSION_FAILURES + 1))
+fi
+
+CAPTURE_TOPIC_RETENTION_DIR="$TEST_TMP/capture-topic-retention"
+mkdir -p "$CAPTURE_TOPIC_RETENTION_DIR/evidence"
+set +e
+CAPTURE_TOPIC_RETENTION_OUTPUT="$(bash -c '
+  set -euo pipefail
+  source "$1"
+  capture_value=first
+  ros2() {
+    printf "sequence: %s\n---\n" "$capture_value"
+  }
+  rfcu_pi_capture_topic /mavros/state mavros_msgs/msg/State \
+    "$2/evidence/state.yaml" 3
+  capture_value=second
+  rfcu_pi_capture_topic /mavros/state mavros_msgs/msg/State \
+    "$2/evidence/state.yaml" 3
+' _ "$PI_HELPER" "$CAPTURE_TOPIC_RETENTION_DIR" 2>&1)"
+CAPTURE_TOPIC_RETENTION_RC=$?
+set -e
+if [ "$CAPTURE_TOPIC_RETENTION_RC" -eq 0 ] \
+    && [ -f "$CAPTURE_TOPIC_RETENTION_DIR/evidence/state.yaml" ] \
+    && [ "$(cat "$CAPTURE_TOPIC_RETENTION_DIR/evidence/state.yaml")" = \
+      $'sequence: second\n---' ] \
+    && [ -f "$CAPTURE_TOPIC_RETENTION_DIR/evidence/state.attempt-001.yaml" ] \
+    && [ "$(cat "$CAPTURE_TOPIC_RETENTION_DIR/evidence/state.attempt-001.yaml")" = \
+      $'sequence: first\n---' ] \
+    && [ -f "$CAPTURE_TOPIC_RETENTION_DIR/evidence/state.attempt-002.yaml" ] \
+    && [ "$(cat "$CAPTURE_TOPIC_RETENTION_DIR/evidence/state.attempt-002.yaml")" = \
+      $'sequence: second\n---' ] \
+    && [ ! -e "$CAPTURE_TOPIC_RETENTION_DIR/evidence/state.attempt-003.yaml" ]; then
+  pass_case
+else
+  printf 'FAIL: capture-topic attempts were not retained at distinct paths: rc=%s output=[%s]\n' \
+    "$CAPTURE_TOPIC_RETENTION_RC" "$CAPTURE_TOPIC_RETENTION_OUTPUT" >&2
+  CAPTURE_TOPIC_REGRESSION_FAILURES=$((CAPTURE_TOPIC_REGRESSION_FAILURES + 1))
+fi
+
+[ "$CAPTURE_TOPIC_REGRESSION_FAILURES" -eq 0 ] \
+  || fail_test "$CAPTURE_TOPIC_REGRESSION_FAILURES capture-topic behavioural regressions failed"
+
 T0B_READ_FAIL_DIR="$TEST_TMP/t0b-read-failure"
 mkdir -p "$T0B_READ_FAIL_DIR/evidence"
 : >"$T0B_READ_FAIL_DIR/evidence/t0b_parameters.txt"
