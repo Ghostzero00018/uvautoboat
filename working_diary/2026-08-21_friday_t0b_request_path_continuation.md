@@ -38,11 +38,15 @@ Three rules bind this day:
    that also approves the rollback command and its trigger, and one for the
    probe. Because the rollback is pre-approved, no fresh approval is needed to
    attempt and verify restoration. Rolling back before the probe would leave
-   nothing to test. If probe approval is not granted, or the probe cannot start
-   or complete, attempt and verify that same pre-approved rollback immediately,
-   before any further action or close-out. **Normal close-out is forbidden until
-   a retained read-back verifies restoration of the prior value.** A failed or
-   unverified rollback blocks all further work: preserve the evidence, report
+   nothing to test. **Once a retained read-back confirms `0` is in effect**, if
+   probe approval is not granted or the probe cannot start or complete, attempt
+   and verify that same pre-approved rollback immediately, before any further
+   action or close-out. That rule applies only to the in-effect case: a
+   read-back that still shows the prior value needs no rollback write, and an
+   unknown read-back is handled by its own branch below. **Normal
+   close-out is forbidden until a retained read-back verifies restoration of
+   the prior value.** A failed or unverified rollback blocks all further
+   work: preserve the evidence, report
    the controller configuration as unresolved, and perform only the
    already-approved safe power-down. A passing probe earns T0b evidence **only
    for the candidate setting**. After rollback, record the prior value as
@@ -154,20 +158,39 @@ bytes, Pi environment, serial ownership and current physical state. Then use the
 working Herelink ground-station path to read and retain the current
 `BRD_SER1_RTSCTS` value without changing it.
 
-Stop after the read. A T1 candidate change from `2` to `0` requires a separate
-same-day approval, which must cover the prior-value capture, the write itself,
-any required reboot, the retained read-back **and** the rollback command with
-its trigger. The rollback is not executed at this point: it is recorded as an
-approved, ready action.
+Stop after the read. The recorded `2` is prior evidence and does not stand in
+for today's live reading; branch on what is actually read:
 
-A fresh T0b probe then requires another approval, and it runs **while the
-candidate value is still in effect** - that is the only state in which it tests
-anything. Attempt and verify the rollback after the probe, under the approval
-already granted with the write, whatever the probe's outcome; because it is
-pre-approved, no fresh approval is needed to attempt and verify restoration. If
-probe approval is not granted, or the probe cannot start or complete, attempt
-and verify that same rollback immediately, before any further action or
-close-out.
+- **the initial read is not exactly `2`** - stop. Do not request the
+  pre-scoped `2` to `0` change, because its premise no longer holds. Record the
+  observed value and report the discrepancy.
+- **the initial read is exactly `2`** - the change may be proposed.
+
+A T1 candidate change from `2` to `0` requires a separate same-day approval,
+which must cover the prior-value capture, the write itself, any required reboot,
+the retained read-back **and** the rollback command with its trigger. The
+rollback is not executed at this point: it is recorded as an approved, ready
+action.
+
+Branch again on the retained read-back:
+
+- **it reads `0`** - the candidate is in effect; a probe may now be requested.
+- **it still reads `2`** - the candidate is not in effect at the retained
+  read-back. Preserve the evidence and stop. No rollback write is needed or
+  permitted, because the controller already holds the prior value.
+- **it is missing, unreadable or any other value** - the configuration state is
+  unknown. Attempt and verify the pre-approved rollback, and treat close-out as
+  blocked until a retained read-back confirms the prior value. Then stop: no
+  reapplication and no probe under the current approvals.
+
+**Only the read-back `0` branch continues here.** A fresh T0b probe then
+requires another approval, and it runs **while the candidate value is still in
+effect** - that is the only state in which it tests anything. Attempt and verify
+the rollback after the probe, under the approval already granted with the write,
+whatever the probe's outcome; because it is pre-approved, no fresh approval is
+needed to attempt and verify restoration. If probe approval is not granted, or
+the probe cannot start or complete, attempt and verify that same rollback
+immediately, before any further action or close-out.
 
 **Normal close-out is forbidden until a retained read-back verifies restoration
 of the prior value.** A failed or unverified rollback blocks all further work:
@@ -184,4 +207,5 @@ perform only the already-approved safe power-down.
 - No simulator and real-FCU supervisor overlap.
 - Preserve every 20/08/2026 deployment, lock, transcript and evidence path.
 - Stop at the first failed certification, safety, serial-owner, evidence or
-  cleanup gate. Do not retry with the same method.
+  cleanup gate, **except for the pre-approved rollback and safe power-down
+  required above**. Do not retry the failed method.
