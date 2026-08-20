@@ -8,7 +8,7 @@
 |---|---|
 | **Project** | AutoBoat Navigation System |
 | **Repository** | [Ghostzero00018/uvautoboat](https://github.com/Ghostzero00018/uvautoboat) |
-| **Last Updated** | 18/08/2026 |
+| **Last Updated** | 19/08/2026 |
 | **Status** | 🟢 Simulation ready (A\* path planning + one-click launcher + wiki docs + dashboard config system + MP/QGC install). First wet test completed 07/05/2026: boat survived float/manual-control bring-up, Herelink manual control works, QGC/MP MAVLink arm/disarm works. Herelink video A/B campus side verified 11/05/2026 — Linux QGC video works via the `Source = Herelink Hotspot` preset and `ffplay rtsp://<herelink-ip>:8554/fpv_stream` independently confirms the underlying LIVE555 H.264 stream; Linux MP video + arm/disarm also working after a host-local SkiaSharp 2.88.8 NuGet swap + `~/MissionPlanner/libdl.so` → `libdl.so.2` symlink (11/05/2026 late-day fix, reversible — see `wiki/Common_Issues.md` MP-Linux entry); GDAL/OGR/OSR Mono gaps from 24/04 remain (terrain / advanced geo-ref still degraded) but no longer block the video panel. Second-site (lake) retest deferred to next field session. **22/06/2026 update:** workstation on `IMT-Aquatic-drone` again reached the Herelink RTSP endpoint (`rtsp://192.168.43.1:8554/fpv_stream`, LIVE555 H.264 1920×1080@30); TCP was clean while UDP showed packet loss, but the current video source was a Pi desktop / `rqt_image_view` screen capture after starting the Pi camera node, not a direct camera feed. Treat this as transport reachability plus a current source-regression finding, not dashboard-camera integration evidence. Pi 5 MAVLink telemetry path proven 04/06/2026 (`/mavros/state connected: true` via MAVProxy → MAVROS on the reconfigured ArduPilot endpoint; GPS fix / EKF config still open). Pi 5 RealSense camera display in the workstation dashboard was proven 18/06/2026 over `IoT IMT Nord Europe` using a camera-only `424x240x15` profile; this is camera display only, not command/write validation. Local dashboard/planner → QGC visual mission bridge accepted 10-11/06/2026 (`tools/qgc_live_mission_bridge.py` over `127.0.0.1:14550`) and observed under a Herelink-hotspot mixed-topology setup 17/06/2026; visual-only — real-FCU upload, bidirectional sync, and command/write validation remain open. |
 
 > **15/07/2026 live update:** the workstation dashboard simultaneously displayed
@@ -221,6 +221,26 @@
 > hull restrained, hardware safety restored, and Herelink sticks and trims
 > neutral. This closes the day's physical shutdown; it does not close T0b or
 > authorize a later tier.
+>
+> **19/08/2026 supersession - evidence repaired, new deployment certified, T0b
+> still open.** The two capture defects were repaired so every state attempt now
+> has an isolated YAML copy and sibling diagnostic log, including diagnostics
+> from the process writing both retained copies. The bundle manifest was
+> regenerated only after the helper was final, and the complete physical-helper
+> suite passed `24` cases. The helper, regression tests and manifest landed
+> together at `dc90a8ffa9d114f4af5ea716b7ffb2526a7944aa`.
+>
+> A new five-file deployment at
+> `/home/imt-aqua-drone/uvautoboat_real_fcu_bundle_20260819` then passed exact
+> inventory, pinned-manifest and `4/4` member verification. Its non-actuating
+> `check` returned
+> `REAL_FCU_PI_CHECK=PASS serial=/dev/ttyAMA0 runtime=not-started`, with empty
+> stderr. Block E was approved but deferred without starting because its
+> probe-safety review remained pending at the end of the day. No controller or
+> Herelink power-up, serial open, parameter write, bridge start or real thrust
+> occurred under Block E. The unused approval does not carry into 20/08/2026:
+> T0b remains the first open physical gate, and T1 plus both T2 tiers remain
+> closed pending fresh certification and approval.
 >
 > Diaries for 24/07/2026 and 07/08/2026 record the former policy and are left
 > unchanged as history.
@@ -647,6 +667,7 @@ The whole repo is expected to run on the Pi 5. Long-term (Phase 5.2+): QGC and t
 | 11/08/2026 | The first helper-owned SITL run failed at the Rover-listener gate because `sim_vehicle.py` launched Rover through a display terminal outside the supervisor-owned process group. The runner now starts the pinned Rover binary directly in its run-owned state directory and suppresses the shutdown-frame check when an early failure occurs before bridge startup; focused tests pass, but the corrected runtime is not rerun. A separate guarded physical-FCU pair is now prepared on domain `43` with subnet discovery, isolated from the domain `42` localhost-only SITL graph: the workstation supervises loopback rosbridge/dashboard and emits a servo-mapped bench URL only from fresh `READY_DISARMED` status, while the Pi supervises direct `/dev/ttyAMA0:57600` MAVROS, an isolated T0b read-only probe and the separately gated bounded bridge. Both launch paths pass an explicit expected domain to the shared bridge and reject conflicting helper/process ownership. The existing Pi Hailo/MAVROS helper remains byte-identical and view-only. No Pi/FCU runtime, hardware safety change, arm/disarm, physical command or real thrust occurred; T0a remains the first hardware gate. | 🟡 |
 | 17/08/2026 | The guarded command-path implementation and evidence capture work closed red-green, with the landed focused suites at SITL `41`, physical helper `22`, command bridge `26` and capture helper `13`. The full helper-owned `motorboat-skid` run then passed every functional phase, contracted teardown order, final verdict, all ten evidence digests and independent read-only adjudication. A separate powered-down D0 inspection passed connector seating and end-to-end `Pi TXD (GPIO14) -> Cube SERIAL1 RX` continuity, closing T0a without a wiring change. D1 ended before execution: no transfer, deployed check, real-controller probe or T0b artifact occurred. | 🟡 |
 | 18/08/2026 | D1 Gate 1 deployed and certified the four-file bundle at `/home/imt-aqua-drone/uvautoboat_real_fcu_bundle_20260818`; exact inventory, sizes, manifest digest, all four member hashes and the helper's `check` passed. The separately approved read-only probe opened `/dev/ttyAMA0:57600` and received an ArduPilot heartbeat, then the MAVROS parameter-list exchange exhausted its retries. The operator stopped at `t+109.81 s`, before the `180 s` deadline; cleanup was clean at `status=130 cleanup_rc=0`. The retained state capture is non-diagnostic because repeated attempts overwrote one path and stderr could enter the YAML. No T0b parameter artifact was produced, no parameter was written, the bridge never started and no real thrust occurred. D1 is closed for the day without retry; T0b, T1 and both T2 tiers remain open. | 🟡 |
+| 19/08/2026 | The T0b capture path now retains every attempt as isolated YAML plus a sibling diagnostic log, including diagnostics from the copy writer; the complete physical-helper suite passed `24` cases after the manifest was regenerated, and the helper, tests and manifest landed together at `dc90a8f`. A new five-file Pi deployment at `/home/imt-aqua-drone/uvautoboat_real_fcu_bundle_20260819` passed exact inventory, pinned-manifest, `4/4` member verification and the non-actuating helper `check`. Block E was approved but deferred without execution while its safety review remained pending. No controller or Herelink power-up, serial open, parameter write, bridge start or real thrust occurred under Block E. T0b remains open; the unused approval expires at day close, and T1 plus both T2 tiers remain closed. | 🟡 |
 | TBD | Complete real-hardware deployment acceptance (Pi 5 target; bounded read-only Hailo/MAVROS dashboard proven 17/07/2026; lifecycle, endurance, low-level CCU, and write-path gates remain open) | 🔜 |
 | TBD | Coverage Planning | ⏸️ |
 
@@ -735,14 +756,16 @@ The whole repo is expected to run on the Pi 5. Long-term (Phase 5.2+): QGC and t
    only: no Pi, physical controller or real thruster was involved, and physical acceptance remains
    unstarted.
 
-   **17/08/2026 and 18/08/2026 progress:** the helper-owned simulator lifecycle and
-   independent adjudication now pass, and powered-down continuity closed T0a. The
-   certified Pi deployment and `check` also pass. The first T0b probe received a
-   heartbeat but did not complete the MAVROS parameter-list exchange, so live
-   function/channel/rail evidence remains missing and every T2 session remains
-   blocked. The next implementation work is the probe evidence-path repair; the
-   next physical work is a separately approved T0b retry from a new deployment
-   root, not T1 or a thrust session.
+   **17/08/2026 to 19/08/2026 progress:** the helper-owned simulator lifecycle and
+   independent adjudication pass, powered-down continuity closed T0a, and the
+   first T0b probe from the certified 18/08 Pi deployment received an FCU
+   heartbeat. Its parameter-list exchange did not complete, so the two
+   non-diagnostic capture behaviours were repaired and covered before a new
+   dated bundle was deployed and accepted by `check` on 19/08/2026. Block E did
+   not run, so live function/channel/rail evidence remains missing and every T2
+   session remains blocked. The next physical work is a fresh-day certified and
+   separately approved T0b retry from the 19/08 deployment root, not T1 or a
+   thrust session.
 
 3. **Detector recovery before Hailo accuracy gates**: the Hailo six-output decode
    contract is proven on saved frames (07/07/2026, `fb308f9`), and the 08/07 Pi
@@ -823,7 +846,7 @@ Current position ──────>│  (in Planner)       │
 
 ## 📜 Acknowledgments
 
-**Document Version**: 9.56 | **Last Updated**: 18/08/2026
+**Document Version**: 9.57 | **Last Updated**: 19/08/2026
 
 **Maintained By**: AutoBoat Development Team
 

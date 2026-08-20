@@ -144,7 +144,14 @@ fresh `READY_DISARMED` feedback. Powered-down connector seating and end-to-end
 T0a. On 18/08/2026, the bundle deployment and non-actuating Pi `check` passed.
 The first T0b probe opened direct serial and received an ArduPilot heartbeat but
 did not complete the MAVROS parameter-list exchange, so T0b and both T2 tiers
-remain open. No parameter was written and the bridge did not start.
+remain open. On 19/08/2026, the state-capture path was repaired so every attempt
+has isolated YAML and diagnostic files, the bundle manifest was regenerated,
+and the physical-helper suite passed `24` cases. A new five-file deployment at
+`/home/imt-aqua-drone/uvautoboat_real_fcu_bundle_20260819` passed exact
+inventory, pinned-manifest, `4/4` member verification and the non-actuating Pi
+`check`. The T0b retry did not run and was deferred to a later day pending a
+fresh safety review, certification and approval. No parameter was written and
+the bridge did not start.
 
 The expanded camera viewer owns pointer and keyboard focus while open. It now
 contains its own E-Stop button, so the explicit FCU bench stop path remains
@@ -288,9 +295,9 @@ their `tools/` and `config/` layout intact. The exact four-file set is pinned by
 view-only Hailo/telemetry path.
 
 No physical mode is currently accepted for routine use. T0a passed on
-17/08/2026. T0b is the first open physical gate and remains incomplete after the
-18/08/2026 probe; both T2 command tiers stay blocked behind its live mapping and
-rail evidence.
+17/08/2026. T0b is the first open physical gate: the 18/08/2026 probe did not
+complete, and the repaired 19/08/2026 deployment passed `check` without a second
+probe. Both T2 command tiers stay blocked behind live mapping and rail evidence.
 
 ### FCU Bench Command/Feedback Component
 
@@ -565,4 +572,4 @@ Part of the uvautoboat project — Apache License 2.0.
 
 Built with [roslibjs](http://robotwebtools.org/), [Leaflet.js](https://leafletjs.com/), [OpenStreetMap](https://www.openstreetmap.org/).
 
-Last updated: 18/08/2026
+Last updated: 19/08/2026
