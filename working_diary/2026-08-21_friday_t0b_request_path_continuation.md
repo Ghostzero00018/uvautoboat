@@ -30,13 +30,24 @@ Three rules bind this day:
    diagnostic command logic should live in a tested helper; manual
    attestations, power changes and physical actions remain operator-run and
    separately approved.
-3. **Bound the real-FCU track for the day.** The hardware allowance is the
-   Herelink read, at most one separately approved T1 change, read-back and
-   rollback cycle, and, only after T1 closes cleanly, at most one separately
-   approved T0b probe. If that probe does not close T0b, stop the hardware
-   track and propose a separately approved motor-twin and dashboard block; this
-   paragraph does not authorize starting it. Do not invent a further diagnostic
-   variant to keep the track alive.
+3. **Bound the real-FCU track for the day.** The hardware allowance is four
+   execution phases and no more: the Herelink read; at most one T1 candidate
+   write with any required reboot and a retained read-back; at most one T0b
+   probe run **while the candidate value is still in effect**; then the
+   rollback. Three approvals cover them - one for the read, one for the write
+   that also approves the rollback command and its trigger, and one for the
+   probe. Because the rollback is pre-approved, no fresh approval is needed to
+   attempt and verify restoration. Rolling back before the probe would leave
+   nothing to test. If probe approval is not granted, or the probe cannot start
+   or complete, attempt and verify that same pre-approved rollback immediately,
+   before any further action or close-out. **Normal close-out is forbidden until
+   a retained read-back verifies restoration of the prior value.** A failed or
+   unverified rollback blocks all further work: preserve the evidence, report
+   the controller configuration as unresolved, and perform only the
+   already-approved safe power-down. If the probe runs and does not close T0b,
+   stop the hardware track and propose a separately approved motor-twin and
+   dashboard block; this paragraph does not authorize starting it. Do not invent
+   a further diagnostic variant to keep the track alive.
 
 When a proposed step does not move the motor twin and its dashboard integration
 closer, and no bounded gate requires it first, the correct answer is to switch
@@ -140,9 +151,24 @@ working Herelink ground-station path to read and retain the current
 `BRD_SER1_RTSCTS` value without changing it.
 
 Stop after the read. A T1 candidate change from `2` to `0` requires a separate
-same-day approval, prior-value capture, an explicit rollback, any required
-reboot and a retained read-back. A fresh T0b probe requires another approval
-after T1 closes cleanly.
+same-day approval, which must cover the prior-value capture, the write itself,
+any required reboot, the retained read-back **and** the rollback command with
+its trigger. The rollback is not executed at this point: it is recorded as an
+approved, ready action.
+
+A fresh T0b probe then requires another approval, and it runs **while the
+candidate value is still in effect** - that is the only state in which it tests
+anything. Attempt and verify the rollback after the probe, under the approval
+already granted with the write, whatever the probe's outcome; because it is
+pre-approved, no fresh approval is needed to attempt and verify restoration. If
+probe approval is not granted, or the probe cannot start or complete, attempt
+and verify that same rollback immediately, before any further action or
+close-out.
+
+**Normal close-out is forbidden until a retained read-back verifies restoration
+of the prior value.** A failed or unverified rollback blocks all further work:
+preserve the evidence, report the controller configuration as unresolved, and
+perform only the already-approved safe power-down.
 
 ## Boundaries
 
