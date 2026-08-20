@@ -261,3 +261,57 @@ override, motor or thrust action occurred during this repair. Block A remains
 incomplete until a separately approved new deployment disposition, Pi
 certification and fresh physical attestation pass. Block E remains closed and
 requires its own later approval.
+
+## Block A deployment and non-actuating check - passed
+
+The separately approved Block A deployment disposition ran on 20/08/2026.
+The preceding incomplete status is superseded by this appended result.
+
+The workstation transfer completed at
+`f8e440a81d8f08318b089814c05329b21ddafd1c`. Before payload transfer, the Pi
+preflight passed on `imtaquadrone-desktop` as `imt-aqua-drone` at
+`10.120.2.249`; both historical deployment roots were present and the new
+root, payload and check-log paths were absent. The transferred archive and
+deployment guard were then verified on the Pi with these SHA-256 values:
+
+| Artifact | SHA-256 |
+| --- | --- |
+| Five-member transport archive | `26a5898bc89c9b5446cd1b3b25b0db40bdb2328c60299d4a2cf5877403ee7733` |
+| Deployment guard | `9660408336e19f0bf7d34a7959e04b7343c600765fb4e96352267b432acc48f0` |
+
+Before deployment, the operator freshly attested that the Pi was on, the
+controller and Herelink were off, propulsion was isolated, propellers were
+removed and the hull was restrained. `sudo -v` passed. Privileged
+`fuser -v /dev/ttyAMA0` returned blank output with return code `1`, and the Pi
+reported `35814760 KiB` available.
+
+The archive inventory passed with five members: the manifest plus its four
+bundle members. The corrected bytes were installed once in the new root
+`/home/imt-aqua-drone/uvautoboat_real_fcu_bundle_20260820`. The manifest digest
+was `2f595b63fe2248c5dada5f5f9fc8f5f69c973df0bfaa434f1fd99c0b60613642`,
+and all four governed members verified `4/4` with the expected inventory and
+sizes. The 18/08 and 19/08 roots were not deployment targets.
+
+The deployed helper's `check` command returned `0`, produced an empty stderr
+log and ended with:
+
+```text
+[real-fcu-pi] REAL_FCU_PI_CHECK=PASS serial=/dev/ttyAMA0 runtime=not-started
+```
+
+Its retained outputs are:
+
+- `/home/imt-aqua-drone/block_a_check_20260820_f8e440a.stdout.log`
+- `/home/imt-aqua-drone/block_a_check_20260820_f8e440a.stderr.log`
+
+The final process and privileged serial-owner checks also passed. The accepted
+terminal marker was:
+
+```text
+BLOCK_A_DEPLOYMENT_CHECK=PASS revision=f8e440a81d8f08318b089814c05329b21ddafd1c root=/home/imt-aqua-drone/uvautoboat_real_fcu_bundle_20260820 archive_sha256=26a5898bc89c9b5446cd1b3b25b0db40bdb2328c60299d4a2cf5877403ee7733 manifest_sha256=2f595b63fe2248c5dada5f5f9fc8f5f69c973df0bfaa434f1fd99c0b60613642 members=4/4 check_rc=0 check_stderr=empty runtime=not-started
+```
+
+Block A is complete. No serial probe, MAVROS runtime or command bridge started,
+and no parameter write, arming, mode, RC, motor or thrust action was authorized
+or run by this workflow. Block E remains closed and requires a separate explicit
+approval.

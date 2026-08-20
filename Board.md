@@ -256,6 +256,23 @@
 > action occurred. Block A still requires a separately approved deployment
 > disposition and fresh certification; Block E remains closed.
 >
+> **20/08/2026 deployment update - Block A complete.** The preceding same-day
+> deployment-pending status is superseded. Revision
+> `f8e440a81d8f08318b089814c05329b21ddafd1c` was transferred and installed once
+> in the new root
+> `/home/imt-aqua-drone/uvautoboat_real_fcu_bundle_20260820`; the 18/08 and 19/08
+> roots were not deployment targets. Pi host, user, address, environment, free
+> disk and process checks passed. The operator freshly attested that the
+> controller and Herelink were off, propulsion was isolated, propellers were
+> removed and the hull was restrained. Privileged serial-owner checks returned
+> blank output with return code `1` before and after deployment. The five-member
+> transport archive passed exact inventory, its four governed members verified
+> `4/4`, and the deployed helper's non-actuating `check` returned
+> `REAL_FCU_PI_CHECK=PASS serial=/dev/ttyAMA0 runtime=not-started` with empty
+> stderr. No serial probe, MAVROS runtime, command bridge, parameter write,
+> arming, mode, RC, motor or thrust action ran. Block E remains closed pending a
+> separate explicit approval; T0b remains the first open physical gate.
+>
 > Diaries for 24/07/2026 and 07/08/2026 record the former policy and are left
 > unchanged as history.
 >

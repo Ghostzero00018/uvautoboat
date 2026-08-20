@@ -159,8 +159,14 @@ the bridge did not start. On 20/08/2026, the safety review found that the two
 T0b plugins expose parameter, mode and telemetry-configuration services to the
 ROS graph. The local helper was repaired and its `24`-case suite passed so the
 standalone probe graph is now localhost-only, while the run paths remain
-subnet-visible. These corrected bytes are not deployed; the 19/08 deployment
-root remains historical and is not eligible for the retry.
+subnet-visible. After separate approval, revision `f8e440a` was deployed once
+to `/home/imt-aqua-drone/uvautoboat_real_fcu_bundle_20260820`. Fresh Pi and
+physical certification passed with the controller and Herelink off, the exact
+five-member archive inventory and four-member manifest verified, and the
+non-actuating Pi `check` returned
+`REAL_FCU_PI_CHECK=PASS serial=/dev/ttyAMA0 runtime=not-started` with empty
+stderr. Block A is complete. The serial probe did not run, so Block E remains
+separately closed and T0b plus both T2 tiers remain open.
 
 The expanded camera viewer owns pointer and keyboard focus while open. It now
 contains its own E-Stop button, so the explicit FCU bench stop path remains
