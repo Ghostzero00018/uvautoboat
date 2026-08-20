@@ -5,6 +5,43 @@
 This is the sole 21/08/2026 continuation for the guarded real-FCU track. It
 carries no approval from 20/08/2026.
 
+## Objective and scope discipline - read before proposing any command
+
+The immediate objective of this command-path workstream is a **digital twin of
+the boat's motors, integrated with the web dashboard**. It sits inside the
+broader formal objective recorded in `wiki/Roadmap.md`, and every block below is
+a means to it rather than an end in itself.
+
+**That objective does not depend on T0b or T1.** The simulator path passed its
+full functional run, automatic teardown, final verdict and independent
+adjudication on 17/08/2026. The separately scoped thrust-twin continuation
+recorded on 19/08/2026 has not been started, while two full working days, 19/08
+and 20/08, went entirely into the real-FCU request path, which remains open.
+
+Three rules bind this day:
+
+1. **Every command must be tied to a decision.** Before proposing a command
+   block, state which decision its output changes. If the honest answer is
+   "it would be interesting to know", do not run it. A diagnostic that cannot
+   change the next action is not evidence-gathering; it is delay.
+2. **Prefer a tested repository helper to an improvised one-off.** Long or
+   quoting-sensitive terminal blocks have repeatedly needed their own
+   corrections before they could run at all. Repeatable, non-actuating
+   diagnostic command logic should live in a tested helper; manual
+   attestations, power changes and physical actions remain operator-run and
+   separately approved.
+3. **Bound the real-FCU track for the day.** The hardware allowance is the
+   Herelink read, at most one separately approved T1 change, read-back and
+   rollback cycle, and, only after T1 closes cleanly, at most one separately
+   approved T0b probe. If that probe does not close T0b, stop the hardware
+   track and propose a separately approved motor-twin and dashboard block; this
+   paragraph does not authorize starting it. Do not invent a further diagnostic
+   variant to keep the track alive.
+
+When a proposed step does not move the motor twin and its dashboard integration
+closer, and no bounded gate requires it first, the correct answer is to switch
+tracks rather than to deepen the current one.
+
 ## Starting boundary
 
 Revision `f8e440a81d8f08318b089814c05329b21ddafd1c` remains the deployed source at
