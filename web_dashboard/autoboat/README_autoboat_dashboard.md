@@ -168,6 +168,28 @@ non-actuating Pi `check` returned
 stderr. Block A is complete. The serial probe did not run, so Block E remains
 separately closed and T0b plus both T2 tiers remain open.
 
+Later on 20/08/2026, Block E was separately approved and the real-FCU probe did
+run. A powered receive-only UART diagnostic first captured `23868` bytes and
+`30` valid disarmed heartbeats from system/component `1.1` while transmitting
+zero serial bytes. The final full probe then reached `connected: true`,
+`armed: false`, `mode: MANUAL` and a passing hardware-safety check. MAVROS
+exhausted its automatic parameter-list attempts, and the explicit forced pull
+received no response before timeout. The helper cleaned up with
+`status=1 cleanup_rc=0`; no `41`-parameter mapping/rail artifact was produced,
+no parameter was written and the bridge did not start. T0b and both T2 tiers
+remain open. A later duplex isolation received `18` valid disarmed heartbeats
+and transmitted exactly one MAVLink PING plus one `PARAM_REQUEST_READ` for
+`SYSID_THISMAV`. The two outbound frames audited as `53` bytes with no
+state-changing message, but neither received a response. The copied archive
+verified at
+`c1c73f8df65e5f109adc051d3f04990ce646830a4741ec628cd100090d993802`.
+The result does not distinguish a Pi-to-FCU electrical fault from FCU-side
+request handling. The next separately gated decision is the T1
+`BRD_SER1_RTSCTS` link-configuration change, not another identical full-pull
+retry. The operator then confirmed the FCU/control electronics and Herelink
+off, with propulsion power isolated, propellers removed and the hull restrained.
+This closed the 20/08/2026 physical hardware day; no approval carries forward.
+
 The expanded camera viewer owns pointer and keyboard focus while open. It now
 contains its own E-Stop button, so the explicit FCU bench stop path remains
 reachable without closing the viewer. The button stays inert in the ordinary
