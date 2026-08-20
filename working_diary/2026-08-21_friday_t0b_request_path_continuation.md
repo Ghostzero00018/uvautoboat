@@ -44,10 +44,14 @@ Three rules bind this day:
    a retained read-back verifies restoration of the prior value.** A failed or
    unverified rollback blocks all further work: preserve the evidence, report
    the controller configuration as unresolved, and perform only the
-   already-approved safe power-down. If the probe runs and does not close T0b,
-   stop the hardware track and propose a separately approved motor-twin and
-   dashboard block; this paragraph does not authorize starting it. Do not invent
-   a further diagnostic variant to keep the track alive.
+   already-approved safe power-down. A passing probe earns T0b evidence **only
+   for the candidate setting**. After rollback, record the prior value as
+   restored and do not describe T0b as currently available or open T2a on it;
+   reapplying the candidate requires a later T1 approval of its own. If the
+   probe runs and does not close T0b, stop the hardware track and propose a
+   separately approved motor-twin and dashboard block; this paragraph does not
+   authorize starting it. Do not invent a further diagnostic variant to keep the
+   track alive.
 
 When a proposed step does not move the motor twin and its dashboard integration
 closer, and no bounded gate requires it first, the correct answer is to switch
