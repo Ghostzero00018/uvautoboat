@@ -242,6 +242,20 @@
 > T0b remains the first open physical gate, and T1 plus both T2 tiers remain
 > closed pending fresh certification and approval.
 >
+> **20/08/2026 supersession - T0b probe isolated locally, deployment pending.**
+> The safety audit found that the `param` and `sys_status` plugins advertise at
+> least five state-changing parameter, mode and telemetry-configuration services
+> even though the helper's planned probe actions are read-only. Because the
+> standalone probe never waits for workstation nodes or starts the bridge, its
+> ROS discovery is now forced to `LOCALHOST`; `check`, `run-t2a` and `run` retain
+> the domain-`43` subnet contract. A regression first failed against the former
+> subnet behaviour, the manifest was regenerated after the repair, and the
+> complete suite passed `24` cases with all four bundle members verifying. The
+> corrected bytes have not been deployed, so neither existing dated deployment
+> root may be used for the retry. No Pi, controller, Herelink, serial or physical
+> action occurred. Block A still requires a separately approved deployment
+> disposition and fresh certification; Block E remains closed.
+>
 > Diaries for 24/07/2026 and 07/08/2026 record the former policy and are left
 > unchanged as history.
 >
@@ -756,16 +770,20 @@ The whole repo is expected to run on the Pi 5. Long-term (Phase 5.2+): QGC and t
    only: no Pi, physical controller or real thruster was involved, and physical acceptance remains
    unstarted.
 
-   **17/08/2026 to 19/08/2026 progress:** the helper-owned simulator lifecycle and
+   **17/08/2026 to 20/08/2026 progress:** the helper-owned simulator lifecycle and
    independent adjudication pass, powered-down continuity closed T0a, and the
    first T0b probe from the certified 18/08 Pi deployment received an FCU
    heartbeat. Its parameter-list exchange did not complete, so the two
    non-diagnostic capture behaviours were repaired and covered before a new
    dated bundle was deployed and accepted by `check` on 19/08/2026. Block E did
-   not run, so live function/channel/rail evidence remains missing and every T2
-   session remains blocked. The next physical work is a fresh-day certified and
-   separately approved T0b retry from the 19/08 deployment root, not T1 or a
-   thrust session.
+   not run. On 20/08/2026, the safety audit identified graph-visible state-change
+   services in the two T0b plugins; the standalone probe is now localhost-only,
+   its regression and regenerated manifest pass the `24`-case suite, and the
+   workstation-connected run paths remain subnet-visible. The corrected bundle
+   is not deployed, so live function/channel/rail evidence remains missing and
+   every T2 session remains blocked. The next physical work is a separately
+   approved deployment and fresh certification before any T0b retry, not T1 or
+   a thrust session.
 
 3. **Detector recovery before Hailo accuracy gates**: the Hailo six-output decode
    contract is proven on saved frames (07/07/2026, `fb308f9`), and the 08/07 Pi

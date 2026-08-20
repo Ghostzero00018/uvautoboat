@@ -130,6 +130,66 @@ PI_ENV="$(bash -c '
 ' _ "$PI_HELPER" "$ROS_FIXTURE")"
 [ "$PI_ENV" = '43|SUBNET|0|unset|unset|unset|unset|unset|unset' ] \
   || fail_test "Pi ROS boundary changed: $PI_ENV"
+
+PI_PROBE_ENV="$(bash -c '
+  source "$1"
+  RFCU_PI_ROS_SETUP="$2"
+  RFCU_PI_RUN_MODE=probe
+  ROS_DOMAIN_ID=12
+  ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET
+  ROS_LOCALHOST_ONLY=1
+  ROS_STATIC_PEERS=192.0.2.1
+  ROS_DISCOVERY_SERVER=192.0.2.2:11811
+  RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+  FASTDDS_DEFAULT_PROFILES_FILE=/tmp/fastdds.xml
+  FASTRTPS_DEFAULT_PROFILES_FILE=/tmp/fastrtps.xml
+  CYCLONEDDS_URI=/tmp/cyclonedds.xml
+  rfcu_pi_configure_ros_environment
+  printf "%s|%s|%s|%s|%s|%s|%s|%s|%s\n" \
+    "$ROS_DOMAIN_ID" "$ROS_AUTOMATIC_DISCOVERY_RANGE" "$ROS_LOCALHOST_ONLY" \
+    "${ROS_STATIC_PEERS-unset}" "${ROS_DISCOVERY_SERVER-unset}" \
+    "${RMW_IMPLEMENTATION-unset}" "${FASTDDS_DEFAULT_PROFILES_FILE-unset}" \
+    "${FASTRTPS_DEFAULT_PROFILES_FILE-unset}" "${CYCLONEDDS_URI-unset}"
+' _ "$PI_HELPER" "$ROS_FIXTURE")"
+[ "$PI_PROBE_ENV" = '43|LOCALHOST|0|unset|unset|unset|unset|unset|unset' ] \
+  || fail_test "Pi probe ROS boundary is not localhost-only: $PI_PROBE_ENV"
+
+PI_RUN_ENV="$(bash -c '
+  source "$1"
+  RFCU_PI_ROS_SETUP="$2"
+  for RFCU_PI_RUN_MODE in run-t2a run; do
+    ROS_DOMAIN_ID=12
+    ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
+    ROS_LOCALHOST_ONLY=1
+    ROS_STATIC_PEERS=192.0.2.1
+    ROS_DISCOVERY_SERVER=192.0.2.2:11811
+    RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+    FASTDDS_DEFAULT_PROFILES_FILE=/tmp/fastdds.xml
+    FASTRTPS_DEFAULT_PROFILES_FILE=/tmp/fastrtps.xml
+    CYCLONEDDS_URI=/tmp/cyclonedds.xml
+    rfcu_pi_configure_ros_environment
+    printf "%s=%s|%s|%s\n" "$RFCU_PI_RUN_MODE" \
+      "$ROS_DOMAIN_ID" "$ROS_AUTOMATIC_DISCOVERY_RANGE" "$ROS_LOCALHOST_ONLY"
+  done
+' _ "$PI_HELPER" "$ROS_FIXTURE")"
+[ "$PI_RUN_ENV" = $'run-t2a=43|SUBNET|0\nrun=43|SUBNET|0' ] \
+  || fail_test "Pi run ROS boundary lost subnet discovery: $PI_RUN_ENV"
+
+PI_PROBE_FUNCTION="$(extract_function "$PI_HELPER" rfcu_pi_probe)"
+PI_PROBE_MODE_LINE="$(line_number_once "$PI_PROBE_FUNCTION" \
+  'RFCU_PI_RUN_MODE=probe' 'Pi probe run mode')"
+PI_PROBE_PREFLIGHT_LINE="$(line_number_once "$PI_PROBE_FUNCTION" \
+  'rfcu_pi_static_preflight' 'Pi probe static preflight')"
+[ "$PI_PROBE_MODE_LINE" -lt "$PI_PROBE_PREFLIGHT_LINE" ] \
+  || fail_test 'Pi probe does not select its mode before ROS preflight'
+grep -Fq 'rfcu_pi_start_child mavros-probe' <<<"$PI_PROBE_FUNCTION" \
+  || fail_test 'Pi probe does not start its local MAVROS child'
+! grep -Fq 'rfcu_pi_wait_workstation_nodes' <<<"$PI_PROBE_FUNCTION" \
+  || fail_test 'Pi probe unexpectedly depends on workstation ROS nodes'
+! grep -Fq 'RFCU_PI_BRIDGE_COMMAND' <<<"$PI_PROBE_FUNCTION" \
+  || fail_test 'Pi probe unexpectedly starts the command bridge'
+grep -Fq 'discovery=$ROS_AUTOMATIC_DISCOVERY_RANGE' <<<"$PI_PROBE_FUNCTION" \
+  || fail_test 'Pi probe start marker does not report its effective discovery range'
 pass_case
 
 WORKSTATION_CONFLICT_OUTPUT="$(bash -c '

@@ -19,6 +19,7 @@ RFCU_PI_READY_TIMEOUT_SECONDS="${REAL_FCU_READY_TIMEOUT_SECONDS:-180}"
 RFCU_PI_POLL_SECONDS="${REAL_FCU_POLL_SECONDS:-1}"
 RFCU_PI_DOMAIN_ID='43'
 RFCU_PI_DISCOVERY_RANGE='SUBNET'
+RFCU_PI_PROBE_DISCOVERY_RANGE='LOCALHOST'
 RFCU_PI_LOCALHOST_ONLY='0'
 RFCU_PI_WORKSTATION_STOP_TOPIC='/real_fcu/workstation_stop'
 RFCU_PI_WORKSTATION_STOP_MESSAGE='REAL_FCU_WORKSTATION_STOPPED final=disarmed children=stopped ports=free'
@@ -116,12 +117,15 @@ rfcu_pi_require_t2a_run_gates() {
 }
 
 rfcu_pi_configure_ros_environment() {
-  local source_rc=0
+  local discovery_range="$RFCU_PI_DISCOVERY_RANGE" source_rc=0
   [ -r "$RFCU_PI_ROS_SETUP" ] \
     || rfcu_pi_fail "ROS Jazzy setup missing: $RFCU_PI_ROS_SETUP"
 
+  [ "$RFCU_PI_RUN_MODE" != probe ] \
+    || discovery_range="$RFCU_PI_PROBE_DISCOVERY_RANGE"
+
   export ROS_DOMAIN_ID="$RFCU_PI_DOMAIN_ID"
-  export ROS_AUTOMATIC_DISCOVERY_RANGE="$RFCU_PI_DISCOVERY_RANGE"
+  export ROS_AUTOMATIC_DISCOVERY_RANGE="$discovery_range"
   export ROS_LOCALHOST_ONLY="$RFCU_PI_LOCALHOST_ONLY"
   unset ROS_STATIC_PEERS ROS_DISCOVERY_SERVER
   unset RMW_IMPLEMENTATION FASTDDS_DEFAULT_PROFILES_FILE
@@ -136,8 +140,9 @@ rfcu_pi_configure_ros_environment() {
 
   [ "$ROS_DOMAIN_ID" = "$RFCU_PI_DOMAIN_ID" ] \
     || rfcu_pi_fail "ROS_DOMAIN_ID did not remain $RFCU_PI_DOMAIN_ID"
-  [ "$ROS_AUTOMATIC_DISCOVERY_RANGE" = SUBNET ] \
-    || rfcu_pi_fail 'ROS_AUTOMATIC_DISCOVERY_RANGE did not remain SUBNET'
+  [ "$ROS_AUTOMATIC_DISCOVERY_RANGE" = "$discovery_range" ] \
+    || rfcu_pi_fail \
+      "ROS_AUTOMATIC_DISCOVERY_RANGE did not remain $discovery_range"
   [ "$ROS_LOCALHOST_ONLY" = 0 ] \
     || rfcu_pi_fail 'ROS_LOCALHOST_ONLY did not remain 0'
   [ -z "${ROS_STATIC_PEERS:-}" ] || rfcu_pi_fail 'ROS_STATIC_PEERS must be unset'
@@ -766,7 +771,7 @@ rfcu_pi_probe() {
   trap rfcu_pi_cleanup EXIT
   trap rfcu_pi_on_interrupt INT
   trap rfcu_pi_on_term TERM
-  rfcu_pi_log "REAL_FCU_PI_START mode=probe domain=$RFCU_PI_DOMAIN_ID discovery=SUBNET run_dir=$RFCU_PI_RUN_DIR"
+  rfcu_pi_log "REAL_FCU_PI_START mode=probe domain=$RFCU_PI_DOMAIN_ID discovery=$ROS_AUTOMATIC_DISCOVERY_RANGE run_dir=$RFCU_PI_RUN_DIR"
   rfcu_pi_start_child mavros-probe "$RFCU_PI_RUN_DIR/logs/mavros_probe.log" \
     "${RFCU_PI_PROBE_MAVROS_COMMAND[@]}"
   rfcu_pi_wait_connected_disarmed mavros-probe \

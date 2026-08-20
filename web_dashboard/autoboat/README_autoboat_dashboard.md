@@ -130,12 +130,16 @@ helper is not the runner for this path because its MAVROS plugin allowlist omits
 
 The guarded physical-FCU path is now prepared as two separate entry points:
 `tools/real_fcu_digital_twin_workstation.sh` and
-`tools/real_fcu_digital_twin_pi.sh`. Both force ROS domain `43` with subnet
-discovery, separate from the domain `42` localhost-only SITL graph. The Pi owns
-`/dev/ttyAMA0:57600` directly, without MAVProxy or UDP
-fan-out. Its `probe` mode uses only `sys_status` and `param` to verify a connected,
-disarmed, hardware-safe T0b state and read the three safety parameters. Its
-separately gated `run` mode restarts MAVROS with `sys_status`, `param`,
+`tools/real_fcu_digital_twin_pi.sh`. Both use ROS domain `43`, separate from the
+domain `42` localhost-only SITL graph. The workstation and Pi `check`, `run-t2a`
+and `run` paths retain subnet discovery for the cross-machine contract; the
+standalone Pi `probe` path selects localhost-only discovery. The Pi owns
+`/dev/ttyAMA0:57600` directly, without MAVProxy or UDP fan-out. Its `probe` mode
+loads only `sys_status` and `param` to verify a connected, disarmed,
+hardware-safe T0b state and read the safety, mapping and rail parameters. Those
+plugins advertise state-changing services, so localhost discovery is part of
+the probe safety boundary. Its separately gated `run` mode restarts MAVROS with
+`sys_status`, `param`,
 `global_position`, `imu` and `rc_io`, verifies the six dashboard telemetry
 signals, and starts the bounded bridge. The workstation owns only loopback
 rosbridge and dashboard services and emits the servo-mapped bench URL only after
@@ -151,7 +155,12 @@ and the physical-helper suite passed `24` cases. A new five-file deployment at
 inventory, pinned-manifest, `4/4` member verification and the non-actuating Pi
 `check`. The T0b retry did not run and was deferred to a later day pending a
 fresh safety review, certification and approval. No parameter was written and
-the bridge did not start.
+the bridge did not start. On 20/08/2026, the safety review found that the two
+T0b plugins expose parameter, mode and telemetry-configuration services to the
+ROS graph. The local helper was repaired and its `24`-case suite passed so the
+standalone probe graph is now localhost-only, while the run paths remain
+subnet-visible. These corrected bytes are not deployed; the 19/08 deployment
+root remains historical and is not eligible for the retry.
 
 The expanded camera viewer owns pointer and keyboard focus while open. It now
 contains its own E-Stop button, so the explicit FCU bench stop path remains
@@ -239,9 +248,10 @@ workstation and require `WORKSTATION_TEARDOWN=PASS`. Treat any MAVROS topic mark
 ### Guarded Physical-FCU Helper Pair
 
 The physical command/feedback loop is deliberately separate from the Hailo
-view-only helper and from the domain `42` localhost-only SITL graph. Its
-workstation and Pi halves both force domain `43` with subnet discovery. The two
-entry points are:
+view-only helper and from the domain `42` localhost-only SITL graph. Both
+physical halves use domain `43`. The workstation and Pi `check`, `run-t2a` and
+`run` paths use subnet discovery; only the standalone Pi `probe` path uses
+localhost discovery. The two entry points are:
 
 ```text
 tools/real_fcu_digital_twin_workstation.sh check|run
@@ -249,10 +259,12 @@ tools/real_fcu_digital_twin_pi.sh check|probe|run-t2a|run
 ```
 
 `check` performs bounded preflight and static verification without starting the
-loop. `probe` is the separately approved read-only T0b request/response and
-safety-state check. After one forced MAVROS cache pull, it retains the three
-safety parameters, both `RCMAP_*` values, all `SERVO1..16_FUNCTION` values and
-the resolved RC and servo rails as a validated `41`-parameter T0b artifact.
+loop. `probe` is the separately approved T0b request/response and safety-state
+check: the helper issues reads only, and localhost discovery prevents off-Pi
+participants from reaching the write-capable services advertised by its MAVROS
+plugins. After one forced MAVROS cache pull, it retains the three safety
+parameters, both `RCMAP_*` values, all `SERVO1..16_FUNCTION` values and the
+resolved RC and servo rails as a validated `41`-parameter T0b artifact.
 `run-t2a` requires T2a approval while rejecting T2b approval;
 it creates the guarded RC-override publisher, creates no bridge subscription to
 browser demand, accepts no non-neutral demand and publishes the resolved live RC
