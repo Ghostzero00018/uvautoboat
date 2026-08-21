@@ -263,3 +263,137 @@ Changing the bridge invalidates the 20/08/2026 Pi deployment as a copy of the
 current repository. That preserved root remains historical and was not updated,
 reused or deleted. No Pi, real controller, control box, Herelink, physical
 arming, motor or thrust action occurred in this block.
+
+## Real-controller execution record - evidence copy-back and physical close pending
+
+The later real-controller work used the clean and published revision
+`2600ea414e92099178964b3e53a95f4ccef8e20d`. The workstation created
+`/tmp/uvautoboat_real_fcu_bundle_20260821_2600ea4.tar.gz`, reported archive
+SHA-256
+`fbc9e0967289a7e0c03e14573b75c1b6c51001474f8727aff79b506c8980ef64`, and
+copied it to the Pi at `10.120.2.249`. The Pi extracted it at
+`/home/imt-aqua-drone/uvautoboat_real_fcu_bundle_20260821_2600ea4`. All four
+governed members verified `OK`, the manifest file retained SHA-256
+`8c4f04a69fef395ec70735f6ac5485d315da7955ba6aeb3b76473aa155de2eec`, and
+the deployed helper reported:
+
+```text
+[real-fcu-pi] REAL_FCU_PI_CHECK=PASS serial=/dev/ttyAMA0 runtime=not-started
+```
+
+The operator reported the live `BRD_SER1_RTSCTS` value as `Auto` (`2`), changed
+it to `0` and rebooted the FCU. A workstation T2b evidence capture then started
+and retained its local directory at
+`/home/ghostzero/Desktop/real_fcu_capture_t2b_20260821_173347`.
+
+The Pi `run` entry started at 17:35:49 with its initial MAVROS probe. The
+retained terminal output ended before the command bridge or any command demand
+started:
+
+```text
+[real-fcu-pi] REAL_FCU_PI_START mode=run tier=T2b authority=demand-enabled domain=43 discovery=SUBNET run_dir=/home/imt-aqua-drone/Desktop/real_fcu_digital_twin_pi_20260821_173549
+[real-fcu-pi] started mavros-probe pid=7300 pgid=7300 log=/home/imt-aqua-drone/Desktop/real_fcu_digital_twin_pi_20260821_173549/logs/mavros_probe.log
+[real-fcu-pi] STOP: T0b MAVROS parameter pull failed
+[real-fcu-pi] stopped mavros-probe
+[real-fcu-pi] REAL_FCU_PI_LOGS=/home/imt-aqua-drone/Desktop/real_fcu_digital_twin_pi_20260821_173549
+[real-fcu-pi] REAL_FCU_PI_EXIT status=1 cleanup_rc=0
+```
+
+This shows that `BRD_SER1_RTSCTS=0` did not make the existing Pi serial
+request/response path pass. The pasted second invocation contains the four
+bundle-verification lines but no second `REAL_FCU_PI_START`, `REAL_FCU_PI_LOGS`
+or `REAL_FCU_PI_EXIT` marker, so it is not credited as a second retained run.
+Changing the ROS domain cannot repair this MAVLink transport failure.
+
+The supervisor-provided `servo_command.cpp` was inspected from the external
+download only. It implements FCU/SITL servo-output to VRX command conversion
+over UDP, not dashboard/Pi commands to the FCU. Its potentially useful design
+clue is an alternative MAVLink UDP transport. QGroundControl forwarding is
+one-way, so a command-capable alternative would need direct bidirectional
+access to the Herelink endpoint rather than QGroundControl forwarding. No
+Herelink-to-Pi network connection was available or configured, and that route
+was not run.
+
+End-of-day evidence copy-back and physical closure remain pending. Before a
+normal close can be recorded, retain the Pi run directory, stop and finalize
+the workstation capture, restore `BRD_SER1_RTSCTS` to `Auto` (`2`), reboot and
+read it back, then power down. If restoration cannot be verified, preserve the
+controller as configuration-unresolved and perform only the safe power-down.
+No serial or UDP retry is scheduled for the remainder of 21/08/2026.
+
+The workstation capture did not finalize after repeated terminal interrupts.
+The process was no longer present when inspected, but no
+`evidence/verdict.json` existed. Its retained `events.jsonl` parsed completely:
+`222` events, `84508` bytes and final sequence `222`, all on `/mavros/state`.
+There was no retained command, command-status or output-feedback sequence.
+Classify this capture as `PARTIAL_UNFINALIZED`; preserve it, but do not credit
+it as T2b evidence and do not restart it today.
+
+The Pi end-of-day inventory found two retained run directories:
+`real_fcu_digital_twin_pi_20260821_173549` and
+`real_fcu_digital_twin_pi_20260821_173718`. No `mavros_node` process remained,
+`sudo -v` returned `0`, and privileged `fuser -v /dev/ttyAMA0` produced no
+owner output and returned `1`. The serial endpoint was therefore free before
+copy-back. Both exact run directories must be included in the evidence archive;
+the second directory remains uninterpreted until its retained files are copied
+and inspected.
+
+After the FCU reboot, the operator confirmed the retained rollback value as
+`BRD_SER1_RTSCTS=Auto (2)`. This closes the controller-configuration rollback;
+the failed run did not leave the candidate `0` in effect. The Pi then created
+`/home/imt-aqua-drone/real_fcu_evidence_20260821_2600ea4.tar.gz` with SHA-256
+`d913d296c4aecd34ca305339ed1a9591215a75c061dec7552567f647df3643a7`.
+Its listing contains both exact run roots, the five-file deployment root and
+the transferred deployment archive. Workstation copy-back, checksum
+verification and inspection of the second run remain pending.
+
+The workstation copy-back then verified the archive sidecar as `OK`. All four
+governed files inside the copied deployment root verified `OK`, and the
+preserved transferred bundle rehashed to
+`fbc9e0967289a7e0c03e14573b75c1b6c51001474f8727aff79b506c8980ef64`,
+matching the workstation's original bundle hash.
+
+Independent inspection resolves both Pi runs. Run `173549` retained four state
+attempts: three disconnected samples followed by `connected: true`,
+`armed: false`, `mode: MANUAL`. MAVROS detected FCU `1.1`, but every
+`AUTOPILOT_VERSION` request and the automatic parameter-list request timed out.
+The forced parameter pull started and produced no response before the helper
+stopped with `T0b MAVROS parameter pull failed`. Thus the candidate
+`BRD_SER1_RTSCTS=0` did not repair the Pi-to-FCU request/response path.
+
+Run `173718` retained `50` state attempts: two disconnected, one connected and
+armed in `CMODE(0)`, and `47` connected and armed in `MANUAL`. It created no
+`t0b_param_pull.txt`; the helper stopped at its connected-and-disarmed gate
+with `T0b MAVROS did not reach connected:true and armed:false`. The bridge and
+command publisher never started. This run proves the armed-start guard stopped
+the pipeline; it is not a digital-twin or command-path test. Both Pi runs ended
+with `status=1 cleanup_rc=0`.
+
+## End-of-day close-out — complete
+
+After the evidence archive was copied back and verified on the workstation,
+the operator supplied the final physical-state marker:
+
+```text
+PI_OFF_FCU_AUTOPILOT_OFF_CONTROL_ELECTRONICS_OFF_HERELINK_OFF_PROPULSION_POWER_ISOLATED_PROPELLERS_REMOVED_HULL_RESTRAINED_BRD_SER1_RTSCTS_RESTORED_AUTO_2
+```
+
+This confirms that the Pi, FCU/autopilot, control electronics and Herelink are
+off; propulsion power is isolated; propellers are removed; the hull is
+restrained; and `BRD_SER1_RTSCTS` has been restored to `Auto (2)`.
+
+The `BRD_SER1_RTSCTS=0` experiment did not restore parameter request/response
+traffic on the direct Pi serial path and was rolled back. The first guarded run
+reproduced the timeout while connected and disarmed. The second run started
+with the FCU armed and was stopped by the connected-and-disarmed guard before
+the parameter pull, bridge or command publisher could run. No RC override,
+motor command or thrust command was issued by the repository pipeline.
+
+The workstation capture remains `PARTIAL_UNFINALIZED`: its event file contains
+state samples, but no verdict was written. T0b remains open, and neither T2a nor
+T2b acceptance was earned. No physical approval carries forward beyond this
+close-out. This final section supersedes every earlier interim `pending`
+statement in this execution record. Any later powered continuation requires a
+new operator instruction and should choose a diagnostic that can distinguish
+the remaining direct-link transmit, receive and endpoint hypotheses rather
+than repeat either failed run.

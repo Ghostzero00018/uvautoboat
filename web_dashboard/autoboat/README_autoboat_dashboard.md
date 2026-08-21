@@ -197,6 +197,23 @@ retry. The operator then confirmed the FCU/control electronics and Herelink
 off, with propulsion power isolated, propellers removed and the hull restrained.
 This closed the 20/08/2026 physical hardware day; no approval carries forward.
 
+On 21/08/2026, revision `2600ea4` was deployed to a new certified Pi root and
+`BRD_SER1_RTSCTS` was changed from `Auto (2)` to `0` before reboot. The first
+guarded run connected disarmed in `MANUAL`, but automatic and forced parameter
+pulls still received no response. The second run started armed and stopped at
+the connected-and-disarmed gate before the parameter pull, bridge or command
+publisher started. Both runs ended `status=1 cleanup_rc=0`; the dashboard
+command path did not start and no RC override, motor command or thrust command
+was issued by the repository pipeline. The workstation capture retained valid
+state events but no verdict and is classified `PARTIAL_UNFINALIZED`. The copied
+Pi evidence archive verified at
+`d913d296c4aecd34ca305339ed1a9591215a75c061dec7552567f647df3643a7`.
+`BRD_SER1_RTSCTS=Auto (2)` was restored and read back, and the operator then
+confirmed the Pi, FCU/autopilot, control electronics and Herelink off, with
+propulsion power isolated, propellers removed and the hull restrained. T0b
+remains open, neither T2 tier earned acceptance and no physical approval
+carries forward.
+
 The expanded camera viewer owns pointer and keyboard focus while open. It now
 contains its own E-Stop button, so the explicit FCU bench stop path remains
 reachable without closing the viewer. The button stays inert in the ordinary

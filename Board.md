@@ -126,7 +126,7 @@
 > | --- | --- | --- |
 > | **T0a** | Powered-down inspection or repair of the `Pi TXD (GPIO14) -> Cube SERIAL1 RX` link | Controller and propulsion powered down; no parameter changed |
 > | **T0b** | Non-actuating request/response over the link | Disarmed; hardware safety state confirmed ON (safe) and left unchanged; heartbeat and parameter **reads** only, including `BRD_SAFETY_DEFLT`, `BRD_SAFETY_MASK` and `BRD_SAFETYOPTION`. No `PARAM_SET`, no safety-state change, no mode change, no arming, no motor test and no RC override |
-> | **T1** | Link-configuration write under a strict allowlist | Initially only `BRD_SER1_RTSCTS`, currently `2`, candidate `0`. Record the prior value, one write, reboot if required, read back, and state the rollback. Propulsion power isolated |
+> | **T1** | Link-configuration write under a strict allowlist | Initially only `BRD_SER1_RTSCTS`, currently `Auto (2)`. Candidate `0` was tested on 21/08/2026, did not restore parameter responses and was rolled back with read-back. Any further write needs new evidence and separate approval. Propulsion power isolated |
 > | **T2a** | First arm/disarm on the bench, propellers removed | Function, channel and rail confirmed live in T0b; the Block B contract implemented and passing against the simulator; **no non-neutral input sent** |
 > | **T2b** | Minimal bounded input on the bench, propellers removed | Separate approval again. Short, low amplitude, asymmetric so it can actually evidence the mapping; dead-man defined; explicit neutral, disarm and power-down order |
 > | **T3a** | Static test with propellers fitted | Separate approval, dedicated mechanical guarding and an exclusion zone |
@@ -302,6 +302,24 @@
 > Herelink off, with propulsion power isolated, propellers removed and the hull
 > restrained. This closes the 20/08/2026 physical hardware day. No approval or
 > physical attestation carries into 21/08/2026.
+>
+> **21/08/2026 live update - T1 tested, failed and rolled back.** Revision
+> `2600ea4` was deployed to the new Pi root
+> `/home/imt-aqua-drone/uvautoboat_real_fcu_bundle_20260821_2600ea4`; all four
+> governed members verified `OK`, and the helper's non-actuating `check`
+> passed. The operator changed `BRD_SER1_RTSCTS` from `Auto (2)` to `0` and
+> rebooted. The first guarded run reached connected/disarmed `MANUAL`, but
+> automatic and forced parameter pulls again received no response. A second
+> run began armed and stopped at the connected-and-disarmed gate before the
+> parameter pull, bridge or command publisher started. Both runs ended
+> `status=1 cleanup_rc=0`; no RC override, motor command or thrust command was
+> issued by the repository pipeline. The copied Pi evidence archive verified
+> at `d913d296c4aecd34ca305339ed1a9591215a75c061dec7552567f647df3643a7`.
+> The operator restored and read back `BRD_SER1_RTSCTS=Auto (2)`, then confirmed
+> the Pi, FCU/autopilot, control electronics and Herelink off, with propulsion
+> power isolated, propellers removed and the hull restrained. T0b remains open;
+> T1 candidate `0` is closed as a fix for this failure; neither T2 tier earned
+> acceptance; and no physical approval carries forward.
 >
 > Diaries for 24/07/2026 and 07/08/2026 record the former policy and are left
 > unchanged as history.
@@ -730,6 +748,7 @@ The whole repo is expected to run on the Pi 5. Long-term (Phase 5.2+): QGC and t
 | 18/08/2026 | D1 Gate 1 deployed and certified the four-file bundle at `/home/imt-aqua-drone/uvautoboat_real_fcu_bundle_20260818`; exact inventory, sizes, manifest digest, all four member hashes and the helper's `check` passed. The separately approved read-only probe opened `/dev/ttyAMA0:57600` and received an ArduPilot heartbeat, then the MAVROS parameter-list exchange exhausted its retries. The operator stopped at `t+109.81 s`, before the `180 s` deadline; cleanup was clean at `status=130 cleanup_rc=0`. The retained state capture is non-diagnostic because repeated attempts overwrote one path and stderr could enter the YAML. No T0b parameter artifact was produced, no parameter was written, the bridge never started and no real thrust occurred. D1 is closed for the day without retry; T0b, T1 and both T2 tiers remain open. | 🟡 |
 | 19/08/2026 | The T0b capture path now retains every attempt as isolated YAML plus a sibling diagnostic log, including diagnostics from the copy writer; the complete physical-helper suite passed `24` cases after the manifest was regenerated, and the helper, tests and manifest landed together at `dc90a8f`. A new five-file Pi deployment at `/home/imt-aqua-drone/uvautoboat_real_fcu_bundle_20260819` passed exact inventory, pinned-manifest, `4/4` member verification and the non-actuating helper `check`. Block E was approved but deferred without execution while its safety review remained pending. No controller or Herelink power-up, serial open, parameter write, bridge start or real thrust occurred under Block E. T0b remains open; the unused approval expires at day close, and T1 plus both T2 tiers remain closed. | 🟡 |
 | 20/08/2026 | The T0b probe graph was restricted to localhost, its `24`-case suite passed, revision `f8e440a` was deployed once to the new dated root, and the non-actuating Pi `check` passed. A powered receive-only UART diagnostic then captured `23868` bytes and `30` valid disarmed heartbeats from `1.1` with zero transmitted bytes. The final full probe reached `connected: true`, `armed: false`, `mode: MANUAL` and a passing hardware-safety check, but all automatic parameter-list attempts and the explicit forced pull received no parameter response. A final duplex isolation captured `18` more valid disarmed heartbeats and transmitted exactly one PING plus one `SYSID_THISMAV` read request, audited as `53` bytes with no state-changing message; neither received a response. Cleanup and copy-back passed, no `41`-parameter or mapping/rail artifact was created, and no parameter write, bridge, mode, arm, RC, motor or thrust action occurred. T0b remains open; T1's separately approved `BRD_SER1_RTSCTS` change is the next decision point, while both T2 tiers remain closed. The operator confirmed the FCU/control electronics and Herelink off with propulsion isolated, propellers removed and the hull restrained, closing the physical day. | 🟡 |
+| 21/08/2026 | Revision `2600ea4` was deployed to a new certified Pi root for the separately approved `BRD_SER1_RTSCTS` experiment and guarded run attempts. Candidate `0` did not restore parameter request/response in the connected/disarmed run. The armed-start run stopped at the disarmed-state gate before the parameter pull, bridge or command publisher started. Both helpers cleaned up with `status=1 cleanup_rc=0`; the evidence archive copied back and verified; and no RC override, motor command or thrust command was issued by the repository pipeline. `BRD_SER1_RTSCTS=Auto (2)` was restored and read back. The operator then confirmed the Pi, FCU/autopilot, control electronics and Herelink off with propulsion isolated, propellers removed and the hull restrained. T0b remains open, neither T2 tier earned acceptance and no physical approval carries forward. | 🟡 |
 | TBD | Complete real-hardware deployment acceptance (Pi 5 target; bounded read-only Hailo/MAVROS dashboard proven 17/07/2026; lifecycle, endurance, low-level CCU, and write-path gates remain open) | 🔜 |
 | TBD | Coverage Planning | ⏸️ |
 
@@ -912,7 +931,7 @@ Current position ──────>│  (in Planner)       │
 
 ## 📜 Acknowledgments
 
-**Document Version**: 9.57 | **Last Updated**: 19/08/2026
+**Document Version**: 9.58 | **Last Updated**: 21/08/2026
 
 **Maintained By**: AutoBoat Development Team
 
