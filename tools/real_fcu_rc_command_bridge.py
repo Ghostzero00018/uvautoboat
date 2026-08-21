@@ -822,6 +822,8 @@ class RealFcuRcCommandBridge(Node):
             "rc_in_age_ms": rc_in_age_ms,
             "rc_out_age_ms": rc_out_age_ms,
             "resolved": None,
+            "rc_rails": None,
+            "servo_rails": None,
             "measured": None,
         }
         if guard:
@@ -830,6 +832,22 @@ class RealFcuRcCommandBridge(Node):
                 "throttle_rc": guard.throttle_channel,
                 "left_servo": guard.left_servo,
                 "right_servo": guard.right_servo,
+            }
+            payload["rc_rails"] = {
+                "steering": _rc_rail_evidence(
+                    guard.recorded, guard.steering_channel, guard.steering_rail
+                ),
+                "throttle": _rc_rail_evidence(
+                    guard.recorded, guard.throttle_channel, guard.throttle_rail
+                ),
+            }
+            payload["servo_rails"] = {
+                "left": _servo_rail_evidence(
+                    guard.left_servo, 73, guard.left_servo_rail
+                ),
+                "right": _servo_rail_evidence(
+                    guard.right_servo, 74, guard.right_servo_rail
+                ),
             }
             payload["measured"] = {
                 "rc_steering_pwm": self._feedback_value(

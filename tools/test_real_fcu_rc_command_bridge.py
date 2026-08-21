@@ -437,6 +437,38 @@ class BridgeNodeStateMachineTest(unittest.TestCase):
         self.assertIs(status["neutral_only"], True)
         self.assertEqual(status["command"], {"steering": 0.0, "throttle": 0.0})
 
+    def test_status_payload_includes_live_rc_and_servo_rails(self):
+        now = 100.0
+        self.set_valid_feedback(now)
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._publish_status("READY_DISARMED", 0.0, 0.0)
+        status = json.loads(self.node.status_pub.messages[-1].data)
+        self.assertEqual(
+            status["rc_rails"]["steering"],
+            {
+                "channel": 1,
+                "minimum": 1000,
+                "trim": 1500,
+                "maximum": 2000,
+                "dead_zone": 30,
+                "reversed": 0,
+                "option": 0,
+            },
+        )
+        self.assertEqual(
+            status["servo_rails"]["left"],
+            {
+                "channel": 3,
+                "function": 73,
+                "minimum": 800,
+                "trim": 800,
+                "maximum": 2200,
+                "reversed": 0,
+            },
+        )
+        self.assertEqual(status["servo_rails"]["right"]["channel"], 1)
+        self.assertEqual(status["servo_rails"]["right"]["function"], 74)
+
     def test_one_hertz_state_stream_does_not_false_trip(self):
         now = 100.0
         self.node.latest_state = self.vehicle(False)

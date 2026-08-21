@@ -701,6 +701,41 @@ function refreshFcuBenchControls() {
     }
 }
 
+function railRelativePercent(pwm, rail) {
+    if (!Number.isFinite(pwm) || !rail) return null;
+    const minimum = rail.minimum;
+    const trim = rail.trim;
+    const maximum = rail.maximum;
+    const reversal = rail.reversed;
+    if (![minimum, trim, maximum].every(Number.isFinite)
+        || !(minimum < maximum)
+        || trim < minimum
+        || trim > maximum
+        || pwm < minimum
+        || pwm > maximum
+        || ![0, 1].includes(reversal)) {
+        return null;
+    }
+    let fraction = 0;
+    if (pwm > trim) {
+        if (trim === maximum) return null;
+        fraction = (pwm - trim) / (maximum - trim);
+    } else if (pwm < trim) {
+        if (trim === minimum) return null;
+        fraction = (pwm - trim) / (trim - minimum);
+    }
+    // SERVO_OUTPUT_RAW already contains the configured output reversal. Keep
+    // this percentage aligned with the adjacent measured PWM instead of
+    // applying SERVOx_REVERSED a second time.
+    return fraction * 100;
+}
+
+function formatRailRelativePercent(value) {
+    if (!Number.isFinite(value)) return 'rail invalid';
+    const rounded = value.toFixed(1);
+    return `${value > 0 ? '+' : ''}${rounded}% PWM rail`;
+}
+
 function updateLiveFcuBenchStatus(message) {
     let status;
     try {
@@ -734,12 +769,42 @@ function updateLiveFcuBenchStatus(message) {
         `Steering ${Number(command.steering || 0).toFixed(2)} | Throttle ${Number(command.throttle || 0).toFixed(2)}`
     );
     const measured = status.measured;
+    const servoRails = status.servo_rails;
+    let measuredText = 'Waiting for /mavros/rc/out';
+    let railDataValid = false;
+    if (measured) {
+        const rcText =
+            `RC ${measured.rc_steering_pwm ?? '-'} / `
+            + `${measured.rc_throttle_pwm ?? '-'} us`;
+        if (!servoRails?.left || !servoRails?.right) {
+            measuredText =
+                `${rcText} | Left ${measured.left_servo_pwm ?? '-'} us | `
+                + `Right ${measured.right_servo_pwm ?? '-'} us | Rails not received`;
+        } else {
+            const leftPercent = railRelativePercent(
+                measured.left_servo_pwm, servoRails.left
+            );
+            const rightPercent = railRelativePercent(
+                measured.right_servo_pwm, servoRails.right
+            );
+            railDataValid = Number.isFinite(leftPercent)
+                && Number.isFinite(rightPercent);
+            measuredText =
+                `${rcText} | Left ${measured.left_servo_pwm ?? '-'} us `
+                + `(${formatRailRelativePercent(leftPercent)}) | `
+                + `Right ${measured.right_servo_pwm ?? '-'} us `
+                + `(${formatRailRelativePercent(rightPercent)})`;
+        }
+        if (!status.feedback_fresh) {
+            measuredText +=
+                ` | STALE (${status.rc_in_age_ms ?? '-'} / `
+                + `${status.rc_out_age_ms ?? '-'} ms)`;
+        }
+    }
     setLiveMavlinkValue(
         'fcu-loop-feedback',
-        measured
-            ? `RC ${measured.rc_steering_pwm ?? '-'} / ${measured.rc_throttle_pwm ?? '-'} us | Left ${measured.left_servo_pwm ?? '-'} us | Right ${measured.right_servo_pwm ?? '-'} us${status.feedback_fresh ? '' : ` | STALE (${status.rc_in_age_ms ?? '-'} / ${status.rc_out_age_ms ?? '-'} ms)`}`
-            : 'Waiting for /mavros/rc/out',
-        status.feedback_fresh ? undefined : 'critical'
+        measuredText,
+        status.feedback_fresh && railDataValid ? 'clear' : 'critical'
     );
     refreshFcuBenchControls();
     if (newlyArmed) publishFcuBenchDemand(0);

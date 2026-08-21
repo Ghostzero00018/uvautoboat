@@ -65,8 +65,15 @@ digital-twin test. The browser publishes one atomic steering/throttle
 holds its Apply button. `tools/real_fcu_rc_command_bridge.py` discovers the live
 RC mapping, RC rails and function `73`/`74` output rails through MAVROS, converts
 the request to `/mavros/rc/override`, and returns the separately observed
-`/mavros/rc/in` and `/mavros/rc/out` values on `/command_ingress/status`. The
-requested values are never displayed as measured feedback.
+`/mavros/rc/in` and `/mavros/rc/out` values plus the resolved live rails on
+`/command_ingress/status`. The dashboard retains raw PWM and also reports each
+motor output as a signed percentage of its configured PWM rail. The percentage
+is the literal position of the measured output between its live minimum, trim
+and maximum. `SERVOx_REVERSED` remains visible in the status evidence but is not
+applied again because `SERVO_OUTPUT_RAW` already reflects that output setting.
+This percentage is not a force estimate. Requested values are never displayed
+as measured feedback, and no rail-relative value is shown before the rails
+arrive.
 
 The component cannot arm, disarm, change mode or write parameters. It is inert
 unless `allow_real_fcu:=true`, an explicitly supplied `expected_domain_id`
@@ -348,7 +355,7 @@ provenance:
 | Row | Source | Meaning |
 | --- | --- | --- |
 | Requested RC Demand | bridge status | The bounded steering/throttle pair accepted from the browser |
-| Measured FCU Output | `/mavros/rc/out` | Raw PWM read back from the function-resolved left/right servo outputs |
+| Measured Motor Output | `/mavros/rc/out` plus bridge rail resolution | Raw PWM and signed position within each function-resolved output rail; not physical force |
 
 The narrow browser publisher exists only when the page is opened with:
 
@@ -489,7 +496,7 @@ a confirmation prompt.
 | `/planning/config`              | Current config values (syncs fields) |
 | `/wamv/thrusters/left/thrust`  | Left thruster command feedback       |
 | `/wamv/thrusters/right/thrust` | Right thruster command feedback      |
-| `/command_ingress/status`   | Guarded bridge state, live mapping, request and measured RC/servo PWM feedback |
+| `/command_ingress/status`   | Guarded bridge state, live mapping and rails, request and measured RC/servo PWM feedback |
 
 The live MAVLink thrust row defaults to the real boat's measured output mapping
 (`SERVO3` left, `SERVO1` right). For another connected vehicle, first resolve
@@ -500,7 +507,10 @@ dashboard with those resolved channels, for example:
 http://127.0.0.1:8002/?thrust_left_servo=1&thrust_right_servo=3
 ```
 
-The readout remains raw PWM and does not infer a percentage or physical thrust.
+This temporary view-only row remains raw PWM and does not infer a percentage or
+physical thrust. The separate FCU Bench component can show a configured-rail
+percentage because its guarded bridge supplies the live rails with the measured
+PWM; it still does not estimate physical force.
 
 The current temporary view-only build does not subscribe to the VRX simulation GPS
 topic. Simulation GPS and map updates require restoring that subscription in a

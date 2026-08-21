@@ -180,6 +180,7 @@ function createHarness(search = '') {
             clampFcuBenchDemand,
             fcuBenchMessage,
             fcuBenchCanApply,
+            railRelativePercent,
             updateLiveFcuBenchStatus,
             refreshFcuBenchControls,
             subscribeToLiveFcuBenchLoop,
@@ -432,6 +433,16 @@ test('bench status keeps requested and measured outputs in separate fields', () 
                 right_servo: 1
             },
             command: { steering: 0.1, throttle: 0.05 },
+            servo_rails: {
+                left: {
+                    channel: 3, function: 73, minimum: 800, trim: 800,
+                    maximum: 2200, reversed: 0
+                },
+                right: {
+                    channel: 1, function: 74, minimum: 800, trim: 800,
+                    maximum: 2200, reversed: 0
+                }
+            },
             measured: {
                 rc_steering_pwm: 1550,
                 rc_throttle_pwm: 1525,
@@ -448,12 +459,81 @@ test('bench status keeps requested and measured outputs in separate fields', () 
     );
     assert.equal(
         harness.elements.get('fcu-loop-feedback').textContent,
-        'RC 1550 / 1525 us | Left 860 us | Right 820 us'
+        'RC 1550 / 1525 us | Left 860 us (+4.3% PWM rail) | Right 820 us (+1.4% PWM rail)'
     );
+    assert.match(harness.elements.get('fcu-loop-feedback').className, /clear/);
     harness.elements.get('fcu-loop-physical-confirmation').checked = true;
     assert.equal(harness.api.fcuBenchCanApply(), true);
     harness.advance(501);
     assert.equal(harness.api.fcuBenchCanApply(), false);
+});
+
+test('bench feedback never invents rail-relative output before rails arrive', () => {
+    const harness = createHarness('?enable_fcu_bench_control=1');
+    harness.api.updateLiveFcuBenchStatus({
+        data: JSON.stringify({
+            state: 'READY_DISARMED', fault: 'READY_DISARMED', ready: true,
+            connected: true, armed: false, mode: 'MANUAL', feedback_fresh: true,
+            command: {},
+            measured: {
+                rc_steering_pwm: 1500, rc_throttle_pwm: 1500,
+                left_servo_pwm: 1500, right_servo_pwm: 1500
+            }
+        })
+    });
+    assert.equal(
+        harness.elements.get('fcu-loop-feedback').textContent,
+        'RC 1500 / 1500 us | Left 1500 us | Right 1500 us | Rails not received'
+    );
+    assert.match(harness.elements.get('fcu-loop-feedback').className, /critical/);
+});
+
+test('bench rail percentage keeps reversed midscale output in raw PWM direction', () => {
+    const harness = createHarness('?enable_fcu_bench_control=1');
+    assert.equal(
+        harness.api.railRelativePercent(1585, {
+            minimum: 1000, trim: 1500, maximum: 2000, reversed: 1
+        }),
+        17
+    );
+});
+
+test('bench rail percentage keeps reversed endpoint output in raw PWM direction', () => {
+    const harness = createHarness('?enable_fcu_bench_control=1');
+    assert.ok(
+        Math.abs(harness.api.railRelativePercent(860, {
+            minimum: 800, trim: 800, maximum: 2200, reversed: 1
+        }) - (60 / 1400 * 100)) < 1e-12
+    );
+});
+
+test('bench feedback normalizes simulator output around its live midscale trim', () => {
+    const harness = createHarness('?enable_fcu_bench_control=1');
+    harness.api.updateLiveFcuBenchStatus({
+        data: JSON.stringify({
+            state: 'ACTIVE', fault: 'ACTIVE', ready: true,
+            connected: true, armed: true, mode: 'MANUAL', feedback_fresh: true,
+            command: { steering: 0.1, throttle: 0.08 },
+            servo_rails: {
+                left: {
+                    channel: 1, function: 73, minimum: 1000, trim: 1500,
+                    maximum: 2000, reversed: 0
+                },
+                right: {
+                    channel: 3, function: 74, minimum: 1000, trim: 1500,
+                    maximum: 2000, reversed: 0
+                }
+            },
+            measured: {
+                rc_steering_pwm: 1577, rc_throttle_pwm: 1567,
+                left_servo_pwm: 1585, right_servo_pwm: 1485
+            }
+        })
+    });
+    assert.equal(
+        harness.elements.get('fcu-loop-feedback').textContent,
+        'RC 1577 / 1567 us | Left 1585 us (+17.0% PWM rail) | Right 1485 us (-3.0% PWM rail)'
+    );
 });
 
 test('bench hold stops and emits disabled frames when readiness disappears', () => {

@@ -111,10 +111,13 @@ git log -1 --format='%H%n%s'
 
 Require a clean worktree and index, `HEAD == main == origin/main` and
 divergence `0/0`. Inspect every commit later than
-`95a42c61afa69d7f0fac80fe5ef12cf7d67077f2` before relying on it, and confirm
-that no non-Markdown tracked file changed after
-`f8e440a81d8f08318b089814c05329b21ddafd1c`. If one did, the deployed bytes and
-the `24`-case suite evidence must both be re-established before continuing.
+`95a42c61afa69d7f0fac80fe5ef12cf7d67077f2` before relying on it. Today's
+simulator motor-twin block intentionally changes non-Markdown tracked files
+after `f8e440a81d8f08318b089814c05329b21ddafd1c`, including the governed bridge.
+That expected divergence invalidates the 20/08/2026 Pi root as a current copy;
+it does not block the workstation simulator acceptance. It remains a blocker
+for any Pi or controller continuation until a newly approved deployment root
+re-establishes the deployed bytes and the `24`-case suite evidence.
 
 Then re-verify the governed artifacts on the workstation:
 
@@ -125,7 +128,7 @@ bash tools/test_real_fcu_digital_twin_helpers.sh
 ```
 
 Require four member lines reporting `OK`, a manifest digest of
-`2f595b63fe2248c5dada5f5f9fc8f5f69c973df0bfaa434f1fd99c0b60613642` and a final
+`8c4f04a69fef395ec70735f6ac5485d315da7955ba6aeb3b76473aa155de2eec` and a final
 `PASS cases=24`.
 
 Re-measure the free-disk figure, the reserved TCP and UDP endpoints and the
@@ -209,3 +212,54 @@ perform only the already-approved safe power-down.
 - Stop at the first failed certification, safety, serial-owner, evidence or
   cleanup gate, **except for the pre-approved rollback and safe power-down
   required above**. Do not retry the failed method.
+
+## Simulator motor-twin rail block - local verification passed, live rerun pending
+
+The user redirected the day to the motor digital twin and dashboard rather than
+continuing the controller request path. The pre-edit baseline for this appended
+record is `7e080f4577460a37a3693a6d2a895a0f3d4345a1`; no commit containing this
+text is predicted here.
+
+The bridge already resolved the live RC and servo rails but omitted them from
+`/command_ingress/status`. The dashboard could therefore show only raw PWM and
+could not describe where a measured motor output sat within its actual rail.
+The status payload now carries both resolved RC rails and both function-resolved
+servo rails. The dashboard keeps the raw PWM and adds a signed percentage of
+the configured PWM rail. This is the literal position of the measured output;
+it does not apply `SERVOx_REVERSED` again after ArduPilot has produced
+`SERVO_OUTPUT_RAW`. It explicitly reports `Rails not received` before that data
+exists, marks missing or invalid rail data critical, supports both a mid-scale
+trim such as simulator `1000`/`1500`/`2000` and an endpoint trim such as the
+recorded boat `800`/`800`/`2200`, and does not claim physical force.
+
+The bridge regression first failed with a missing `rc_rails` status key. The
+dashboard regressions first failed because the measured-output row remained raw
+only and had no missing-rail state. After the implementation:
+
+- the bridge suite passed `27` tests;
+- the combined bridge, simulator-evidence and operator suite passed `44` tests;
+- the complete dashboard suite passed `80` tests, including reversed mid-scale
+  and endpoint-trim output rails plus direct simulator evidence `SERVO1=1585`
+  and `SERVO3=1485` rendered as `+17.0% PWM rail` and `-3.0% PWM rail` against
+  the live `1000`/`1500`/`2000` rails;
+- the synthetic simulator-runner suite passed `41` cases with host socket
+  visibility;
+- the complete physical-helper suite passed `24` cases after the changed bridge
+  digest was regenerated in `config/real_fcu_digital_twin_bundle.sha256`;
+- all four governed members verified, the new manifest digest is
+  `8c4f04a69fef395ec70735f6ac5485d315da7955ba6aeb3b76473aa155de2eec`,
+  and Python and JavaScript syntax checks passed.
+
+The production workstation `check` path is not credited: its preflight stopped
+at the default log-root write check before starting its test list. The same
+component suites were executed directly as recorded above. The full
+`motorboat-skid` supervisor rerun is also **NOT RUN** in this uncommitted
+worktree. Its clean `HEAD == origin/main` requirement remains binding and must
+not be bypassed. After the user commits and publishes this logical change, run
+the simulator supervisor once and retain its verdict, teardown and independent
+adjudication before calling the new dashboard path runtime-accepted.
+
+Changing the bridge invalidates the 20/08/2026 Pi deployment as a copy of the
+current repository. That preserved root remains historical and was not updated,
+reused or deleted. No Pi, real controller, control box, Herelink, physical
+arming, motor or thrust action occurred in this block.
