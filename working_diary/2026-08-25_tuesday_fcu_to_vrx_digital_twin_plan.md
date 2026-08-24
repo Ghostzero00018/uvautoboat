@@ -1,9 +1,11 @@
-# Monday 24/08/2026 - FCU-to-VRX digital twin proposal
+# Tuesday 25/08/2026 - FCU-to-VRX digital twin proposal
 
 **PRE-DIARY - NOT STARTED.**
 
-This is the sole 24/08/2026 continuation. It carries no approval from
-21/08/2026, and no physical approval crosses the date boundary.
+This is the sole 25/08/2026 continuation. It was scaffolded for 24/08/2026,
+which went to the internship report; it was moved unchanged in substance. It
+carries no approval from 21/08/2026 or 24/08/2026, and no physical approval
+crosses either date boundary.
 
 ## Why this file exists
 
@@ -25,8 +27,11 @@ paragraph.
 ## The proposal - drive the simulated boat from autopilot servo output
 
 The supported direction is **FCU to VRX**: the autopilot computes its own servo
-outputs, and those outputs drive the simulated thrusters. Nothing is sent to the
-flight controller.
+outputs, and those outputs drive the simulated thrusters. **The repository's
+FCU-to-VRX bridge sends no command and no state-changing write to the flight
+controller.** That is a property of the bridge, not of every participant: Stage 3
+below involves a real arming and deliberate Herelink stick input, and stays
+behind the T0b, T2a and T2b gates.
 
 `tools/servo_command_bridge.py` already implements this. It consumes
 `SERVO_OUTPUT_RAW` over **UDP** and publishes
