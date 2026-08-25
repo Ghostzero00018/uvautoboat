@@ -43,6 +43,32 @@ ros2 launch mavros apm.launch fcu_url:=udp://127.0.0.1:14550@
 
 Reserve `14551` for optional direct-MAVLink inspection scripts. Do not run MAVROS directly on the serial device while MAVProxy owns `/dev/ttyAMA0`.
 
+### Verified Pi 5 UART identity on 25/08/2026
+
+Read-only kernel and device-tree inspection on the live Pi 5 tied the boat's
+serial endpoint to the 40-pin header rather than to the Pi 5 debug connector:
+
+- RP1 pin-controller entries for `gpio14` and `gpio15` are owned by
+  `1f00030000.serial`, with function `uart0`;
+- `/sys/class/tty/ttyAMA0/device` resolves to that same
+  `1f00030000.serial` controller;
+- `/sys/class/tty/ttyAMA10/device` resolves instead to the BCM2712
+  `107d001000.serial` debug-UART controller;
+- MAVProxy on `/dev/ttyAMA10:57600` detected no vehicle, while the same bounded
+  invocation on `/dev/ttyAMA0:57600` detected vehicle `1:1` and reported mode
+  `HOLD`.
+
+Use `/dev/ttyAMA0:57600` for the current boat. Do not substitute
+`/dev/ttyAMA10`; its device node proves only that the Pi 5 debug UART exists.
+The `107d504100...bcm2712` pin-controller view is also not the 40-pin-header
+view: inspect `1f000d0000.gpio-pinctrl-rp1` for header GPIO mux ownership.
+Keep `serial-getty@ttyAMA0.service` disabled so a login console cannot compete
+with MAVProxy for the exclusive serial endpoint.
+
+This confirms endpoint identity and FCU-to-Pi heartbeat reception only. It does
+not prove Pi-to-FCU request/response traffic or close the open direct-link
+defect.
+
 ---
 
 ## 2. Prerequisites
@@ -190,7 +216,9 @@ Expected USB cases:
 - GPIO UART: a known Pi UART device such as `/dev/serial0` or a `ttyAMA*` node if exposed and wired to the flight controller TELEM port
 - UDP MAVLink: a confirmed listener / sender on a known MAVLink UDP port such as `14550`, `14551`, `14540`, or `5760`
 
-A bare Pi UART node is not enough by itself. For example, `/dev/ttyAMA10` can exist without proving CubePilot / Pixhawk telemetry; it only becomes usable after TELEM wiring is confirmed and the correct baud/profile is known.
+A bare Pi UART node is not enough by itself. On the verified Pi 5,
+`/dev/ttyAMA10` is the dedicated debug UART and is not the boat's FCU endpoint;
+the FCU is wired to UART0 on `/dev/ttyAMA0:57600`.
 
 HDMI is not a MAVLink telemetry path. A cable connected to a Pi HDMI port can mirror video / desktop output to external hardware, but it will never create `/dev/ttyACM*`, `/dev/ttyUSB*`, or `/dev/serial/by-id/*` for MAVROS.
 

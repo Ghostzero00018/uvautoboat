@@ -349,3 +349,42 @@ MAVROS, camera, FCU, Herelink, VRX, servo bridge or hardware path was launched
 for this implementation. FCU telemetry arrival on workstation UDP `14555`,
 disarmed `800`/`800` decode, dashboard/bridge correlation and VRX movement all
 remain **NOT RUN**.
+
+## Pi 5 UART endpoint identity - read-only confirmation
+
+Earlier same-day terminal output recorded `enable_uart=1`,
+`dtoverlay=disable-bt` and `dtoverlay=uart0` in
+`/boot/firmware/config.txt`. A separate `cat /boot/firmware/cmdline.txt` output
+contained `console=tty1` and no serial-console assignment. Later read-only
+inspection distinguished the two PL011 device nodes exposed by the live Pi 5.
+
+The first pin-controller view was the BCM2712 controller
+`107d504100.pinctrl-pinctrl-bcm2712`. Its unclaimed `gpio14` and `gpio15` entries
+do not describe the Pi 5 40-pin header. The header is controlled by RP1, whose
+live `1f000d0000.gpio-pinctrl-rp1/pinmux-pins` entries reported:
+
+```text
+pin 14 (gpio14): 1f00030000.serial (GPIO UNCLAIMED) function uart0 group gpio14
+pin 15 (gpio15): 1f00030000.serial (GPIO UNCLAIMED) function uart0 group gpio15
+```
+
+The corresponding sysfs links tied `/dev/ttyAMA0` to that same RP1 UART0
+controller and `/dev/ttyAMA10` to the separate BCM2712 debug UART:
+
+```text
+/dev/ttyAMA0  -> .../1f00030000.serial/1f00030000.serial:0/1f00030000.serial:0.0
+/dev/ttyAMA10 -> .../107d001000.serial/107d001000.serial:0/107d001000.serial:0.0
+```
+
+A bounded MAVProxy comparison at `57600` baud then supplied the runtime
+discriminator. `/dev/ttyAMA10` detected no vehicle. `/dev/ttyAMA0` detected
+vehicle `1:1`, reported it online and observed mode `HOLD`. Two subsequent
+`mode manual` entries returned `Unknown command 'mode manual'` because the
+diagnostic deliberately used an empty default-module set; no accepted mode
+change was observed.
+
+Verdict: the current boat's FCU endpoint is `/dev/ttyAMA0:57600` on RP1 UART0.
+`/dev/ttyAMA10` is the Pi 5 debug UART and must not replace it. This confirms
+endpoint identity and FCU-to-Pi heartbeat reception only. It does not prove
+Pi-to-FCU request/response traffic, does not close the direct-link defect and
+does not change any Stage 1, Stage 2 or Stage 3 `NOT RUN` boundary.
