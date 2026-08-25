@@ -69,6 +69,25 @@ This confirms endpoint identity and FCU-to-Pi heartbeat reception only. It does
 not prove Pi-to-FCU request/response traffic or close the open direct-link
 defect.
 
+### 25/08/2026 command/ACK supersession
+
+Later same-day evidence narrows that limitation. In a direct Pi MAVProxy session
+on `/dev/ttyAMA0:57600`, loading the `arm` module made `arm throttle` available;
+the FCU returned `MAV_CMD_COMPONENT_ARM_DISARM: ACCEPTED`. The capture began
+already armed, so this proves command acceptance rather than a fresh arm
+transition. A subsequent disarm received the same accepted acknowledgement and
+ended with `AP: Throttle disarmed` plus `DISARMED`.
+
+The direct endpoint is therefore proven bidirectional for this state-changing
+command/ACK exchange. It is not proven generally healthy: no parameter response,
+live mapping artifact, RC override, non-neutral `SERVO_OUTPUT_RAW` change or
+workstation-originated command is present in the capture. The professor's fix
+for the workstation command blocker is recorded as an operator report pending a
+correlated workstation-to-Pi-to-FCU trace. Use the official
+[MAVProxy cheatsheet](https://ardupilot.org/mavproxy/docs/getting_started/cheatsheet.html)
+syntax `arm throttle`, `disarm` and `rc N PWM`; `rc` overrides an RC input and
+does not directly assign `SERVO<n>_RAW`.
+
 ---
 
 ## 2. Prerequisites

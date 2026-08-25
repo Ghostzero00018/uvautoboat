@@ -61,6 +61,12 @@
 > motor / outbound-write track is parked pending that link and a separate bench-safe
 > arming decision.
 >
+> **25/08/2026 current-state correction:** the preceding 24/07 receive-only
+> description is historical. A Pi-local arm/disarm command and returned FCU ACK
+> are now proven on `/dev/ttyAMA0:57600`; the parameter-specific failure and the
+> unproven workstation-originated route remain separate limitations. See the
+> 25/08 supersession below.
+>
 > **01/08/2026 simulator-bridge update:** `tools/servo_command_bridge.py` provides a
 > simulator-only `SERVO_OUTPUT_RAW`-to-VRX thrust path. A local harness held non-zero thrust
 > through teardown and observed a new trailing zero on both outputs for SIGINT, SIGTERM, and
@@ -320,6 +326,24 @@
 > power isolated, propellers removed and the hull restrained. T0b remains open;
 > T1 candidate `0` is closed as a fix for this failure; neither T2 tier earned
 > acceptance; and no physical approval carries forward.
+>
+> **25/08/2026 supersession - direct arm/disarm command and ACK proven.** A
+> later operator-supplied Pi capture opened `/dev/ttyAMA0:57600`, loaded
+> MAVProxy's `arm` module and received
+> `MAV_CMD_COMPONENT_ARM_DISARM: ACCEPTED` for `arm throttle`. The capture began
+> already `ARMED`, so it does not prove a fresh arm transition. A subsequent
+> disarm received an accepted acknowledgement and ended explicitly
+> `DISARMED`. This supersedes the generic receive-only description for this
+> direct serial endpoint: Pi-to-FCU command delivery and the returned FCU ACK
+> are proven for arm/disarm. It does not close the parameter-specific T0b
+> failure, because no parameter response or required mapping artifact was
+> captured. No `rc` override, non-neutral `SERVO_OUTPUT_RAW`, repository bridge,
+> dashboard or VRX run occurred. The operator reports that the professor fixed
+> the workstation-command blocker, but the supplied capture is Pi-local; the
+> full workstation-to-Pi-to-FCU route still needs one correlated trace. T2a and
+> T2b remain unearned. The 26/08/2026 target is a fresh-day, full-scale
+> FCU-to-VRX integration with all real electronics active and propellers
+> removed; today's approval and physical state do not carry forward.
 >
 > Diaries for 24/07/2026 and 07/08/2026 record the former policy and are left
 > unchanged as history.
@@ -749,6 +773,7 @@ The whole repo is expected to run on the Pi 5. Long-term (Phase 5.2+): QGC and t
 | 19/08/2026 | The T0b capture path now retains every attempt as isolated YAML plus a sibling diagnostic log, including diagnostics from the copy writer; the complete physical-helper suite passed `24` cases after the manifest was regenerated, and the helper, tests and manifest landed together at `dc90a8f`. A new five-file Pi deployment at `/home/imt-aqua-drone/uvautoboat_real_fcu_bundle_20260819` passed exact inventory, pinned-manifest, `4/4` member verification and the non-actuating helper `check`. Block E was approved but deferred without execution while its safety review remained pending. No controller or Herelink power-up, serial open, parameter write, bridge start or real thrust occurred under Block E. T0b remains open; the unused approval expires at day close, and T1 plus both T2 tiers remain closed. | 🟡 |
 | 20/08/2026 | The T0b probe graph was restricted to localhost, its `24`-case suite passed, revision `f8e440a` was deployed once to the new dated root, and the non-actuating Pi `check` passed. A powered receive-only UART diagnostic then captured `23868` bytes and `30` valid disarmed heartbeats from `1.1` with zero transmitted bytes. The final full probe reached `connected: true`, `armed: false`, `mode: MANUAL` and a passing hardware-safety check, but all automatic parameter-list attempts and the explicit forced pull received no parameter response. A final duplex isolation captured `18` more valid disarmed heartbeats and transmitted exactly one PING plus one `SYSID_THISMAV` read request, audited as `53` bytes with no state-changing message; neither received a response. Cleanup and copy-back passed, no `41`-parameter or mapping/rail artifact was created, and no parameter write, bridge, mode, arm, RC, motor or thrust action occurred. T0b remains open; T1's separately approved `BRD_SER1_RTSCTS` change is the next decision point, while both T2 tiers remain closed. The operator confirmed the FCU/control electronics and Herelink off with propulsion isolated, propellers removed and the hull restrained, closing the physical day. | 🟡 |
 | 21/08/2026 | Revision `2600ea4` was deployed to a new certified Pi root for the separately approved `BRD_SER1_RTSCTS` experiment and guarded run attempts. Candidate `0` did not restore parameter request/response in the connected/disarmed run. The armed-start run stopped at the disarmed-state gate before the parameter pull, bridge or command publisher started. Both helpers cleaned up with `status=1 cleanup_rc=0`; the evidence archive copied back and verified; and no RC override, motor command or thrust command was issued by the repository pipeline. `BRD_SER1_RTSCTS=Auto (2)` was restored and read back. The operator then confirmed the Pi, FCU/autopilot, control electronics and Herelink off with propulsion isolated, propellers removed and the hull restrained. T0b remains open, neither T2 tier earned acceptance and no physical approval carries forward. | 🟡 |
+| 25/08/2026 | A Pi-local MAVProxy session on `/dev/ttyAMA0:57600` received accepted FCU acknowledgements for arm and disarm, ending explicitly `DISARMED`. The arm request was issued after the capture had already shown `ARMED`, so it proves command acceptance but not a fresh arm transition. This is the first direct state-changing command/ACK proof on the endpoint and supersedes the generic receive-only label. No parameter response, workstation-originated request, RC override, non-neutral servo output, repository bridge, dashboard or VRX runtime was captured. The professor's workstation-path fix is operator-reported pending a correlated trace. The next-day target is full-scale FCU-to-VRX integration with real electronics active and propellers removed, behind fresh 26/08 certification and approvals. | 🟡 |
 | TBD | Complete real-hardware deployment acceptance (Pi 5 target; bounded read-only Hailo/MAVROS dashboard proven 17/07/2026; lifecycle, endurance, low-level CCU, and write-path gates remain open) | 🔜 |
 | TBD | Coverage Planning | ⏸️ |
 

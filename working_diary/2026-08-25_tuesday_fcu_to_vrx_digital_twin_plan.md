@@ -388,3 +388,95 @@ Verdict: the current boat's FCU endpoint is `/dev/ttyAMA0:57600` on RP1 UART0.
 endpoint identity and FCU-to-Pi heartbeat reception only. It does not prove
 Pi-to-FCU request/response traffic, does not close the direct-link defect and
 does not change any Stage 1, Stage 2 or Stage 3 `NOT RUN` boundary.
+
+## Late-day direct command/ACK result and 26/08 handoff
+
+### What the supplied capture proves
+
+A later operator-supplied Pi terminal capture supersedes only the generic
+"receive-only serial link" description above. MAVProxy `1.8.74` again opened
+`/dev/ttyAMA0:57600`, detected vehicle `1:1` and received live FCU telemetry.
+The session deliberately began with an empty default-module set, so its first
+`arm throttle` returned `Unknown command`. After `module load arm`, a subsequent
+`arm throttle` received:
+
+```text
+Got COMMAND_ACK: COMPONENT_ARM_DISARM: ACCEPTED
+```
+
+The capture began already `ARMED`, so that acknowledgement proves FCU command
+acceptance but not a newly observed disarmed-to-armed transition. It also
+reported `Arming checks disabled`. A later `disarm throttle` received the same
+accepted command acknowledgement followed by:
+
+```text
+AP: Throttle disarmed
+DISARMED
+```
+
+The accepted disarm and explicit final state prove a Pi-to-FCU state-changing
+command/ACK exchange over the direct serial endpoint. The official
+[MAVProxy cheatsheet](https://ardupilot.org/mavproxy/docs/getting_started/cheatsheet.html)
+documents `arm throttle` for vehicle arming and plain `disarm` for disarming;
+the captured `disarm throttle` spelling is retained as evidence, not promoted
+as the runbook form.
+
+The same capture contains one `status` snapshot with `RC_CHANNELS` count `16`
+and `SERVO_OUTPUT_RAW` at `SERVO1 800` / `SERVO3 800`. No `rc N PWM` command was
+executed, no non-neutral servo-output change was captured and no VRX, dashboard,
+camera, MAVROS or repository bridge participated. The cheatsheet defines
+`rc N PWM` as an RC-input override, with `PWM=0` releasing that override; it is
+not a direct write to `SERVO<n>_RAW`.
+
+The operator separately reports that the professor fixed the blocker affecting
+workstation-to-FCU commands. The supplied terminal capture is from the Pi prompt,
+not the workstation, so that end-to-end workstation claim remains
+operator-reported. A future evidence run must correlate a workstation-issued
+request with Pi forwarding and the FCU acknowledgement before calling the full
+workstation-to-FCU route proven.
+
+Consequently, the direct serial endpoint is no longer described as generically
+receive-only: arm/disarm command and acknowledgement traffic is proven in both
+directions. The earlier parameter-specific failure remains open because this
+capture contains no successful parameter response and no required T0b mapping
+artifact. T0b is therefore not closed, T2a is not earned, no RC override or
+motor/servo-output test is accepted, and FCU-to-VRX Stages 1-3 remain `NOT RUN`.
+
+### Operator direction for Wednesday 26/08/2026
+
+The next-day target is a full-scale digital-twin integration with the real Pi,
+FCU, camera and Herelink active, the dashboard live, and FCU servo output driving
+the VRX boat through the outbound-only UDP fanout and isolated bridge. The
+operator states that the physical propellers will be removed. This is a plan,
+not advance approval: no 25/08/2026 authorization or physical attestation carries
+into 26/08/2026.
+
+The 26/08 session must begin with fresh repository certification and a fresh
+literal physical-state declaration. Because the FCU reports disabled arming
+checks, propeller removal, hull restraint, control neutrality, hardware-safety
+state and the exact propulsion-power state must be established explicitly; none
+may be inferred from today's capture. The current Hailo/MAVROS helper still
+aborts unconditionally on `FCU_ARMED`, so armed observation requires a separately
+reviewed lifecycle change and approval before runtime. Do not bypass that guard
+with an ad-hoc MAVProxy topology.
+
+The intended evidence chain for the full-scale run is:
+
+```text
+Herelink input -> FCU mixer -> SERVO_OUTPUT_RAW
+               -> Pi MAVROS -> dashboard /mavros/rc/out
+               -> outbound-only Pi fanout -> workstation UDP 14555
+               -> isolated servo-command bridge -> VRX thrust and motion
+```
+
+Live `RCMAP_*`, RC rails, `SERVO*_FUNCTION` and servo rails must be read in that
+session before any bounded input; no SITL or earlier real-boat profile may be
+silently reused. Acceptance requires correlated timestamps and values at each
+arrow, neutral return, accepted disarm, restored hardware safety and ordered
+teardown. No part of this 26/08 runtime was executed on 25/08/2026.
+
+Late operator direction fixes the 26/08 scope: pursue the complete outbound
+fanout chain through the bounded armed observation rather than stopping after
+the disarmed subset. The separate workstation-to-Pi-to-FCU command trace is not
+on that chain and is deferred as an independent diagnostic; it must not be
+folded into or used to complicate the FCU-to-VRX run.
