@@ -1,6 +1,6 @@
 # Tuesday 25/08/2026 - FCU-to-VRX digital twin proposal
 
-**PRE-DIARY - NOT STARTED.**
+**LIVE DIARY - PARTIAL DIRECT-LINK DIAGNOSTIC RECORDED; STAGES 1-3 NOT RUN.**
 
 This is the sole 25/08/2026 continuation. It was scaffolded for 24/08/2026,
 which went to the internship report; it was moved unchanged in substance. It
@@ -211,3 +211,141 @@ before Stage 1**; re-read the 27/07/2026 record instead.
 
 The separate display-window sizing item concerns the Pi overlay window. Those
 experiments were retired on 23/07/2026 and nothing in this file reopens them.
+
+## Live disarmed MAVProxy relay diagnostic - partial only
+
+This was a separately approved real-hardware diagnostic on 25/08/2026, not an
+execution of any FCU-to-VRX stage. Before the link was opened, the operator
+attested that the FCU was online and disarmed, hardware safety was engaged, the
+Herelink was read-only, controls were neutral, propulsion was isolated,
+propellers were removed, the hull was restrained and the Pi stack was down.
+
+### Runtime topology and preflight
+
+- Pi: `imt-aqua-drone@imtaquadrone-desktop`, address `10.120.2.249`, MAVProxy
+  `1.8.74` at `/home/imt-aqua-drone/.local/bin/mavproxy.py`.
+- Workstation: `vrx-Precision-7560`, address `10.120.2.243` on `wlp147s0`,
+  MAVProxy `1.8.74` at
+  `/home/ghostzero/venv-ardupilot/bin/mavproxy.py`.
+- The Pi used `/dev/ttyAMA0` at `57600` baud and exposed
+  `udpin:10.120.2.249:14555`; the workstation connected with
+  `udpout:10.120.2.249:14555`.
+- Both MAVProxy processes used `--streamrate=-1`, `--heartbeat-rate=0`, an empty
+  `--default-modules` list, `--nowait` and `--no-state`. This kept the probe to
+  the core link module, disabled automatic stream requests and heartbeat
+  transmission, and retained no telemetry log.
+- On the Pi, both MAVProxy startup-script locations were absent, serial read and
+  write access passed, no conflicting repository/MAVProxy/MAVROS process was
+  reported, `/dev/ttyAMA0` was unowned (`fuser` return code `1`) and UDP `14555`
+  was free.
+- On the workstation, the route resolved as
+  `10.120.2.249 dev wlp147s0 src 10.120.2.243`; no MAVProxy, MAVROS, SITL,
+  servo bridge or QGroundControl process was reported.
+
+The Pi MAVProxy detected vehicle `1:1`, reported mode `MANUAL`, and confirmed
+the runtime forwarding setting as `mavfwd True`. The workstation initially
+reported `link 1 down`, as the Pi `udpin` endpoint had not yet learned its peer.
+After a workstation `ping`, it detected vehicle `1:1`, reported `link 1 OK`,
+received mode `MANUAL` and continued receiving FCU telemetry.
+
+### Instrumented `TIMESYNC` result
+
+With `watch TIMESYNC` enabled on the Pi, the trace included a forwarded
+workstation request such as:
+
+```text
+> TIMESYNC {tc1 : 0, ts1 : 1787647252855465216}
+```
+
+It also included FCU-originated messages with unrelated, much smaller `ts1`
+values, including:
+
+```text
+< TIMESYNC {tc1 : 0, ts1 : 450888869001}
+< TIMESYNC {tc1 : 0, ts1 : 460909010001}
+< TIMESYNC {tc1 : 0, ts1 : 470928863001}
+< TIMESYNC {tc1 : 0, ts1 : 480949440001}
+```
+
+No inbound `TIMESYNC` echoed a workstation request timestamp and the
+workstation printed no `ping response`. The evidence therefore proves the
+workstation-to-Pi UDP path, FCU telemetry from Pi to workstation, and the Pi
+MAVProxy software forwarding the request toward the serial master. It does
+**not** prove that the request reached or was accepted by the FCU. The direct
+Pi-to-FCU request/response defect remains open.
+
+Two `arm throttle` lines were entered at the Pi prompt during the observation.
+Both returned `Unknown command 'arm throttle'`; the deliberately empty default
+module set had not loaded the `arm` command. No accepted arming action was
+observed, and those rejected lines provide no arming evidence.
+
+### Verdict and retained boundaries
+
+- Result: **PARTIAL - NO CORRELATED FCU RESPONSE**.
+- Stage 1 remains simulator-only and **NOT RUN**.
+- Stage 2 remains **NOT RUN**: QGroundControl forwarding to `14555` and bridge
+  arrival were not exercised.
+- Stage 3 remains **NOT RUN**: VRX and the servo bridge were not started, and no
+  accepted arming or deliberate stick input occurred.
+- The earlier full parameter pull was not repeated. No parameter read, parameter
+  write, mode change, accepted arming command, RC override or motor/servo command
+  was issued by this diagnostic.
+- At the last returned terminal evidence, both foreground MAVProxy processes
+  were still live. Ordered shutdown and post-stop checks are **NOT YET
+  CONFIRMED**; do not cite teardown as complete without later terminal output.
+
+## Receive-only Pi fanout preparation - authorized, not run
+
+The operator subsequently confirmed that the earlier diagnostic processes were
+gone: no MAVProxy, SITL, Gazebo or servo-bridge process remained, UDP `14555`
+was free and no process was addressing the Pi at `10.120.2.249`. This confirms
+the post-stop machine state. It does not reconstruct an ordered shutdown trace
+that was not captured during the diagnostic.
+
+The direction then changed. The persistent workstation-to-FCU command relay was
+abandoned in favour of the already established Pi Hailo/MAVROS source stack:
+Herelink remains the only intended physical controller, the dashboard continues
+to read camera and FCU telemetry, and a separately isolated workstation bridge
+may later use a received servo-output copy to move only the VRX boat.
+
+The simulator-only Stage 1 block is explicitly **PARKED** and remains **NOT
+RUN**. The only authorized implementation in this session was the first,
+disarmed preparation: a default-off, outbound-only raw MAVLink fanout with the
+existing armed-state guard untouched. Armed observation remains a separate
+physical T2b decision and was neither implemented nor run.
+
+### Prepared implementation
+
+- `LIVE_FCU_TO_VRX_FANOUT` defaults to `0`; the established Pi source path is
+  unchanged when the selector is not enabled.
+- When explicitly set to `1`, MAVProxy still has only loopback outputs:
+  `127.0.0.1:14550` for MAVROS and `127.0.0.1:14556` for a run-owned raw MAVLink
+  forwarder. MAVProxy is never given a direct workstation `--out` endpoint.
+- The forwarder binds only `127.0.0.1:14556`, sends received datagrams through
+  a separate socket to the current `WORKSTATION_IP` on UDP `14555`, and never
+  reads from that outbound socket. Workstation return traffic therefore has no
+  application path back to the loopback MAVProxy output. The forwarder does not
+  filter MAVLink message classes; the enforced properties are outbound-only
+  direction and local-only ingress.
+- The workstation supervisor carries the selector into its printed Pi command,
+  checks loopback port `14556` when enabled and keeps the default printed value
+  at `0`.
+- The safety monitor still unconditionally calls
+  `abort_seen("FCU_ARMED", "/mavros/state")`. Connected/disarmed checks,
+  command-topic sentinels and final disarmed verification were not relaxed.
+
+Static verification passed on 25/08/2026:
+
+- `bash -n` passed for both modified helpers and their focused shell tests;
+- `tools/test_pi_live_hailo_mavlink_dashboard.sh` passed, including one
+  loopback datagram forwarded and zero returned datagrams reflected;
+- `tools/test_live_dashboard_preflight.sh` passed `13` cases;
+- `tools/test_real_fcu_digital_twin_helpers.sh` passed `24` cases, retaining
+  separation from the command-capable physical bundle;
+- `git diff --check` passed.
+
+This is source and synthetic loopback evidence only. No Pi helper, MAVProxy,
+MAVROS, camera, FCU, Herelink, VRX, servo bridge or hardware path was launched
+for this implementation. FCU telemetry arrival on workstation UDP `14555`,
+disarmed `800`/`800` decode, dashboard/bridge correlation and VRX movement all
+remain **NOT RUN**.

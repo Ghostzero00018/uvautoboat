@@ -354,9 +354,12 @@ path and is not a member of the four-file Pi deployment bundle.
 
 Deploy the Pi helper, command bridge and both physical MAVROS allowlists with
 their `tools/` and `config/` layout intact. The exact four-file set is pinned by
-`config/real_fcu_digital_twin_bundle.sha256`. Do not replace or extend
-`tools/pi_live_hailo_mavlink_dashboard.sh`; it remains the established
-view-only Hailo/telemetry path.
+`config/real_fcu_digital_twin_bundle.sha256`. Do not add the physical command
+bridge or any FCU write path to `tools/pi_live_hailo_mavlink_dashboard.sh`; it
+remains the established view-only Hailo/telemetry path. Its default-off
+FCU-to-VRX option copies received raw MAVLink datagrams outward only and does
+not filter message classes. Its enforced boundary is outbound-only direction
+with local-only ingress; it does not change the FCU command boundary.
 
 No physical mode is currently accepted for routine use. T0a passed on
 17/08/2026. T0b is the first open physical gate: the 18/08/2026 probe did not

@@ -59,6 +59,34 @@ require_literal "die 'WORKSTATION_IP is required for a live run'"
 require_literal 'EXPECTED_SSID="${LIVE_SSID:-IMT Nord Europe 5G}"'
 ! grep -Eq 'WORKSTATION_IP:-[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' "$HELPER" \
   || fail 'helper publishes a workstation IPv4 default'
+require_literal 'FCU_TO_VRX_FANOUT="${LIVE_FCU_TO_VRX_FANOUT:-0}"'
+require_literal 'FCU_TO_VRX_INGRESS_PORT=14556'
+require_literal 'FCU_TO_VRX_DESTINATION_PORT=14555'
+require_literal 'validate_fcu_to_vrx_fanout() {'
+require_literal 'configure_mavproxy_outputs() {'
+require_literal 'FCU_TO_VRX_FANOUT=DISABLED'
+require_literal 'FCU_TO_VRX_FANOUT=ENABLED direction=outbound-only'
+require_literal 'class OutboundOnlyMavlinkFanout:'
+require_literal 'self.ingress.bind(("127.0.0.1", self.ingress_port))'
+require_literal 'self.outbound.sendto(payload, self.destination)'
+require_literal 'self.abort_seen("FCU_ARMED", "/mavros/state")'
+reject_literal 'class OutboundOnlyTelemetryFanout:'
+
+MAVPROXY_OUT_LINES="$(grep -n -- '--out=' "$HELPER" || true)"
+[ -n "$MAVPROXY_OUT_LINES" ] || fail 'helper has no MAVProxy output endpoint'
+while IFS= read -r output_line; do
+  [[ "$output_line" == *127.0.0.1* ]] \
+    || fail "non-loopback MAVProxy output endpoint: $output_line"
+done <<<"$MAVPROXY_OUT_LINES"
+
+FANOUT_VALIDATION_LINE="$(grep -nFx 'validate_fcu_to_vrx_fanout' "$HELPER" | cut -d: -f1)"
+SUPERVISOR_TRAP_LINE="$(grep -nF 'trap cleanup EXIT' "$HELPER" | cut -d: -f1)"
+[[ "$FANOUT_VALIDATION_LINE" =~ ^[1-9][0-9]*$ ]] \
+  || fail 'fanout validation call was not found exactly once'
+[[ "$SUPERVISOR_TRAP_LINE" =~ ^[1-9][0-9]*$ ]] \
+  || fail 'supervisor cleanup trap was not found exactly once'
+[ "$FANOUT_VALIDATION_LINE" -lt "$SUPERVISOR_TRAP_LINE" ] \
+  || fail 'fanout selector is not validated before cleanup is installed'
 
 require_literal "SUPERVISOR_LOG=''"
 require_literal "SUPERVISOR_PHASE='initialization'"
@@ -80,6 +108,150 @@ require_literal 'wait_for_mavproxy_heartbeat() {'
 require_literal 'MAVPROXY_LINK_DOWN=OBSERVED'
 require_literal 'MAVPROXY_LINK_RECOVERY=PASS'
 reject_literal 'MAVProxy reported link down before heartbeat'
+
+FANOUT_VALIDATE_FUNCTION="$(extract_function validate_fcu_to_vrx_fanout)"
+FANOUT_CONFIG_FUNCTION="$(extract_function configure_mavproxy_outputs)"
+[ -n "$FANOUT_VALIDATE_FUNCTION" ] \
+  || fail 'fanout validation function was not extractable'
+[ -n "$FANOUT_CONFIG_FUNCTION" ] \
+  || fail 'MAVProxy output configuration function was not extractable'
+
+set +e
+INVALID_FANOUT_OUTPUT="$(bash -c '
+  eval "$1"
+  die() { printf "DIE: %s\n" "$*" >&2; exit 17; }
+  FCU_TO_VRX_FANOUT=2
+  WS_IP=10.120.2.243
+  validate_fcu_to_vrx_fanout
+' _ "$FANOUT_VALIDATE_FUNCTION" 2>&1)"
+INVALID_FANOUT_RC=$?
+set -e
+[ "$INVALID_FANOUT_RC" -eq 17 ] \
+  || fail "invalid fanout flag exited $INVALID_FANOUT_RC instead of 17"
+grep -Fq 'LIVE_FCU_TO_VRX_FANOUT must be 0 or 1' \
+  <<<"$INVALID_FANOUT_OUTPUT" \
+  || fail 'invalid fanout flag did not explain the accepted values'
+
+DISABLED_FANOUT_OUTPUT="$(bash -c '
+  eval "$1"
+  log() { printf "%s\n" "$*"; }
+  FCU_TO_VRX_FANOUT=0
+  FCU_TO_VRX_INGRESS_PORT=14556
+  WS_IP=10.120.2.243
+  configure_mavproxy_outputs
+  printf "MAVPROXY_OUTPUT_ARGS=%s\n" "${MAVPROXY_OUTPUT_ARGS[*]}"
+' _ "$FANOUT_CONFIG_FUNCTION")"
+grep -Fxq 'FCU_TO_VRX_FANOUT=DISABLED' <<<"$DISABLED_FANOUT_OUTPUT" \
+  || fail 'default-off fanout did not emit its disabled marker'
+grep -Fxq 'MAVPROXY_OUTPUT_ARGS=--out=udpout:127.0.0.1:14550' \
+  <<<"$DISABLED_FANOUT_OUTPUT" \
+  || fail 'disabled fanout changed the established local MAVProxy output'
+
+ENABLED_FANOUT_OUTPUT="$(bash -c '
+  eval "$1"
+  log() { printf "%s\n" "$*"; }
+  FCU_TO_VRX_FANOUT=1
+  FCU_TO_VRX_INGRESS_PORT=14556
+  FCU_TO_VRX_DESTINATION_PORT=14555
+  WS_IP=10.120.2.243
+  configure_mavproxy_outputs
+  printf "MAVPROXY_OUTPUT_ARGS=%s\n" "${MAVPROXY_OUTPUT_ARGS[*]}"
+' _ "$FANOUT_CONFIG_FUNCTION")"
+grep -Fxq \
+  'FCU_TO_VRX_FANOUT=ENABLED direction=outbound-only destination=10.120.2.243:14555 ingress=127.0.0.1:14556' \
+  <<<"$ENABLED_FANOUT_OUTPUT" \
+  || fail 'enabled fanout did not emit its bounded topology marker'
+grep -Fxq \
+  'MAVPROXY_OUTPUT_ARGS=--out=udpout:127.0.0.1:14550 --out=udpout:127.0.0.1:14556' \
+  <<<"$ENABLED_FANOUT_OUTPUT" \
+  || fail 'enabled fanout did not keep both MAVProxy outputs loopback-only'
+FANOUT_SOURCE="$(awk '
+  /^[[:space:]]*cat >"\$TELEMETRY_FANOUT" <<'"'"'PYTHON_TELEMETRY_FANOUT'"'"'$/ {
+    capture = 1
+    next
+  }
+  capture && /^PYTHON_TELEMETRY_FANOUT$/ { exit }
+  capture { print }
+' "$HELPER")"
+[ -n "$FANOUT_SOURCE" ] || fail 'telemetry fanout source was not extractable'
+python3 - "$FANOUT_SOURCE" <<'PYTHON_FANOUT_TEST'
+import os
+import select
+import socket
+import subprocess
+import sys
+import tempfile
+
+source = sys.argv[1]
+
+
+def free_udp_port():
+    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    probe.bind(("127.0.0.1", 0))
+    port = probe.getsockname()[1]
+    probe.close()
+    return port
+
+
+ingress_port = free_udp_port()
+destination = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+destination.bind(("127.0.0.1", 0))
+destination.settimeout(2.0)
+destination_port = destination.getsockname()[1]
+origin = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+origin.bind(("127.0.0.1", 0))
+origin.settimeout(0.3)
+
+with tempfile.TemporaryDirectory() as directory:
+    path = os.path.join(directory, "telemetry_fanout.py")
+    with open(path, "w", encoding="utf-8") as stream:
+        stream.write(source)
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "FCU_TO_VRX_WORKSTATION_IP": "127.0.0.1",
+            "FCU_TO_VRX_INGRESS_PORT": str(ingress_port),
+            "FCU_TO_VRX_DESTINATION_PORT": str(destination_port),
+        }
+    )
+    process = subprocess.Popen(
+        [sys.executable, path],
+        env=environment,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        readable, _, _ = select.select([process.stdout], [], [], 2.0)
+        assert readable, "fanout did not emit its readiness marker"
+        ready = process.stdout.readline().strip()
+        expected_ready = (
+            f"TELEMETRY_FANOUT_READY listen=127.0.0.1:{ingress_port} "
+            f"destination=127.0.0.1:{destination_port} direction=outbound-only"
+        )
+        assert ready == expected_ready, (ready, expected_ready)
+
+        payload = b"servo-output-raw"
+        origin.sendto(payload, ("127.0.0.1", ingress_port))
+        forwarded, outbound_peer = destination.recvfrom(4096)
+        assert forwarded == payload
+
+        destination.sendto(b"workstation-command", outbound_peer)
+        try:
+            reflected, _ = origin.recvfrom(4096)
+        except socket.timeout:
+            reflected = None
+        assert reflected is None, reflected
+        assert process.poll() is None, "fanout exited after return traffic"
+    finally:
+        process.terminate()
+        stdout, stderr = process.communicate(timeout=2.0)
+        assert process.returncode == 0, (process.returncode, stdout, stderr)
+
+origin.close()
+destination.close()
+print("TELEMETRY_FANOUT_TEST=PASS forward=1 return=0")
+PYTHON_FANOUT_TEST
 
 APPEND_LOG_FUNCTION="$(extract_function append_supervisor_log)"
 LOG_FUNCTION="$(extract_function log)"

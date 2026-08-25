@@ -4,8 +4,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PREFLIGHT="${1:-$SCRIPT_DIR/live_dashboard_preflight.sh}"
+HELPER="$SCRIPT_DIR/pi_live_hailo_mavlink_dashboard.sh"
 WIKI="$SCRIPT_DIR/../wiki/Live_Hailo_MAVLink_Dashboard_Testing.md"
-EXPECTED_PREFLIGHT_SHA256='d101ec5840c1358e0475fff33989af9b3f3431231859c0e0e1c2ffa0fafab82a'
+EXPECTED_PREFLIGHT_SHA256='927ffc6a2cfafda77a5131597ce63bc29c5f712aa9ffa234f120e87fd025f3e4'
 CASE_COUNT=0
 
 fail() {
@@ -50,17 +51,21 @@ grep -Fq 'the rosbridge `user interrupted with ctrl-c (SIGINT)` line as a discri
 ! grep -Fq 'The signature of a reversed order, observed 07/08/2026' "$WIKI" \
   || fail 'live-dashboard runbook retains the falsified 07/08 stop-order claim'
 
-require_literal "EXPECTED_HELPER_SHA256='a72cd04d37984d692cdfecb73456d55bc7bb6f0b4fd69d69ba79447fc3594a97'"
+require_literal "EXPECTED_HELPER_SHA256='8260cfb1702c918a96c4df35696673ed8860d2a8ec3c81a35b955a2282d28eea'"
 require_literal 'EXPECTED_SSID="${LIVE_SSID:-IoT IMT Nord Europe}"'
 require_literal 'PI_WINDOW_MODE="${LIVE_PI_WINDOW_MODE:-fullscreen}"'
+require_literal 'FCU_TO_VRX_FANOUT="${LIVE_FCU_TO_VRX_FANOUT:-0}"'
+require_literal 'FCU_TO_VRX_INGRESS_PORT=14556'
 require_literal 'validate_pi_window_selectors() {'
 require_literal 'LIVE_PI_WINDOW_MODE must be resizable or fullscreen'
+require_literal 'LIVE_FCU_TO_VRX_FANOUT must be 0 or 1'
 require_literal 'reject_conflicting_processes workstation "${WORKSTATION_CONFLICT_PATTERNS[@]}"'
 require_literal 'reject_conflicting_processes Pi "${PI_CONFLICT_PATTERNS[@]}"'
 require_literal 'pgrep -af -- "$pattern"'
 require_literal 'case "$pattern" in'
 require_literal 'process pattern contains alternation'
-require_literal 'LIVE_SSID="$EXPECTED_SSID" "$HELPER" --preflight-only'
+require_literal 'LIVE_FCU_TO_VRX_FANOUT="$FCU_TO_VRX_FANOUT" \'
+require_literal '"$HELPER" --preflight-only'
 require_literal 'W1_PREFLIGHT=PASS'
 require_literal 'P1_PREFLIGHT=PASS'
 require_literal 'set +u'
@@ -93,6 +98,13 @@ require_literal '2:pi) run_pi_preflight "$2" ;;'
 require_literal '1:sitl) run_sitl_digital_twin_entry ;;'
 require_literal 'if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then'
 
+PREFLIGHT_FANOUT_PORT="$(awk -F= '$1 == "FCU_TO_VRX_INGRESS_PORT" { print $2 }' "$PREFLIGHT")"
+HELPER_FANOUT_PORT="$(awk -F= '$1 == "FCU_TO_VRX_INGRESS_PORT" { print $2 }' "$HELPER")"
+[[ "$PREFLIGHT_FANOUT_PORT" =~ ^[1-9][0-9]*$ ]] \
+  || fail 'preflight fanout ingress port is invalid'
+[ "$PREFLIGHT_FANOUT_PORT" = "$HELPER_FANOUT_PORT" ] \
+  || fail "fanout ingress port drift: preflight=$PREFLIGHT_FANOUT_PORT helper=$HELPER_FANOUT_PORT"
+
 PI_COMMAND_OUTPUT="$(bash -c '
   source "$1"
   WORKSTATION_IP=10.100.253.235
@@ -101,11 +113,13 @@ PI_COMMAND_OUTPUT="$(bash -c '
 PI_COMMAND_BLOCK="$(sed -n '/^($/,/^)$/{p}' <<<"$PI_COMMAND_OUTPUT")"
 [ -n "$PI_COMMAND_BLOCK" ] || fail 'printed Pi command block missing'
 bash -n <<<"$PI_COMMAND_BLOCK"
-grep -Fq 'a72cd04d37984d692cdfecb73456d55bc7bb6f0b4fd69d69ba79447fc3594a97' \
+grep -Fq '8260cfb1702c918a96c4df35696673ed8860d2a8ec3c81a35b955a2282d28eea' \
   <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not verify the helper pin'
 grep -Fq 'LIVE_HOLD_AFTER_WINDOW=1' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not enable the monitored hold'
+grep -Fq 'LIVE_FCU_TO_VRX_FANOUT=0' <<<"$PI_COMMAND_BLOCK" \
+  || fail 'printed Pi command does not keep FCU-to-VRX fanout disabled by default'
 grep -Fq 'HAILO_LOCAL_DISPLAY=1' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not enable the Pi desktop Hailo window'
 grep -Fq 'HAILO_LOCAL_WINDOW_MODE=fullscreen' <<<"$PI_COMMAND_BLOCK" \
@@ -125,7 +139,7 @@ grep -Fq 'HAILO_DEMO_ROOT="$PI_RUNTIME_ROOT"' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not preserve the Hailo runtime root'
 grep -Fq '"$PI_HELPER"' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not execute the absolute Desktop helper'
-grep -Fq "\\n' 'a72cd04d37984d692cdfecb73456d55bc7bb6f0b4fd69d69ba79447fc3594a97' \"\$PI_HELPER\" | sha256sum -c -" \
+grep -Fq "\\n' '8260cfb1702c918a96c4df35696673ed8860d2a8ec3c81a35b955a2282d28eea' \"\$PI_HELPER\" | sha256sum -c -" \
   <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi checksum format contains a literal line break'
 ! grep -Fq './pi_live_hailo_mavlink_dashboard.sh' <<<"$PI_COMMAND_BLOCK" \
@@ -138,6 +152,7 @@ grep -Fq 'LIVE_SSID=IoT\ IMT\ Nord\ Europe' <<<"$PI_COMMAND_BLOCK" \
 PI_COMMAND_OVERRIDE_OUTPUT="$(
   LIVE_SSID="Test Lab's IoT" \
   LIVE_PI_WINDOW_MODE=resizable \
+  LIVE_FCU_TO_VRX_FANOUT=1 \
   bash -c '
   source "$1"
   WORKSTATION_IP=192.0.2.10
@@ -150,6 +165,8 @@ grep -Fq "LIVE_SSID=$EXPECTED_OVERRIDE_QUOTED" <<<"$PI_COMMAND_OVERRIDE_BLOCK" \
   || fail 'printed Pi command did not shell-quote the SSID override'
 grep -Fq 'HAILO_LOCAL_WINDOW_MODE=resizable' <<<"$PI_COMMAND_OVERRIDE_BLOCK" \
   || fail 'printed Pi command did not carry the resizable selector'
+grep -Fq 'LIVE_FCU_TO_VRX_FANOUT=1' <<<"$PI_COMMAND_OVERRIDE_BLOCK" \
+  || fail 'printed Pi command did not carry the enabled fanout selector'
 for invalid_case in 'stretch:LIVE_PI_WINDOW_MODE'; do
   IFS=: read -r bad_mode expected_error <<<"$invalid_case"
   set +e
@@ -185,6 +202,22 @@ for invalid_case in 'stretch:LIVE_PI_WINDOW_MODE'; do
   ! grep -Fq 'required command missing' <<<"$INVALID_RUNTIME_SELECTOR_OUTPUT" \
     || fail "runtime preflight used dependencies before selector validation"
 done
+
+set +e
+INVALID_FANOUT_OUTPUT="$(
+  LIVE_FCU_TO_VRX_FANOUT=2 \
+  bash -c '
+    source "$1"
+    WORKSTATION_IP=192.0.2.12
+    print_pi_command
+  ' _ "$PREFLIGHT" 2>&1
+)"
+INVALID_FANOUT_RC=$?
+set -e
+[ "$INVALID_FANOUT_RC" -ne 0 ] \
+  || fail 'printed Pi command accepted invalid FCU-to-VRX fanout selector'
+grep -Fq 'LIVE_FCU_TO_VRX_FANOUT must be 0 or 1' <<<"$INVALID_FANOUT_OUTPUT" \
+  || fail 'invalid fanout selector did not identify its variable'
 
 set +e
 PRE_READY_INTERRUPT_OUTPUT="$(bash -c '

@@ -14,6 +14,9 @@ HEARTBEAT_TIMEOUT="${MAVLINK_HEARTBEAT_TIMEOUT:-30}"
 WS_IP="${WORKSTATION_IP:-}"
 EXPECTED_SSID="${LIVE_SSID:-IMT Nord Europe 5G}"
 DOMAIN="${LIVE_ROS_DOMAIN_ID:-12}"
+FCU_TO_VRX_FANOUT="${LIVE_FCU_TO_VRX_FANOUT:-0}"
+FCU_TO_VRX_INGRESS_PORT=14556
+FCU_TO_VRX_DESTINATION_PORT=14555
 RUN_SECONDS="${LIVE_RUN_SECONDS:-120}"
 HOLD_AFTER_WINDOW="${LIVE_HOLD_AFTER_WINDOW:-0}"
 FINAL_VERIFY_SECONDS="${LIVE_FINAL_VERIFY_SECONDS:-180}"
@@ -42,6 +45,8 @@ SAFETY_MONITOR="$RUN_DIR/dashboard_safety_monitor.py"
 THERMAL_WATCHDOG="$RUN_DIR/thermal_watchdog.sh"
 MAVROS_SOURCE_PROBE="$RUN_DIR/mavros_source_probe.py"
 MAVPROXY_LOG="$RUN_DIR/mavproxy.log"
+TELEMETRY_FANOUT="$RUN_DIR/telemetry_fanout.py"
+TELEMETRY_FANOUT_LOG="$RUN_DIR/telemetry_fanout.log"
 MAVROS_LOG="$RUN_DIR/mavros.log"
 MAVROS_PLUGINLISTS="$RUN_DIR/mavros_dashboard_plugins.yaml"
 SAFETY_LOG="$RUN_DIR/safety_monitor.log"
@@ -62,6 +67,7 @@ declare -a CHILD_NAMES=()
 declare -a CHILD_PIDS=()
 declare -a CHILD_PGIDS=()
 declare -a HAILO_DISPLAY_ARGS=()
+declare -a MAVPROXY_OUTPUT_ARGS=()
 declare -a COMMAND_TOPICS=(
   '/planning/mission_command'
   '/planning/set_config'
@@ -77,6 +83,7 @@ HOLD_ACTIVE=0
 LIFECYCLE_TRANSITION_ACTIVE=0
 STOP_REQUESTED=0
 SOURCE_FAILURE_PENDING=0
+TELEMETRY_FANOUT_STARTED=0
 SUPERVISOR_LOG=''
 SUPERVISOR_PHASE='initialization'
 SUPERVISOR_STOP_TRIGGER='none'
@@ -164,6 +171,32 @@ configure_hailo_display() {
     || die 'HAILO_LOCAL_DISPLAY=1 requires a Pi desktop or Remmina terminal with DISPLAY set'
   HAILO_DISPLAY_ARGS=()
   log "HAILO_LOCAL_DISPLAY=ENABLED display=$DISPLAY window_mode=$LOCAL_WINDOW_MODE"
+}
+
+validate_fcu_to_vrx_fanout() {
+  [[ "$FCU_TO_VRX_FANOUT" =~ ^[01]$ ]] \
+    || die 'LIVE_FCU_TO_VRX_FANOUT must be 0 or 1'
+  [ "$FCU_TO_VRX_FANOUT" -eq 0 ] && return 0
+  [ -n "$WS_IP" ] \
+    || die 'WORKSTATION_IP is required when LIVE_FCU_TO_VRX_FANOUT=1'
+  command -v python3 >/dev/null 2>&1 \
+    || die 'python3 is required when LIVE_FCU_TO_VRX_FANOUT=1'
+  python3 -c '
+import socket
+import sys
+socket.inet_pton(socket.AF_INET, sys.argv[1])
+' "$WS_IP" 2>/dev/null \
+    || die 'WORKSTATION_IP must be an IPv4 address when fanout is enabled'
+}
+
+configure_mavproxy_outputs() {
+  MAVPROXY_OUTPUT_ARGS=(--out=udpout:127.0.0.1:14550)
+  if [ "$FCU_TO_VRX_FANOUT" -eq 0 ]; then
+    log 'FCU_TO_VRX_FANOUT=DISABLED'
+    return 0
+  fi
+  MAVPROXY_OUTPUT_ARGS+=(--out="udpout:127.0.0.1:$FCU_TO_VRX_INGRESS_PORT")
+  log "FCU_TO_VRX_FANOUT=ENABLED direction=outbound-only destination=$WS_IP:$FCU_TO_VRX_DESTINATION_PORT ingress=127.0.0.1:$FCU_TO_VRX_INGRESS_PORT"
 }
 
 require_command() {
@@ -287,6 +320,10 @@ cleanup() {
   [ -z "$(fuser /dev/hailo0 2>/dev/null || true)" ] || cleanup_rc=1
   PORT_STATE="$(ss -H -ulnp 'sport = :14550' 2>/dev/null)"
   [ -z "$PORT_STATE" ] || cleanup_rc=1
+  if [ "$FCU_TO_VRX_FANOUT" -eq 1 ]; then
+    PORT_STATE="$(ss -H -ulnp "sport = :$FCU_TO_VRX_INGRESS_PORT" 2>/dev/null)"
+    [ -z "$PORT_STATE" ] || cleanup_rc=1
+  fi
 
   finalize_supervisor "$rc" "$cleanup_rc"
   final_rc=$?
@@ -358,10 +395,43 @@ start_child() {
   log "started $name pid=$pid pgid=$pgid log=$logfile"
 }
 
+start_fcu_to_vrx_fanout() {
+  local ready=0
+  [ "$FCU_TO_VRX_FANOUT" -eq 1 ] || return 0
+  start_child telemetry-fanout "$TELEMETRY_FANOUT_LOG" \
+    env \
+      "FCU_TO_VRX_WORKSTATION_IP=$WS_IP" \
+      "FCU_TO_VRX_INGRESS_PORT=$FCU_TO_VRX_INGRESS_PORT" \
+      "FCU_TO_VRX_DESTINATION_PORT=$FCU_TO_VRX_DESTINATION_PORT" \
+      python3 "$TELEMETRY_FANOUT"
+  TELEMETRY_FANOUT_PID="$LAST_CHILD_PID"
+  TELEMETRY_FANOUT_PGID="$LAST_CHILD_PGID"
+  TELEMETRY_FANOUT_STARTED=1
+  for attempt in $(seq 1 10); do
+    require_group_alive telemetry-fanout \
+      "$TELEMETRY_FANOUT_PID" "$TELEMETRY_FANOUT_PGID" "$TELEMETRY_FANOUT_LOG"
+    if grep -Fxq \
+        "TELEMETRY_FANOUT_READY listen=127.0.0.1:$FCU_TO_VRX_INGRESS_PORT destination=$WS_IP:$FCU_TO_VRX_DESTINATION_PORT direction=outbound-only" \
+        "$TELEMETRY_FANOUT_LOG"; then
+      ready=1
+      break
+    fi
+    sleep 0.1
+  done
+  [ "$ready" -eq 1 ] \
+    || die "telemetry fanout did not become ready; see $TELEMETRY_FANOUT_LOG"
+}
+
 require_group_alive() {
   local name="$1" pid="$2" pgid="$3" logfile="$4"
   kill -0 "$pid" 2>/dev/null || die "$name leader exited; see $logfile"
   group_alive "$pgid" || die "$name exited; see $logfile"
+}
+
+require_fcu_to_vrx_fanout_alive() {
+  [ "$TELEMETRY_FANOUT_STARTED" -eq 1 ] || return 0
+  require_group_alive telemetry-fanout \
+    "$TELEMETRY_FANOUT_PID" "$TELEMETRY_FANOUT_PGID" "$TELEMETRY_FANOUT_LOG"
 }
 
 wait_for_mavproxy_heartbeat() {
@@ -1008,6 +1078,7 @@ check_command_sentinel() {
   }
   require_group_alive safety-monitor \
     "$SAFETY_MONITOR_PID" "$SAFETY_MONITOR_PGID" "$SAFETY_LOG"
+  require_fcu_to_vrx_fanout_alive
 }
 
 check_thermal_watchdog() {
@@ -1341,6 +1412,7 @@ esac
 [[ "$HEARTBEAT_TIMEOUT" =~ ^[1-9][0-9]*$ ]] \
   || die 'MAVLINK_HEARTBEAT_TIMEOUT must be a positive integer'
 [[ "$DOMAIN" =~ ^[0-9]+$ ]] || die 'LIVE_ROS_DOMAIN_ID must be a non-negative integer'
+validate_fcu_to_vrx_fanout
 
 if [ "$PREFLIGHT_ONLY" -eq 0 ]; then
   mkdir -p "$RUN_DIR"
@@ -1400,6 +1472,64 @@ fi
 
 [ -n "$WS_IP" ] || die 'WORKSTATION_IP is required for a live run'
 
+if [ "$FCU_TO_VRX_FANOUT" -eq 1 ]; then
+  cat >"$TELEMETRY_FANOUT" <<'PYTHON_TELEMETRY_FANOUT'
+import os
+import signal
+import socket
+
+
+class OutboundOnlyMavlinkFanout:
+    def __init__(self):
+        self.running = True
+        self.ingress_port = int(os.environ["FCU_TO_VRX_INGRESS_PORT"])
+        self.destination_port = int(os.environ["FCU_TO_VRX_DESTINATION_PORT"])
+        destination_ip = os.environ["FCU_TO_VRX_WORKSTATION_IP"]
+        socket.inet_pton(socket.AF_INET, destination_ip)
+        if not 1 <= self.ingress_port <= 65535:
+            raise ValueError("invalid ingress port")
+        if not 1 <= self.destination_port <= 65535:
+            raise ValueError("invalid destination port")
+        self.destination = (destination_ip, self.destination_port)
+        self.ingress = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.ingress.bind(("127.0.0.1", self.ingress_port))
+        self.ingress.settimeout(0.5)
+        self.outbound = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+    def stop(self, _signum=None, _frame=None):
+        self.running = False
+
+    def run(self):
+        print(
+            "TELEMETRY_FANOUT_READY "
+            f"listen=127.0.0.1:{self.ingress_port} "
+            f"destination={self.destination[0]}:{self.destination[1]} "
+            "direction=outbound-only",
+            flush=True,
+        )
+        while self.running:
+            try:
+                payload, _source = self.ingress.recvfrom(65535)
+            except socket.timeout:
+                continue
+            self.outbound.sendto(payload, self.destination)
+
+    def close(self):
+        self.ingress.close()
+        self.outbound.close()
+
+
+fanout = OutboundOnlyMavlinkFanout()
+signal.signal(signal.SIGINT, fanout.stop)
+signal.signal(signal.SIGTERM, fanout.stop)
+try:
+    fanout.run()
+finally:
+    fanout.close()
+PYTHON_TELEMETRY_FANOUT
+  chmod 0700 "$TELEMETRY_FANOUT"
+fi
+
 cat >"$MAVROS_PLUGINLISTS" <<'YAML'
 /**:
   ros__parameters:
@@ -1427,6 +1557,12 @@ printf '%s  %s\n' "$EXPECTED_HEF_SHA" "$HEF" | sha256sum -c -
 [ -z "$(fuser /dev/hailo0 2>/dev/null || true)" ] || die '/dev/hailo0 already in use'
 PORT_STATE="$(ss -H -ulnp 'sport = :14550' 2>&1)" || die 'cannot inspect UDP port 14550'
 [ -z "$PORT_STATE" ] || die "UDP port 14550 unavailable: $PORT_STATE"
+if [ "$FCU_TO_VRX_FANOUT" -eq 1 ]; then
+  PORT_STATE="$(ss -H -ulnp "sport = :$FCU_TO_VRX_INGRESS_PORT" 2>&1)" \
+    || die "cannot inspect UDP port $FCU_TO_VRX_INGRESS_PORT"
+  [ -z "$PORT_STATE" ] \
+    || die "UDP port $FCU_TO_VRX_INGRESS_PORT unavailable: $PORT_STATE"
+fi
 
 ROUTE="$(ip -4 route get "$WS_IP")" || die "no route to workstation $WS_IP"
 [ -n "$ROUTE" ] || die "empty route to workstation $WS_IP"
@@ -1893,6 +2029,7 @@ chmod 0700 "$HAILO_WRAPPER" "$SAFETY_MONITOR" "$THERMAL_WATCHDOG"
 log "PRECHECK=PASS model=$MODEL domain=$DOMAIN route=$ROUTE"
 log "stream=${STREAM_HEIGHT}p@${STREAM_FPS}fps safety-biased-temporary-diagnostic duration=${RUN_SECONDS}s hold_after_window=${HOLD_AFTER_WINDOW} abort=$((ABORT_MC / 1000))C"
 log 'boundary: Pi owns serial/MAVROS/Hailo DDS sources; workstation owns ports 8002/8080/9090 and browser'
+configure_mavproxy_outputs
 
 OLDPWD="$PWD"
 set_supervisor_phase service-start
@@ -1920,18 +2057,20 @@ done
 reject_unexpected_command_subscribers
 log 'COMMAND_SENTINEL=PASS topics=5; safety monitor publishers=0'
 
+start_fcu_to_vrx_fanout
+
 cd "$RUN_DIR"
 start_child mavproxy "$MAVPROXY_LOG" \
   env HOME="$MAVPROXY_HOME" PYTHONUSERBASE="$MAVPROXY_USER_BASE" PYTHONUNBUFFERED=1 \
   "$MAVPROXY" --non-interactive --no-state \
   --master="$SERIAL" --baudrate "$BAUD" \
-  --out=udpout:127.0.0.1:14550
+  "${MAVPROXY_OUTPUT_ARGS[@]}"
 MAVPROXY_PID="$LAST_CHILD_PID"
 MAVPROXY_PGID="$LAST_CHILD_PGID"
 cd "$OLDPWD"
 
 wait_for_mavproxy_heartbeat
-log 'MAVPROXY_HEARTBEAT=PASS; UART owner and loopback fanout active'
+log 'MAVPROXY_HEARTBEAT=PASS; UART owner and loopback outputs active'
 
 MAVROS_SHARE="$(ros2 pkg prefix --share mavros)" \
   || die 'cannot resolve the MAVROS share directory'

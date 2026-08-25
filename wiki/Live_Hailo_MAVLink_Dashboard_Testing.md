@@ -36,11 +36,11 @@ artifacts are retained below only for traceability.
 | --- | --- |
 | Helper source | `tools/pi_live_hailo_mavlink_dashboard.sh` |
 | Helper Pi destination | resolved Pi Desktop: `$(xdg-user-dir DESKTOP)/pi_live_hailo_mavlink_dashboard.sh` |
-| Helper size | `73,862` bytes |
-| Helper SHA-256 | `a72cd04d37984d692cdfecb73456d55bc7bb6f0b4fd69d69ba79447fc3594a97` |
+| Helper size | `78,758` bytes |
+| Helper SHA-256 | `8260cfb1702c918a96c4df35696673ed8860d2a8ec3c81a35b955a2282d28eea` |
 | Workstation supervisor | `tools/live_dashboard_preflight.sh` |
-| Supervisor size | `29,058` bytes |
-| Supervisor SHA-256 | `d101ec5840c1358e0475fff33989af9b3f3431231859c0e0e1c2ffa0fafab82a` |
+| Supervisor size | `29,701` bytes |
+| Supervisor SHA-256 | `927ffc6a2cfafda77a5131597ce63bc29c5f712aa9ffa234f120e87fd025f3e4` |
 
 Historical 23/07/2026 session artifacts:
 
@@ -66,6 +66,17 @@ The tracked supervisor defaults to `HAILO_LOCAL_DISPLAY=1` and
 `HAILO_LOCAL_WINDOW_MODE=fullscreen`, and keeps the normal display path.
 Window outcome tracking remains through `HAILO_LOCAL_WINDOW` markers:
 `READY`, `FALLBACK_HEADLESS`, `FALLBACK_RESIZABLE`, and `EVIDENCE_UNAVAILABLE`.
+
+`LIVE_FCU_TO_VRX_FANOUT` defaults to `0`. Setting it to `1` is a separately
+gated, disarmed-only preparation that adds an outbound-only raw MAVLink copy for
+the current `WORKSTATION_IP` on UDP `14555`. MAVProxy still sends only to loopback:
+`14550` for MAVROS and `14556` for a run-owned forwarder. That forwarder reads
+only the loopback ingress and sends each datagram through a separate socket; it
+never reads workstation return traffic and therefore creates no return route to
+MAVProxy or the FCU. It does not filter MAVLink message classes: the enforced
+properties are outbound-only direction and local-only ingress. The existing
+`FCU_ARMED` abort remains unconditional.
+This option and the FCU-to-VRX acceptance run are **NOT RUN**.
 
 ### Batched MAVROS source view
 
@@ -236,7 +247,7 @@ D="$(xdg-user-dir DESKTOP)" || exit 1
 D="$(readlink -f -- "$D")" || exit 1
 [ -n "$D" ] && [ -d "$D" ] && [ "$D" != "$H" ] || exit 1
 printf '%s  %s\n' \
-  'a72cd04d37984d692cdfecb73456d55bc7bb6f0b4fd69d69ba79447fc3594a97' \
+  '8260cfb1702c918a96c4df35696673ed8860d2a8ec3c81a35b955a2282d28eea' \
   "$D/pi_live_hailo_mavlink_dashboard.sh" | sha256sum -c -
 ```
 
@@ -246,7 +257,7 @@ only the helper from a workstation terminal:
 ```bash
 cd ~/seal_ws/src/uvautoboat
 printf '%s  %s\n' \
-  'a72cd04d37984d692cdfecb73456d55bc7bb6f0b4fd69d69ba79447fc3594a97' \
+  '8260cfb1702c918a96c4df35696673ed8860d2a8ec3c81a35b955a2282d28eea' \
   tools/pi_live_hailo_mavlink_dashboard.sh | sha256sum -c -
 
 read -r -p 'Current Pi SSH endpoint (user@host): ' PI_SSH
@@ -263,7 +274,7 @@ scp tools/pi_live_hailo_mavlink_dashboard.sh \
 ssh "$PI_SSH" "
   cd '$PI_DESKTOP' &&
   printf '%s  %s\n' \
-    'a72cd04d37984d692cdfecb73456d55bc7bb6f0b4fd69d69ba79447fc3594a97' \
+    '8260cfb1702c918a96c4df35696673ed8860d2a8ec3c81a35b955a2282d28eea' \
     pi_live_hailo_mavlink_dashboard.sh |
   sha256sum -c -
 "
@@ -297,7 +308,9 @@ WORKSTATION_SERVICES=UP ... logs=/home/.../live_dashboard_workstation_...
 
 Leave W1 running. It prints one compound Pi command carrying the current workstation
 IPv4 address, selected SSID, helper checksum, `LIVE_HOLD_AFTER_WINDOW=1`, and
-`HAILO_LOCAL_DISPLAY=1`. With no selector override, it carries
+`HAILO_LOCAL_DISPLAY=1`. It also carries `LIVE_FCU_TO_VRX_FANOUT=0` unless the
+separately gated fanout preparation was selected before starting W1. With no display
+selector override, it carries
 `HAILO_LOCAL_WINDOW_MODE=fullscreen`. The printed command resolves,
 checksums, and executes the helper from the Pi Desktop while retaining
 `~/hailo_coco_overlay_2026-07-10` as the runtime root.

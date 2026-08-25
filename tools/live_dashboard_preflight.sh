@@ -6,9 +6,11 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 DASHBOARD_DIR="$REPO_ROOT/web_dashboard/autoboat"
 HELPER="$SCRIPT_DIR/pi_live_hailo_mavlink_dashboard.sh"
-EXPECTED_HELPER_SHA256='a72cd04d37984d692cdfecb73456d55bc7bb6f0b4fd69d69ba79447fc3594a97'
+EXPECTED_HELPER_SHA256='8260cfb1702c918a96c4df35696673ed8860d2a8ec3c81a35b955a2282d28eea'
 EXPECTED_SSID="${LIVE_SSID:-IoT IMT Nord Europe}"
 PI_WINDOW_MODE="${LIVE_PI_WINDOW_MODE:-fullscreen}"
+FCU_TO_VRX_FANOUT="${LIVE_FCU_TO_VRX_FANOUT:-0}"
+FCU_TO_VRX_INGRESS_PORT=14556
 ROS_SETUP='/opt/ros/jazzy/setup.bash'
 LIVE_DOMAIN_ID='12'
 WORKSTATION_LOG_ROOT="${LIVE_DASHBOARD_LOG_ROOT:-$HOME/Desktop}"
@@ -146,6 +148,8 @@ fail() {
 validate_pi_window_selectors() {
   [[ "$PI_WINDOW_MODE" =~ ^(resizable|fullscreen)$ ]] \
     || fail 'LIVE_PI_WINDOW_MODE must be resizable or fullscreen'
+  [[ "$FCU_TO_VRX_FANOUT" =~ ^[01]$ ]] \
+    || fail 'LIVE_FCU_TO_VRX_FANOUT must be 0 or 1'
 }
 
 usage() {
@@ -514,8 +518,8 @@ print_pi_command() {
   printf '  chmod +x "$PI_HELPER"\n'
   printf "  printf 'PI_TEMP_START_MC='\n"
   printf '  cat /sys/class/thermal/thermal_zone0/temp\n'
-  printf '  exec env WORKSTATION_IP=%q LIVE_SSID=%q LIVE_HOLD_AFTER_WINDOW=1 HAILO_DEMO_ROOT="$PI_RUNTIME_ROOT" HAILO_LOCAL_DISPLAY=1 HAILO_LOCAL_WINDOW_MODE=%q "$PI_HELPER"\n' \
-    "$WORKSTATION_IP" "$EXPECTED_SSID" "$PI_WINDOW_MODE"
+  printf '  exec env WORKSTATION_IP=%q LIVE_SSID=%q LIVE_HOLD_AFTER_WINDOW=1 LIVE_FCU_TO_VRX_FANOUT=%q HAILO_DEMO_ROOT="$PI_RUNTIME_ROOT" HAILO_LOCAL_DISPLAY=1 HAILO_LOCAL_WINDOW_MODE=%q "$PI_HELPER"\n' \
+    "$WORKSTATION_IP" "$EXPECTED_SSID" "$FCU_TO_VRX_FANOUT" "$PI_WINDOW_MODE"
   printf ')\n\n'
 }
 
@@ -858,6 +862,7 @@ run_workstation_supervisor() {
 run_pi_preflight() {
   local workstation_ip="$1" device port_state route pi_interface ssid
 
+  validate_pi_window_selectors
   [[ "$workstation_ip" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] \
     || fail "invalid workstation IPv4 address: $workstation_ip"
 
@@ -880,6 +885,12 @@ run_pi_preflight() {
   port_state="$(ss -H -ulnp 'sport = :14550' 2>&1)" \
     || fail 'cannot inspect Pi UDP port 14550'
   [ -z "$port_state" ] || fail "Pi UDP port 14550 already in use: $port_state"
+  if [ "$FCU_TO_VRX_FANOUT" -eq 1 ]; then
+    port_state="$(ss -H -ulnp "sport = :$FCU_TO_VRX_INGRESS_PORT" 2>&1)" \
+      || fail "cannot inspect Pi UDP port $FCU_TO_VRX_INGRESS_PORT"
+    [ -z "$port_state" ] \
+      || fail "Pi UDP port $FCU_TO_VRX_INGRESS_PORT already in use: $port_state"
+  fi
 
   route="$(ip -4 route get "$workstation_ip")" \
     || fail "no route to workstation: $workstation_ip"
@@ -894,7 +905,10 @@ run_pi_preflight() {
     || fail "cannot read SSID on Pi interface: $pi_interface"
   [ "$ssid" = "$EXPECTED_SSID" ] || fail "unexpected Pi SSID: ${ssid:-NONE}"
 
-  LIVE_SSID="$EXPECTED_SSID" "$HELPER" --preflight-only
+  WORKSTATION_IP="$workstation_ip" \
+    LIVE_SSID="$EXPECTED_SSID" \
+    LIVE_FCU_TO_VRX_FANOUT="$FCU_TO_VRX_FANOUT" \
+    "$HELPER" --preflight-only
   log "P1_PREFLIGHT=PASS workstation=$workstation_ip dev=$pi_interface ssid=$ssid"
 }
 
