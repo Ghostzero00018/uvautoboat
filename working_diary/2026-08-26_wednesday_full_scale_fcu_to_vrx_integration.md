@@ -49,6 +49,26 @@ run.
 - The fanout has never been run live. `TELEMETRY_FANOUT_TEST=PASS forward=1
   return=0` is a loopback subprocess test, not a live-link result.
 
+## Three independent preconditions, none of them closed
+
+1. **Full simulator acceptance has not been re-run on the current source.** The
+   passing functional path, teardown, verdict and independent adjudication of
+   17/08/2026 were earned against an earlier revision. Commit `2600ea4` later
+   changed `tools/real_fcu_rc_command_bridge.py` and the dashboard data path.
+   The 21/08/2026 work produced component and synthetic suite results only and
+   recorded the complete supervisor rerun as NOT RUN; no later revision has
+   received that complete run.
+2. **T0b is not closed.** No successful parameter response and no mapping
+   artifact exist for this controller.
+3. **The default-off armed-observation selector is not implemented or tested.**
+
+`Board.md` gates T2a on the first two preconditions and on a separate T2a
+approval. The selector is an additional implementation prerequisite introduced
+by this plan. Combining the T0b and T2a approval envelope would not itself close
+T0b or exempt either the current-source simulator acceptance or selector
+evidence. Each precondition remains open until its own evidence closes it,
+unless an explicit operator supersession changes that requirement.
+
 ## Required armed-observation contract before runtime
 
 `tools/pi_live_hailo_mavlink_dashboard.sh` aborts unconditionally when
