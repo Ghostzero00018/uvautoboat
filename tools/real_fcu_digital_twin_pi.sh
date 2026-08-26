@@ -15,7 +15,8 @@ RFCU_PI_APM_CONFIG='/opt/ros/jazzy/share/mavros/launch/apm_config.yaml'
 RFCU_PI_SERIAL='/dev/ttyAMA0'
 RFCU_PI_BAUD='57600'
 RFCU_PI_LOG_ROOT="${REAL_FCU_PI_LOG_ROOT:-$HOME/Desktop}"
-RFCU_PI_READY_TIMEOUT_SECONDS="${REAL_FCU_READY_TIMEOUT_SECONDS:-180}"
+RFCU_PI_READY_TIMEOUT_SECONDS="${REAL_FCU_READY_TIMEOUT_SECONDS:-600}"
+RFCU_PI_STATUS_TIMEOUT_SECONDS="${REAL_FCU_STATUS_TIMEOUT_SECONDS:-15}"
 RFCU_PI_POLL_SECONDS="${REAL_FCU_POLL_SECONDS:-1}"
 RFCU_PI_DOMAIN_ID='43'
 RFCU_PI_DISCOVERY_RANGE='SUBNET'
@@ -238,6 +239,8 @@ rfcu_pi_static_preflight() {
   rfcu_pi_validate_positive_integer REAL_FCU_BAUD "$RFCU_PI_BAUD"
   rfcu_pi_validate_positive_integer REAL_FCU_READY_TIMEOUT_SECONDS \
     "$RFCU_PI_READY_TIMEOUT_SECONDS"
+  rfcu_pi_validate_positive_integer REAL_FCU_STATUS_TIMEOUT_SECONDS \
+    "$RFCU_PI_STATUS_TIMEOUT_SECONDS"
   rfcu_pi_validate_positive_integer REAL_FCU_POLL_SECONDS "$RFCU_PI_POLL_SECONDS"
   for command in awk bash cp date fuser grep mkdir pgrep ps python3 sed setsid \
     sha256sum sleep tail tee timeout tr; do
@@ -723,14 +726,20 @@ rfcu_pi_wait_bridge_guard() {
 
 rfcu_pi_status_json_once() {
   local raw
-  raw="$(ros2 topic echo --once --timeout 5 --full-length --field data --no-lost-messages \
+  raw="$(ros2 topic echo --once --timeout "$RFCU_PI_STATUS_TIMEOUT_SECONDS" \
+    --full-length --field data --no-lost-messages \
     --qos-profile best_available /command_ingress/status std_msgs/msg/String \
     2>>"$RFCU_PI_RUN_DIR/logs/status_probe.log")" || return 1
   printf '%s\n' "$raw" | /usr/bin/python3 -c '
 import json
 import sys
 raw = sys.stdin.read().strip()
-value = json.loads(raw)
+if not raw:
+    raise SystemExit(1)
+try:
+    value = json.loads(raw)
+except json.JSONDecodeError:
+    raise SystemExit(1) from None
 if not isinstance(value, dict):
     raise SystemExit(1)
 print(raw)

@@ -712,6 +712,20 @@ grep -Fq -- '--no-lost-messages' <<<"$PI_STATUS_FUNCTION" \
   || fail_test 'Pi status probe permits ROS echo loss diagnostics on stdout'
 pass_case
 
+TIMEOUT_DEFAULTS="$(bash -c '
+  source "$1"
+  printf "%s %s\n" "$RFCU_WS_READY_TIMEOUT_SECONDS" "$RFCU_WS_STATUS_TIMEOUT_SECONDS"
+' _ "$WORKSTATION_HELPER")"
+[ "$TIMEOUT_DEFAULTS" = '600 15' ] \
+  || fail_test "workstation timeout defaults are not readiness=600 status=15: $TIMEOUT_DEFAULTS"
+PI_TIMEOUT_DEFAULTS="$(bash -c '
+  source "$1"
+  printf "%s %s\n" "$RFCU_PI_READY_TIMEOUT_SECONDS" "$RFCU_PI_STATUS_TIMEOUT_SECONDS"
+' _ "$PI_HELPER")"
+[ "$PI_TIMEOUT_DEFAULTS" = '600 15' ] \
+  || fail_test "Pi timeout defaults are not readiness=600 status=15: $PI_TIMEOUT_DEFAULTS"
+pass_case
+
 STATUS_JSON='{"state":"READY_DISARMED","ready":true,"connected":true,"armed":false}'
 for status_case in \
   "$WORKSTATION_HELPER|rfcu_ws_status_json_once|RFCU_WS_RUN_DIR" \
@@ -730,6 +744,27 @@ for status_case in \
   ' _ "$status_helper" "$STATUS_TEST_DIR" "$status_run_dir" \
     "$STATUS_JSON" "$status_function" \
     || fail_test "$status_function rejected raw JSON from ros2 topic echo --field data"
+done
+pass_case
+
+for status_case in \
+  "$WORKSTATION_HELPER|rfcu_ws_status_json_once|RFCU_WS_RUN_DIR" \
+  "$PI_HELPER|rfcu_pi_status_json_once|RFCU_PI_RUN_DIR"; do
+  IFS='|' read -r status_helper status_function status_run_dir <<<"$status_case"
+  STATUS_TEST_DIR="$TEST_TMP/empty-${status_function}"
+  mkdir -p "$STATUS_TEST_DIR/logs"
+  EMPTY_STDERR="$STATUS_TEST_DIR/stderr.log"
+  if bash -c '
+    source "$1"
+    printf -v "$3" "%s" "$2"
+    ros2() { return 0; }
+    "$4"
+  ' _ "$status_helper" "$STATUS_TEST_DIR" "$status_run_dir" \
+      "$status_function" 2>"$EMPTY_STDERR"; then
+    fail_test "$status_function accepted an empty ROS subscription result"
+  fi
+  [ ! -s "$EMPTY_STDERR" ] \
+    || fail_test "$status_function prints a traceback for an empty ROS subscription result"
 done
 pass_case
 

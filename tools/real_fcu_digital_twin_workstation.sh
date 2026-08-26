@@ -10,7 +10,8 @@ RFCU_WS_DASHBOARD_DIR="$RFCU_WS_REPO_ROOT/web_dashboard/autoboat"
 RFCU_WS_BUNDLE_MANIFEST="$RFCU_WS_REPO_ROOT/config/real_fcu_digital_twin_bundle.sha256"
 RFCU_WS_ROS_SETUP="${RFCU_WS_ROS_SETUP:-/opt/ros/jazzy/setup.bash}"
 RFCU_WS_LOG_ROOT="${REAL_FCU_WORKSTATION_LOG_ROOT:-$HOME/Desktop}"
-RFCU_WS_READY_TIMEOUT_SECONDS="${REAL_FCU_READY_TIMEOUT_SECONDS:-180}"
+RFCU_WS_READY_TIMEOUT_SECONDS="${REAL_FCU_READY_TIMEOUT_SECONDS:-600}"
+RFCU_WS_STATUS_TIMEOUT_SECONDS="${REAL_FCU_STATUS_TIMEOUT_SECONDS:-15}"
 RFCU_WS_POLL_SECONDS="${REAL_FCU_POLL_SECONDS:-1}"
 RFCU_WS_DOMAIN_ID='43'
 RFCU_WS_DISCOVERY_RANGE='SUBNET'
@@ -174,6 +175,8 @@ rfcu_ws_static_preflight() {
   local command
   rfcu_ws_validate_positive_integer REAL_FCU_READY_TIMEOUT_SECONDS \
     "$RFCU_WS_READY_TIMEOUT_SECONDS"
+  rfcu_ws_validate_positive_integer REAL_FCU_STATUS_TIMEOUT_SECONDS \
+    "$RFCU_WS_STATUS_TIMEOUT_SECONDS"
   rfcu_ws_validate_positive_integer REAL_FCU_POLL_SECONDS "$RFCU_WS_POLL_SECONDS"
   for command in awk bash curl date git grep mkdir pgrep ps python3 sed setsid \
     sha256sum sleep ss timeout tr; do
@@ -345,14 +348,20 @@ rfcu_ws_wait_local_services() {
 
 rfcu_ws_status_json_once() {
   local raw
-  raw="$(ros2 topic echo --once --timeout 5 --full-length --field data --no-lost-messages \
+  raw="$(ros2 topic echo --once --timeout "$RFCU_WS_STATUS_TIMEOUT_SECONDS" \
+    --full-length --field data --no-lost-messages \
     --qos-profile best_available /command_ingress/status std_msgs/msg/String \
     2>>"$RFCU_WS_RUN_DIR/logs/status_probe.log")" || return 1
   printf '%s\n' "$raw" | /usr/bin/python3 -c '
 import json
 import sys
 raw = sys.stdin.read().strip()
-value = json.loads(raw)
+if not raw:
+    raise SystemExit(1)
+try:
+    value = json.loads(raw)
+except json.JSONDecodeError:
+    raise SystemExit(1) from None
 if not isinstance(value, dict):
     raise SystemExit(1)
 print(raw)
