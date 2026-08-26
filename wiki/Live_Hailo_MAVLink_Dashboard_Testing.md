@@ -113,6 +113,31 @@ the emitter. The emitter deliberately does not inherit the helper's direct-call
 default. A baseline that does not become ready is a stop condition, not
 authority to weaken these gates.
 
+### Current-source dashboard and SITL acceptance - 26/08/2026
+
+Commit `3ca6b0b` passed the complete supervised simulator/dashboard path in
+`/home/ghostzero/Desktop/sitl_digital_twin_20260826_174115`. The run resolved
+steering/throttle as `RC1`/`RC3` and left/right output as `SERVO1`/`SERVO3`,
+captured the disarmed baseline, browser disabled frame, arm, positive demand,
+neutral release, negative demand, E-Stop and disarm, then reported
+`SITL_VERDICT=PASS` with `cleanup_rc=0` and `finalize_rc=0`.
+
+Independent adjudication checked ten evidence hashes and the stop order
+`dashboard,rosbridge,bridge,evidence,mavros,mavproxy,sitl`. It reported
+`CONTROL_CROSSCHECK=PASS`, `VERDICT_CHECK=PASS`, `TEARDOWN_CHECK=PASS`, all
+governed ports free, no surviving governed process and
+`SITL_ADJUDICATION=PASS`. This closes the current-source simulator acceptance
+precondition only; it is not real-FCU forwarding, parameter, thrust or motion
+evidence.
+
+The Pi helper copied to `/home/imt-aqua-drone/Desktop` also passed its
+checksum and `--preflight-only` path. The retained output included
+`HAILO_ROS_PREFLIGHT=PASS imports=5 monkeypatch=PASS publisher=RELIABLE` and
+`PREFLIGHT_ONLY=PASS hardware=camera,hailo,serial,fcu untouched`. A separately
+authenticated `fuser` check returned `1` with no owner for `/dev/ttyAMA0`.
+The stripped-environment `rclpy` failure is informational in this test; the
+subsequent provenance check resolved `rclpy` from ROS Jazzy and passed.
+
 ### Isolated FCU-to-VRX workstation half
 
 `tools/fcu_to_vrx_workstation.sh` is the workstation-only owner for the VRX

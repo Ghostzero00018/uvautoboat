@@ -638,3 +638,82 @@ git diff --check: PASS
 The current W2 supervisor pin is
 `981fba979e86d0e7a2e50c4d9c89b30b699b62b7a24343b4d315c819fb931091`
 (`23,530` bytes). No live service, simulator acceptance or hardware path ran.
+
+## Dashboard, simulator and Pi preflight acceptance - 26/08/2026
+
+The published Piece 2 revision is
+`3ca6b0ba43d078c8f69621fa38f17de3c8e8e657`. Local `HEAD`, `origin/main` and
+the live remote ref matched with divergence `0/0`, and the worktree was clean.
+
+The workstation one-shot preflight reported:
+
+```text
+W1_PREFLIGHT=PASS tests=dashboard,helper,preflight ports=8002,8080,9090
+workstation_ipv4=10.120.2.168 dev=wlp147s0 ssid=IoT IMT Nord Europe
+FCU_VRX_ENV_PREFLIGHT=PASS domain=77 nodes=0 udp=14555,14556-free
+```
+
+The current Pi helper was transferred to
+`/home/imt-aqua-drone/Desktop/pi_live_hailo_mavlink_dashboard.sh` on Pi host
+`imtaquadrone-desktop` (`10.120.2.249`). Its checksum matched
+`b0793bdac61595a2c5e85dafbc18806bde8146cecece4ae232846b51ae4b8cb0`.
+The one-shot Pi result was:
+
+```text
+HAILO_ROS_PREFLIGHT=PASS imports=5 monkeypatch=PASS publisher=RELIABLE
+PREFLIGHT_ONLY=PASS hardware=camera,hailo,serial,fcu untouched
+```
+
+`CANONICAL_STRIPPED_RCLPY=UNAVAILABLE` was informational; the governed
+provenance check subsequently resolved `rclpy` from ROS Jazzy and passed. After
+a separate successful `sudo -v`, `sudo fuser -v /dev/ttyAMA0` printed no owner
+and returned `FUSER_RC=1`.
+
+The operator then completed the full current-source simulator/dashboard run at
+`/home/ghostzero/Desktop/sitl_digital_twin_20260826_174115`. The supervisor
+resolved `RC1`/`RC3` and `SERVO1`/`SERVO3`, completed every browser and operator
+phase, and reported:
+
+```text
+SITL_ACCEPTANCE=COMPLETE teardown=pending
+SITL_VERDICT=PASS
+SITL_SUPERVISOR_EXIT status=0 cleanup_rc=0 finalize_rc=0
+```
+
+Independent adjudication checked ten evidence hashes, confirmed stop order
+`dashboard,rosbridge,bridge,evidence,mavros,mavproxy,sitl`, confirmed all
+governed ports and processes free, and ended with
+`SITL_ADJUDICATION=PASS`. The retained verdict records
+`session_complete=true`, `cleanup_rc=0`, no capture fault and no missing
+evidence.
+
+This closes the current-source simulator acceptance precondition. It does not
+prove the real FCU fanout or VRX path.
+
+## Read-only live FCU probe approval and hold - 26/08/2026
+
+The operator approved the read-only T0b probe. The current physical declaration
+records: FCU and Pi powered; Herelink powered with sticks neutral; propellers
+removed; hull restrained; hardware safety ON; FCU disarmed; Pi runtime stack
+down; propulsion battery connected; ESCs powered. QGroundControl displayed
+`ARMING_CHECK=None`, corresponding to no selected bitmask checks (`0`); the
+probe must still read and retain the live parameter value before it is treated
+as parameter evidence.
+
+The approved probe has **NOT RUN**. The governed helper requires
+`REAL_FCU_PROPULSION_ISOLATED=1`, while the declared propulsion battery and ESC
+state is powered. Propeller removal does not satisfy that source gate. No flag
+may be invented: the operator must physically isolate propulsion power and
+state that new condition before the read-only probe command is issued. No
+parameter write, arm, mode change, RC command, bridge launch or thrust is
+authorized.
+
+## Read-only probe propulsion isolation - 26/08/2026
+
+The operator subsequently confirmed that the propulsion battery is
+disconnected and the ESCs are unpowered, with every other declared physical
+state unchanged. This satisfies the production probe's physical propulsion
+isolation gate. The existing approval remains limited to the read-only T0b
+probe; the probe is still **NOT RUN** pending clean repository publication,
+deployed-bundle verification and Pi `check` mode. No parameter write, arm,
+mode change, RC command, bridge launch or thrust is authorized.
