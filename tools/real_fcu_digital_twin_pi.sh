@@ -733,16 +733,17 @@ rfcu_pi_status_json_once() {
   printf '%s\n' "$raw" | /usr/bin/python3 -c '
 import json
 import sys
+import yaml
 raw = sys.stdin.read().strip()
 if not raw:
     raise SystemExit(1)
 try:
-    value = json.loads(raw)
-except json.JSONDecodeError:
+    values = [value for value in yaml.safe_load_all(raw) if value is not None]
+except yaml.YAMLError:
     raise SystemExit(1) from None
-if not isinstance(value, dict):
+if len(values) != 1 or not isinstance(values[0], dict):
     raise SystemExit(1)
-print(raw)
+print(json.dumps(values[0], separators=(",", ":")))
 '
 }
 

@@ -727,6 +727,7 @@ PI_TIMEOUT_DEFAULTS="$(bash -c '
 pass_case
 
 STATUS_JSON='{"state":"READY_DISARMED","ready":true,"connected":true,"armed":false}'
+STATUS_ECHO="${STATUS_JSON}"$'\n---'
 for status_case in \
   "$WORKSTATION_HELPER|rfcu_ws_status_json_once|RFCU_WS_RUN_DIR" \
   "$PI_HELPER|rfcu_pi_status_json_once|RFCU_PI_RUN_DIR"; do
@@ -737,13 +738,14 @@ for status_case in \
     source "$1"
     printf -v "$3" "%s" "$2"
     status_output="$4"
-    status_function="$5"
+    expected_output="$5"
+    status_function="$6"
     ros2() { printf "%s\n" "$status_output"; }
     result="$("$status_function")"
-    [ "$result" = "$status_output" ]
+    [ "$result" = "$expected_output" ]
   ' _ "$status_helper" "$STATUS_TEST_DIR" "$status_run_dir" \
-    "$STATUS_JSON" "$status_function" \
-    || fail_test "$status_function rejected raw JSON from ros2 topic echo --field data"
+    "$STATUS_ECHO" "$STATUS_JSON" "$status_function" \
+    || fail_test "$status_function rejected the ROS JSON document and terminator"
 done
 pass_case
 
