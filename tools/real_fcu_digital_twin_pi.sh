@@ -723,7 +723,7 @@ rfcu_pi_wait_bridge_guard() {
 
 rfcu_pi_status_json_once() {
   local raw
-  raw="$(ros2 topic echo --once --timeout 5 --full-length --field data \
+  raw="$(ros2 topic echo --once --timeout 5 --full-length --field data --no-lost-messages \
     --qos-profile best_available /command_ingress/status std_msgs/msg/String \
     2>>"$RFCU_PI_RUN_DIR/logs/status_probe.log")" || return 1
   printf '%s\n' "$raw" | /usr/bin/python3 -c '
@@ -776,6 +776,14 @@ rfcu_pi_wait_bridge_ready() {
     sleep "$RFCU_PI_POLL_SECONDS" || true
   done
   return 1
+}
+
+rfcu_pi_confirm_manual_safety_release() {
+  local confirmation=''
+  read -r -p \
+    'Release hardware safety while DISARMED, then type RELEASED_DISARMED and press Enter: ' \
+    confirmation || return 1
+  [ "$confirmation" = 'RELEASED_DISARMED' ]
 }
 
 rfcu_pi_wait_workstation_nodes() {
@@ -924,6 +932,9 @@ rfcu_pi_run() {
   grep -E '(live|snapshot) guard resolved:' "$RFCU_PI_RUN_DIR/logs/bridge.log" \
     | tail -1 | tee "$RFCU_PI_RUN_DIR/evidence/resolved_mapping.txt"
   rfcu_pi_log 'REAL_FCU_MANUAL_GATE=release hardware safety physically while disarmed; no software safety command exists here'
+  rfcu_pi_confirm_manual_safety_release \
+    || rfcu_pi_fail 'manual hardware-safety release was not confirmed while disarmed'
+  rfcu_pi_log 'REAL_FCU_MANUAL_GATE=CONFIRMED state=disarmed safety=released'
   rfcu_pi_wait_bridge_ready \
     || rfcu_pi_fail 'bridge did not reach fresh READY_DISARMED after the manual safety gate'
   rfcu_pi_wait_workstation_nodes \

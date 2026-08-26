@@ -705,8 +705,24 @@ for invalid_final_status in \
 done
 WS_RUN_FUNCTION="$(extract_function "$WORKSTATION_HELPER" rfcu_ws_run)"
 WS_STATUS_FUNCTION="$(extract_function "$WORKSTATION_HELPER" rfcu_ws_status_json_once)"
+PI_STATUS_FUNCTION="$(extract_function "$PI_HELPER" rfcu_pi_status_json_once)"
 grep -Fq -- '--no-lost-messages' <<<"$WS_STATUS_FUNCTION" \
   || fail_test 'workstation status probe permits ROS echo loss diagnostics on stdout'
+grep -Fq -- '--no-lost-messages' <<<"$PI_STATUS_FUNCTION" \
+  || fail_test 'Pi status probe permits ROS echo loss diagnostics on stdout'
+pass_case
+
+PI_CONFIRM_FUNCTION="$(extract_function "$PI_HELPER" rfcu_pi_confirm_manual_safety_release)"
+grep -Fq 'read -r -p' <<<"$PI_CONFIRM_FUNCTION" \
+  || fail_test 'Pi manual safety gate does not wait for terminal input'
+grep -Fq 'RELEASED_DISARMED' <<<"$PI_CONFIRM_FUNCTION" \
+  || fail_test 'Pi manual safety gate lacks an exact confirmation phrase'
+PI_CONFIRM_LINE="$(line_number_once "$RUN_FUNCTION" \
+  'rfcu_pi_confirm_manual_safety_release' 'Pi manual safety confirmation')"
+PI_READY_WAIT_LINE="$(line_number_once "$RUN_FUNCTION" \
+  'rfcu_pi_wait_bridge_ready' 'Pi bridge ready wait')"
+[ "$PI_CONFIRM_LINE" -lt "$PI_READY_WAIT_LINE" ] \
+  || fail_test 'Pi readiness timer starts before manual safety confirmation'
 pass_case
 
 WS_READY_WAIT_LINE="$(line_number_once "$WS_RUN_FUNCTION" \
