@@ -704,6 +704,11 @@ for invalid_final_status in \
     || fail_test "unsafe final status was accepted: $invalid_final_status"
 done
 WS_RUN_FUNCTION="$(extract_function "$WORKSTATION_HELPER" rfcu_ws_run)"
+WS_STATUS_FUNCTION="$(extract_function "$WORKSTATION_HELPER" rfcu_ws_status_json_once)"
+grep -Fq -- '--no-lost-messages' <<<"$WS_STATUS_FUNCTION" \
+  || fail_test 'workstation status probe permits ROS echo loss diagnostics on stdout'
+pass_case
+
 WS_READY_WAIT_LINE="$(line_number_once "$WS_RUN_FUNCTION" \
   'rfcu_ws_wait_bridge_ready' 'workstation ready wait')"
 WS_READY_FLAG_LINE="$(line_number_once "$WS_RUN_FUNCTION" \

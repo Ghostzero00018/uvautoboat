@@ -345,7 +345,7 @@ rfcu_ws_wait_local_services() {
 
 rfcu_ws_status_json_once() {
   local raw
-  raw="$(ros2 topic echo --once --timeout 5 --full-length --field data \
+  raw="$(ros2 topic echo --once --timeout 5 --full-length --field data --no-lost-messages \
     --qos-profile best_available /command_ingress/status std_msgs/msg/String \
     2>>"$RFCU_WS_RUN_DIR/logs/status_probe.log")" || return 1
   printf '%s\n' "$raw" | /usr/bin/python3 -c '
