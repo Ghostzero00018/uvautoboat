@@ -1026,3 +1026,10 @@ promoted to PASS.
 At EOD, the operator explicitly confirmed that the FCU and Pi were powered
 off. No unstated hardware condition is inferred from that confirmation. All
 27/08/2026 physical declarations and approvals remain fresh-day gates.
+
+The operator then supplied the remaining literal closeout states: FCU
+disarmed, hardware safety ON, propulsion battery disconnected, ESCs unpowered,
+propellers removed and hull restrained. Pi power is recorded as OFF from the
+immediately preceding confirmation, and the operator then confirmed Herelink
+power OFF. A complete fresh physical declaration is still required on
+27/08/2026.

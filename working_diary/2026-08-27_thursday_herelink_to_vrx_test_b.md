@@ -7,6 +7,14 @@ This is the sole 27/08/2026 working diary. It was prepared at the 26/08/2026
 close. It records inherited evidence and tomorrow's gates; it does not schedule,
 authorise or start a powered run.
 
+## Carry-over blockers - read before any Test B work
+
+- `RC_OVERRIDE_TIME=0.5` remains live for Test B; rollback to `3.0` remains
+  mandatory after Test B or before any different operation.
+- Test B is **NOT RUN** and remains blocked by `/wamv/pose` versus
+  `/model/wamv/pose`. Repair and prove that contract offline before any live
+  Test B start.
+
 ## Objective
 
 Prove the real outbound control-to-digital-twin direction with correlated
