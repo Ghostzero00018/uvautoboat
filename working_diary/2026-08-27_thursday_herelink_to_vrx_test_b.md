@@ -64,8 +64,14 @@ correlation recorder:     5c40d6376efc7456929ddf1e80454f3e17ff87c7530629a65f4c10
 
 Evidence may carry forward; approval and physical state may not.
 
-- Current-source SITL acceptance passed with independent adjudication and clean
-  teardown.
+- SITL acceptance passed with independent adjudication and clean teardown during
+  26/08/2026. **Forward correction: it is no longer current-source.** `81efb73`
+  subsequently changed `tools/real_fcu_rc_command_bridge.py`, which is the
+  bridge under test at `tools/sitl_digital_twin_runner.sh` line 18, and no
+  `SITL_VERDICT` or `SITL_ADJUDICATION` has been recorded since. Of the three
+  preconditions recorded on 26/08/2026, only the armed-observation selector
+  closed; the current-source simulator acceptance reopened and the query tier
+  was never closed.
 - Real-FCU Test A passed the bounded dashboard command/output-feedback path.
   It is separate from Test B.
 - Test A retained:
