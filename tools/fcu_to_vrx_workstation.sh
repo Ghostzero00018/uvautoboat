@@ -557,8 +557,9 @@ fcuvrx_check() {
   bash -n "$FCUVRX_SCRIPT_DIR/fcu_to_vrx_workstation.sh"
   bash "$FCUVRX_SCRIPT_DIR/test_fcu_to_vrx_workstation.sh"
   python3 -m unittest "$FCUVRX_SCRIPT_DIR/test_servo_command_bridge_mapping.py"
+  python3 -m unittest "$FCUVRX_SCRIPT_DIR/test_fcu_to_vrx_parameter_contract.py"
   fcuvrx_log \
-    'FCU_TO_VRX_WORKSTATION_CHECK=PASS shell_cases=12 python_tests=2 runtime=not-started'
+    'FCU_TO_VRX_WORKSTATION_CHECK=PASS shell_cases=12 python_tests=4 runtime=not-started'
 }
 
 fcuvrx_run() {

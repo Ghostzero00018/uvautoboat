@@ -456,3 +456,41 @@ GATE_RC=0
 No Pi, FCU, Herelink, camera, MAVProxy, MAVROS, VRX, Gazebo or live network
 path ran. Block D has no approval to start and the seven exact physical states
 remain unstated. Piece 2 has not started.
+
+## Workstation check coverage correction - 26/08/2026
+
+The bridge parameter contract test was reachable from the repository-wide
+Python collection but not from the workstation supervisor's own `check` mode.
+`fcuvrx_check` ran the shell suite and the PWM mapping tests only, so
+`FCU_TO_VRX_WORKSTATION_CHECK=PASS` could be printed without the fail-open
+override guard ever executing. That marker is the certification used by the
+no-hardware workstation preflight, which is precisely where the guard matters.
+
+`tools/fcu_to_vrx_workstation.sh` now also runs
+`tools/test_fcu_to_vrx_parameter_contract.py` in `check`, and the marker
+reports `python_tests=4`. The earlier `python_tests=2` line recorded above
+remains as the historical result for the previous revision. Both unit files
+were confirmed to execute in one `check` invocation, two tests each.
+
+```text
+FCU_TO_VRX_WORKSTATION_CHECK=PASS shell_cases=12 python_tests=4 runtime=not-started
+```
+
+The complete offline gate passed after the change:
+
+```text
+Pi lifecycle: PASS
+live-dashboard preflight: PASS cases=14
+real-FCU helper suite: PASS cases=24
+SITL runner suite: PASS cases=41
+FCU-to-VRX workstation: PASS cases=12 runtime=not-started
+Python: 84 passed
+Node: tests=80 pass=80 fail=0
+GATE_RC=0
+```
+
+Whitespace checks passed. No Pi, FCU, Herelink, camera, MAVProxy, MAVROS, VRX,
+Gazebo or live network path ran. The helper deployed to the Pi Desktop is a
+separate copy: its checksum must be computed from workstation bytes at the time
+of use and reverified on the Pi after any transfer, rather than carried forward
+from an earlier recorded value.
