@@ -727,12 +727,13 @@ rfcu_pi_status_json_once() {
     --qos-profile best_available /command_ingress/status std_msgs/msg/String \
     2>>"$RFCU_PI_RUN_DIR/logs/status_probe.log")" || return 1
   printf '%s\n' "$raw" | /usr/bin/python3 -c '
+import json
 import sys
-import yaml
-values = [value for value in yaml.safe_load_all(sys.stdin.read()) if isinstance(value, str)]
-if len(values) != 1:
+raw = sys.stdin.read().strip()
+value = json.loads(raw)
+if not isinstance(value, dict):
     raise SystemExit(1)
-print(values[0])
+print(raw)
 '
 }
 

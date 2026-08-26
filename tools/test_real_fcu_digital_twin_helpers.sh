@@ -712,6 +712,27 @@ grep -Fq -- '--no-lost-messages' <<<"$PI_STATUS_FUNCTION" \
   || fail_test 'Pi status probe permits ROS echo loss diagnostics on stdout'
 pass_case
 
+STATUS_JSON='{"state":"READY_DISARMED","ready":true,"connected":true,"armed":false}'
+for status_case in \
+  "$WORKSTATION_HELPER|rfcu_ws_status_json_once|RFCU_WS_RUN_DIR" \
+  "$PI_HELPER|rfcu_pi_status_json_once|RFCU_PI_RUN_DIR"; do
+  IFS='|' read -r status_helper status_function status_run_dir <<<"$status_case"
+  STATUS_TEST_DIR="$TEST_TMP/status-${status_function}"
+  mkdir -p "$STATUS_TEST_DIR/logs"
+  bash -c '
+    source "$1"
+    printf -v "$3" "%s" "$2"
+    status_output="$4"
+    status_function="$5"
+    ros2() { printf "%s\n" "$status_output"; }
+    result="$("$status_function")"
+    [ "$result" = "$status_output" ]
+  ' _ "$status_helper" "$STATUS_TEST_DIR" "$status_run_dir" \
+    "$STATUS_JSON" "$status_function" \
+    || fail_test "$status_function rejected raw JSON from ros2 topic echo --field data"
+done
+pass_case
+
 PI_CONFIRM_FUNCTION="$(extract_function "$PI_HELPER" rfcu_pi_confirm_manual_safety_release)"
 grep -Fq 'read -r -p' <<<"$PI_CONFIRM_FUNCTION" \
   || fail_test 'Pi manual safety gate does not wait for terminal input'
