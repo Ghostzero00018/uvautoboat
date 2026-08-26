@@ -7,7 +7,7 @@ REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 DASHBOARD_DIR="$REPO_ROOT/web_dashboard/autoboat"
 HELPER="$SCRIPT_DIR/pi_live_hailo_mavlink_dashboard.sh"
 FCU_TO_VRX_EVIDENCE="$SCRIPT_DIR/fcu_to_vrx_evidence.py"
-EXPECTED_HELPER_SHA256='b0793bdac61595a2c5e85dafbc18806bde8146cecece4ae232846b51ae4b8cb0'
+EXPECTED_HELPER_SHA256='8458526c183479b1ca004dcbdfb3e498b585e415826025b4ee71b7856ecb311c'
 EXPECTED_SSID="${LIVE_SSID:-IoT IMT Nord Europe}"
 PI_WINDOW_MODE="${LIVE_PI_WINDOW_MODE:-fullscreen}"
 FCU_TO_VRX_FANOUT="${LIVE_FCU_TO_VRX_FANOUT:-0}"
@@ -23,6 +23,7 @@ ARMED_OBSERVATION_RIGHT_CHANNEL="${LIVE_ARMED_OBSERVATION_RIGHT_CHANNEL:-}"
 ARMED_OBSERVATION_RIGHT_PWM_MIN="${LIVE_ARMED_OBSERVATION_RIGHT_PWM_MIN:-}"
 ARMED_OBSERVATION_RIGHT_TRIM="${LIVE_ARMED_OBSERVATION_RIGHT_TRIM:-}"
 ARMED_OBSERVATION_RIGHT_PWM_MAX="${LIVE_ARMED_OBSERVATION_RIGHT_PWM_MAX:-}"
+RUN_SECONDS="${LIVE_RUN_SECONDS:-}"
 FCU_TO_VRX_INGRESS_PORT=14556
 PI_HOLD_AFTER_WINDOW=1
 ROS_SETUP='/opt/ros/jazzy/setup.bash'
@@ -168,6 +169,10 @@ validate_pi_window_selectors() {
     || fail 'LIVE_FCU_TO_VRX_FANOUT must be 0 or 1'
   [[ "$ARMED_OBSERVATION" =~ ^[01]$ ]] \
     || fail 'LIVE_ARMED_OBSERVATION must be 0 or 1'
+  if [ -n "$RUN_SECONDS" ]; then
+    [[ "$RUN_SECONDS" =~ ^[1-9][0-9]*$ ]] \
+      || fail 'LIVE_RUN_SECONDS must be a positive integer'
+  fi
   PI_HOLD_AFTER_WINDOW=1
   [ "$ARMED_OBSERVATION" -eq 0 ] && return 0
   [ "$FCU_TO_VRX_FANOUT" -eq 1 ] \
@@ -507,11 +512,23 @@ loopback_listener_ready() {
 }
 
 workstation_nodes_present() {
-  local nodes
-  nodes="$(ros2 node list --no-daemon --spin-time 2)" || return 1
-  grep -Fxq '/rosbridge_websocket' <<<"$nodes" || return 1
-  grep -Fxq '/rosapi' <<<"$nodes" || return 1
-  grep -Fxq '/web_video_server' <<<"$nodes"
+  local attempt nodes query_rc
+  for attempt in 1 2 3; do
+    query_rc=0
+    nodes="$(ros2 node list --no-daemon --spin-time 2)" || query_rc=$?
+    if [ "$query_rc" -eq 0 ] \
+        && grep -Fxq '/rosbridge_websocket' <<<"$nodes" \
+        && grep -Fxq '/rosapi' <<<"$nodes" \
+        && grep -Fxq '/web_video_server' <<<"$nodes"; then
+      [ "$attempt" -eq 1 ] \
+        || log "WORKSTATION_NODE_RECOVERY=PASS attempts=$attempt"
+      return 0
+    fi
+    [ "$attempt" -eq 3 ] && break
+    log "WORKSTATION_NODE_SNAPSHOT_RETRY attempt=$attempt/3"
+    sleep 1
+  done
+  return 1
 }
 
 workstation_rosapi_service_present() {
@@ -600,8 +617,8 @@ print_pi_command() {
   printf '  chmod +x "$PI_HELPER"\n'
   printf "  printf 'PI_TEMP_START_MC='\n"
   printf '  cat /sys/class/thermal/thermal_zone0/temp\n'
-  printf '  exec env WORKSTATION_IP=%q LIVE_SSID=%q LIVE_HOLD_AFTER_WINDOW=%q LIVE_FCU_TO_VRX_FANOUT=%q LIVE_ARMED_OBSERVATION=%q LIVE_ARMED_OBSERVATION_MAX_SECONDS=%q LIVE_ARMED_OBSERVATION_FINAL_SECONDS=%q LIVE_ARMED_OBSERVATION_STALE_SECONDS=%q LIVE_ARMED_OBSERVATION_LEFT_CHANNEL=%q LIVE_ARMED_OBSERVATION_LEFT_TRIM=%q LIVE_ARMED_OBSERVATION_RIGHT_CHANNEL=%q LIVE_ARMED_OBSERVATION_RIGHT_TRIM=%q HAILO_DEMO_ROOT="$PI_RUNTIME_ROOT" HAILO_LOCAL_DISPLAY=1 HAILO_LOCAL_WINDOW_MODE=%q "$PI_HELPER"\n' \
-    "$WORKSTATION_IP" "$EXPECTED_SSID" "$PI_HOLD_AFTER_WINDOW" \
+  printf '  exec env WORKSTATION_IP=%q LIVE_SSID=%q LIVE_RUN_SECONDS=%q LIVE_HOLD_AFTER_WINDOW=%q LIVE_FCU_TO_VRX_FANOUT=%q LIVE_ARMED_OBSERVATION=%q LIVE_ARMED_OBSERVATION_MAX_SECONDS=%q LIVE_ARMED_OBSERVATION_FINAL_SECONDS=%q LIVE_ARMED_OBSERVATION_STALE_SECONDS=%q LIVE_ARMED_OBSERVATION_LEFT_CHANNEL=%q LIVE_ARMED_OBSERVATION_LEFT_TRIM=%q LIVE_ARMED_OBSERVATION_RIGHT_CHANNEL=%q LIVE_ARMED_OBSERVATION_RIGHT_TRIM=%q HAILO_DEMO_ROOT="$PI_RUNTIME_ROOT" HAILO_LOCAL_DISPLAY=1 HAILO_LOCAL_WINDOW_MODE=%q "$PI_HELPER"\n' \
+    "$WORKSTATION_IP" "$EXPECTED_SSID" "$RUN_SECONDS" "$PI_HOLD_AFTER_WINDOW" \
     "$FCU_TO_VRX_FANOUT" "$ARMED_OBSERVATION" \
     "$ARMED_OBSERVATION_MAX_SECONDS" "$ARMED_OBSERVATION_FINAL_SECONDS" \
     "$ARMED_OBSERVATION_STALE_SECONDS" "$ARMED_OBSERVATION_LEFT_CHANNEL" \
@@ -1012,6 +1029,7 @@ run_pi_preflight() {
 
   WORKSTATION_IP="$workstation_ip" \
     LIVE_SSID="$EXPECTED_SSID" \
+    LIVE_RUN_SECONDS="$RUN_SECONDS" \
     LIVE_HOLD_AFTER_WINDOW="$PI_HOLD_AFTER_WINDOW" \
     LIVE_FCU_TO_VRX_FANOUT="$FCU_TO_VRX_FANOUT" \
     LIVE_ARMED_OBSERVATION="$ARMED_OBSERVATION" \

@@ -12,7 +12,7 @@ BUNDLE_MANIFEST="$REPO_ROOT/config/real_fcu_digital_twin_bundle.sha256"
 VIEW_ONLY_HELPER="$SCRIPT_DIR/pi_live_hailo_mavlink_dashboard.sh"
 CAPTURE_HELPER="$SCRIPT_DIR/real_fcu_command_feedback_capture.py"
 CAPTURE_TEST="$SCRIPT_DIR/test_real_fcu_command_feedback_capture.py"
-EXPECTED_VIEW_ONLY_SHA256='b0793bdac61595a2c5e85dafbc18806bde8146cecece4ae232846b51ae4b8cb0'
+EXPECTED_VIEW_ONLY_SHA256='8458526c183479b1ca004dcbdfb3e498b585e415826025b4ee71b7856ecb311c'
 CASE_COUNT=0
 
 fail_test() {
@@ -190,6 +190,69 @@ grep -Fq 'rfcu_pi_start_child mavros-probe' <<<"$PI_PROBE_FUNCTION" \
   || fail_test 'Pi probe unexpectedly starts the command bridge'
 grep -Fq 'discovery=$ROS_AUTOMATIC_DISCOVERY_RANGE' <<<"$PI_PROBE_FUNCTION" \
   || fail_test 'Pi probe start marker does not report its effective discovery range'
+pass_case
+
+GUARD_SNAPSHOT_FILE="$TEST_TMP/guard_snapshot.parm"
+printf 'RC_OVERRIDE_TIME 0.5\n' >"$GUARD_SNAPSHOT_FILE"
+GUARD_SNAPSHOT_SHA256="$(sha256sum "$GUARD_SNAPSHOT_FILE" | awk '{print $1}')"
+GUARD_SNAPSHOT_OUTPUT="$(bash -c '
+  source "$1"
+  RFCU_PI_RUN_MODE=run
+  RFCU_PI_GUARD_SNAPSHOT_FILE="$2"
+  RFCU_PI_GUARD_SNAPSHOT_SHA256="$3"
+  RFCU_PI_GUARD_SNAPSHOT_APPROVED=1
+  rfcu_pi_validate_guard_snapshot_selector
+  rfcu_pi_build_commands
+  printf "source=%s\n" "$RFCU_PI_GUARD_SOURCE"
+  printf "command=%s\n" "${RFCU_PI_BRIDGE_COMMAND[*]}"
+' _ "$PI_HELPER" "$GUARD_SNAPSHOT_FILE" "$GUARD_SNAPSHOT_SHA256")"
+grep -Fq 'source=snapshot' <<<"$GUARD_SNAPSHOT_OUTPUT" \
+  || fail_test 'approved hash-pinned guard snapshot was not selected'
+grep -Fq "guard_snapshot_file:=\"$GUARD_SNAPSHOT_FILE\"" \
+  <<<"$GUARD_SNAPSHOT_OUTPUT" \
+  || fail_test 'bridge command omitted the approved guard snapshot path'
+grep -Fq "guard_snapshot_sha256:=\"$GUARD_SNAPSHOT_SHA256\"" \
+  <<<"$GUARD_SNAPSHOT_OUTPUT" \
+  || fail_test 'bridge command omitted the approved guard snapshot hash'
+pass_case
+
+for failure_case in partial unauthorized probe hash-drift; do
+  set +e
+  GUARD_SNAPSHOT_FAILURE_OUTPUT="$(bash -c '
+    source "$1"
+    RFCU_PI_RUN_MODE=run
+    RFCU_PI_GUARD_SNAPSHOT_FILE="$2"
+    RFCU_PI_GUARD_SNAPSHOT_SHA256="$3"
+    RFCU_PI_GUARD_SNAPSHOT_APPROVED=1
+    case "$4" in
+      partial) RFCU_PI_GUARD_SNAPSHOT_SHA256= ;;
+      unauthorized) RFCU_PI_GUARD_SNAPSHOT_APPROVED=0 ;;
+      probe) RFCU_PI_RUN_MODE=probe ;;
+      hash-drift) RFCU_PI_GUARD_SNAPSHOT_SHA256="$(printf "0%.0s" {1..64})" ;;
+    esac
+    rfcu_pi_validate_guard_snapshot_selector
+  ' _ "$PI_HELPER" "$GUARD_SNAPSHOT_FILE" "$GUARD_SNAPSHOT_SHA256" \
+    "$failure_case" 2>&1)"
+  GUARD_SNAPSHOT_FAILURE_RC=$?
+  set -e
+  [ "$GUARD_SNAPSHOT_FAILURE_RC" -ne 0 ] \
+    || fail_test "guard snapshot selector accepted $failure_case"
+  grep -Fq 'STOP:' <<<"$GUARD_SNAPSHOT_FAILURE_OUTPUT" \
+    || fail_test "guard snapshot rejection lacked a stop marker: $failure_case"
+done
+pass_case
+
+PI_RUNTIME_GUARD_FUNCTION="$(extract_function "$PI_HELPER" \
+  rfcu_pi_capture_runtime_guard)"
+PI_RUN_FUNCTION="$(extract_function "$PI_HELPER" rfcu_pi_run)"
+grep -Fq 'rfcu_pi_capture_snapshot_guard' <<<"$PI_RUNTIME_GUARD_FUNCTION" \
+  && grep -Fq 'rfcu_pi_capture_t0b' <<<"$PI_RUNTIME_GUARD_FUNCTION" \
+  || fail_test 'runtime guard dispatcher does not retain both guard sources'
+grep -Fq 'rfcu_pi_capture_runtime_guard' <<<"$PI_RUN_FUNCTION" \
+  || fail_test 'Pi run path does not use the runtime guard dispatcher'
+! grep -Fq 'rfcu_pi_capture_runtime_guard' <<<"$PI_PROBE_FUNCTION" \
+  && grep -Fq 'rfcu_pi_capture_t0b' <<<"$PI_PROBE_FUNCTION" \
+  || fail_test 'Pi probe no longer requires the live T0b path'
 pass_case
 
 WORKSTATION_CONFLICT_OUTPUT="$(bash -c '
@@ -567,21 +630,22 @@ pass_case
 RUN_FUNCTION="$(extract_function "$PI_HELPER" rfcu_pi_run)"
 PROBE_START_LINE="$(line_number_once "$RUN_FUNCTION" \
   'rfcu_pi_start_child mavros-probe' 'Pi probe start')"
-T0B_LINE="$(line_number_once "$RUN_FUNCTION" \
-  'rfcu_pi_capture_t0b' 'Pi T0b capture')"
+RUNTIME_GUARD_LINE="$(line_number_once "$RUN_FUNCTION" \
+  'rfcu_pi_capture_runtime_guard' 'Pi runtime guard capture')"
 PROBE_STOP_LINE="$(line_number_once "$RUN_FUNCTION" \
   'rfcu_pi_stop_child mavros-probe' 'Pi probe stop')"
 MAVROS_LINE="$(line_number_once "$RUN_FUNCTION" \
   'rfcu_pi_start_child mavros ' 'Pi MAVROS start')"
 BRIDGE_LINE="$(line_number_once "$RUN_FUNCTION" \
   'rfcu_pi_start_child bridge' 'Pi bridge start')"
-[ -n "$PROBE_START_LINE" ] && [ -n "$T0B_LINE" ] && [ -n "$PROBE_STOP_LINE" ] \
+[ -n "$PROBE_START_LINE" ] && [ -n "$RUNTIME_GUARD_LINE" ] \
+  && [ -n "$PROBE_STOP_LINE" ] \
   && [ -n "$MAVROS_LINE" ] && [ -n "$BRIDGE_LINE" ] \
-  && [ "$PROBE_START_LINE" -lt "$T0B_LINE" ] \
-  && [ "$T0B_LINE" -lt "$PROBE_STOP_LINE" ] \
+  && [ "$PROBE_START_LINE" -lt "$RUNTIME_GUARD_LINE" ] \
+  && [ "$RUNTIME_GUARD_LINE" -lt "$PROBE_STOP_LINE" ] \
   && [ "$PROBE_STOP_LINE" -lt "$MAVROS_LINE" ] \
   && [ "$MAVROS_LINE" -lt "$BRIDGE_LINE" ] \
-  || fail_test 'run does not separate T0b from the full MAVROS/bridge session'
+  || fail_test 'run does not separate the guard probe from full MAVROS/bridge'
 pass_case
 
 READY_STATUS='{"state":"READY_DISARMED","ready":true,"connected":true,"armed":false,"mode":"MANUAL","feedback_fresh":true,"neutral_only":false,"resolved":{"steering_rc":1,"throttle_rc":3,"left_servo":3,"right_servo":1}}'

@@ -4,11 +4,13 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import inspect
 import json
 import os
 import pathlib
 import sys
+import tempfile
 import unittest
 from types import SimpleNamespace
 from unittest import mock
@@ -216,6 +218,77 @@ class BridgeFunctionsTest(unittest.TestCase):
         values["RC_OVERRIDE_TIME"] = 3.0
         with self.assertRaisesRegex(MODULE.GuardError, "RC_OVERRIDE_TIME"):
             MODULE.resolve_guard(values)
+
+    def write_guard_snapshot(self, values):
+        temporary = tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", suffix=".parm", delete=False
+        )
+        self.addCleanup(pathlib.Path(temporary.name).unlink, missing_ok=True)
+        with temporary:
+            for name, value in sorted(values.items()):
+                temporary.write(f"{name} {value}\n")
+        payload = pathlib.Path(temporary.name).read_bytes()
+        return temporary.name, hashlib.sha256(payload).hexdigest()
+
+    def test_hash_pinned_mavproxy_snapshot_resolves_the_existing_guard(self):
+        path, digest = self.write_guard_snapshot(valid_parameters())
+        guard, evidence = MODULE.load_guard_snapshot(path, digest)
+        self.assertEqual((guard.steering_channel, guard.throttle_channel), (1, 3))
+        self.assertEqual((guard.left_servo, guard.right_servo), (3, 1))
+        self.assertEqual(evidence["sha256"], digest)
+        self.assertEqual(evidence["parameter_count"], len(valid_parameters()))
+        self.assertEqual(evidence["critical"]["RC_OVERRIDE_TIME"], 0.5)
+        self.assertEqual(evidence["source"], "mavproxy-parameter-snapshot")
+
+    def test_snapshot_selector_is_default_off_and_precedes_override_publisher(self):
+        source = inspect.getsource(MODULE.RealFcuRcCommandBridge.__init__)
+        self.assertIn('declare_parameter("guard_snapshot_file", "")', source)
+        self.assertIn('declare_parameter("guard_snapshot_sha256", "")', source)
+        self.assertGreater(
+            source.index("self.override_pub = self.create_publisher"),
+            source.index("load_guard_snapshot"),
+        )
+
+    def test_snapshot_cli_writes_hash_pinned_evidence(self):
+        path, digest = self.write_guard_snapshot(valid_parameters())
+        with tempfile.TemporaryDirectory() as directory:
+            output = pathlib.Path(directory, "snapshot.json")
+            self.assertEqual(
+                MODULE.cli(
+                    ["guard-snapshot-write-evidence", path, digest, str(output)]
+                ),
+                0,
+            )
+            evidence = json.loads(output.read_text(encoding="utf-8"))
+        self.assertEqual(evidence["sha256"], digest)
+        self.assertEqual(evidence["critical"]["RC_OVERRIDE_TIME"], 0.5)
+
+    def test_guard_snapshot_rejects_hash_drift_and_unbounded_timeout(self):
+        path, digest = self.write_guard_snapshot(valid_parameters())
+        with self.assertRaisesRegex(MODULE.GuardError, "SHA-256 mismatch"):
+            MODULE.load_guard_snapshot(path, "0" * 64)
+
+        values = valid_parameters()
+        values["RC_OVERRIDE_TIME"] = 3.0
+        unsafe_path, unsafe_digest = self.write_guard_snapshot(values)
+        with self.assertRaisesRegex(MODULE.GuardError, "RC_OVERRIDE_TIME"):
+            MODULE.load_guard_snapshot(unsafe_path, unsafe_digest)
+
+    def test_guard_snapshot_parser_rejects_duplicate_and_malformed_lines(self):
+        for content, expected in (
+            ("RCMAP_ROLL 1\nRCMAP_ROLL 1\n", "duplicate snapshot parameter"),
+            ("RCMAP_ROLL=1\n", "invalid snapshot line"),
+            ("lowercase 1\n", "invalid snapshot parameter name"),
+        ):
+            temporary = tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", suffix=".parm", delete=False
+            )
+            self.addCleanup(pathlib.Path(temporary.name).unlink, missing_ok=True)
+            with temporary:
+                temporary.write(content)
+            digest = hashlib.sha256(pathlib.Path(temporary.name).read_bytes()).hexdigest()
+            with self.assertRaisesRegex(MODULE.GuardError, expected):
+                MODULE.load_guard_snapshot(temporary.name, digest)
 
     def test_quantization_stays_toward_trim(self):
         rail = MODULE.RcRail(1000, 1500, 2000, 30, 0)

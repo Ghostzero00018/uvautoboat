@@ -21,6 +21,10 @@ RFCU_PI_DOMAIN_ID='43'
 RFCU_PI_DISCOVERY_RANGE='SUBNET'
 RFCU_PI_PROBE_DISCOVERY_RANGE='LOCALHOST'
 RFCU_PI_LOCALHOST_ONLY='0'
+RFCU_PI_GUARD_SNAPSHOT_FILE="${REAL_FCU_GUARD_SNAPSHOT_FILE:-}"
+RFCU_PI_GUARD_SNAPSHOT_SHA256="${REAL_FCU_GUARD_SNAPSHOT_SHA256:-}"
+RFCU_PI_GUARD_SNAPSHOT_APPROVED="${REAL_FCU_GUARD_SNAPSHOT_APPROVED:-0}"
+RFCU_PI_GUARD_SOURCE='live'
 RFCU_PI_WORKSTATION_STOP_TOPIC='/real_fcu/workstation_stop'
 RFCU_PI_WORKSTATION_STOP_MESSAGE='REAL_FCU_WORKSTATION_STOPPED final=disarmed children=stopped ports=free'
 RFCU_PI_MOTOR_OUTPUTS_BIT=32768
@@ -116,6 +120,39 @@ rfcu_pi_require_t2a_run_gates() {
     || rfcu_pi_fail 'REAL_FCU_T2B_APPROVED must be 0 for run-t2a'
 }
 
+rfcu_pi_validate_guard_snapshot_selector() {
+  local actual_sha256
+  if [ -z "$RFCU_PI_GUARD_SNAPSHOT_FILE" ] \
+      && [ -z "$RFCU_PI_GUARD_SNAPSHOT_SHA256" ]; then
+    [ "$RFCU_PI_GUARD_SNAPSHOT_APPROVED" = 0 ] \
+      || rfcu_pi_fail \
+        'REAL_FCU_GUARD_SNAPSHOT_APPROVED must be 0 without a snapshot'
+    RFCU_PI_GUARD_SOURCE=live
+    return 0
+  fi
+  [ -n "$RFCU_PI_GUARD_SNAPSHOT_FILE" ] \
+    && [ -n "$RFCU_PI_GUARD_SNAPSHOT_SHA256" ] \
+    || rfcu_pi_fail \
+      'REAL_FCU_GUARD_SNAPSHOT_FILE and REAL_FCU_GUARD_SNAPSHOT_SHA256 must be set together'
+  [[ "$RFCU_PI_RUN_MODE" =~ ^run(-t2a)?$ ]] \
+    || rfcu_pi_fail 'guard snapshot mode is allowed only for run-t2a or run'
+  [ "$RFCU_PI_GUARD_SNAPSHOT_APPROVED" = 1 ] \
+    || rfcu_pi_fail 'REAL_FCU_GUARD_SNAPSHOT_APPROVED must be 1'
+  [[ "$RFCU_PI_GUARD_SNAPSHOT_FILE" == /* ]] \
+    || rfcu_pi_fail 'guard snapshot path must be absolute'
+  [ -f "$RFCU_PI_GUARD_SNAPSHOT_FILE" ] \
+    && [ -r "$RFCU_PI_GUARD_SNAPSHOT_FILE" ] \
+    || rfcu_pi_fail 'guard snapshot must be a readable regular file'
+  [[ "$RFCU_PI_GUARD_SNAPSHOT_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+    || rfcu_pi_fail 'guard snapshot SHA-256 must be 64 lowercase hex characters'
+  actual_sha256="$(sha256sum "$RFCU_PI_GUARD_SNAPSHOT_FILE" | awk '{print $1}')" \
+    || rfcu_pi_fail 'cannot hash guard snapshot'
+  [ "$actual_sha256" = "$RFCU_PI_GUARD_SNAPSHOT_SHA256" ] \
+    || rfcu_pi_fail \
+      "guard snapshot SHA-256 mismatch: expected=$RFCU_PI_GUARD_SNAPSHOT_SHA256 actual=$actual_sha256"
+  RFCU_PI_GUARD_SOURCE=snapshot
+}
+
 rfcu_pi_configure_ros_environment() {
   local discovery_range="$RFCU_PI_DISCOVERY_RANGE" source_rc=0
   [ -r "$RFCU_PI_ROS_SETUP" ] \
@@ -202,7 +239,7 @@ rfcu_pi_static_preflight() {
   rfcu_pi_validate_positive_integer REAL_FCU_READY_TIMEOUT_SECONDS \
     "$RFCU_PI_READY_TIMEOUT_SECONDS"
   rfcu_pi_validate_positive_integer REAL_FCU_POLL_SECONDS "$RFCU_PI_POLL_SECONDS"
-  for command in awk bash date fuser grep mkdir pgrep ps python3 sed setsid \
+  for command in awk bash cp date fuser grep mkdir pgrep ps python3 sed setsid \
     sha256sum sleep tail tee timeout tr; do
     rfcu_pi_require_command "$command"
   done
@@ -216,6 +253,7 @@ rfcu_pi_static_preflight() {
   [ -w "$RFCU_PI_LOG_ROOT" ] \
     || rfcu_pi_fail "log root is not writable: $RFCU_PI_LOG_ROOT"
   rfcu_pi_verify_bundle
+  rfcu_pi_validate_guard_snapshot_selector
   [ -r "$RFCU_PI_BRIDGE" ] || rfcu_pi_fail "bridge missing: $RFCU_PI_BRIDGE"
   [ -r "$RFCU_PI_PLUGIN_YAML" ] \
     || rfcu_pi_fail "closed-loop plugin YAML missing: $RFCU_PI_PLUGIN_YAML"
@@ -299,17 +337,28 @@ rfcu_pi_build_commands() {
     -p 'max_steering:=0.20'
     -p 'max_throttle:=0.12'
   )
+  if [ "$RFCU_PI_GUARD_SOURCE" = snapshot ]; then
+    RFCU_PI_BRIDGE_COMMAND+=(
+      -p "guard_snapshot_file:=\"$RFCU_PI_GUARD_SNAPSHOT_FILE\""
+      -p "guard_snapshot_sha256:=\"$RFCU_PI_GUARD_SNAPSHOT_SHA256\""
+    )
+  fi
 }
 
 rfcu_pi_write_manifest() {
-  printf 'mode=%s\nROS_DOMAIN_ID=%s\nROS_AUTOMATIC_DISCOVERY_RANGE=%s\nROS_LOCALHOST_ONLY=%s\nserial=%s\nbaud=%s\n' \
+  printf 'mode=%s\nROS_DOMAIN_ID=%s\nROS_AUTOMATIC_DISCOVERY_RANGE=%s\nROS_LOCALHOST_ONLY=%s\nserial=%s\nbaud=%s\nguard_source=%s\nguard_snapshot_file=%s\nguard_snapshot_sha256=%s\n' \
     "$RFCU_PI_RUN_MODE" "$ROS_DOMAIN_ID" "$ROS_AUTOMATIC_DISCOVERY_RANGE" \
     "$ROS_LOCALHOST_ONLY" "$RFCU_PI_SERIAL" "$RFCU_PI_BAUD" \
+    "$RFCU_PI_GUARD_SOURCE" "$RFCU_PI_GUARD_SNAPSHOT_FILE" \
+    "$RFCU_PI_GUARD_SNAPSHOT_SHA256" \
     >"$RFCU_PI_RUN_DIR/manifest/environment.txt"
-  sha256sum "$RFCU_PI_SCRIPT_DIR/real_fcu_digital_twin_pi.sh" \
-    "$RFCU_PI_BRIDGE" "$RFCU_PI_PLUGIN_YAML" "$RFCU_PI_PROBE_PLUGIN_YAML" \
-    "$RFCU_PI_APM_CONFIG" \
-    >"$RFCU_PI_RUN_DIR/manifest/artifacts.sha256"
+  {
+    sha256sum "$RFCU_PI_SCRIPT_DIR/real_fcu_digital_twin_pi.sh" \
+      "$RFCU_PI_BRIDGE" "$RFCU_PI_PLUGIN_YAML" "$RFCU_PI_PROBE_PLUGIN_YAML" \
+      "$RFCU_PI_APM_CONFIG"
+    [ "$RFCU_PI_GUARD_SOURCE" != snapshot ] \
+      || sha256sum "$RFCU_PI_GUARD_SNAPSHOT_FILE"
+  } >"$RFCU_PI_RUN_DIR/manifest/artifacts.sha256"
   printf 'probe_mavros' >"$RFCU_PI_RUN_DIR/manifest/commands.tsv"
   printf '\t%q' "${RFCU_PI_PROBE_MAVROS_COMMAND[@]}" \
     >>"$RFCU_PI_RUN_DIR/manifest/commands.tsv"
@@ -603,6 +652,48 @@ if not isinstance(enabled, int) or enabled & 32768:
   rfcu_pi_log "REAL_FCU_T0B=PASS serial=$RFCU_PI_SERIAL parameter_reads=$parameter_reads safety=ON mapping=retained rails=retained"
 }
 
+rfcu_pi_capture_snapshot_guard() {
+  local state_file="$RFCU_PI_RUN_DIR/evidence/snapshot_guard_state.yaml"
+  local sys_status_file="$RFCU_PI_RUN_DIR/evidence/snapshot_guard_sys_status.yaml"
+  local snapshot_copy="$RFCU_PI_RUN_DIR/evidence/guard_snapshot.parm"
+  local evidence_file="$RFCU_PI_RUN_DIR/evidence/guard_snapshot.json"
+  local resolver_log="$RFCU_PI_RUN_DIR/logs/guard_snapshot_resolver.log"
+  rfcu_pi_capture_topic /mavros/state mavros_msgs/msg/State "$state_file" 8 \
+    || rfcu_pi_fail 'snapshot guard did not receive a MAVROS state sample'
+  rfcu_pi_state_file_is_connected_disarmed "$state_file" \
+    || rfcu_pi_fail 'snapshot guard requires connected:true and armed:false'
+  rfcu_pi_capture_topic /mavros/sys_status mavros_msgs/msg/SysStatus \
+    "$sys_status_file" 8 || rfcu_pi_fail 'snapshot guard did not receive SYS_STATUS'
+  /usr/bin/python3 -c '
+import sys
+import yaml
+values = [value for value in yaml.safe_load_all(open(sys.argv[1], encoding="utf-8")) if isinstance(value, dict)]
+if len(values) != 1:
+    raise SystemExit(1)
+enabled = values[0].get("sensors_enabled")
+if not isinstance(enabled, int) or enabled & 32768:
+    raise SystemExit(1)
+' "$sys_status_file" \
+    || rfcu_pi_fail 'snapshot guard hardware safety state is not ON (safe)'
+  cp "$RFCU_PI_GUARD_SNAPSHOT_FILE" "$snapshot_copy" \
+    || rfcu_pi_fail 'cannot preserve guard snapshot in run evidence'
+  : >"$resolver_log"
+  /usr/bin/python3 "$RFCU_PI_BRIDGE" guard-snapshot-write-evidence \
+    "$snapshot_copy" "$RFCU_PI_GUARD_SNAPSHOT_SHA256" "$evidence_file" \
+    2>>"$resolver_log" \
+    || rfcu_pi_fail 'hash-pinned guard snapshot validation failed'
+  rfcu_pi_log \
+    "REAL_FCU_GUARD_SNAPSHOT=PASS sha256=$RFCU_PI_GUARD_SNAPSHOT_SHA256 safety=ON source=mavproxy parameter_write=none"
+}
+
+rfcu_pi_capture_runtime_guard() {
+  if [ "$RFCU_PI_GUARD_SOURCE" = snapshot ]; then
+    rfcu_pi_capture_snapshot_guard
+  else
+    rfcu_pi_capture_t0b
+  fi
+}
+
 rfcu_pi_verify_telemetry() {
   local topic message_type output label
   while IFS='|' read -r topic message_type label; do
@@ -623,7 +714,7 @@ rfcu_pi_wait_bridge_guard() {
   local deadline=$((SECONDS + RFCU_PI_READY_TIMEOUT_SECONDS))
   while [ "$SECONDS" -lt "$deadline" ]; do
     rfcu_pi_child_alive bridge || return 1
-    [ "$(grep -Fc 'live guard resolved:' "$RFCU_PI_RUN_DIR/logs/bridge.log")" -eq 1 ] \
+    [ "$(grep -Ec '(live|snapshot) guard resolved:' "$RFCU_PI_RUN_DIR/logs/bridge.log")" -eq 1 ] \
       && return 0
     sleep "$RFCU_PI_POLL_SECONDS" || true
   done
@@ -814,10 +905,10 @@ rfcu_pi_run() {
   rfcu_pi_wait_connected_disarmed mavros-probe \
     "$RFCU_PI_RUN_DIR/evidence/probe_connected_disarmed.yaml" \
     || rfcu_pi_fail 'T0b MAVROS did not reach connected:true and armed:false'
-  rfcu_pi_capture_t0b
+  rfcu_pi_capture_runtime_guard
   rfcu_pi_stop_child mavros-probe \
-    || rfcu_pi_fail 'T0b MAVROS did not stop cleanly'
-  rfcu_pi_serial_is_free || rfcu_pi_fail 'serial remained owned after T0b'
+    || rfcu_pi_fail 'guard-probe MAVROS did not stop cleanly'
+  rfcu_pi_serial_is_free || rfcu_pi_fail 'serial remained owned after guard probe'
 
   rfcu_pi_start_child mavros "$RFCU_PI_RUN_DIR/logs/mavros.log" \
     "${RFCU_PI_MAVROS_COMMAND[@]}"
@@ -829,8 +920,8 @@ rfcu_pi_run() {
     "${RFCU_PI_BRIDGE_COMMAND[@]}"
   RFCU_PI_BRIDGE_STARTED=1
   rfcu_pi_wait_bridge_guard \
-    || rfcu_pi_fail 'bridge did not resolve the complete live guard'
-  grep -F 'live guard resolved:' "$RFCU_PI_RUN_DIR/logs/bridge.log" \
+    || rfcu_pi_fail 'bridge did not resolve the complete parameter guard'
+  grep -E '(live|snapshot) guard resolved:' "$RFCU_PI_RUN_DIR/logs/bridge.log" \
     | tail -1 | tee "$RFCU_PI_RUN_DIR/evidence/resolved_mapping.txt"
   rfcu_pi_log 'REAL_FCU_MANUAL_GATE=release hardware safety physically while disarmed; no software safety command exists here'
   rfcu_pi_wait_bridge_ready \

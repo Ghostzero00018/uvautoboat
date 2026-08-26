@@ -38,11 +38,11 @@ below only for traceability.
 | --- | --- |
 | Helper source | `tools/pi_live_hailo_mavlink_dashboard.sh` |
 | Helper Pi destination | resolved Pi Desktop: `$(xdg-user-dir DESKTOP)/pi_live_hailo_mavlink_dashboard.sh` |
-| Helper size | `90,518` bytes |
-| Helper SHA-256 | `b0793bdac61595a2c5e85dafbc18806bde8146cecece4ae232846b51ae4b8cb0` |
+| Helper size | `92,101` bytes |
+| Helper SHA-256 | `8458526c183479b1ca004dcbdfb3e498b585e415826025b4ee71b7856ecb311c` |
 | Workstation supervisor | `tools/live_dashboard_preflight.sh` |
-| Supervisor size | `35,812` bytes |
-| Supervisor SHA-256 | `642fddc1f8edb20b988e610bc71205fead7c54b4c874a3b351287a027ccab1d9` |
+| Supervisor size | `36,413` bytes |
+| Supervisor SHA-256 | `2a272106b47f1b6988a01fe5f7fcc536e66aad3889b86c538b699a77e58cd90b` |
 | VRX supervisor | `tools/fcu_to_vrx_workstation.sh` |
 | VRX supervisor size | `23,530` bytes |
 | VRX supervisor SHA-256 | `981fba979e86d0e7a2e50c4d9c89b30b699b62b7a24343b4d315c819fb931091` |
@@ -137,6 +137,67 @@ checksum and `--preflight-only` path. The retained output included
 authenticated `fuser` check returned `1` with no owner for `/dev/ttyAMA0`.
 The stripped-environment `rclpy` failure is informational in this test; the
 subsequent provenance check resolved `rclpy` from ROS Jazzy and passed.
+
+### Disarmed live fanout attempt and runtime corrections - 26/08/2026
+
+The first real-FCU outbound fanout attempt retained three matching run
+directories:
+
+- W1: `/home/ghostzero/Desktop/live_dashboard_workstation_20260826_183120`;
+- W2: `/home/ghostzero/Desktop/fcu_to_vrx_workstation_20260826_183138`;
+- copied Pi evidence:
+  `/home/ghostzero/Desktop/pi_run_evidence/live_dashboard_20260826_183200`.
+
+The Pi forwarder reported outbound-only readiness for workstation UDP `14555`.
+W2 reached VRX, recorder and bridge readiness, retained `3,585` JSONL events,
+and decoded repeated real `SERVO_OUTPUT_RAW` frames as left `SERVO3=800` and
+right `SERVO1=800`. Both mapped thrust values remained `0.0 N`. W2 then stopped
+in the required bridge, recorder, VRX order and confirmed UDP `14555` free.
+This is live disarmed evidence for UART-to-fanout-to-UDP-to-bridge delivery at
+neutral; it is not motion, armed-window or asymmetric-command evidence.
+
+W1 entered its failure hold after one daemonless node snapshot missed the
+required workstation graph even though its supervised children and ports
+remained up. The workstation check now retries up to three complete snapshots.
+It records `WORKSTATION_NODE_SNAPSHOT_RETRY` for a miss and
+`WORKSTATION_NODE_RECOVERY=PASS` only when one later snapshot contains all
+three required nodes; three misses still fail closed.
+
+The Pi later reached `PI_SOURCE_STACK_READY=PASS`, and its Hailo log recorded
+frames `1`, `100`, ... `1900` while the run-owned process remained alive. Final
+verification nevertheless obtained three publisher-count-zero graph views and
+stopped the helper automatically. The helper now recovers only from that exact
+all-zero condition: the run-owned Hailo process group must still be alive and a
+fresh reliable `sensor_msgs/Image` with the expected `bgr8` encoding and
+`240`-pixel height must be received. Query errors and any nonzero count other
+than exactly one remain fatal. A successful recovery records
+`HAILO_GRAPH_ZERO_RECOVERY=PASS`; duplicate publishers are never accepted.
+
+Before this run, the current Pi kernel `6.8.0-1062-raspi` detected the Hailo
+PCIe device but had no built `hailo_pci` module and therefore no `/dev/hailo0`.
+Installing the matching kernel headers triggered the DKMS build for
+`hailo_pci/4.24.0`; after loading the module, `/dev/hailo0` existed and
+`hailortcli fw-control identify` reported firmware `4.24.0` on `HAILO8L`.
+
+### Hash-pinned parameter snapshot guard
+
+The real-FCU dashboard bridge still defaults to live MAVROS parameter pulls.
+An explicit snapshot mode is available only for `run-t2a` or `run` when a
+MAVProxy `param save` artifact, its exact lowercase SHA-256 and
+`REAL_FCU_GUARD_SNAPSHOT_APPROVED=1` are supplied together. The parser rejects
+malformed lines, duplicate names, non-finite values, an incomplete guard and
+any unsafe guard value. The previously retained `986`-parameter artifact with
+`RC_OVERRIDE_TIME=3.0` is therefore rejected and must not be reused.
+
+For the separately approved bounded test, set `RC_OVERRIDE_TIME=0.5`, confirm
+the readback, fetch the complete list, save a new artifact and pin the exact
+bytes before starting either supervisor. No parameter may change after the
+save. Snapshot mode does not bypass live state: the Pi still starts its
+read-only MAVROS probe and requires fresh connected/disarmed state plus the
+hardware-safety bit ON before preserving and resolving the artifact. The
+snapshot path writes no parameter. After both live tests, restore
+`RC_OVERRIDE_TIME=3.0`, confirm the readback and retain a separate rollback
+snapshot before the session is accepted.
 
 ### Isolated FCU-to-VRX workstation half
 
@@ -400,7 +461,7 @@ D="$(xdg-user-dir DESKTOP)" || exit 1
 D="$(readlink -f -- "$D")" || exit 1
 [ -n "$D" ] && [ -d "$D" ] && [ "$D" != "$H" ] || exit 1
 printf '%s  %s\n' \
-  'b0793bdac61595a2c5e85dafbc18806bde8146cecece4ae232846b51ae4b8cb0' \
+  '8458526c183479b1ca004dcbdfb3e498b585e415826025b4ee71b7856ecb311c' \
   "$D/pi_live_hailo_mavlink_dashboard.sh" | sha256sum -c -
 ```
 
@@ -410,7 +471,7 @@ only the helper from a workstation terminal:
 ```bash
 cd ~/seal_ws/src/uvautoboat
 printf '%s  %s\n' \
-  'b0793bdac61595a2c5e85dafbc18806bde8146cecece4ae232846b51ae4b8cb0' \
+  '8458526c183479b1ca004dcbdfb3e498b585e415826025b4ee71b7856ecb311c' \
   tools/pi_live_hailo_mavlink_dashboard.sh | sha256sum -c -
 
 read -r -p 'Current Pi SSH endpoint (user@host): ' PI_SSH
@@ -427,7 +488,7 @@ scp tools/pi_live_hailo_mavlink_dashboard.sh \
 ssh "$PI_SSH" "
   cd '$PI_DESKTOP' &&
   printf '%s  %s\n' \
-    'b0793bdac61595a2c5e85dafbc18806bde8146cecece4ae232846b51ae4b8cb0' \
+    '8458526c183479b1ca004dcbdfb3e498b585e415826025b4ee71b7856ecb311c' \
     pi_live_hailo_mavlink_dashboard.sh |
   sha256sum -c -
 "

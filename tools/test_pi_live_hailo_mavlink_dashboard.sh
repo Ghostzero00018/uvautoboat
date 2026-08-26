@@ -37,6 +37,7 @@ extract_function() {
 }
 
 bash -n "$HELPER"
+require_literal 'IMAGE_RECOVERY_SAMPLE="$RUN_DIR/hailo_graph_zero_recovery.yaml"'
 
 require_literal 'HOLD_AFTER_WINDOW="${LIVE_HOLD_AFTER_WINDOW:-0}"'
 require_literal '[[ "$HOLD_AFTER_WINDOW" =~ ^[01]$ ]]'
@@ -2002,7 +2003,7 @@ MONITOR_DEADLINE_OUTPUT="$(bash -c '
   require_workstation_nodes() { :; }
   reject_command_services() { return 75; }
   reject_unexpected_command_subscribers() { :; }
-  require_publisher_count() { :; }
+  require_owned_hailo_stream() { :; }
   require_mavros_source() { :; }
   require_connected_observation_state() { :; }
   check_power() { :; }
@@ -2052,7 +2053,7 @@ PHASE_ONE_DEADLINE_OUTPUT="$(bash -c '
   require_workstation_nodes() { :; }
   reject_command_services() { return 0; }
   ros2_graph_query_before() { printf "query\n" >>"$TRACE"; return 75; }
-  require_publisher_count() { printf "UNEXPECTED_PHASE_TWO\n"; exit 98; }
+  require_owned_hailo_stream() { printf "UNEXPECTED_PHASE_TWO\n"; exit 98; }
   require_mavros_source() { printf "UNEXPECTED_PHASE_THREE\n"; exit 97; }
   require_connected_observation_state() { :; }
   check_power() { :; }
@@ -2099,7 +2100,7 @@ FINAL_EXHAUSTED_OUTPUT="$(bash -c '
   require_workstation_nodes() { :; }
   reject_command_services() { :; }
   reject_unexpected_command_subscribers() { return 75; }
-  require_publisher_count() { printf "UNEXPECTED_FINAL_PUBLISHER\n"; exit 96; }
+  require_owned_hailo_stream() { printf "UNEXPECTED_FINAL_PUBLISHER\n"; exit 96; }
   require_mavros_source() { printf "UNEXPECTED_FINAL_SOURCE\n"; exit 95; }
   check_command_sentinel() { :; }
   check_thermal_watchdog() { :; }
@@ -2128,7 +2129,7 @@ FINAL_SUCCESS_OUTPUT="$(bash -c '
   require_workstation_nodes() { printf "workstation\n" >>"$TRACE"; }
   reject_command_services() { printf "services:%s\n" "$1" >>"$TRACE"; }
   reject_unexpected_command_subscribers() { printf "subscribers:%s\n" "$1" >>"$TRACE"; }
-  require_publisher_count() { printf "publisher:%s:%s:%s:%s\n" "$@" >>"$TRACE"; }
+  require_owned_hailo_stream() { printf "publisher:%s:%s\n" "$@" >>"$TRACE"; }
   require_mavros_source() { printf "source:%s:%s\n" "$@" >>"$TRACE"; }
   check_command_sentinel() { :; }
   check_thermal_watchdog() { :; }
@@ -2143,7 +2144,7 @@ EXPECTED_FINAL_TRACE="$(printf '%s\n' \
   'workstation' \
   'services:77' \
   'subscribers:77' \
-  'publisher:/hailo/overlay/image_raw:1:final-verification:77' \
+  'publisher:final-verification:77' \
   'source:/mavros/state:77' \
   'source:/mavros/global_position/raw/fix:77' \
   'source:/mavros/imu/data:77' \
@@ -2158,7 +2159,7 @@ for contract in \
   'require_workstation_nodes "$nodes" "$deadline"' \
   'reject_command_services "$deadline"' \
   'reject_unexpected_command_subscribers "$deadline"' \
-  'require_publisher_count "$IMAGE_TOPIC" 1 final-verification "$deadline"' \
+  'require_owned_hailo_stream final-verification "$deadline"' \
   'require_mavros_source "$source_topic" "$deadline"' \
   'check_command_sentinel' \
   'check_thermal_watchdog'; do
@@ -2179,7 +2180,7 @@ for contract in \
   'require_workstation_nodes' \
   'reject_command_services "$deadline"' \
   'reject_unexpected_command_subscribers "$deadline"' \
-  'require_publisher_count "$IMAGE_TOPIC" 1 "$context" "$deadline"' \
+  'require_owned_hailo_stream "$context" "$deadline"' \
   'require_mavros_source "$source_topic" "$deadline"' \
   'require_connected_observation_state "$context" "$deadline"' \
   'check_power "$context"'; do
@@ -2222,7 +2223,7 @@ bash -c '
   require_workstation_nodes() { trace workstation-nodes; }
   reject_command_services() { trace command-services; }
   reject_unexpected_command_subscribers() { trace command-subscribers; }
-  require_publisher_count() { trace "publisher:$1:$2:$3"; }
+  require_owned_hailo_stream() { trace "publisher:$1:$2"; }
   require_mavros_source() { trace "source:$1"; }
   require_connected_observation_state() { trace "state:$1"; }
   check_power() { trace "power:$1"; }
@@ -2256,7 +2257,7 @@ for trace in \
   temperature:live-hold \
   graph-nodes forbidden-nodes workstation-nodes command-services \
   command-subscribers \
-  publisher:/hailo/overlay/image_raw:1:live-hold \
+  publisher:live-hold:0 \
   source:/mavros/state \
   source:/mavros/global_position/raw/fix \
   source:/mavros/imu/data \
@@ -2277,7 +2278,7 @@ require_trace_count 1 forbidden-nodes
 require_trace_count 1 workstation-nodes
 require_trace_count 1 command-services
 require_trace_count 1 command-subscribers
-require_trace_count 1 publisher:/hailo/overlay/image_raw:1:live-hold
+require_trace_count 1 publisher:live-hold:0
 require_trace_count 1 source:/mavros/state
 require_trace_count 1 source:/mavros/global_position/raw/fix
 require_trace_count 1 source:/mavros/imu/data
@@ -2386,7 +2387,7 @@ bash -c '
   require_workstation_nodes() { :; }
   reject_command_services() { :; }
   reject_unexpected_command_subscribers() { :; }
-  require_publisher_count() { :; }
+  require_owned_hailo_stream() { :; }
   require_mavros_source() { printf "source:%s:%s\n" "$1" "$2" >>"$TRACE"; }
   require_connected_observation_state() { :; }
   check_power() { :; }
@@ -3595,5 +3596,62 @@ if source_view_case late-deadline-crossing; then
   grep -Fxq 'view_returned=75' <<<"$LATE_OUTPUT" \
     || fail 'a probe that consumed the parent budget was reported as a late success'
 fi
+
+OWNED_HAILO_FUNCTION="$(extract_function require_owned_hailo_stream)"
+[ -n "$OWNED_HAILO_FUNCTION" ] \
+  || fail 'owned Hailo stream verifier is missing'
+
+HAILO_RECOVERY_DIR="$(mktemp -d)"
+trap 'rm -rf "$HAILO_RECOVERY_DIR"' EXIT
+set +e
+HAILO_ZERO_OUTPUT="$(bash -c '
+  eval "$1"
+  IMAGE_TOPIC=/hailo/overlay/image_raw
+  IMAGE_RECOVERY_SAMPLE="$2/recovery.yaml"
+  STREAM_HEIGHT=240
+  HAILO_PID=100
+  HAILO_PGID=100
+  HAILO_LOG="$2/hailo.log"
+  SECONDS=10
+  topic_publishers() { printf "0\n"; }
+  check_command_sentinel() { :; }
+  check_thermal_watchdog() { :; }
+  require_group_alive() { :; }
+  bounded_topic_echo() {
+    printf "encoding: bgr8\nheight: 240\n"
+  }
+  log() { printf "%s\n" "$*"; }
+  die() { printf "DIE: %s\n" "$*"; exit 90; }
+  require_owned_hailo_stream final-verification 100
+' _ "$OWNED_HAILO_FUNCTION" "$HAILO_RECOVERY_DIR" 2>&1)"
+HAILO_ZERO_RC=$?
+HAILO_DUPLICATE_OUTPUT="$(bash -c '
+  eval "$1"
+  IMAGE_TOPIC=/hailo/overlay/image_raw
+  IMAGE_RECOVERY_SAMPLE="$2/duplicate.yaml"
+  STREAM_HEIGHT=240
+  HAILO_PID=100
+  HAILO_PGID=100
+  HAILO_LOG="$2/hailo.log"
+  SECONDS=10
+  topic_publishers() { printf "2\n"; }
+  check_command_sentinel() { :; }
+  check_thermal_watchdog() { :; }
+  require_group_alive() { :; }
+  bounded_topic_echo() { printf "encoding: bgr8\nheight: 240\n"; }
+  log() { printf "%s\n" "$*"; }
+  die() { printf "DIE: %s\n" "$*"; exit 91; }
+  require_owned_hailo_stream live-window 100
+' _ "$OWNED_HAILO_FUNCTION" "$HAILO_RECOVERY_DIR" 2>&1)"
+HAILO_DUPLICATE_RC=$?
+set -e
+[ "$HAILO_ZERO_RC" -eq 0 ] \
+  || fail "fresh owned Hailo stream did not recover graph zero: $HAILO_ZERO_OUTPUT"
+grep -Fq 'HAILO_GRAPH_ZERO_RECOVERY=PASS' <<<"$HAILO_ZERO_OUTPUT" \
+  || fail 'graph-zero recovery did not emit its evidence marker'
+[ "$HAILO_DUPLICATE_RC" -eq 91 ] \
+  || fail "duplicate Hailo publisher count was accepted: $HAILO_DUPLICATE_OUTPUT"
+grep -Fq 'expected=1 found=2' <<<"$HAILO_DUPLICATE_OUTPUT" \
+  || fail 'duplicate Hailo publisher failure did not retain its observed count'
 
 printf 'PASS: Pi lifecycle, local-window, heartbeat, deadline, and monitored-hold contracts\n'

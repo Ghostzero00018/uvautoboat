@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PREFLIGHT="${1:-$SCRIPT_DIR/live_dashboard_preflight.sh}"
 HELPER="$SCRIPT_DIR/pi_live_hailo_mavlink_dashboard.sh"
 WIKI="$SCRIPT_DIR/../wiki/Live_Hailo_MAVLink_Dashboard_Testing.md"
-EXPECTED_PREFLIGHT_SHA256='642fddc1f8edb20b988e610bc71205fead7c54b4c874a3b351287a027ccab1d9'
+EXPECTED_PREFLIGHT_SHA256='2a272106b47f1b6988a01fe5f7fcc536e66aad3889b86c538b699a77e58cd90b'
 CASE_COUNT=0
 
 fail() {
@@ -60,13 +60,14 @@ grep -Fq 'the rosbridge `user interrupted with ctrl-c (SIGINT)` line as a discri
 ! grep -Fq 'The signature of a reversed order, observed 07/08/2026' "$WIKI" \
   || fail 'live-dashboard runbook retains the falsified 07/08 stop-order claim'
 
-require_literal "EXPECTED_HELPER_SHA256='b0793bdac61595a2c5e85dafbc18806bde8146cecece4ae232846b51ae4b8cb0'"
+require_literal "EXPECTED_HELPER_SHA256='8458526c183479b1ca004dcbdfb3e498b585e415826025b4ee71b7856ecb311c'"
 require_literal 'EXPECTED_SSID="${LIVE_SSID:-IoT IMT Nord Europe}"'
 require_literal 'PI_WINDOW_MODE="${LIVE_PI_WINDOW_MODE:-fullscreen}"'
 require_literal 'FCU_TO_VRX_FANOUT="${LIVE_FCU_TO_VRX_FANOUT:-0}"'
 require_literal 'ARMED_OBSERVATION="${LIVE_ARMED_OBSERVATION:-0}"'
 require_literal 'ARMED_OBSERVATION_MAX_SECONDS="${LIVE_ARMED_OBSERVATION_MAX_SECONDS:-}"'
 require_literal 'ARMED_OBSERVATION_STALE_SECONDS="${LIVE_ARMED_OBSERVATION_STALE_SECONDS:-}"'
+require_literal 'RUN_SECONDS="${LIVE_RUN_SECONDS:-}"'
 require_literal 'python3 "$FCU_TO_VRX_EVIDENCE" observe-pi \'
 require_literal '--output "$RUN_DIR/fcu_to_vrx_pi_events.jsonl" \'
 require_literal '--left-min "$ARMED_OBSERVATION_LEFT_PWM_MIN" \'
@@ -128,7 +129,7 @@ PI_COMMAND_OUTPUT="$(bash -c '
 PI_COMMAND_BLOCK="$(sed -n '/^($/,/^)$/{p}' <<<"$PI_COMMAND_OUTPUT")"
 [ -n "$PI_COMMAND_BLOCK" ] || fail 'printed Pi command block missing'
 bash -n <<<"$PI_COMMAND_BLOCK"
-grep -Fq 'b0793bdac61595a2c5e85dafbc18806bde8146cecece4ae232846b51ae4b8cb0' \
+grep -Fq '8458526c183479b1ca004dcbdfb3e498b585e415826025b4ee71b7856ecb311c' \
   <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not verify the helper pin'
 grep -Fq 'LIVE_HOLD_AFTER_WINDOW=1' <<<"$PI_COMMAND_BLOCK" \
@@ -154,7 +155,7 @@ grep -Fq 'HAILO_DEMO_ROOT="$PI_RUNTIME_ROOT"' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not preserve the Hailo runtime root'
 grep -Fq '"$PI_HELPER"' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not execute the absolute Desktop helper'
-grep -Fq "\\n' 'b0793bdac61595a2c5e85dafbc18806bde8146cecece4ae232846b51ae4b8cb0' \"\$PI_HELPER\" | sha256sum -c -" \
+grep -Fq "\\n' '8458526c183479b1ca004dcbdfb3e498b585e415826025b4ee71b7856ecb311c' \"\$PI_HELPER\" | sha256sum -c -" \
   <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi checksum format contains a literal line break'
 ! grep -Fq './pi_live_hailo_mavlink_dashboard.sh' <<<"$PI_COMMAND_BLOCK" \
@@ -189,6 +190,7 @@ PI_COMMAND_ARMED_OUTPUT="$(
   LIVE_ARMED_OBSERVATION_MAX_SECONDS=20 \
   LIVE_ARMED_OBSERVATION_FINAL_SECONDS=25 \
   LIVE_ARMED_OBSERVATION_STALE_SECONDS=7 \
+  LIVE_RUN_SECONDS=300 \
   LIVE_ARMED_OBSERVATION_LEFT_CHANNEL=3 \
   LIVE_ARMED_OBSERVATION_LEFT_PWM_MIN=800 \
   LIVE_ARMED_OBSERVATION_LEFT_TRIM=800 \
@@ -211,6 +213,7 @@ for literal in \
   'LIVE_ARMED_OBSERVATION_MAX_SECONDS=20' \
   'LIVE_ARMED_OBSERVATION_FINAL_SECONDS=25' \
   'LIVE_ARMED_OBSERVATION_STALE_SECONDS=7' \
+  'LIVE_RUN_SECONDS=300' \
   'LIVE_ARMED_OBSERVATION_LEFT_CHANNEL=3' \
   'LIVE_ARMED_OBSERVATION_LEFT_TRIM=800' \
   'LIVE_ARMED_OBSERVATION_RIGHT_CHANNEL=1' \
@@ -218,6 +221,40 @@ for literal in \
   grep -Fq "$literal" <<<"$PI_COMMAND_ARMED_BLOCK" \
     || fail "armed-observation Pi command is missing: $literal"
 done
+
+WORKSTATION_NODES_FUNCTION="$(extract_function workstation_nodes_present)"
+[ -n "$WORKSTATION_NODES_FUNCTION" ] \
+  || fail 'workstation node snapshot verifier is missing'
+WORKSTATION_NODE_COUNTER="$(mktemp)"
+printf '0\n' >"$WORKSTATION_NODE_COUNTER"
+set +e
+WORKSTATION_NODE_RECOVERY_OUTPUT="$(bash -c '
+  eval "$1"
+  counter_file="$2"
+  ros2() {
+    observed="$(cat "$counter_file")"
+    observed=$((observed + 1))
+    printf "%s\n" "$observed" >"$counter_file"
+    if [ "$observed" -eq 1 ]; then
+      printf "/rosbridge_websocket\n"
+    else
+      printf "/rosbridge_websocket\n/rosapi\n/web_video_server\n"
+    fi
+  }
+  sleep() { :; }
+  log() { printf "%s\n" "$*"; }
+  workstation_nodes_present
+' _ "$WORKSTATION_NODES_FUNCTION" "$WORKSTATION_NODE_COUNTER" 2>&1)"
+WORKSTATION_NODE_RECOVERY_RC=$?
+set -e
+[ "$WORKSTATION_NODE_RECOVERY_RC" -eq 0 ] \
+  || fail "transient workstation graph zero was not recovered: $WORKSTATION_NODE_RECOVERY_OUTPUT"
+grep -Fq 'WORKSTATION_NODE_SNAPSHOT_RETRY' <<<"$WORKSTATION_NODE_RECOVERY_OUTPUT" \
+  || fail 'workstation node retry did not emit its retry marker'
+grep -Fq 'WORKSTATION_NODE_RECOVERY=PASS' <<<"$WORKSTATION_NODE_RECOVERY_OUTPUT" \
+  || fail 'workstation node retry did not emit its recovery marker'
+rm -f "$WORKSTATION_NODE_COUNTER"
+pass_case
 pass_case
 
 set +e
@@ -1139,5 +1176,5 @@ set -e
   || fail "real-SIGINT lifecycle case failed rc=$REAL_SIGINT_CASE_RC: $REAL_SIGINT_CASE_OUTPUT"
 pass_case
 
-[ "$CASE_COUNT" -eq 16 ] || fail "executed $CASE_COUNT cases instead of 16"
+[ "$CASE_COUNT" -eq 17 ] || fail "executed $CASE_COUNT cases instead of 17"
 printf 'PASS: live-dashboard preflight contracts cases=%s\n' "$CASE_COUNT"

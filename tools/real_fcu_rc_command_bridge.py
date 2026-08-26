@@ -3,25 +3,28 @@
 
 The browser publishes paired steering/throttle requests as ``sensor_msgs/Joy``
 on ``/command_ingress/rc_axes``.  This node resolves the connected vehicle's RC
-mapping and rails through MAVROS before it creates any override publisher, then
-publishes atomic ``mavros_msgs/OverrideRCIn`` frames at 20 Hz.  Measured
-``/mavros/rc/out`` values are returned in a JSON status stream for the dashboard.
+mapping and rails through MAVROS, or from an explicitly selected hash-pinned
+MAVProxy snapshot, before it creates any override publisher.  It then publishes
+atomic ``mavros_msgs/OverrideRCIn`` frames at 20 Hz.  Measured ``/mavros/rc/out``
+values are returned in a JSON status stream for the dashboard.
 
 This bridge deliberately has no arm, disarm, mode, parameter-write, motor-test
 or raw-servo-command path.  Arming remains an external operator action.  The
 node is inert unless ``allow_real_fcu`` is explicitly true, an explicit
-``expected_domain_id`` matches ``ROS_DOMAIN_ID``, every live guard passes twice,
-and the vehicle was first observed disarmed in MANUAL.  Demand-enabled sessions
+``expected_domain_id`` matches ``ROS_DOMAIN_ID``, the selected parameter guard
+passes, and the vehicle was first observed disarmed in MANUAL.  Demand-enabled sessions
 also require exactly one command publisher; neutral-only sessions create no
 command subscription and hold live RC trims while armed.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
 import pathlib
+import re
 import signal
 import sys
 import time
@@ -52,6 +55,8 @@ STATE_TIMEOUT_SECONDS = 2.5
 FEEDBACK_TIMEOUT_SECONDS = 1.5
 NO_CHANGE = 65535
 RELEASE_HIGH_CHANNEL = 65534
+SNAPSHOT_PARAMETER_NAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
+SNAPSHOT_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
 class GuardError(RuntimeError):
@@ -424,6 +429,103 @@ def resolve_guard(values: Mapping[str, float]) -> LiveGuard:
     )
 
 
+def parse_guard_snapshot(payload: bytes) -> Dict[str, float]:
+    """Parse the strict two-column format emitted by MAVProxy ``param save``."""
+    try:
+        text = payload.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise GuardError("guard snapshot is not UTF-8") from exc
+
+    values: Dict[str, float] = {}
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        fields = line.split()
+        if len(fields) != 2:
+            raise GuardError(f"invalid snapshot line {line_number}")
+        name, encoded_value = fields
+        if not SNAPSHOT_PARAMETER_NAME.fullmatch(name):
+            raise GuardError(f"invalid snapshot parameter name at line {line_number}")
+        if name in values:
+            raise GuardError(f"duplicate snapshot parameter: {name}")
+        try:
+            value = float(encoded_value)
+        except ValueError as exc:
+            raise GuardError(
+                f"invalid snapshot value for {name}: {encoded_value}"
+            ) from exc
+        if not math.isfinite(value):
+            raise GuardError(f"snapshot value for {name} is not finite")
+        values[name] = value
+    if not values:
+        raise GuardError("guard snapshot is empty")
+    return values
+
+
+def load_guard_snapshot(
+    encoded_path: str,
+    expected_sha256: str,
+) -> tuple[LiveGuard, dict]:
+    """Resolve the existing guard from one immutable, hash-pinned snapshot."""
+    snapshot_path = pathlib.Path(encoded_path)
+    if not snapshot_path.is_absolute():
+        raise GuardError("guard snapshot path must be absolute")
+    if not SNAPSHOT_SHA256.fullmatch(expected_sha256):
+        raise GuardError("guard snapshot SHA-256 must be 64 lowercase hex characters")
+    if not snapshot_path.is_file() or not os.access(snapshot_path, os.R_OK):
+        raise GuardError(f"guard snapshot is not a readable regular file: {snapshot_path}")
+
+    payload = snapshot_path.read_bytes()
+    actual_sha256 = hashlib.sha256(payload).hexdigest()
+    if actual_sha256 != expected_sha256:
+        raise GuardError(
+            "guard snapshot SHA-256 mismatch: "
+            f"expected={expected_sha256} actual={actual_sha256}"
+        )
+    values = parse_guard_snapshot(payload)
+    guard = resolve_guard(values)
+    critical_names = (
+        "ARMING_CHECK",
+        "BRD_SAFETY_DEFLT",
+        "BRD_SAFETY_MASK",
+        "BRD_SAFETYOPTION",
+        "RC_OPTIONS",
+        "RC_OVERRIDE_TIME",
+        "RCMAP_ROLL",
+        "RCMAP_THROTTLE",
+    )
+    evidence = {
+        "schema": "uvautoboat.real_fcu.guard_snapshot.v1",
+        "pass": True,
+        "source": "mavproxy-parameter-snapshot",
+        "snapshot_file": str(snapshot_path),
+        "sha256": actual_sha256,
+        "parameter_count": len(values),
+        "critical": {name: values[name] for name in critical_names},
+        "resolved": {
+            "steering_rc": guard.steering_channel,
+            "throttle_rc": guard.throttle_channel,
+            "left_servo": guard.left_servo,
+            "right_servo": guard.right_servo,
+        },
+        "rc_rails": {
+            "steering": _rc_rail_evidence(
+                values, guard.steering_channel, guard.steering_rail
+            ),
+            "throttle": _rc_rail_evidence(
+                values, guard.throttle_channel, guard.throttle_rail
+            ),
+        },
+        "servo_rails": {
+            "left": _servo_rail_evidence(
+                guard.left_servo, 73, guard.left_servo_rail
+            ),
+            "right": _servo_rail_evidence(
+                guard.right_servo, 74, guard.right_servo_rail
+            ),
+        },
+    }
+    return guard, evidence
+
+
 def encode_axis(demand: float, rail: RcRail) -> int:
     if not math.isfinite(demand) or not -1.0 <= demand <= 1.0:
         raise ValueError("axis demand must be finite and within [-1, 1]")
@@ -514,6 +616,14 @@ class RealFcuRcCommandBridge(Node):
         self.neutral_only = bool(
             self.declare_parameter("neutral_only", False).value
         )
+        self.guard_snapshot_file = str(
+            self.declare_parameter("guard_snapshot_file", "").value
+        ).strip()
+        self.guard_snapshot_sha256 = str(
+            self.declare_parameter("guard_snapshot_sha256", "").value
+        ).strip()
+        self.guard_source = "none"
+        self.guard_evidence: Optional[dict] = None
         self.max_steering = float(self.declare_parameter("max_steering", 0.20).value)
         self.max_throttle = float(self.declare_parameter("max_throttle", 0.12).value)
         if not (0.0 < self.max_steering <= 0.20):
@@ -552,7 +662,28 @@ class RealFcuRcCommandBridge(Node):
             return
         validate_ros_domain(self.expected_domain_id, os.environ.get("ROS_DOMAIN_ID"))
 
-        self.guard = self._resolve_live_guard()
+        if bool(self.guard_snapshot_file) != bool(self.guard_snapshot_sha256):
+            raise GuardError(
+                "guard_snapshot_file and guard_snapshot_sha256 must be set together"
+            )
+        if self.guard_snapshot_file:
+            self.guard, self.guard_evidence = load_guard_snapshot(
+                self.guard_snapshot_file,
+                self.guard_snapshot_sha256,
+            )
+            self.guard_source = "snapshot"
+            self.get_logger().info(
+                "snapshot guard resolved: "
+                f"sha256={self.guard_evidence['sha256']} "
+                f"parameters={self.guard_evidence['parameter_count']} "
+                f"steering=RC{self.guard.steering_channel} "
+                f"throttle=RC{self.guard.throttle_channel} "
+                f"left=SERVO{self.guard.left_servo} "
+                f"right=SERVO{self.guard.right_servo}"
+            )
+        else:
+            self.guard = self._resolve_live_guard()
+            self.guard_source = "live"
         self.override_pub = self.create_publisher(OverrideRCIn, OVERRIDE_TOPIC, 10)
         if not self.neutral_only:
             command_qos = QoSProfile(
@@ -808,6 +939,10 @@ class RealFcuRcCommandBridge(Node):
             "armed": bool(self.latest_state and self.latest_state.armed),
             "mode": self.latest_state.mode if self.latest_state else "",
             "neutral_only": self.neutral_only,
+            "guard_source": self.guard_source,
+            "guard_snapshot_sha256": (
+                self.guard_evidence["sha256"] if self.guard_evidence else None
+            ),
             "command": {"steering": steering, "throttle": throttle},
             "feedback_fresh": bool(
                 guard is not None
@@ -1032,6 +1167,18 @@ def run_t0b_command(args: Sequence[str]) -> None:
             encoding="utf-8",
         )
         return
+    if command == "guard-snapshot-write-evidence":
+        if len(args) != 4:
+            raise GuardError(
+                "usage: guard-snapshot-write-evidence SNAPSHOT SHA256 OUTPUT"
+            )
+        snapshot_path, expected_sha256, output_path = args[1:]
+        _guard, payload = load_guard_snapshot(snapshot_path, expected_sha256)
+        pathlib.Path(output_path).write_text(
+            json.dumps(payload, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        return
     raise GuardError(f"unknown T0b command: {command}")
 
 
@@ -1041,6 +1188,7 @@ def cli(args: Optional[Sequence[str]] = None) -> int:
         "t0b-discovery-parameters",
         "t0b-rail-parameters",
         "t0b-write-evidence",
+        "guard-snapshot-write-evidence",
     }
     if argv and argv[0] in t0b_commands:
         try:

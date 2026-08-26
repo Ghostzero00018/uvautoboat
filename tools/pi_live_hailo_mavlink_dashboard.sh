@@ -67,6 +67,7 @@ BATTERY_SAMPLE="$RUN_DIR/mavros_battery.yaml"
 RC_SAMPLE="$RUN_DIR/mavros_rc.yaml"
 THRUST_SAMPLE="$RUN_DIR/mavros_thrust_output.yaml"
 IMAGE_SAMPLE="$RUN_DIR/hailo_image.yaml"
+IMAGE_RECOVERY_SAMPLE="$RUN_DIR/hailo_graph_zero_recovery.yaml"
 COMMAND_ABORT_FILE="$RUN_DIR/command_abort.txt"
 ARMED_OBSERVATION_STATUS_FILE="$RUN_DIR/armed_observation_status.txt"
 ARMED_OBSERVATION_ENABLE_FILE="$RUN_DIR/armed_observation_enable"
@@ -629,6 +630,50 @@ require_publisher_count() {
     [ "$attempt" -eq 3 ] || sleep 1
   done
   die "publisher count failed after 3 attempts during $context: $topic expected=$expected found=$count"
+}
+
+require_owned_hailo_stream() {
+  local context="$1" deadline="${2:-0}"
+  local attempt count='UNKNOWN' query_rc all_zero=1 image_rc=0
+  for attempt in 1 2 3; do
+    query_rc=0
+    count="$(topic_publishers "$IMAGE_TOPIC" "$deadline")" || query_rc=$?
+    [ "$query_rc" -ne 75 ] || return 75
+    if [ "$query_rc" -eq 0 ] && [ "$count" = 1 ]; then
+      return 0
+    fi
+    if [ "$query_rc" -ne 0 ] || [ "$count" != 0 ]; then
+      all_zero=0
+    fi
+    if [ "$deadline" -ne 0 ] && [ "$SECONDS" -ge "$deadline" ]; then
+      return 75
+    fi
+    check_command_sentinel
+    check_thermal_watchdog
+    [ "$attempt" -eq 3 ] || sleep 1
+  done
+
+  if [ "$all_zero" -eq 1 ]; then
+    require_group_alive hailo-bridge \
+      "$HAILO_PID" "$HAILO_PGID" "$HAILO_LOG"
+    bounded_topic_echo "$deadline" 5 --no-arr \
+      --qos-reliability reliable --qos-history keep_last --qos-depth 1 \
+      "$IMAGE_TOPIC" sensor_msgs/msg/Image >"$IMAGE_RECOVERY_SAMPLE" 2>&1 \
+      || image_rc=$?
+    [ "$image_rc" -ne 75 ] || return 75
+    if [ "$image_rc" -eq 0 ] \
+        && grep -q '^encoding: bgr8' "$IMAGE_RECOVERY_SAMPLE" \
+        && grep -q "^height: $STREAM_HEIGHT" "$IMAGE_RECOVERY_SAMPLE"; then
+      check_command_sentinel
+      check_thermal_watchdog
+      require_group_alive hailo-bridge \
+        "$HAILO_PID" "$HAILO_PGID" "$HAILO_LOG"
+      log "HAILO_GRAPH_ZERO_RECOVERY=PASS phase=$context source=fresh-owned-image"
+      return 0
+    fi
+  fi
+
+  die "publisher count failed after 3 attempts during $context: $IMAGE_TOPIC expected=1 found=$count"
 }
 
 graph_nodes() {
@@ -1241,7 +1286,7 @@ final_graph_verification() {
   [ "$result" -eq 0 ] || return "$result"
   check_command_sentinel
   check_thermal_watchdog
-  require_publisher_count "$IMAGE_TOPIC" 1 final-verification "$deadline" || result=$?
+  require_owned_hailo_stream final-verification "$deadline" || result=$?
   [ "$result" -eq 0 ] || return "$result"
   check_command_sentinel
   check_thermal_watchdog
@@ -1308,7 +1353,7 @@ monitor_live_stack() {
           ;;
         2)
           phase_rc=0
-          require_publisher_count "$IMAGE_TOPIC" 1 "$context" "$deadline" || phase_rc=$?
+          require_owned_hailo_stream "$context" "$deadline" || phase_rc=$?
           [ "$phase_rc" -ne 75 ] || break
           [ "$phase_rc" -eq 0 ] || return "$phase_rc"
           ;;

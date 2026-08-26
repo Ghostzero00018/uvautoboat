@@ -717,3 +717,127 @@ isolation gate. The existing approval remains limited to the read-only T0b
 probe; the probe is still **NOT RUN** pending clean repository publication,
 deployed-bundle verification and Pi `check` mode. No parameter write, arm,
 mode change, RC command, bridge launch or thrust is authorized.
+
+## T0b attempts, disarmed fanout evidence and revised authority - 26/08/2026
+
+The deployed four-file real-FCU bundle passed its checksum manifest and Pi
+`check` mode. Two read-only `probe` attempts then failed closed. Run
+`real_fcu_digital_twin_pi_20260826_175757` stopped when the MAVROS parameter
+pull failed. Run `real_fcu_digital_twin_pi_20260826_175855` reached live state
+and SYS_STATUS sampling but stopped because the observed hardware-safety bit
+was not ON. Both helpers stopped their probe MAVROS child and exited nonzero.
+The two complete run directories were copied to
+`/home/ghostzero/Desktop/pi_run_evidence/t0b_20260826`; neither is a passing
+T0b result.
+
+The operator then used MAVProxy directly, explicitly released hardware safety,
+armed once and disarmed once. ArduPilot accepted both requests and reported
+`Arming Checks Disabled`, `Throttle armed` and `Throttle disarmed`. This proves
+that the manual MAVProxy command path can change armed state with the current
+configuration. It does not convert either failed helper run into a passing
+probe. A subsequent MAVProxy FTP fetch returned `986` parameters and the saved
+artifact was copied to the workstation. Its retained
+`RC_OVERRIDE_TIME=3.0` is outside the bridge guard and is not valid for a
+demand-enabled run.
+
+The first three-part disarmed fanout attempt retained:
+
+```text
+W1=/home/ghostzero/Desktop/live_dashboard_workstation_20260826_183120
+W2=/home/ghostzero/Desktop/fcu_to_vrx_workstation_20260826_183138
+PI=/home/ghostzero/Desktop/pi_run_evidence/live_dashboard_20260826_183200
+```
+
+The Pi forwarder reported outbound-only readiness for
+`10.120.2.168:14555`. W2 reached VRX, recorder and bridge readiness. Its
+`3,585` retained events include repeated real `SERVO_OUTPUT_RAW` frames with
+left `SERVO3=800`, right `SERVO1=800` and both mapped thrust values `0.0 N`.
+W2 later reported ordered teardown and UDP `14555` free. This closes live
+disarmed UART-to-fanout-to-UDP-to-bridge delivery at neutral only. It does not
+prove asymmetric output, thrust or VRX motion.
+
+W1 entered failure hold after a single daemonless workstation node snapshot
+missed the required graph while its supervised children and ports remained
+up. The Pi was nevertheless started later, reached
+`PI_SOURCE_STACK_READY=PASS` and recorded Hailo frames `1`, `100`, ... `1900`.
+Its final verification then received three publisher-count-zero graph views
+and stopped automatically; teardown passed and the helper exited status `1`.
+The Hailo process traceback is the `KeyboardInterrupt` produced during that
+ordered teardown, not a preceding inference crash.
+
+The earlier `/dev/hailo0 missing` preflight stop was independently repaired.
+The current kernel was `6.8.0-1062-raspi`; its matching headers were installed,
+DKMS built and installed `hailo_pci/4.24.0`, the module loaded, `/dev/hailo0`
+appeared and `hailortcli fw-control identify` reported firmware `4.24.0` on
+`HAILO8L`.
+
+The operator then explicitly approved the source repairs, a temporary
+`RC_OVERRIDE_TIME=0.5` value, a hash-pinned post-change MAVProxy snapshot, both
+live armed tests and mandatory rollback to `RC_OVERRIDE_TIME=3.0`. The latest
+physical declaration at that approval was: hardware safety ON, FCU disarmed,
+propulsion battery disconnected, ESCs unpowered, Herelink sticks neutral,
+propellers removed and hull restrained. These states must still be checked at
+each live pipeline header because a later physical change invalidates them.
+
+## Live graph recovery and parameter-snapshot implementation - 26/08/2026
+
+The Pi helper now treats a run-owned Hailo process plus a fresh reliable
+`sensor_msgs/Image` sample with `bgr8` encoding and height `240` as recovery
+evidence only after three successful publisher queries all report exactly
+zero. Query errors, a duplicate publisher or any other non-one count cannot
+take that recovery path. The workstation supervisor independently retries its
+complete three-node graph snapshot up to three times. Both changes retain
+fail-closed exhaustion and add explicit recovery markers.
+
+`LIVE_RUN_SECONDS` can now be passed through the workstation emitter. It is
+optional and defaults to the Pi helper's existing value when omitted; an armed
+observation can set a bounded value explicitly without hand-editing the
+printed command.
+
+The real-FCU bridge and Pi supervisor now support a default-off snapshot guard
+for `run-t2a` and `run` only. The selector requires an absolute readable
+MAVProxy parameter artifact, its exact lowercase SHA-256 and explicit snapshot
+approval. The same bytes are parsed once, reject malformed or duplicate
+entries and pass through the complete existing parameter guard. The Pi still
+uses a read-only MAVROS probe to require current connected/disarmed state and
+hardware safety ON before it copies the snapshot into run evidence. No
+parameter write was added. The original live-pull path remains the default,
+and `probe` remains live-pull-only.
+
+The stored `RC_OVERRIDE_TIME=3.0` artifact was exercised against the new CLI
+and correctly rejected:
+
+```text
+real_fcu_rc_command_bridge: RC_OVERRIDE_TIME must be in (0, 0.5], got 3.0
+```
+
+The new positive and negative coverage includes snapshot hash drift, parser
+errors, unsafe timeout rejection, mode and approval selector failures,
+snapshot/live bridge ordering, Hailo zero recovery, Hailo duplicate rejection,
+workstation graph retry and emitter validation. The final serialized offline
+gate passed:
+
+```text
+Pi lifecycle: PASS
+live-dashboard preflight: PASS cases=17
+real-FCU helper suite: PASS cases=27
+SITL runner suite: PASS cases=41
+FCU-to-VRX workstation: PASS shell_cases=14 python_tests=14 runtime=not-started
+Python: 99 passed
+Node: tests=80 pass=80 fail=0
+```
+
+Current publication pins are:
+
+```text
+Pi dashboard helper:       8458526c183479b1ca004dcbdfb3e498b585e415826025b4ee71b7856ecb311c
+W1 dashboard supervisor:   2a272106b47f1b6988a01fe5f7fcc536e66aad3889b86c538b699a77e58cd90b
+real-FCU Pi supervisor:    a9f10a34aecd4bab1952448803c0f95dea8f1b7648048f667e2e7a8a82c4b8ef
+real-FCU command bridge:   31ac64d68138eee8b8bc15e47023ea1b70ec1c6ce17a38ad9130f6d444e649e3
+```
+
+The real dashboard-to-FCU command run and the armed Herelink-to-VRX motion run
+remain **NOT RUN** at this checkpoint. Their authorization is recorded, but
+runtime acceptance still requires a newly saved post-`0.5` snapshot, exact
+transfer checks, the live physical declaration, the supervisors' readiness
+markers, external disarm before teardown and the verified `3.0` rollback.
