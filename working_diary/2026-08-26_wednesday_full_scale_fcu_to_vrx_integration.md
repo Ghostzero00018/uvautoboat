@@ -239,3 +239,220 @@ different meaning and stay frozen.
 - Robustness comes from one supervisor-owned topology, default-off authority,
   focused tests, live-read mapping and rails, correlated observers, neutral
   return and ordered teardown. No bypass topology is an acceptable shortcut.
+
+## Block A/B execution note - 26/08/2026
+
+The opening repository certification passed at
+`HEAD == origin/main == e140c5a`, divergence `0/0`, with a clean worktree before
+the day's edits. The original offline gate also passed. No Pi, FCU, Herelink,
+camera, MAVProxy, VRX or other hardware/live path ran.
+
+Block B is now implemented offline. `LIVE_ARMED_OBSERVATION` defaults to `0`,
+so the prior unconditional `FCU_ARMED` abort remains the default behaviour. The
+enabled selector is accepted only with the outbound fanout enabled, the
+indefinite hold disabled, and live-read left/right servo channels and trims
+supplied explicitly. Its subscriber-only monitor requires the supervisor-owned
+pre-ready latch plus fresh connected/disarmed telemetry, neutral output,
+hardware safety ON and an empty command sentinel before it permits one bounded
+armed window. It fails closed on an armed startup, a second arm, disconnect,
+stale required telemetry, armed-window deadline, command publication, or a
+missed connected/disarmed neutral and hardware-safe restoration deadline.
+
+Focused tests were written and observed failing before the implementation. The
+final focused result is `8 passed`. The existing Pi lifecycle suite also passes,
+including the default-off path. The helper's governed subscriber-only checksum
+pin was refreshed after the intentional source change to
+`b0793bdac61595a2c5e85dafbc18806bde8146cecece4ae232846b51ae4b8cb0`.
+The complete final offline gate passed:
+
+```text
+Pi lifecycle: PASS
+live-dashboard preflight: PASS cases=13
+real-FCU helper suite: PASS cases=24
+SITL runner suite: PASS cases=41
+Python: 80 passed
+Node: tests=80 pass=80 fail=0
+GATE_RC=0
+```
+
+The stale receive-only bridge docstring and the live-dashboard runbook wording
+were corrected in the same reviewed change. The selector remains **NOT RUN** on
+the Pi or against any FCU. Of the three opening preconditions, only the offline
+selector implementation/test prerequisite is now closed. Current-source full
+simulator acceptance and T0b remain open.
+
+Block C has not started. It still requires a fresh literal physical declaration
+and separate approval. The intended continuation remains the real FCU/Pi/Hailo
+stack feeding the real workstation VRX digital twin; no disarmed-only substitute
+or simulator-only shortcut replaces Blocks C, D or E.
+
+## Block B checksum correction - 26/08/2026
+
+A post-gate review found that the workstation preflight, its focused test and
+the live-dashboard runbook still carried the previous helper checksum even
+though the current helper checksum was already recorded here and in the
+real-FCU helper suite. The mismatch was fail-closed, but it would have stopped
+Block C at the first helper-pin check.
+
+The focused preflight test now reads the supervisor's helper pin and compares
+it with the actual helper bytes. The new check first failed with the previous
+pin and then passed after the runtime pin, printed Pi command assertions,
+runbook manifest and copy-paste checks were updated to
+`b0793bdac61595a2c5e85dafbc18806bde8146cecece4ae232846b51ae4b8cb0`.
+The runbook helper size is also corrected to `90,518` bytes. Updating the
+workstation preflight changed its checksum to
+`dfa41732e5fc39572e9f927bf5c202aba3250c18e2372dc238b6d72212dc9372`;
+the governed test and runbook manifest now carry that value.
+
+The review also established three pre-enable stop conditions without relaxing
+the selector: read `BRD_SAFETY_DEFLT` through the open T0b parameter check and
+observe live hardware-safety state; read a stable disarmed `/mavros/rc/out`
+pair and stop if it does not supply valid PWM trims in `800..2200`; and measure
+the real-link cadence of every required monitor topic before changing the
+default `5`-second freshness limit. Failure to reach the exact baseline remains
+a stop, not a reason to widen acceptance.
+
+The complete offline gate was rerun after the repair and passed:
+
+```text
+Pi lifecycle: PASS
+live-dashboard preflight: PASS cases=14
+real-FCU helper suite: PASS cases=24
+SITL runner suite: PASS cases=41
+Python: 80 passed
+Node: tests=80 pass=80 fail=0
+GATE_RC=0
+```
+
+No Pi, FCU, Herelink, camera, MAVProxy, VRX or other live path ran during this
+repair. Block C approval remains outstanding. The operator has confirmed that
+the propellers are removed and has described the other hardware generally as
+safe to operate. That partial statement does not establish the exact
+propulsion-power state, hardware-safety state, Herelink power and stick state,
+arming-check configuration, FCU armed state or Pi-stack state. Block C has not
+started, and no live command is authorised.
+
+## Block C approval - 26/08/2026
+
+The operator explicitly approved Block C in the current session. This clears
+the separate approval gate only. The propellers-removed state is confirmed;
+the exact hull-restraint, propulsion-power, hardware-safety, Herelink power and
+stick, arming-check, FCU armed/disarmed and Pi-stack states remain unstated.
+Block C has not started, and its first live command remains blocked until that
+fresh literal declaration is complete.
+
+## Piece 1 VRX/bridge supervisor - offline implementation - 26/08/2026
+
+The workstation-only Piece 1 implementation is now present at
+`tools/fcu_to_vrx_workstation.sh`. It owns exactly two runtime children: the
+`vrx_gz` `sydney_regatta` world and `tools/servo_command_bridge.py`. Both are
+fixed to isolated ROS domain `77` with localhost-only discovery. The bridge
+receives the Pi's outbound MAVLink copy on UDP `14555`; sensor injection and
+`/cmd_vel` publication are explicitly disabled. This piece does not start or
+own SITL, MAVProxy, MAVROS, a serial device, the Pi helper, rosbridge or the
+dashboard.
+
+The supervisor refuses to build the bridge command until both live-read servo
+channels and both sides' live-read PWM rails are supplied. It rejects missing
+or duplicate channels, invalid rails, unequal left/right rails that the current
+shared-rail bridge cannot represent, and an invalid simulator thrust limit.
+Production preflight additionally requires a clean checkout at `origin/main`,
+an empty domain `77`, free UDP `14555`, the installed VRX topic/world contract,
+and no conflicting simulator, bridge, SITL, MAVProxy or MAVROS process.
+
+Focused tests were written before the supervisor existed and first stopped on
+the missing file. A later empty-domain contract test first stopped on the
+missing guard. The completed focused gate now reports:
+
+```text
+FCU-to-VRX workstation supervisor tests: PASS cases=12 runtime=not-started
+Servo-command bridge PWM mapping: 2 tests passed
+FCU_TO_VRX_WORKSTATION_CHECK=PASS shell_cases=12 python_tests=2 runtime=not-started
+```
+
+The process lifecycle test uses only temporary local child processes. It proves
+separate process groups, bridge-before-VRX teardown, a free-UDP teardown
+requirement, the success marker and unexpected-child-exit detection. The mapping
+test directly characterises both the real-FCU-style bottom-neutral rail and the
+bidirectional midscale rail without importing or starting ROS.
+
+The complete offline regression set passes with the new suites included:
+
+```text
+Pi lifecycle: PASS
+live-dashboard preflight: PASS cases=14
+real-FCU helper suite: PASS cases=24
+SITL runner suite: PASS cases=41
+FCU-to-VRX workstation supervisor: PASS cases=12 runtime=not-started
+Python: 82 passed
+Node: tests=80 pass=80 fail=0
+```
+
+A daemonless localhost-only environment probe also passed against the installed
+workspace: domain `77` contained zero nodes, `vrx_gz` supplied the
+`sydney_regatta` world and both WAM-V thrust topics, and `/usr/bin/python3`
+imported `pymavlink` and `rclpy`. It reported `runtime=not-started`.
+
+Two deliberate production-path failures were also confirmed without launching
+runtime: an empty configuration stops on the first required live value, and a
+complete example configuration stops at the clean-worktree gate while the
+reviewed changes are uncommitted. No Pi, FCU, Herelink, camera, MAVProxy,
+MAVROS, VRX, Gazebo or live network path ran during Piece 1.
+
+The source recheck also corrects the session discussion about
+`BRD_SAFETY_DEFLT`: `tools/real_fcu_digital_twin_pi.sh` first checks the live
+hardware-safety bit and later explicitly rejects `BRD_SAFETY_DEFLT` unless its
+value is `1` or `1.0`. Both checks remain unchanged.
+
+Piece 1 is prepared offline, not accepted live. Block C approval remains scoped
+to Block C, and the seven exact physical states listed above remain unstated.
+Block D has no approval to start. Piece 2 - the armed-observation emitter path
+and correlated observers required for Block E - has not started.
+
+## Piece 1 review follow-ups - 26/08/2026
+
+Two gaps found in the Piece 1 review were closed offline. Neither changes the
+supervisor's runtime behaviour and neither is a live result.
+
+The bridge parameter contract was fail-open. The workstation supervisor builds
+eleven `-p name:=value` overrides for `tools/servo_command_bridge.py`, but no
+test compared those names with the bridge's own `declare_parameter` calls; the
+existing suite checked the constructed command against expected literals only.
+An override whose name no longer matches a declaration is stored without being
+applied, so the bridge would keep its own default. For `pwm_neutral` that means
+a mid-scale `1500` against a bottom-neutral boat whose neutral is `800`, while
+the supervisor's ready line still reports the live-read rails.
+
+`tools/test_fcu_to_vrx_parameter_contract.py` now extracts the override names
+from the argument vector the supervisor actually builds, extracts the declared
+names from the bridge by syntax-tree walk, and requires every override to be
+declared. It also pins the expected set of eleven names so an addition or
+removal has to be deliberate. A second case renames one declaration in a
+temporary copy and requires the check to reject it. The guard was confirmed to
+fail against a renamed bridge before it was accepted as passing: the primary
+case reports `pwm_neutral` as undeclared when the declaration is renamed. All
+eleven names match the current bridge.
+
+The runbook gained a start and stop order section. `W1` rejects any running
+`gazebo` or `gz sim` process, so `W1` must start before `W2`; `W2` permits
+`W1`'s rosbridge, web-video-server and dashboard processes. `W2` must also be
+ready before the Pi starts, because `W1`'s `PI_DATA_ARRIVED` phase samples ROS
+topics and does not prove UDP `14555` arrival. Teardown runs in reverse: Pi,
+then `W2` bridge before VRX with `14555` confirmed free, then `W1`.
+
+The complete offline gate passed after both changes:
+
+```text
+Pi lifecycle: PASS
+live-dashboard preflight: PASS cases=14
+real-FCU helper suite: PASS cases=24
+SITL runner suite: PASS cases=41
+FCU-to-VRX workstation: PASS cases=12 runtime=not-started
+Python: 84 passed
+Node: tests=80 pass=80 fail=0
+GATE_RC=0
+```
+
+No Pi, FCU, Herelink, camera, MAVProxy, MAVROS, VRX, Gazebo or live network
+path ran. Block D has no approval to start and the seven exact physical states
+remain unstated. Piece 2 has not started.

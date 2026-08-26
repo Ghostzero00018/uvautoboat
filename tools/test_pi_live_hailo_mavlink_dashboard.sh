@@ -2004,7 +2004,7 @@ MONITOR_DEADLINE_OUTPUT="$(bash -c '
   reject_unexpected_command_subscribers() { :; }
   require_publisher_count() { :; }
   require_mavros_source() { :; }
-  require_connected_disarmed_state() { :; }
+  require_connected_observation_state() { :; }
   check_power() { :; }
   sleep() { printf "UNEXPECTED_SLEEP\n"; exit 99; }
   SECONDS=0
@@ -2054,7 +2054,7 @@ PHASE_ONE_DEADLINE_OUTPUT="$(bash -c '
   ros2_graph_query_before() { printf "query\n" >>"$TRACE"; return 75; }
   require_publisher_count() { printf "UNEXPECTED_PHASE_TWO\n"; exit 98; }
   require_mavros_source() { printf "UNEXPECTED_PHASE_THREE\n"; exit 97; }
-  require_connected_disarmed_state() { :; }
+  require_connected_observation_state() { :; }
   check_power() { :; }
   sleep() { SECONDS=$((SECONDS + $1)); }
   SECONDS=0
@@ -2181,7 +2181,7 @@ for contract in \
   'reject_unexpected_command_subscribers "$deadline"' \
   'require_publisher_count "$IMAGE_TOPIC" 1 "$context" "$deadline"' \
   'require_mavros_source "$source_topic" "$deadline"' \
-  'require_connected_disarmed_state "$context" "$deadline"' \
+  'require_connected_observation_state "$context" "$deadline"' \
   'check_power "$context"'; do
   grep -Fq -- "$contract" <<<"$MONITOR_FUNCTION" \
     || fail "hold monitor omits safety contract: $contract"
@@ -2224,7 +2224,7 @@ bash -c '
   reject_unexpected_command_subscribers() { trace command-subscribers; }
   require_publisher_count() { trace "publisher:$1:$2:$3"; }
   require_mavros_source() { trace "source:$1"; }
-  require_connected_disarmed_state() { trace "state:$1"; }
+  require_connected_observation_state() { trace "state:$1"; }
   check_power() { trace "power:$1"; }
   SLEEP_COUNT=0
   SECONDS=0
@@ -2388,7 +2388,7 @@ bash -c '
   reject_unexpected_command_subscribers() { :; }
   require_publisher_count() { :; }
   require_mavros_source() { printf "source:%s:%s\n" "$1" "$2" >>"$TRACE"; }
-  require_connected_disarmed_state() { :; }
+  require_connected_observation_state() { :; }
   check_power() { :; }
   SLEEP_COUNT=0
   SECONDS=0
@@ -2503,6 +2503,7 @@ TRANSITION_OUTPUT="$(bash -c '
   WINDOW_START_SECONDS=0
   WINDOW_MONITOR_END_SECONDS=10
   HOLD_AFTER_WINDOW=1
+  ARMED_OBSERVATION=0
   HOLD_ACTIVE=0
   WINDOW_COMPLETE=0
   LIFECYCLE_TRANSITION_ACTIVE=0

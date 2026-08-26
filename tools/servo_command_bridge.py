@@ -17,12 +17,11 @@ This node contains three distinct MAVLink/ROS 2 paths over UDP:
 The supported inbound path is the point of the exercise: the autopilot computes
 its servo outputs and those drive the simulated thrusters.
 
-Transport is UDP, exactly like the C++ reference. It therefore does NOT depend on
-the Pi's serial link to the flight controller, which is currently receive-only.
-Against a simulated autopilot (SITL on localhost) this bridge is prepared for a
-first gated run but remains NOT RUN; against the real flight controller the
-traffic still has to cross that serial link, so the hardware blocker still
-applies there.
+Transport is UDP, exactly like the C++ reference. The bridge never opens the
+Pi's serial link. Against SITL it consumes the simulator's local MAVLink output;
+against the real flight controller it consumes the Pi supervisor's outbound-only
+MAVLink fanout on the workstation. Neither topology creates a command route back
+to the flight controller.
 
 Differences from the C++ reference (deliberate)
 -----------------------------------------------

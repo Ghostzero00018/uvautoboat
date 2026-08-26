@@ -17,6 +17,14 @@ DOMAIN="${LIVE_ROS_DOMAIN_ID:-12}"
 FCU_TO_VRX_FANOUT="${LIVE_FCU_TO_VRX_FANOUT:-0}"
 FCU_TO_VRX_INGRESS_PORT=14556
 FCU_TO_VRX_DESTINATION_PORT=14555
+ARMED_OBSERVATION="${LIVE_ARMED_OBSERVATION:-0}"
+ARMED_OBSERVATION_MAX_SECONDS="${LIVE_ARMED_OBSERVATION_MAX_SECONDS:-30}"
+ARMED_OBSERVATION_FINAL_SECONDS="${LIVE_ARMED_OBSERVATION_FINAL_SECONDS:-30}"
+ARMED_OBSERVATION_STALE_SECONDS="${LIVE_ARMED_OBSERVATION_STALE_SECONDS:-5}"
+ARMED_OBSERVATION_LEFT_CHANNEL="${LIVE_ARMED_OBSERVATION_LEFT_CHANNEL:-}"
+ARMED_OBSERVATION_LEFT_TRIM="${LIVE_ARMED_OBSERVATION_LEFT_TRIM:-}"
+ARMED_OBSERVATION_RIGHT_CHANNEL="${LIVE_ARMED_OBSERVATION_RIGHT_CHANNEL:-}"
+ARMED_OBSERVATION_RIGHT_TRIM="${LIVE_ARMED_OBSERVATION_RIGHT_TRIM:-}"
 RUN_SECONDS="${LIVE_RUN_SECONDS:-120}"
 HOLD_AFTER_WINDOW="${LIVE_HOLD_AFTER_WINDOW:-0}"
 FINAL_VERIFY_SECONDS="${LIVE_FINAL_VERIFY_SECONDS:-180}"
@@ -60,6 +68,8 @@ RC_SAMPLE="$RUN_DIR/mavros_rc.yaml"
 THRUST_SAMPLE="$RUN_DIR/mavros_thrust_output.yaml"
 IMAGE_SAMPLE="$RUN_DIR/hailo_image.yaml"
 COMMAND_ABORT_FILE="$RUN_DIR/command_abort.txt"
+ARMED_OBSERVATION_STATUS_FILE="$RUN_DIR/armed_observation_status.txt"
+ARMED_OBSERVATION_ENABLE_FILE="$RUN_DIR/armed_observation_enable"
 THERMAL_ABORT_FILE="$RUN_DIR/thermal_abort.txt"
 THERMAL_PEAK_FILE="$RUN_DIR/thermal_peak_mc.txt"
 
@@ -187,6 +197,40 @@ import sys
 socket.inet_pton(socket.AF_INET, sys.argv[1])
 ' "$WS_IP" 2>/dev/null \
     || die 'WORKSTATION_IP must be an IPv4 address when fanout is enabled'
+}
+
+validate_armed_observation() {
+  local value
+  [[ "$ARMED_OBSERVATION" =~ ^[01]$ ]] \
+    || die 'LIVE_ARMED_OBSERVATION must be 0 or 1'
+  [ "$ARMED_OBSERVATION" -eq 0 ] && return 0
+
+  [ "$FCU_TO_VRX_FANOUT" -eq 1 ] \
+    || die 'LIVE_ARMED_OBSERVATION=1 requires LIVE_FCU_TO_VRX_FANOUT=1'
+  [ "$HOLD_AFTER_WINDOW" -eq 0 ] \
+    || die 'LIVE_ARMED_OBSERVATION=1 requires LIVE_HOLD_AFTER_WINDOW=0'
+  for value in \
+    "$ARMED_OBSERVATION_MAX_SECONDS" \
+    "$ARMED_OBSERVATION_FINAL_SECONDS" \
+    "$ARMED_OBSERVATION_STALE_SECONDS"; do
+    [[ "$value" =~ ^[1-9][0-9]*$ ]] \
+      || die 'armed-observation time limits must be positive integers'
+  done
+  for value in \
+    "$ARMED_OBSERVATION_LEFT_CHANNEL" \
+    "$ARMED_OBSERVATION_RIGHT_CHANNEL"; do
+    [[ "$value" =~ ^[1-9][0-9]*$ ]] && [ "$value" -le 18 ] \
+      || die 'armed-observation servo channels must be live-read values in 1..18'
+  done
+  [ "$ARMED_OBSERVATION_LEFT_CHANNEL" -ne "$ARMED_OBSERVATION_RIGHT_CHANNEL" ] \
+    || die 'armed-observation left and right servo channels must differ'
+  for value in \
+    "$ARMED_OBSERVATION_LEFT_TRIM" \
+    "$ARMED_OBSERVATION_RIGHT_TRIM"; do
+    [[ "$value" =~ ^[0-9]+$ ]] \
+      && [ "$value" -ge 800 ] && [ "$value" -le 2200 ] \
+      || die 'armed-observation trims must be live-read PWM values in 800..2200'
+  done
 }
 
 configure_mavproxy_outputs() {
@@ -964,6 +1008,13 @@ sample_connected_disarmed_state() {
     && grep -q '^armed: false' "$STATE_SAMPLE"
 }
 
+sample_connected_state() {
+  local deadline="${1:-0}"
+  bounded_topic_echo "$deadline" 5 /mavros/state mavros_msgs/msg/State \
+    >"$STATE_SAMPLE" 2>&1 \
+    && grep -q '^connected: true' "$STATE_SAMPLE"
+}
+
 require_connected_disarmed_state() {
   local context="$1" deadline="${2:-0}" attempt sample_rc
   for attempt in 1 2 3; do
@@ -980,6 +1031,64 @@ require_connected_disarmed_state() {
     [ "$attempt" -eq 3 ] || sleep 1
   done
   die "MAVROS connection/disarmed state failed after 3 attempts during $context"
+}
+
+require_connected_state() {
+  local context="$1" deadline="${2:-0}" attempt sample_rc
+  for attempt in 1 2 3; do
+    sample_rc=0
+    sample_connected_state "$deadline" || sample_rc=$?
+    [ "$sample_rc" -ne 75 ] || return 75
+    if [ "$sample_rc" -eq 0 ]; then
+      return 0
+    fi
+    if [ "$deadline" -ne 0 ] && [ "$SECONDS" -ge "$deadline" ]; then
+      return 75
+    fi
+    check_command_sentinel
+    [ "$attempt" -eq 3 ] || sleep 1
+  done
+  die "MAVROS connection state failed after 3 attempts during $context"
+}
+
+require_connected_observation_state() {
+  local context="$1" deadline="${2:-0}"
+  if [ "$ARMED_OBSERVATION" -eq 1 ]; then
+    require_connected_state "$context" "$deadline"
+  else
+    require_connected_disarmed_state "$context" "$deadline"
+  fi
+}
+
+require_armed_observation_complete() {
+  local deadline="$1"
+  [ "$ARMED_OBSERVATION" -eq 1 ] || return 0
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    check_command_sentinel
+    if grep -Fxq 'phase=COMPLETE' "$ARMED_OBSERVATION_STATUS_FILE" 2>/dev/null; then
+      log 'ARMED_OBSERVATION=PASS single_window=1 final=connected-disarmed-neutral-hardware-safe'
+      return 0
+    fi
+    sleep 1
+  done
+  die "armed observation did not reach restored-safe completion; see $ARMED_OBSERVATION_STATUS_FILE"
+}
+
+enable_armed_observation() {
+  local attempt
+  [ "$ARMED_OBSERVATION" -eq 1 ] || return 0
+  : >"$ARMED_OBSERVATION_ENABLE_FILE" \
+    || die "cannot enable armed-observation baseline: $ARMED_OBSERVATION_ENABLE_FILE"
+  for attempt in $(seq 1 20); do
+    check_command_sentinel
+    check_thermal_watchdog
+    if grep -Fxq 'phase=READY' "$ARMED_OBSERVATION_STATUS_FILE" 2>/dev/null; then
+      log 'ARMED_OBSERVATION_BASELINE=PASS connected-disarmed-neutral-hardware-safe topics=fresh command_messages=0'
+      return 0
+    fi
+    sleep 1
+  done
+  die "armed-observation baseline did not become ready; see $ARMED_OBSERVATION_STATUS_FILE"
 }
 
 initial_graph_gate() {
@@ -1231,7 +1340,7 @@ monitor_live_stack() {
 
     if [ "$SECONDS" -ge "$next_state_check" ]; then
       phase_rc=0
-      require_connected_disarmed_state "$context" "$deadline" || phase_rc=$?
+      require_connected_observation_state "$context" "$deadline" || phase_rc=$?
       [ "$phase_rc" -ne 75 ] || break
       [ "$phase_rc" -eq 0 ] || return "$phase_rc"
       next_state_check=$((SECONDS + 4))
@@ -1261,7 +1370,11 @@ complete_source_window() {
   WINDOW_ELAPSED_SECONDS=$((SECONDS - WINDOW_START_SECONDS))
   LIFECYCLE_TRANSITION_ACTIVE=1
   set_supervisor_phase source-window-complete
-  log 'COMMAND_SENTINEL=PASS messages=0; FCU remained observed-disarmed'
+  if [ "$ARMED_OBSERVATION" -eq 1 ]; then
+    log 'COMMAND_SENTINEL=PASS messages=0; bounded armed observation completed'
+  else
+    log 'COMMAND_SENTINEL=PASS messages=0; FCU remained observed-disarmed'
+  fi
   log "PI_SOURCE_WINDOW=COMPLETE target=${RUN_SECONDS}s monitored=${monitored_seconds}s final_verification=${final_verification_seconds}s elapsed=${WINDOW_ELAPSED_SECONDS}s peak=$((PEAK_TEMP / 1000))C"
   WINDOW_COMPLETE=1
 
@@ -1413,6 +1526,7 @@ esac
   || die 'MAVLINK_HEARTBEAT_TIMEOUT must be a positive integer'
 [[ "$DOMAIN" =~ ^[0-9]+$ ]] || die 'LIVE_ROS_DOMAIN_ID must be a non-negative integer'
 validate_fcu_to_vrx_fanout
+validate_armed_observation
 
 if [ "$PREFLIGHT_ONLY" -eq 0 ]; then
   mkdir -p "$RUN_DIR"
@@ -1865,16 +1979,22 @@ PYTHON_HAILO
 cat >"$SAFETY_MONITOR" <<'PYTHON_SAFETY'
 #!/usr/bin/env python3
 import os
+import time
 
 import rclpy
-from mavros_msgs.msg import State
+from mavros_msgs.msg import RCIn, RCOut, State, SysStatus
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from rclpy.signals import SignalHandlerOptions
+from sensor_msgs.msg import BatteryState, Image, Imu, NavSatFix
 from std_msgs.msg import Bool, Float64, String
 
 abort_file = os.environ["COMMAND_ABORT_FILE"]
+armed_observation = os.environ.get("ARMED_OBSERVATION", "0") == "1"
+armed_observation_status_file = os.environ["ARMED_OBSERVATION_STATUS_FILE"]
+armed_observation_enable_file = os.environ["ARMED_OBSERVATION_ENABLE_FILE"]
+motor_outputs_bit = 32768
 
 
 class DashboardSafetyMonitor(Node):
@@ -1895,6 +2015,13 @@ class DashboardSafetyMonitor(Node):
 
         self.abort_violation = False
         self.fcu_connected_once = False
+        self.phase = "WAIT_BASELINE" if armed_observation else "DISABLED"
+        self.last_seen = {}
+        self.latest_state = None
+        self.latest_rc_out = None
+        self.latest_sys_status = None
+        self.armed_started = None
+        self.final_started = None
 
         self.create_subscription(
             String,
@@ -1927,19 +2054,160 @@ class DashboardSafetyMonitor(Node):
             command_qos,
         )
         self.create_subscription(State, "/mavros/state", self.check_state, state_qos)
+        if armed_observation:
+            self.max_armed_seconds = int(
+                os.environ["ARMED_OBSERVATION_MAX_SECONDS"]
+            )
+            self.final_seconds = int(
+                os.environ["ARMED_OBSERVATION_FINAL_SECONDS"]
+            )
+            self.stale_seconds = int(
+                os.environ["ARMED_OBSERVATION_STALE_SECONDS"]
+            )
+            self.left_channel = int(
+                os.environ["ARMED_OBSERVATION_LEFT_CHANNEL"]
+            )
+            self.left_trim = int(os.environ["ARMED_OBSERVATION_LEFT_TRIM"])
+            self.right_channel = int(
+                os.environ["ARMED_OBSERVATION_RIGHT_CHANNEL"]
+            )
+            self.right_trim = int(os.environ["ARMED_OBSERVATION_RIGHT_TRIM"])
+            required_subscriptions = (
+                (NavSatFix, "/mavros/global_position/raw/fix"),
+                (Imu, "/mavros/imu/data"),
+                (BatteryState, "/mavros/battery"),
+                (RCIn, "/mavros/rc/in"),
+                (RCOut, "/mavros/rc/out"),
+                (SysStatus, "/mavros/sys_status"),
+                (Image, "/hailo/overlay/image_raw"),
+            )
+            for message_type, topic in required_subscriptions:
+                self.create_subscription(
+                    message_type,
+                    topic,
+                    lambda message, observed_topic=topic: self.record_required(
+                        observed_topic, message
+                    ),
+                    state_qos,
+                )
+            self.required_topics = (
+                "/mavros/state",
+                *(topic for _message_type, topic in required_subscriptions),
+            )
+            self.create_timer(0.25, self.check_observation)
+            self.write_status()
         print(
             "DASHBOARD_SAFETY_MONITOR_READY topics=5 state=/mavros/state "
             "publishers=0",
             flush=True,
         )
 
+    def write_status(self):
+        temporary = armed_observation_status_file + ".tmp"
+        with open(temporary, "w", encoding="utf-8") as stream:
+            stream.write(f"phase={self.phase}\n")
+        os.replace(temporary, armed_observation_status_file)
+
+    def transition(self, phase):
+        self.phase = phase
+        self.write_status()
+        print(f"ARMED_OBSERVATION_PHASE={phase}", flush=True)
+
+    def record_required(self, topic, message):
+        self.last_seen[topic] = time.monotonic()
+        if topic == "/mavros/rc/out":
+            self.latest_rc_out = message
+        elif topic == "/mavros/sys_status":
+            self.latest_sys_status = message
+
+    def stale_topic(self, now):
+        for topic in self.required_topics:
+            observed = self.last_seen.get(topic)
+            if observed is None or now - observed > self.stale_seconds:
+                return topic
+        return None
+
+    def output_is_neutral(self):
+        channels = getattr(self.latest_rc_out, "channels", ())
+        if len(channels) < max(self.left_channel, self.right_channel):
+            return False
+        return (
+            int(channels[self.left_channel - 1]) == self.left_trim
+            and int(channels[self.right_channel - 1]) == self.right_trim
+        )
+
+    def hardware_safety_is_on(self):
+        sensors_enabled = getattr(self.latest_sys_status, "sensors_enabled", None)
+        return isinstance(sensors_enabled, int) and not (
+            sensors_enabled & motor_outputs_bit
+        )
+
+    def restored_safe_state(self):
+        return (
+            self.latest_state is not None
+            and self.latest_state.connected
+            and not self.latest_state.armed
+            and self.output_is_neutral()
+            and self.hardware_safety_is_on()
+        )
+
+    def check_observation(self):
+        if not armed_observation or self.abort_violation:
+            return
+        now = time.monotonic()
+        if self.phase == "WAIT_BASELINE":
+            if (
+                os.path.isfile(armed_observation_enable_file)
+                and self.stale_topic(now) is None
+                and self.restored_safe_state()
+            ):
+                self.transition("READY")
+            return
+
+        stale = self.stale_topic(now)
+        if stale is not None:
+            self.abort_seen("REQUIRED_TOPIC_STALE", stale)
+            return
+        if self.phase == "ARMED":
+            if now - self.armed_started > self.max_armed_seconds:
+                self.abort_seen("ARMED_WINDOW_DEADLINE", "/mavros/state")
+        elif self.phase == "FINALIZING":
+            if self.restored_safe_state():
+                self.transition("COMPLETE")
+            elif now - self.final_started > self.final_seconds:
+                self.abort_seen("FINAL_STATE_DEADLINE", "/mavros/state")
+        elif self.phase == "COMPLETE" and not self.restored_safe_state():
+            self.abort_seen("FINAL_STATE_LOST", "/mavros/state")
+
     def check_state(self, message):
-        if message.armed:
-            self.abort_seen("FCU_ARMED", "/mavros/state")
-        elif message.connected:
+        if not armed_observation:
+            if message.armed:
+                self.abort_seen("FCU_ARMED", "/mavros/state")
+            elif message.connected:
+                self.fcu_connected_once = True
+            elif self.fcu_connected_once:
+                self.abort_seen("FCU_DISCONNECTED", "/mavros/state")
+            return
+
+        self.record_required("/mavros/state", message)
+        self.latest_state = message
+        if message.connected:
             self.fcu_connected_once = True
         elif self.fcu_connected_once:
             self.abort_seen("FCU_DISCONNECTED", "/mavros/state")
+            return
+
+        if message.armed:
+            if self.phase == "WAIT_BASELINE":
+                self.abort_seen("FCU_ARMED_BEFORE_BASELINE", "/mavros/state")
+            elif self.phase == "READY":
+                self.armed_started = time.monotonic()
+                self.transition("ARMED")
+            elif self.phase != "ARMED":
+                self.abort_seen("UNEXPECTED_SECOND_ARM", "/mavros/state")
+        elif self.phase == "ARMED":
+            self.final_started = time.monotonic()
+            self.transition("FINALIZING")
 
     def abort_seen(self, reason, topic):
         if self.abort_violation:
@@ -1947,6 +2215,7 @@ class DashboardSafetyMonitor(Node):
         self.abort_violation = True
         with open(abort_file, "w", encoding="utf-8") as stream:
             stream.write(f"reason={reason} topic={topic}\n")
+        self.transition("ABORT")
         print(f"{reason}_ABORT topic={topic}", flush=True)
         rclpy.try_shutdown()
 
@@ -2034,7 +2303,19 @@ configure_mavproxy_outputs
 OLDPWD="$PWD"
 set_supervisor_phase service-start
 start_child safety-monitor "$SAFETY_LOG" \
-  env "COMMAND_ABORT_FILE=$COMMAND_ABORT_FILE" python3 "$SAFETY_MONITOR"
+  env \
+  "COMMAND_ABORT_FILE=$COMMAND_ABORT_FILE" \
+  "ARMED_OBSERVATION=$ARMED_OBSERVATION" \
+  "ARMED_OBSERVATION_STATUS_FILE=$ARMED_OBSERVATION_STATUS_FILE" \
+  "ARMED_OBSERVATION_ENABLE_FILE=$ARMED_OBSERVATION_ENABLE_FILE" \
+  "ARMED_OBSERVATION_MAX_SECONDS=$ARMED_OBSERVATION_MAX_SECONDS" \
+  "ARMED_OBSERVATION_FINAL_SECONDS=$ARMED_OBSERVATION_FINAL_SECONDS" \
+  "ARMED_OBSERVATION_STALE_SECONDS=$ARMED_OBSERVATION_STALE_SECONDS" \
+  "ARMED_OBSERVATION_LEFT_CHANNEL=$ARMED_OBSERVATION_LEFT_CHANNEL" \
+  "ARMED_OBSERVATION_LEFT_TRIM=$ARMED_OBSERVATION_LEFT_TRIM" \
+  "ARMED_OBSERVATION_RIGHT_CHANNEL=$ARMED_OBSERVATION_RIGHT_CHANNEL" \
+  "ARMED_OBSERVATION_RIGHT_TRIM=$ARMED_OBSERVATION_RIGHT_TRIM" \
+  python3 "$SAFETY_MONITOR"
 SAFETY_MONITOR_PID="$LAST_CHILD_PID"
 SAFETY_MONITOR_PGID="$LAST_CHILD_PGID"
 
@@ -2056,6 +2337,11 @@ done
 [ "$SENTINEL_READY" -eq 1 ] || die 'publisher-free dashboard safety monitor did not become ready'
 reject_unexpected_command_subscribers
 log 'COMMAND_SENTINEL=PASS topics=5; safety monitor publishers=0'
+if [ "$ARMED_OBSERVATION" -eq 1 ]; then
+  log "ARMED_OBSERVATION=ENABLED max=${ARMED_OBSERVATION_MAX_SECONDS}s final=${ARMED_OBSERVATION_FINAL_SECONDS}s stale=${ARMED_OBSERVATION_STALE_SECONDS}s left=SERVO${ARMED_OBSERVATION_LEFT_CHANNEL}:${ARMED_OBSERVATION_LEFT_TRIM} right=SERVO${ARMED_OBSERVATION_RIGHT_CHANNEL}:${ARMED_OBSERVATION_RIGHT_TRIM}"
+else
+  log 'ARMED_OBSERVATION=DISABLED armed-state-abort=active'
+fi
 
 start_fcu_to_vrx_fanout
 
@@ -2211,6 +2497,7 @@ log "dashboard: hard-refresh; camera=$IMAGE_TOPIC; native MAVROS panel reads six
 log 'scope: Pi source readiness only; GPS no-fix is valid telemetry and must not be misread as transport loss'
 
 mavros_source_probe_selftest 0 || die 'batched MAVROS source probe self-test failed'
+enable_armed_observation
 
 WINDOW_START_SECONDS=$SECONDS
 DEADLINE=$((WINDOW_START_SECONDS + RUN_SECONDS))
@@ -2291,6 +2578,7 @@ require_final_check_result "$FINAL_CHECK_RC" thrust-output-sample \
 log_thrust_output_sample final
 check_command_sentinel
 check_thermal_watchdog
+require_armed_observation_complete "$FINAL_VERIFY_DEADLINE"
 FINAL_CHECK_RC=0
 require_connected_disarmed_state final-verdict "$FINAL_VERIFY_DEADLINE" \
   || FINAL_CHECK_RC=$?

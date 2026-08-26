@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PREFLIGHT="${1:-$SCRIPT_DIR/live_dashboard_preflight.sh}"
 HELPER="$SCRIPT_DIR/pi_live_hailo_mavlink_dashboard.sh"
 WIKI="$SCRIPT_DIR/../wiki/Live_Hailo_MAVLink_Dashboard_Testing.md"
-EXPECTED_PREFLIGHT_SHA256='927ffc6a2cfafda77a5131597ce63bc29c5f712aa9ffa234f120e87fd025f3e4'
+EXPECTED_PREFLIGHT_SHA256='dfa41732e5fc39572e9f927bf5c202aba3250c18e2372dc238b6d72212dc9372'
 CASE_COUNT=0
 
 fail() {
@@ -39,6 +39,15 @@ bash -n "$PREFLIGHT"
 ACTUAL_PREFLIGHT_SHA256="$(sha256sum "$PREFLIGHT" | awk '{print $1}')"
 [ "$ACTUAL_PREFLIGHT_SHA256" = "$EXPECTED_PREFLIGHT_SHA256" ] \
   || fail "preflight checksum changed: $ACTUAL_PREFLIGHT_SHA256"
+PINNED_HELPER_SHA256="$(awk -F"'" '
+  /^EXPECTED_HELPER_SHA256=/ { print $2; exit }
+' "$PREFLIGHT")"
+ACTUAL_HELPER_SHA256="$(sha256sum "$HELPER" | awk '{print $1}')"
+[ -n "$PINNED_HELPER_SHA256" ] \
+  || fail 'preflight helper checksum pin is missing'
+[ "$PINNED_HELPER_SHA256" = "$ACTUAL_HELPER_SHA256" ] \
+  || fail "preflight helper checksum is stale: pinned=$PINNED_HELPER_SHA256 actual=$ACTUAL_HELPER_SHA256"
+pass_case
 grep -Fqx -- \
   "| Supervisor SHA-256 | \`$EXPECTED_PREFLIGHT_SHA256\` |" "$WIKI" \
   || fail 'live-dashboard runbook supervisor checksum is stale'
@@ -51,7 +60,7 @@ grep -Fq 'the rosbridge `user interrupted with ctrl-c (SIGINT)` line as a discri
 ! grep -Fq 'The signature of a reversed order, observed 07/08/2026' "$WIKI" \
   || fail 'live-dashboard runbook retains the falsified 07/08 stop-order claim'
 
-require_literal "EXPECTED_HELPER_SHA256='8260cfb1702c918a96c4df35696673ed8860d2a8ec3c81a35b955a2282d28eea'"
+require_literal "EXPECTED_HELPER_SHA256='b0793bdac61595a2c5e85dafbc18806bde8146cecece4ae232846b51ae4b8cb0'"
 require_literal 'EXPECTED_SSID="${LIVE_SSID:-IoT IMT Nord Europe}"'
 require_literal 'PI_WINDOW_MODE="${LIVE_PI_WINDOW_MODE:-fullscreen}"'
 require_literal 'FCU_TO_VRX_FANOUT="${LIVE_FCU_TO_VRX_FANOUT:-0}"'
@@ -113,7 +122,7 @@ PI_COMMAND_OUTPUT="$(bash -c '
 PI_COMMAND_BLOCK="$(sed -n '/^($/,/^)$/{p}' <<<"$PI_COMMAND_OUTPUT")"
 [ -n "$PI_COMMAND_BLOCK" ] || fail 'printed Pi command block missing'
 bash -n <<<"$PI_COMMAND_BLOCK"
-grep -Fq '8260cfb1702c918a96c4df35696673ed8860d2a8ec3c81a35b955a2282d28eea' \
+grep -Fq 'b0793bdac61595a2c5e85dafbc18806bde8146cecece4ae232846b51ae4b8cb0' \
   <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not verify the helper pin'
 grep -Fq 'LIVE_HOLD_AFTER_WINDOW=1' <<<"$PI_COMMAND_BLOCK" \
@@ -139,7 +148,7 @@ grep -Fq 'HAILO_DEMO_ROOT="$PI_RUNTIME_ROOT"' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not preserve the Hailo runtime root'
 grep -Fq '"$PI_HELPER"' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not execute the absolute Desktop helper'
-grep -Fq "\\n' '8260cfb1702c918a96c4df35696673ed8860d2a8ec3c81a35b955a2282d28eea' \"\$PI_HELPER\" | sha256sum -c -" \
+grep -Fq "\\n' 'b0793bdac61595a2c5e85dafbc18806bde8146cecece4ae232846b51ae4b8cb0' \"\$PI_HELPER\" | sha256sum -c -" \
   <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi checksum format contains a literal line break'
 ! grep -Fq './pi_live_hailo_mavlink_dashboard.sh' <<<"$PI_COMMAND_BLOCK" \
@@ -1068,5 +1077,5 @@ set -e
   || fail "real-SIGINT lifecycle case failed rc=$REAL_SIGINT_CASE_RC: $REAL_SIGINT_CASE_OUTPUT"
 pass_case
 
-[ "$CASE_COUNT" -eq 13 ] || fail "executed $CASE_COUNT cases instead of 13"
+[ "$CASE_COUNT" -eq 14 ] || fail "executed $CASE_COUNT cases instead of 14"
 printf 'PASS: live-dashboard preflight contracts cases=%s\n' "$CASE_COUNT"

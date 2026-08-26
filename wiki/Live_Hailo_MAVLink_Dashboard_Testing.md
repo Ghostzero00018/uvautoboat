@@ -25,8 +25,8 @@ the retained `pi` wrapper mode is not part of this procedure.
 
 ## Current tracked revisions
 
-The repository artifacts below identify the current revisions, pinned on 04/08/2026 after the
-batched MAVROS-source view was added behind a default-off flag. The tracked Pi helper is the copy
+The repository artifacts below identify the current revisions, pinned on 26/08/2026 after the
+default-off armed-observation selector was added. The tracked Pi helper is the copy
 that must be transferred to the Pi Desktop before a run; a previously transferred copy is stale
 until its hash is checked against the value below. The workstation supervisor remains
 workstation-only. Separately pinned historical session
@@ -36,11 +36,11 @@ artifacts are retained below only for traceability.
 | --- | --- |
 | Helper source | `tools/pi_live_hailo_mavlink_dashboard.sh` |
 | Helper Pi destination | resolved Pi Desktop: `$(xdg-user-dir DESKTOP)/pi_live_hailo_mavlink_dashboard.sh` |
-| Helper size | `78,758` bytes |
-| Helper SHA-256 | `8260cfb1702c918a96c4df35696673ed8860d2a8ec3c81a35b955a2282d28eea` |
+| Helper size | `90,518` bytes |
+| Helper SHA-256 | `b0793bdac61595a2c5e85dafbc18806bde8146cecece4ae232846b51ae4b8cb0` |
 | Workstation supervisor | `tools/live_dashboard_preflight.sh` |
 | Supervisor size | `29,701` bytes |
-| Supervisor SHA-256 | `927ffc6a2cfafda77a5131597ce63bc29c5f712aa9ffa234f120e87fd025f3e4` |
+| Supervisor SHA-256 | `dfa41732e5fc39572e9f927bf5c202aba3250c18e2372dc238b6d72212dc9372` |
 
 Historical 23/07/2026 session artifacts:
 
@@ -67,16 +67,90 @@ The tracked supervisor defaults to `HAILO_LOCAL_DISPLAY=1` and
 Window outcome tracking remains through `HAILO_LOCAL_WINDOW` markers:
 `READY`, `FALLBACK_HEADLESS`, `FALLBACK_RESIZABLE`, and `EVIDENCE_UNAVAILABLE`.
 
-`LIVE_FCU_TO_VRX_FANOUT` defaults to `0`. Setting it to `1` is a separately
-gated, disarmed-only preparation that adds an outbound-only raw MAVLink copy for
-the current `WORKSTATION_IP` on UDP `14555`. MAVProxy still sends only to loopback:
+`LIVE_FCU_TO_VRX_FANOUT` defaults to `0`. Setting it to `1` adds a separately
+gated, outbound-only raw MAVLink copy for the current `WORKSTATION_IP` on UDP
+`14555`. MAVProxy still sends only to loopback:
 `14550` for MAVROS and `14556` for a run-owned forwarder. That forwarder reads
 only the loopback ingress and sends each datagram through a separate socket; it
 never reads workstation return traffic and therefore creates no return route to
 MAVProxy or the FCU. It does not filter MAVLink message classes: the enforced
-properties are outbound-only direction and local-only ingress. The existing
-`FCU_ARMED` abort remains unconditional.
-This option and the FCU-to-VRX acceptance run are **NOT RUN**.
+properties are outbound-only direction and local-only ingress.
+
+`LIVE_ARMED_OBSERVATION` defaults to `0`; at that default, the existing
+`FCU_ARMED` abort remains unconditional. Setting it to `1` is accepted only with
+the fanout enabled, the indefinite hold disabled, and live-read left/right servo
+channels and trims supplied through the corresponding
+`LIVE_ARMED_OBSERVATION_*` variables. The subscriber-only safety monitor then
+permits one bounded armed window only after the supervisor has proved fresh
+connected/disarmed telemetry, neutral output, hardware safety ON, an empty
+command sentinel and the complete pre-ready graph. It fails closed on an armed
+startup, a second arm, disconnect, stale required telemetry, deadline, command
+publication, or failure to return to connected/disarmed neutral output with
+hardware safety restored. The selector implementation has passed the offline
+suite; the enabled FCU-to-VRX acceptance run remains **NOT RUN**.
+
+Before enabling the selector, read `BRD_SAFETY_DEFLT` in the open T0b parameter
+check and observe the live hardware-safety state. Stop if hardware safety is
+disabled, absent, or never reaches the required safe state. Observe a stable
+disarmed `/mavros/rc/out` pair before supplying the exact live-read trims; a
+reported `0` is not an accepted substitute for a PWM trim in `800..2200`.
+Measure the update cadence of every required monitor topic over the real serial
+link before changing the default `5`-second freshness limit. A baseline that
+does not become ready is a stop condition, not authority to weaken these gates.
+
+### Isolated FCU-to-VRX workstation half
+
+`tools/fcu_to_vrx_workstation.sh` is the workstation-only owner for the VRX
+half of the outbound fanout topology. Its `check` mode runs the focused
+configuration, command-construction, process-group lifecycle and PWM-mapping
+tests without starting ROS, VRX, Gazebo, MAVROS or a hardware link:
+
+```bash
+cd /home/ghostzero/seal_ws/src/uvautoboat
+bash tools/fcu_to_vrx_workstation.sh check
+```
+
+The production `run` mode is separately gated and remains **NOT RUN**. It
+requires a clean checkout at `origin/main`, an empty ROS domain `77`, free UDP
+`14555`, no simulator/bridge/MAVROS conflict, and all left/right channel and PWM
+values from the same live FCU parameter read. It rejects missing values,
+duplicate channels, invalid rails, unequal left/right rails that the current
+bridge cannot represent, and a non-decimal thrust limit. It then fixes
+`ROS_DOMAIN_ID=77`, `ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST` and
+`ROS_LOCALHOST_ONLY=1`, starts only `vrx_gz` world `sydney_regatta` and
+`tools/servo_command_bridge.py`, and keeps `publish_sensors:=false` and
+`publish_cmd_vel:=false`.
+
+The required run variables are
+`FCU_VRX_LEFT_SERVO_CHANNEL`, `FCU_VRX_RIGHT_SERVO_CHANNEL`, each side's
+`FCU_VRX_*_PWM_MIN`, `FCU_VRX_*_PWM_NEUTRAL`, `FCU_VRX_*_PWM_MAX`, and the
+simulator scaling value `FCU_VRX_MAX_THRUST`. Do not populate them from the
+historical `3`/`1`, `800`/`800`/`2200` record. The live Block D parameter
+artifact is the authority for that run.
+
+Each child receives a separate process group and log. Planned teardown stops
+the bridge first so its existing shutdown path publishes zero thrust, then
+stops VRX and requires UDP `14555` to be free before reporting
+`FCU_TO_VRX_WORKSTATION_TEARDOWN=PASS`. This helper does not alter the Pi
+command emitter and does not provide the correlated Block E observers; that
+second implementation piece remains outstanding.
+
+#### Start and stop order
+
+Start `W1` (`tools/live_dashboard_preflight.sh run`), then `W2`
+(`tools/fcu_to_vrx_workstation.sh run`), then the Pi. The order is not
+interchangeable: `W1` rejects any already-running `gazebo` or `gz sim` process,
+so starting `W2` first makes `W1` abort with `workstation conflicting process
+found`. `W2` permits `W1`'s rosbridge, web-video-server and dashboard
+processes, so this direction is the only one that starts cleanly.
+
+`W2` must also be ready before the Pi starts. `W1`'s `PI_DATA_ARRIVED` phase
+samples ROS topics only; it does not prove UDP `14555` arrival, so a Pi started
+ahead of `W2` can report a passing dashboard phase while the fanout has no
+listener.
+
+Stop in reverse: Pi first, then `W2` (bridge, then VRX, then UDP `14555`
+confirmed free), then `W1`.
 
 ### Batched MAVROS source view
 
@@ -247,7 +321,7 @@ D="$(xdg-user-dir DESKTOP)" || exit 1
 D="$(readlink -f -- "$D")" || exit 1
 [ -n "$D" ] && [ -d "$D" ] && [ "$D" != "$H" ] || exit 1
 printf '%s  %s\n' \
-  '8260cfb1702c918a96c4df35696673ed8860d2a8ec3c81a35b955a2282d28eea' \
+  'b0793bdac61595a2c5e85dafbc18806bde8146cecece4ae232846b51ae4b8cb0' \
   "$D/pi_live_hailo_mavlink_dashboard.sh" | sha256sum -c -
 ```
 
@@ -257,7 +331,7 @@ only the helper from a workstation terminal:
 ```bash
 cd ~/seal_ws/src/uvautoboat
 printf '%s  %s\n' \
-  '8260cfb1702c918a96c4df35696673ed8860d2a8ec3c81a35b955a2282d28eea' \
+  'b0793bdac61595a2c5e85dafbc18806bde8146cecece4ae232846b51ae4b8cb0' \
   tools/pi_live_hailo_mavlink_dashboard.sh | sha256sum -c -
 
 read -r -p 'Current Pi SSH endpoint (user@host): ' PI_SSH
@@ -274,7 +348,7 @@ scp tools/pi_live_hailo_mavlink_dashboard.sh \
 ssh "$PI_SSH" "
   cd '$PI_DESKTOP' &&
   printf '%s  %s\n' \
-    '8260cfb1702c918a96c4df35696673ed8860d2a8ec3c81a35b955a2282d28eea' \
+    'b0793bdac61595a2c5e85dafbc18806bde8146cecece4ae232846b51ae4b8cb0' \
     pi_live_hailo_mavlink_dashboard.sh |
   sha256sum -c -
 "
@@ -375,10 +449,16 @@ MAVROS_TELEMETRY=PASS ...
 PI_SOURCE_STACK_READY=PASS ...
 ```
 
+An enabled armed-observation run must additionally reach
+`ARMED_OBSERVATION_BASELINE=PASS` before the operator arms. Its accepted final
+state includes `ARMED_OBSERVATION=PASS`, connected/disarmed MAVROS state, neutral
+live-read servo outputs and hardware safety restored.
+
 Stop immediately on a checksum failure, missing readiness marker, `STOP:`,
-`ERROR line=`, thermal abort, command-sentinel abort, or loss of connected and disarmed
-MAVROS state. `CLEANUP_ERROR` or `TEARDOWN=FAIL` also makes the run a failure. GPS no-fix
-is valid telemetry and is not transport loss.
+`ERROR line=`, thermal abort, command-sentinel abort, unexpected armed state,
+disconnect, stale required telemetry, or an armed/restoration deadline.
+`CLEANUP_ERROR` or `TEARDOWN=FAIL` also makes the run a failure. GPS no-fix is
+valid telemetry and is not transport loss.
 
 A single successful but incomplete remote service-list snapshot is retried. The helper
 still stops after three observations omit `/rosapi/topics_for_type`, and it rejects a
