@@ -841,3 +841,188 @@ remain **NOT RUN** at this checkpoint. Their authorization is recorded, but
 runtime acceptance still requires a newly saved post-`0.5` snapshot, exact
 transfer checks, the live physical declaration, the supervisors' readiness
 markers, external disarm before teardown and the verified `3.0` rollback.
+
+## Real-FCU Test A acceptance - 26/08/2026
+
+The preceding **NOT RUN** statement remains the correct record for its
+checkpoint. Later on 26/08/2026, Test A ran against the real FCU and passed.
+This closes the bounded dashboard-to-FCU command-and-feedback test only; it
+does not close the Herelink-to-VRX Test B.
+
+The approved run used the hash-pinned `986`-parameter MAVProxy snapshot:
+
+```text
+snapshot=/home/imt-aqua-drone/Desktop/real_fcu_params_20260826_rc_override_0p5.parm
+sha256=3854b9705bea81b4b86d6b57476671872d1a0e30a21edadf188270889fb473e9
+RC_OVERRIDE_TIME=0.5
+steering=RC1
+throttle=RC3
+left=SERVO3, function=73, rail=800/800/2200
+right=SERVO1, function=74, rail=800/800/2200
+```
+
+The initial physical declaration was hardware safety ON, FCU disarmed,
+propellers removed, hull restrained, propulsion battery disconnected, ESCs
+unpowered and Herelink sticks neutral. The operator released hardware safety
+while disarmed at the helper's interactive gate and entered the exact
+`RELEASED_DISARMED` confirmation. The Pi then reported:
+
+```text
+REAL_FCU_PI_READY=PASS tier=T2b authority=demand-enabled bridge=READY_DISARMED workstation=visible
+```
+
+The workstation independently reported:
+
+```text
+REAL_FCU_WORKSTATION_READY=PASS telemetry=state,GPS,IMU,battery,RC-input,thrust-output
+```
+
+The retained screen recording shows the complete bounded command sequence.
+At `ARMED_NEUTRAL`, requested steering/throttle were `0.00/0.00`, RC input was
+`1515/1515 us`, and both measured outputs were `800 us`. While Hold to Apply
+was pressed, the dashboard requested steering `0.05` and throttle `0.04`; the
+bridge state became `ACTIVE`, measured RC input changed to `1564/1470 us`,
+left `SERVO3` changed to `911 us` and right `SERVO1` remained `800 us`. Release
+returned the bridge to `ARMED_NEUTRAL`, the request to `0.00/0.00`, and both
+outputs to `800 us`. This is correlated dashboard demand, RC-layer command
+delivery, real-FCU mixing/output feedback and neutral restoration. Propulsion
+was isolated, so it is not a physical-thrust claim.
+
+The video retained on the workstation is:
+
+```text
+path=/home/ghostzero/Videos/Screencasts/Screencast from 2026-08-26 20-15-16.mp4
+sha256=e4ce7e9ba3f832769cb0cd151f8af28ae90e612db96afaec364dd55a321dc846
+duration=6.381900 s
+codec=H.264
+frame=922x906
+size=314543 bytes
+```
+
+The final closeout was clean on both supervisors. The Pi reported
+`REAL_FCU_FINAL_STATE=PASS connected=true armed=false`, received the
+workstation stop marker on `/real_fcu/workstation_stop`, stopped the bridge
+before MAVROS and exited with `status=0 cleanup_rc=0`. The workstation reported
+`REAL_FCU_WORKSTATION_FINAL_STATE=PASS connected=true armed=false`, stopped the
+dashboard and rosbridge, published the stop marker and exited with
+`status=0 cleanup_rc=0`.
+
+The retained run directories are:
+
+```text
+workstation=/home/ghostzero/Desktop/real_fcu_digital_twin_workstation_20260826_200922
+pi-source=/home/imt-aqua-drone/Desktop/real_fcu_digital_twin_pi_20260826_201051
+pi-copy=/home/ghostzero/Desktop/pi_run_evidence/test_a_20260826/real_fcu_digital_twin_pi_20260826_201051
+```
+
+The copied Pi directory contains the supervisor log, child logs, evidence and
+manifest. Its supervisor markers and resolved snapshot/mapping were re-read on
+the workstation, and the copied `guard_snapshot.parm` independently hashes to
+`3854b9705bea81b4b86d6b57476671872d1a0e30a21edadf188270889fb473e9`.
+The source-side artifact manifest contains absolute Pi paths, so the copy alone
+is not represented as a byte-for-byte remote comparison.
+
+## End-of-day handoff - 26/08/2026
+
+Test A is **PASS**. Test B, the armed Herelink-to-FCU-to-UDP-`14555`-to-VRX
+motion and correlation test, is **NOT RUN** and is deferred to 27/08/2026.
+
+The final live-work source revision was clean and at `a5339b2` before this
+documentation closeout. The current real-FCU runtime pins are:
+
+```text
+real-FCU workstation supervisor: 164c811bd870c5976c1dc017f802f675306f5e4404624a8f8d80a1d6d38db262
+real-FCU Pi supervisor:          f716635814c8ed8516b3bf8844c7145e9f11a475b1c7bfe96e4576e0c890ccec
+real-FCU command bridge:         31ac64d68138eee8b8bc15e47023ea1b70ec1c6ce17a38ad9130f6d444e649e3
+real-FCU bundle manifest:        7fe4e1a3020322c0339547ec90bb9d0321a7cfae350d909b7f2d931c3165187e
+```
+
+`RC_OVERRIDE_TIME=0.5` remains the live temporary value solely for the deferred
+Test B. It has not yet been rolled back. Test B must either run under a fresh
+27/08/2026 declaration and approval or be abandoned; after either outcome,
+restore `RC_OVERRIDE_TIME=3.0`, confirm the live readback and retain a separate
+rollback snapshot. The final pasted Test A state proves software disarm but
+does not independently restate the final physical hardware-safety position, so
+that state must be declared fresh before any 27/08/2026 live action.
+
+## Test B pre-run blocker found at closeout - 26/08/2026
+
+Review of the retained W2 record-only run found a source/topic mismatch that
+must be repaired before the armed correlated Test B. The observer was launched
+with `--pose-topic /wamv/pose`, but the same run's VRX log records the actual
+Gazebo-to-ROS bridge as:
+
+```text
+/model/wamv/pose (gz.msgs.Pose_V) -> /model/wamv/pose (tf2_msgs/msg/TFMessage)
+```
+
+The retained `vrx_status.json` stayed at `WAIT_DATA`. Its `3,585` events contain
+`1,194` servo-output events and `1,195` events for each thrust side, but zero
+pose events. The servo-output maximum observed inter-frame gap was about
+`4.086 s`; that figure cannot certify the complete observer while pose is
+absent.
+
+Test B is therefore blocked before live start on a scoped pose-topic correction,
+focused drift coverage, an offline gate and a workstation-only proof that one
+matching WAM-V pose arrives. This finding does not change the Test A PASS.
+
+## Final EOD closure audit - 26/08/2026
+
+The final audit rechecked all closeout layers rather than treating the passing
+browser video as the whole result.
+
+Test A evidence is closed:
+
+- both copied Pi and local workstation run directories are retained;
+- the copied Pi supervisor again shows `REAL_FCU_PI_READY=PASS`, final
+  `connected=true armed=false`, receipt of the workstation stop marker and
+  `REAL_FCU_PI_EXIT status=0 cleanup_rc=0`;
+- the workstation closeout shows final connected/disarmed state, ordered child
+  stop, stop-marker publication and `status=0 cleanup_rc=0`;
+- the copied `guard_snapshot.parm` still hashes to
+  `3854b9705bea81b4b86d6b57476671872d1a0e30a21edadf188270889fb473e9`;
+- the video digest and measured `800/800 -> 911/800 -> 800/800 us` sequence are
+  retained.
+
+The workstation runtime is closed:
+
+- no governed real-FCU, FCU-to-VRX, MAVROS, rosbridge, dashboard, Gazebo or
+  servo-bridge process remained;
+- TCP `8002`, `8080`, `9090` and UDP `14555` had no listener;
+- fresh daemonless checks found no ROS node in domain `43` or domain `77`.
+
+The repaired timeout and status-format contracts were rechecked directly from
+current source. Both real-FCU supervisors default to a `600 s` readiness window
+and a `15 s` one-shot status subscription. The Pi manual confirmation occurs
+before its fresh readiness wait begins. Both status readers use
+`--no-lost-messages`, keep diagnostics on stderr, require exactly one mapping,
+accept the ROS document terminator and normalize the result to JSON. The focused
+verification passed:
+
+```text
+real-FCU shell helper suite: PASS cases=32
+real-FCU Python tests:       45 passed
+```
+
+The day's Test A work is therefore operationally closed and retained. The
+overall FCU-to-VRX workstream is not represented as fully closed because four
+items remain explicit:
+
+1. Test B is **NOT RUN** and its `/wamv/pose` versus `/model/wamv/pose` defect
+   must be repaired and proven offline first.
+2. `RC_OVERRIDE_TIME=0.5` remains live only for Test B and still requires the
+   mandatory verified rollback to `3.0` afterward or before another operation.
+3. The final software evidence proves FCU disarm but does not independently
+   prove the final physical hardware-safety, power, Pi or Herelink state. A
+   literal operator closeout is still required for the physical layer.
+4. The documentation closeout is present in the worktree but is not yet
+   committed or pushed.
+
+All four open items are carried into the 27/08/2026 diary. None is silently
+promoted to PASS.
+
+## Final physical closeout - 26/08/2026
+
+At EOD, the operator explicitly confirmed that the FCU and Pi were powered
+off. No unstated hardware condition is inferred from that confirmation. All
+27/08/2026 physical declarations and approvals remain fresh-day gates.

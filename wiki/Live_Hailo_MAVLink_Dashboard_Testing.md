@@ -99,8 +99,9 @@ neutral output, hardware safety ON, an empty command sentinel and the complete
 pre-ready graph. It fails closed on an armed startup, a second arm, disconnect,
 stale required telemetry, deadline, command publication, or failure to return
 to connected/disarmed neutral output with hardware safety restored. The
-selector, emitter and recorder implementation has passed the offline suite;
-the enabled FCU-to-VRX acceptance run remains **NOT RUN**.
+selector, emitter and recorder implementation has passed the offline suite.
+The separate dashboard-to-real-FCU Test A passed on 26/08/2026; the enabled
+Herelink-to-VRX Test B remains **NOT RUN**.
 
 Before enabling the selector, read `BRD_SAFETY_DEFLT` in the open T0b parameter
 check and observe the live hardware-safety state. Stop if hardware safety is
@@ -199,6 +200,52 @@ snapshot path writes no parameter. After both live tests, restore
 `RC_OVERRIDE_TIME=3.0`, confirm the readback and retain a separate rollback
 snapshot before the session is accepted.
 
+### Real-FCU dashboard command Test A - 26/08/2026
+
+Test A passed against the real FCU with propulsion isolated, propellers
+removed and the hull restrained. The two supervised halves reached:
+
+```text
+REAL_FCU_PI_READY=PASS tier=T2b authority=demand-enabled bridge=READY_DISARMED workstation=visible
+REAL_FCU_WORKSTATION_READY=PASS telemetry=state,GPS,IMU,battery,RC-input,thrust-output
+```
+
+The run used a `986`-parameter MAVProxy snapshot with
+`RC_OVERRIDE_TIME=0.5`, SHA-256
+`3854b9705bea81b4b86d6b57476671872d1a0e30a21edadf188270889fb473e9`.
+It resolved steering/throttle as `RC1`/`RC3`, left output as `SERVO3`
+function `73`, right output as `SERVO1` function `74`, and both servo rails as
+`800/800/2200`.
+
+The retained dashboard recording shows neutral requested demand `0.00/0.00`,
+RC input `1515/1515 us` and outputs `800/800 us`; an applied steering `0.05`
+and throttle `0.04` request; measured RC input `1564/1470 us`; left/right
+output `911/800 us`; and a complete return to requested zero and output
+`800/800 us` after release. This closes the bounded dashboard demand to
+RC-layer command to real-FCU output-feedback path. It does not claim physical
+thrust or Herelink-to-VRX delivery.
+
+The Pi and workstation both finished connected and disarmed, exchanged the
+ordered stop marker, stopped their supervised children and exited with
+`status=0 cleanup_rc=0`. Retained evidence is:
+
+```text
+workstation=/home/ghostzero/Desktop/real_fcu_digital_twin_workstation_20260826_200922
+pi-copy=/home/ghostzero/Desktop/pi_run_evidence/test_a_20260826/real_fcu_digital_twin_pi_20260826_201051
+video=/home/ghostzero/Videos/Screencasts/Screencast from 2026-08-26 20-15-16.mp4
+video-sha256=e4ce7e9ba3f832769cb0cd151f8af28ae90e612db96afaec364dd55a321dc846
+```
+
+The copied Pi `guard_snapshot.parm` independently matches the approved
+snapshot SHA-256. The run's aggregate manifest retains absolute Pi paths and is
+not represented as directly reverified from the workstation copy.
+
+Test B remains **NOT RUN**. The temporary `RC_OVERRIDE_TIME=0.5` value is
+retained only for that deferred test. Restore it to `3.0`, confirm the live
+readback and retain a rollback snapshot after Test B or before any different
+operation. No Test A approval or physical declaration carries into a later
+date.
+
 ### Isolated FCU-to-VRX workstation half
 
 `tools/fcu_to_vrx_workstation.sh` is the workstation-only owner for the VRX
@@ -212,10 +259,12 @@ cd /home/ghostzero/seal_ws/src/uvautoboat
 bash tools/fcu_to_vrx_workstation.sh check
 ```
 
-The production `run` mode is separately gated and remains **NOT RUN**. It
-requires a clean checkout at `origin/main`, an empty ROS domain `77`, free UDP
-`14555`, no simulator/bridge/MAVROS conflict, and all left/right channel and PWM
-values from the same live FCU parameter read. It rejects missing values,
+The production `run` mode has been exercised in disarmed record-only mode and
+decoded neutral real-FCU output at `800/800 us`; the armed correlated motion
+mode required for Test B remains **NOT RUN**. Every run requires a clean
+checkout at `origin/main`, an empty ROS domain `77`, free UDP `14555`, no
+simulator/bridge/MAVROS conflict, and all left/right channel and PWM values from
+the same live FCU parameter read. It rejects missing values,
 duplicate channels, invalid rails, unequal left/right rails that the current
 bridge cannot represent, and a non-decimal thrust limit. It then fixes
 `ROS_DOMAIN_ID=77`, `ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST` and
@@ -240,9 +289,17 @@ Each child receives a separate process group and log. Planned teardown stops
 the bridge first so its existing shutdown path publishes zero thrust, then the
 recorder, then VRX, and requires UDP `14555` to be free before reporting
 `FCU_TO_VRX_WORKSTATION_TEARDOWN=PASS`. The recorder subscribes to the bridge
-evidence topic, both thrust topics and `/wamv/pose`; it creates no ROS publisher
-or client. Event capture does not force a disk sync for every topic callback;
-the retained stream is explicitly synced when the observer exits.
+evidence topic, both thrust topics and a WAM-V pose stream; it creates no ROS
+publisher or client. Event capture does not force a disk sync for every topic
+callback; the retained stream is explicitly synced when the observer exits.
+
+The 26/08/2026 record-only run exposed a blocking pose-topic mismatch. The
+current supervisor passed `/wamv/pose`, while the launched VRX bridge reported
+the actual `tf2_msgs/msg/TFMessage` source as `/model/wamv/pose`. The retained
+observer stayed `WAIT_DATA` and its `3,585` events contained no pose event.
+Test B must not start until the supervisor uses the actual pose source, focused
+coverage guards that contract, and a workstation-only check receives a matching
+WAM-V transform.
 
 #### Correlation evidence
 

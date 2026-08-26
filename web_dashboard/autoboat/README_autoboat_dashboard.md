@@ -361,10 +361,18 @@ FCU-to-VRX option copies received raw MAVLink datagrams outward only and does
 not filter message classes. Its enforced boundary is outbound-only direction
 with local-only ingress; it does not change the FCU command boundary.
 
-No physical mode is currently accepted for routine use. T0a passed on
-17/08/2026. T0b is the first open physical gate: the 18/08/2026 probe did not
-complete, and the repaired 19/08/2026 deployment passed `check` without a second
-probe. Both T2 command tiers stay blocked behind live mapping and rail evidence.
+No physical mode is currently accepted for routine use. The guarded one-off
+Test A path was operator-accepted on 26/08/2026 after a hash-pinned parameter
+snapshot resolved `RC1`/`RC3`, left `SERVO3`, right `SERVO1` and both
+`800/800/2200` output rails. The dashboard requested steering `0.05` and
+throttle `0.04`; measured RC input changed to `1564/1470 us`, measured output
+changed from `800/800 us` to `911/800 us`, and release restored `800/800 us`.
+Both supervised halves ended connected and disarmed with successful ordered
+teardown. This is bounded real-FCU command/output-feedback evidence with
+propulsion isolated, not approval for routine use or physical thrust.
+Herelink-to-VRX Test B remains **NOT RUN**. The temporary
+`RC_OVERRIDE_TIME=0.5` setting must be restored to `3.0` with a retained
+readback snapshot after Test B or before any different operation.
 
 ### FCU Bench Command/Feedback Component
 
