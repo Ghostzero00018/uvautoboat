@@ -25,12 +25,14 @@ the retained `pi` wrapper mode is not part of this procedure.
 
 ## Current tracked revisions
 
-The repository artifacts below identify the current revisions, pinned on 26/08/2026 after the
-default-off armed-observation selector was added. The tracked Pi helper is the copy
-that must be transferred to the Pi Desktop before a run; a previously transferred copy is stale
-until its hash is checked against the value below. The workstation supervisor remains
-workstation-only. Separately pinned historical session
-artifacts are retained below only for traceability.
+The repository artifacts below identify the current revisions, pinned on
+26/08/2026 after the default-off armed-observation selector, parameterized
+emitter and read-only correlation recorders were added. The tracked Pi helper
+is the copy that must be transferred to the Pi Desktop before a run; a
+previously transferred copy is stale until its hash is checked against the
+value below. The workstation supervisors and evidence recorder remain
+workstation-only. Separately pinned historical session artifacts are retained
+below only for traceability.
 
 | Item | Value |
 | --- | --- |
@@ -39,8 +41,14 @@ artifacts are retained below only for traceability.
 | Helper size | `90,518` bytes |
 | Helper SHA-256 | `b0793bdac61595a2c5e85dafbc18806bde8146cecece4ae232846b51ae4b8cb0` |
 | Workstation supervisor | `tools/live_dashboard_preflight.sh` |
-| Supervisor size | `29,701` bytes |
-| Supervisor SHA-256 | `dfa41732e5fc39572e9f927bf5c202aba3250c18e2372dc238b6d72212dc9372` |
+| Supervisor size | `35,812` bytes |
+| Supervisor SHA-256 | `642fddc1f8edb20b988e610bc71205fead7c54b4c874a3b351287a027ccab1d9` |
+| VRX supervisor | `tools/fcu_to_vrx_workstation.sh` |
+| VRX supervisor size | `23,530` bytes |
+| VRX supervisor SHA-256 | `981fba979e86d0e7a2e50c4d9c89b30b699b62b7a24343b4d315c819fb931091` |
+| Correlation recorder | `tools/fcu_to_vrx_evidence.py` |
+| Correlation recorder size | `31,069` bytes |
+| Correlation recorder SHA-256 | `5c40d6376efc7456929ddf1e80454f3e17ff87c7530629a65f4c10ac0db361dc` |
 
 Historical 23/07/2026 session artifacts:
 
@@ -77,17 +85,22 @@ MAVProxy or the FCU. It does not filter MAVLink message classes: the enforced
 properties are outbound-only direction and local-only ingress.
 
 `LIVE_ARMED_OBSERVATION` defaults to `0`; at that default, the existing
-`FCU_ARMED` abort remains unconditional. Setting it to `1` is accepted only with
-the fanout enabled, the indefinite hold disabled, and live-read left/right servo
-channels and trims supplied through the corresponding
-`LIVE_ARMED_OBSERVATION_*` variables. The subscriber-only safety monitor then
-permits one bounded armed window only after the supervisor has proved fresh
-connected/disarmed telemetry, neutral output, hardware safety ON, an empty
-command sentinel and the complete pre-ready graph. It fails closed on an armed
-startup, a second arm, disconnect, stale required telemetry, deadline, command
-publication, or failure to return to connected/disarmed neutral output with
-hardware safety restored. The selector implementation has passed the offline
-suite; the enabled FCU-to-VRX acceptance run remains **NOT RUN**.
+`FCU_ARMED` abort remains unconditional and the emitted Pi command retains
+`LIVE_HOLD_AFTER_WINDOW=1`. Setting it to `1` is accepted only with fanout
+enabled and explicit positive max-window, final-verification and staleness
+limits plus both live-read channel and complete min/trim/max rails. The emitter
+then sets `LIVE_HOLD_AFTER_WINDOW=0`, passes the helper's channel/trim values,
+and starts the domain-12 subscriber-only recorder for `/mavros/state`,
+`/mavros/sys_status`, `/mavros/rc/out` and `/hailo/overlay/image_raw`.
+
+The helper's subscriber-only safety monitor permits one bounded armed window
+only after the supervisor has proved fresh connected/disarmed telemetry,
+neutral output, hardware safety ON, an empty command sentinel and the complete
+pre-ready graph. It fails closed on an armed startup, a second arm, disconnect,
+stale required telemetry, deadline, command publication, or failure to return
+to connected/disarmed neutral output with hardware safety restored. The
+selector, emitter and recorder implementation has passed the offline suite;
+the enabled FCU-to-VRX acceptance run remains **NOT RUN**.
 
 Before enabling the selector, read `BRD_SAFETY_DEFLT` in the open T0b parameter
 check and observe the live hardware-safety state. Stop if hardware safety is
@@ -95,15 +108,18 @@ disabled, absent, or never reaches the required safe state. Observe a stable
 disarmed `/mavros/rc/out` pair before supplying the exact live-read trims; a
 reported `0` is not an accepted substitute for a PWM trim in `800..2200`.
 Measure the update cadence of every required monitor topic over the real serial
-link before changing the default `5`-second freshness limit. A baseline that
-does not become ready is a stop condition, not authority to weaken these gates.
+link, then supply an explicit `LIVE_ARMED_OBSERVATION_STALE_SECONDS` value to
+the emitter. The emitter deliberately does not inherit the helper's direct-call
+default. A baseline that does not become ready is a stop condition, not
+authority to weaken these gates.
 
 ### Isolated FCU-to-VRX workstation half
 
 `tools/fcu_to_vrx_workstation.sh` is the workstation-only owner for the VRX
 half of the outbound fanout topology. Its `check` mode runs the focused
-configuration, command-construction, process-group lifecycle and PWM-mapping
-tests without starting ROS, VRX, Gazebo, MAVROS or a hardware link:
+configuration, command-construction, process-group lifecycle, production bridge
+imports and PWM-mapping tests without starting ROS, VRX, Gazebo, MAVROS or a
+hardware link:
 
 ```bash
 cd /home/ghostzero/seal_ws/src/uvautoboat
@@ -117,23 +133,61 @@ values from the same live FCU parameter read. It rejects missing values,
 duplicate channels, invalid rails, unequal left/right rails that the current
 bridge cannot represent, and a non-decimal thrust limit. It then fixes
 `ROS_DOMAIN_ID=77`, `ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST` and
-`ROS_LOCALHOST_ONLY=1`, starts only `vrx_gz` world `sydney_regatta` and
-`tools/servo_command_bridge.py`, and keeps `publish_sensors:=false` and
-`publish_cmd_vel:=false`.
+`ROS_LOCALHOST_ONLY=1`, starts `vrx_gz` world `sydney_regatta`, the read-only
+VRX recorder and `tools/servo_command_bridge.py`, and keeps
+`publish_sensors:=false` and `publish_cmd_vel:=false`. The bridge publishes one
+structured `/fcu_to_vrx/servo_output_raw` evidence message for each decoded
+UDP `14555` `SERVO_OUTPUT_RAW` frame before publishing the corresponding left
+and right thrust values.
 
 The required run variables are
 `FCU_VRX_LEFT_SERVO_CHANNEL`, `FCU_VRX_RIGHT_SERVO_CHANNEL`, each side's
 `FCU_VRX_*_PWM_MIN`, `FCU_VRX_*_PWM_NEUTRAL`, `FCU_VRX_*_PWM_MAX`, and the
 simulator scaling value `FCU_VRX_MAX_THRUST`. Do not populate them from the
 historical `3`/`1`, `800`/`800`/`2200` record. The live Block D parameter
-artifact is the authority for that run.
+artifact is the authority for that run. `FCU_VRX_CORRELATED_OBSERVATION`
+defaults to `0`, which leaves the VRX recorder in record-only mode for the
+disarmed measurement. Block E requires it to be `1` together with a positive
+`FCU_VRX_OBSERVER_STALE_SECONDS` measured during Block D.
 
 Each child receives a separate process group and log. Planned teardown stops
-the bridge first so its existing shutdown path publishes zero thrust, then
-stops VRX and requires UDP `14555` to be free before reporting
-`FCU_TO_VRX_WORKSTATION_TEARDOWN=PASS`. This helper does not alter the Pi
-command emitter and does not provide the correlated Block E observers; that
-second implementation piece remains outstanding.
+the bridge first so its existing shutdown path publishes zero thrust, then the
+recorder, then VRX, and requires UDP `14555` to be free before reporting
+`FCU_TO_VRX_WORKSTATION_TEARDOWN=PASS`. The recorder subscribes to the bridge
+evidence topic, both thrust topics and `/wamv/pose`; it creates no ROS publisher
+or client. Event capture does not force a disk sync for every topic callback;
+the retained stream is explicitly synced when the observer exits.
+
+#### Correlation evidence
+
+The two recorders stay in their required domains: the Pi/dashboard recorder in
+domain `12` and the bridge/VRX recorder in isolated domain `77`. Both timestamp
+events with the workstation realtime clock, so correlation does not require
+cross-domain DDS discovery. W1 retains
+`fcu_to_vrx_pi_events.jsonl`; W2 retains
+`evidence/vrx_events.jsonl`.
+
+After the complete Pi, W2 and W1 teardown, adjudicate the retained files with
+explicit limits measured during Block D:
+
+```bash
+python3 tools/fcu_to_vrx_evidence.py adjudicate \
+  --pi-events "$W1_RUN/fcu_to_vrx_pi_events.jsonl" \
+  --vrx-events "$W2_RUN/evidence/vrx_events.jsonl" \
+  --max-pwm-skew-ms "$MAX_PWM_SKEW_MS" \
+  --max-thrust-delay-ms "$MAX_THRUST_DELAY_MS" \
+  --max-motion-delay-seconds "$MAX_MOTION_DELAY_SECONDS" \
+  --min-motion-metres "$MIN_MOTION_METRES"
+```
+
+The adjudicator has no default acceptance thresholds. It anchors downstream
+timing to the bridge's UDP receive timestamp so cross-topic subscriber callback
+ordering cannot create a false failure. It requires matching asymmetric PWM
+values at dashboard `/mavros/rc/out` and the UDP-decoded bridge frame, mapped
+thrust values on both VRX topics, motion above the supplied Block-D drift
+threshold, a Hailo frame during the armed window, neutral return, connected
+disarm and restored hardware safety. Any recorder abort, missing READY event,
+mismatched value or late/missing stage fails adjudication.
 
 #### Start and stop order
 
@@ -149,7 +203,7 @@ samples ROS topics only; it does not prove UDP `14555` arrival, so a Pi started
 ahead of `W2` can report a passing dashboard phase while the fanout has no
 listener.
 
-Stop in reverse: Pi first, then `W2` (bridge, then VRX, then UDP `14555`
+Stop in reverse: Pi first, then `W2` (bridge, recorder, VRX, then UDP `14555`
 confirmed free), then `W1`.
 
 ### Batched MAVROS source view
@@ -380,14 +434,16 @@ WORKSTATION_RUNTIME_PREFLIGHT=PASS ...
 WORKSTATION_SERVICES=UP ... logs=/home/.../live_dashboard_workstation_...
 ```
 
-Leave W1 running. It prints one compound Pi command carrying the current workstation
-IPv4 address, selected SSID, helper checksum, `LIVE_HOLD_AFTER_WINDOW=1`, and
-`HAILO_LOCAL_DISPLAY=1`. It also carries `LIVE_FCU_TO_VRX_FANOUT=0` unless the
-separately gated fanout preparation was selected before starting W1. With no display
-selector override, it carries
-`HAILO_LOCAL_WINDOW_MODE=fullscreen`. The printed command resolves,
-checksums, and executes the helper from the Pi Desktop while retaining
-`~/hailo_coco_overlay_2026-07-10` as the runtime root.
+Leave W1 running. It prints one compound Pi command carrying the current
+workstation IPv4 address, selected SSID, helper checksum and
+`HAILO_LOCAL_DISPLAY=1`. The default carries
+`LIVE_HOLD_AFTER_WINDOW=1`, `LIVE_FCU_TO_VRX_FANOUT=0` and
+`LIVE_ARMED_OBSERVATION=0`. An explicitly configured armed-observation run
+instead carries fanout and selector `1`, hold `0`, and every supplied bounded
+window, staleness, channel and trim value. With no display selector override,
+the command carries `HAILO_LOCAL_WINDOW_MODE=fullscreen`. The printed command
+resolves, checksums, and executes the helper from the Pi Desktop while
+retaining `~/hailo_coco_overlay_2026-07-10` as the runtime root.
 
 ## Live command 2 - Pi source stack
 

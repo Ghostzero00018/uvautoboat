@@ -7,6 +7,7 @@ set -euo pipefail
 FCUVRX_SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 FCUVRX_REPO_ROOT="$(cd -- "$FCUVRX_SCRIPT_DIR/.." && pwd)"
 FCUVRX_BRIDGE="$FCUVRX_SCRIPT_DIR/servo_command_bridge.py"
+FCUVRX_EVIDENCE="$FCUVRX_SCRIPT_DIR/fcu_to_vrx_evidence.py"
 FCUVRX_ROS_SETUP="${FCU_TO_VRX_ROS_SETUP:-/opt/ros/jazzy/setup.bash}"
 FCUVRX_WORKSPACE_SETUP="${FCU_TO_VRX_WORKSPACE_SETUP:-$FCUVRX_REPO_ROOT/../../install/setup.bash}"
 FCUVRX_LOG_ROOT="${FCU_TO_VRX_LOG_ROOT:-$HOME/Desktop}"
@@ -36,6 +37,8 @@ FCU_VRX_RIGHT_PWM_MIN="${FCU_VRX_RIGHT_PWM_MIN:-}"
 FCU_VRX_RIGHT_PWM_NEUTRAL="${FCU_VRX_RIGHT_PWM_NEUTRAL:-}"
 FCU_VRX_RIGHT_PWM_MAX="${FCU_VRX_RIGHT_PWM_MAX:-}"
 FCU_VRX_MAX_THRUST="${FCU_VRX_MAX_THRUST:-}"
+FCU_VRX_CORRELATED_OBSERVATION="${FCU_VRX_CORRELATED_OBSERVATION:-0}"
+FCU_VRX_OBSERVER_STALE_SECONDS="${FCU_VRX_OBSERVER_STALE_SECONDS:-}"
 FCU_VRX_PWM_MIN=''
 FCU_VRX_PWM_NEUTRAL=''
 FCU_VRX_PWM_MAX=''
@@ -46,6 +49,7 @@ declare -a FCUVRX_CHILD_PGIDS=()
 declare -A FCUVRX_CHILD_INDEX=()
 declare -a FCUVRX_VRX_COMMAND=()
 declare -a FCUVRX_BRIDGE_COMMAND=()
+declare -a FCUVRX_OBSERVER_COMMAND=()
 
 FCUVRX_CONFLICT_PATTERNS=(
   'servo_command_bridge.py'
@@ -93,6 +97,10 @@ run requires all values below from the same live FCU parameter read:
   FCU_VRX_LEFT_PWM_MIN / FCU_VRX_LEFT_PWM_NEUTRAL / FCU_VRX_LEFT_PWM_MAX
   FCU_VRX_RIGHT_PWM_MIN / FCU_VRX_RIGHT_PWM_NEUTRAL / FCU_VRX_RIGHT_PWM_MAX
   FCU_VRX_MAX_THRUST (positive decimal, for example 800.0)
+
+Block E additionally requires:
+  FCU_VRX_CORRELATED_OBSERVATION=1
+  FCU_VRX_OBSERVER_STALE_SECONDS (positive integer measured in Block D)
 EOF
   return 2
 }
@@ -171,6 +179,14 @@ fcuvrx_validate_configuration() {
   fcuvrx_validate_max_thrust "$FCU_VRX_MAX_THRUST" \
     || fcuvrx_fail 'FCU_VRX_MAX_THRUST must be a finite decimal greater than zero' \
     || return 1
+  [[ "$FCU_VRX_CORRELATED_OBSERVATION" =~ ^[01]$ ]] \
+    || fcuvrx_fail 'FCU_VRX_CORRELATED_OBSERVATION must be 0 or 1' \
+    || return 1
+  if [ "$FCU_VRX_CORRELATED_OBSERVATION" -eq 1 ]; then
+    fcuvrx_require_value FCU_VRX_OBSERVER_STALE_SECONDS || return 1
+    fcuvrx_validate_positive_integer FCU_VRX_OBSERVER_STALE_SECONDS \
+      "$FCU_VRX_OBSERVER_STALE_SECONDS" || return 1
+  fi
 
   FCU_VRX_PWM_MIN="$FCU_VRX_LEFT_PWM_MIN"
   FCU_VRX_PWM_NEUTRAL="$FCU_VRX_LEFT_PWM_NEUTRAL"
@@ -307,6 +323,8 @@ fcuvrx_static_preflight() {
   [ -w "$FCUVRX_LOG_ROOT" ] \
     || fcuvrx_fail "log root is not writable: $FCUVRX_LOG_ROOT"
   [ -r "$FCUVRX_BRIDGE" ] || fcuvrx_fail "bridge missing: $FCUVRX_BRIDGE"
+  [ -r "$FCUVRX_EVIDENCE" ] \
+    || fcuvrx_fail "evidence observer missing: $FCUVRX_EVIDENCE"
   [ -x /usr/bin/python3 ] || fcuvrx_fail '/usr/bin/python3 is unavailable'
   fcuvrx_verify_repository
   fcuvrx_require_udp_port_free
@@ -324,7 +342,7 @@ fcuvrx_static_preflight() {
     || fcuvrx_fail 'VRX left-thrust topic contract is missing'
   grep -Fq '/wamv/thrusters/right/thrust' "$FCUVRX_VRX_SHARE/config/wamv.yaml" \
     || fcuvrx_fail 'VRX right-thrust topic contract is missing'
-  /usr/bin/python3 -c 'import pymavlink, rclpy' \
+  /usr/bin/python3 -c 'import pymavlink, rclpy, tf2_msgs' \
     || fcuvrx_fail 'bridge Python dependencies are unavailable'
 }
 
@@ -346,6 +364,25 @@ fcuvrx_build_commands() {
     -p "max_thrust:=$FCU_VRX_MAX_THRUST"
     -p 'publish_sensors:=false'
     -p 'publish_cmd_vel:=false'
+  )
+  FCUVRX_OBSERVER_COMMAND=(
+    /usr/bin/python3 "$FCUVRX_EVIDENCE" observe-vrx
+    --output "$FCUVRX_RUN_DIR/evidence/vrx_events.jsonl"
+    --status "$FCUVRX_RUN_DIR/evidence/vrx_status.json"
+    --stale-seconds "${FCU_VRX_OBSERVER_STALE_SECONDS:-0}"
+    --left-channel "$FCU_VRX_LEFT_SERVO_CHANNEL"
+    --right-channel "$FCU_VRX_RIGHT_SERVO_CHANNEL"
+    --left-min "$FCU_VRX_LEFT_PWM_MIN"
+    --left-trim "$FCU_VRX_LEFT_PWM_NEUTRAL"
+    --left-max "$FCU_VRX_LEFT_PWM_MAX"
+    --right-min "$FCU_VRX_RIGHT_PWM_MIN"
+    --right-trim "$FCU_VRX_RIGHT_PWM_NEUTRAL"
+    --right-max "$FCU_VRX_RIGHT_PWM_MAX"
+    --max-thrust "$FCU_VRX_MAX_THRUST"
+    --servo-topic /fcu_to_vrx/servo_output_raw
+    --left-thrust-topic /wamv/thrusters/left/thrust
+    --right-thrust-topic /wamv/thrusters/right/thrust
+    --pose-topic /wamv/pose
   )
 }
 
@@ -369,7 +406,8 @@ fcuvrx_init_state() {
   [ ! -e "$FCUVRX_RUN_DIR" ] \
     || fcuvrx_fail "run directory already exists: $FCUVRX_RUN_DIR"
   mkdir -m 700 "$FCUVRX_RUN_DIR"
-  mkdir -m 700 "$FCUVRX_RUN_DIR/logs" "$FCUVRX_RUN_DIR/manifest"
+  mkdir -m 700 "$FCUVRX_RUN_DIR/logs" "$FCUVRX_RUN_DIR/manifest" \
+    "$FCUVRX_RUN_DIR/evidence"
   FCUVRX_SUPERVISOR_LOG="$FCUVRX_RUN_DIR/supervisor.log"
   : >"$FCUVRX_SUPERVISOR_LOG" \
     || fcuvrx_fail 'cannot create supervisor log'
@@ -393,11 +431,15 @@ fcuvrx_write_manifest() {
     printf 'right_pwm=%s/%s/%s\n' "$FCU_VRX_RIGHT_PWM_MIN" \
       "$FCU_VRX_RIGHT_PWM_NEUTRAL" "$FCU_VRX_RIGHT_PWM_MAX"
     printf 'max_thrust=%s\n' "$FCU_VRX_MAX_THRUST"
+    printf 'correlated_observation=%s\n' "$FCU_VRX_CORRELATED_OBSERVATION"
+    printf 'observer_stale_seconds=%s\n' \
+      "${FCU_VRX_OBSERVER_STALE_SECONDS:-0}"
     printf 'publish_sensors=false\n'
     printf 'publish_cmd_vel=false\n'
   } >"$FCUVRX_RUN_DIR/manifest/environment.txt"
   sha256sum "$FCUVRX_SCRIPT_DIR/fcu_to_vrx_workstation.sh" \
-    "$FCUVRX_BRIDGE" "$FCUVRX_VRX_SHARE/config/wamv.yaml" \
+    "$FCUVRX_BRIDGE" "$FCUVRX_EVIDENCE" \
+    "$FCUVRX_VRX_SHARE/config/wamv.yaml" \
     "$FCUVRX_VRX_SHARE/worlds/$FCUVRX_WORLD.sdf" \
     >"$FCUVRX_RUN_DIR/manifest/artifacts.sha256"
   {
@@ -405,6 +447,8 @@ fcuvrx_write_manifest() {
     printf '\t%q' "${FCUVRX_VRX_COMMAND[@]}"
     printf '\nbridge'
     printf '\t%q' "${FCUVRX_BRIDGE_COMMAND[@]}"
+    printf '\nobserver'
+    printf '\t%q' "${FCUVRX_OBSERVER_COMMAND[@]}"
     printf '\n'
   } >"$FCUVRX_RUN_DIR/manifest/commands.tsv"
 }
@@ -505,6 +549,17 @@ fcuvrx_wait_bridge_ready() {
   return 1
 }
 
+fcuvrx_wait_observer_started() {
+  local deadline=$((SECONDS + FCUVRX_READY_TIMEOUT_SECONDS))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    fcuvrx_children_alive || return 1
+    grep -Fq 'FCU_TO_VRX_VRX_OBSERVER_STARTED=PASS topics=4 publishers=0' \
+      "$FCUVRX_RUN_DIR/logs/observer.log" && return 0
+    sleep "$FCUVRX_POLL_SECONDS" || true
+  done
+  return 1
+}
+
 fcuvrx_cleanup() {
   local incoming_rc="${1-$?}" cleanup_rc=0 final_rc operator_success=0 rc
   [ "$FCUVRX_CLEANING" -eq 0 ] || return "$incoming_rc"
@@ -512,6 +567,7 @@ fcuvrx_cleanup() {
   trap - EXIT INT TERM
   set +e
   fcuvrx_stop_child bridge || cleanup_rc=1
+  fcuvrx_stop_child observer || cleanup_rc=1
   fcuvrx_stop_child vrx || cleanup_rc=1
   if [ "$FCUVRX_STARTED" -eq 1 ]; then
     if fcuvrx_udp_listener_present; then
@@ -527,7 +583,7 @@ fcuvrx_cleanup() {
       && [ "$FCUVRX_READY_REACHED" -eq 1 ] \
       && [ "$cleanup_rc" -eq 0 ]; then
     fcuvrx_log \
-      'FCU_TO_VRX_WORKSTATION_TEARDOWN=PASS order=bridge,vrx udp=14555-free'
+      'FCU_TO_VRX_WORKSTATION_TEARDOWN=PASS order=bridge,observer,vrx udp=14555-free'
     operator_success=1
   fi
   final_rc="$incoming_rc"
@@ -558,8 +614,9 @@ fcuvrx_check() {
   bash "$FCUVRX_SCRIPT_DIR/test_fcu_to_vrx_workstation.sh"
   python3 -m unittest "$FCUVRX_SCRIPT_DIR/test_servo_command_bridge_mapping.py"
   python3 -m unittest "$FCUVRX_SCRIPT_DIR/test_fcu_to_vrx_parameter_contract.py"
+  python3 -m unittest "$FCUVRX_SCRIPT_DIR/test_fcu_to_vrx_evidence.py"
   fcuvrx_log \
-    'FCU_TO_VRX_WORKSTATION_CHECK=PASS shell_cases=12 python_tests=4 runtime=not-started'
+    'FCU_TO_VRX_WORKSTATION_CHECK=PASS shell_cases=14 python_tests=14 runtime=not-started'
 }
 
 fcuvrx_run() {
@@ -580,13 +637,20 @@ fcuvrx_run() {
   fcuvrx_log \
     'FCU_TO_VRX_VRX_READY=PASS topics=/clock,/wamv/thrusters/left/thrust,/wamv/thrusters/right/thrust'
 
+  fcuvrx_start_child observer "$FCUVRX_RUN_DIR/logs/observer.log" \
+    "${FCUVRX_OBSERVER_COMMAND[@]}"
+  fcuvrx_wait_observer_started \
+    || fcuvrx_fail 'VRX evidence observer did not start before the deadline'
+  fcuvrx_log \
+    "FCU_TO_VRX_OBSERVER_STARTED=PASS mode=$([ "$FCU_VRX_CORRELATED_OBSERVATION" -eq 1 ] && printf fail-closed || printf record-only) status=$FCUVRX_RUN_DIR/evidence/vrx_status.json"
+
   fcuvrx_start_child bridge "$FCUVRX_RUN_DIR/logs/bridge.log" \
     "${FCUVRX_BRIDGE_COMMAND[@]}"
   fcuvrx_wait_bridge_ready \
     || fcuvrx_fail 'bridge UDP listener did not become ready before the deadline'
   FCUVRX_READY_REACHED=1
   fcuvrx_log \
-    "FCU_TO_VRX_WORKSTATION_READY=PASS domain=77 udp=14555 world=$FCUVRX_WORLD mapping=$FCU_VRX_LEFT_SERVO_CHANNEL/$FCU_VRX_RIGHT_SERVO_CHANNEL rails=$FCU_VRX_PWM_MIN/$FCU_VRX_PWM_NEUTRAL/$FCU_VRX_PWM_MAX publish_sensors=false publish_cmd_vel=false"
+    "FCU_TO_VRX_WORKSTATION_READY=PASS domain=77 udp=14555 world=$FCUVRX_WORLD mapping=$FCU_VRX_LEFT_SERVO_CHANNEL/$FCU_VRX_RIGHT_SERVO_CHANNEL rails=$FCU_VRX_PWM_MIN/$FCU_VRX_PWM_NEUTRAL/$FCU_VRX_PWM_MAX observer=started publish_sensors=false publish_cmd_vel=false"
   fcuvrx_log 'planned stop: stop the Pi helper first, then press Ctrl+C here'
 
   while fcuvrx_children_alive; do

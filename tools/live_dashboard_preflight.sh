@@ -6,11 +6,25 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 DASHBOARD_DIR="$REPO_ROOT/web_dashboard/autoboat"
 HELPER="$SCRIPT_DIR/pi_live_hailo_mavlink_dashboard.sh"
+FCU_TO_VRX_EVIDENCE="$SCRIPT_DIR/fcu_to_vrx_evidence.py"
 EXPECTED_HELPER_SHA256='b0793bdac61595a2c5e85dafbc18806bde8146cecece4ae232846b51ae4b8cb0'
 EXPECTED_SSID="${LIVE_SSID:-IoT IMT Nord Europe}"
 PI_WINDOW_MODE="${LIVE_PI_WINDOW_MODE:-fullscreen}"
 FCU_TO_VRX_FANOUT="${LIVE_FCU_TO_VRX_FANOUT:-0}"
+ARMED_OBSERVATION="${LIVE_ARMED_OBSERVATION:-0}"
+ARMED_OBSERVATION_MAX_SECONDS="${LIVE_ARMED_OBSERVATION_MAX_SECONDS:-}"
+ARMED_OBSERVATION_FINAL_SECONDS="${LIVE_ARMED_OBSERVATION_FINAL_SECONDS:-}"
+ARMED_OBSERVATION_STALE_SECONDS="${LIVE_ARMED_OBSERVATION_STALE_SECONDS:-}"
+ARMED_OBSERVATION_LEFT_CHANNEL="${LIVE_ARMED_OBSERVATION_LEFT_CHANNEL:-}"
+ARMED_OBSERVATION_LEFT_PWM_MIN="${LIVE_ARMED_OBSERVATION_LEFT_PWM_MIN:-}"
+ARMED_OBSERVATION_LEFT_TRIM="${LIVE_ARMED_OBSERVATION_LEFT_TRIM:-}"
+ARMED_OBSERVATION_LEFT_PWM_MAX="${LIVE_ARMED_OBSERVATION_LEFT_PWM_MAX:-}"
+ARMED_OBSERVATION_RIGHT_CHANNEL="${LIVE_ARMED_OBSERVATION_RIGHT_CHANNEL:-}"
+ARMED_OBSERVATION_RIGHT_PWM_MIN="${LIVE_ARMED_OBSERVATION_RIGHT_PWM_MIN:-}"
+ARMED_OBSERVATION_RIGHT_TRIM="${LIVE_ARMED_OBSERVATION_RIGHT_TRIM:-}"
+ARMED_OBSERVATION_RIGHT_PWM_MAX="${LIVE_ARMED_OBSERVATION_RIGHT_PWM_MAX:-}"
 FCU_TO_VRX_INGRESS_PORT=14556
+PI_HOLD_AFTER_WINDOW=1
 ROS_SETUP='/opt/ros/jazzy/setup.bash'
 LIVE_DOMAIN_ID='12'
 WORKSTATION_LOG_ROOT="${LIVE_DASHBOARD_LOG_ROOT:-$HOME/Desktop}"
@@ -36,6 +50,7 @@ WORKSTATION_CONFLICT_PATTERNS=(
   'gz sim'
   'waypoint_planner'
   'pi_live_hailo_mavlink_dashboard.sh'
+  'fcu_to_vrx_evidence.py observe-pi'
 )
 
 PI_CONFLICT_PATTERNS=(
@@ -146,10 +161,56 @@ fail() {
 }
 
 validate_pi_window_selectors() {
+  local name value side minimum trim maximum
   [[ "$PI_WINDOW_MODE" =~ ^(resizable|fullscreen)$ ]] \
     || fail 'LIVE_PI_WINDOW_MODE must be resizable or fullscreen'
   [[ "$FCU_TO_VRX_FANOUT" =~ ^[01]$ ]] \
     || fail 'LIVE_FCU_TO_VRX_FANOUT must be 0 or 1'
+  [[ "$ARMED_OBSERVATION" =~ ^[01]$ ]] \
+    || fail 'LIVE_ARMED_OBSERVATION must be 0 or 1'
+  PI_HOLD_AFTER_WINDOW=1
+  [ "$ARMED_OBSERVATION" -eq 0 ] && return 0
+  [ "$FCU_TO_VRX_FANOUT" -eq 1 ] \
+    || fail 'LIVE_ARMED_OBSERVATION=1 requires LIVE_FCU_TO_VRX_FANOUT=1'
+
+  for name in \
+    ARMED_OBSERVATION_MAX_SECONDS ARMED_OBSERVATION_FINAL_SECONDS \
+    ARMED_OBSERVATION_STALE_SECONDS ARMED_OBSERVATION_LEFT_CHANNEL \
+    ARMED_OBSERVATION_LEFT_PWM_MIN ARMED_OBSERVATION_LEFT_TRIM \
+    ARMED_OBSERVATION_LEFT_PWM_MAX ARMED_OBSERVATION_RIGHT_CHANNEL \
+    ARMED_OBSERVATION_RIGHT_PWM_MIN ARMED_OBSERVATION_RIGHT_TRIM \
+    ARMED_OBSERVATION_RIGHT_PWM_MAX; do
+    [ -n "${!name:-}" ] \
+      || fail "LIVE_${name} is required when LIVE_ARMED_OBSERVATION=1"
+  done
+  for value in "$ARMED_OBSERVATION_MAX_SECONDS" \
+    "$ARMED_OBSERVATION_FINAL_SECONDS" "$ARMED_OBSERVATION_STALE_SECONDS"; do
+    [[ "$value" =~ ^[1-9][0-9]*$ ]] \
+      || fail 'armed-observation time limits must be positive integers'
+  done
+  for value in "$ARMED_OBSERVATION_LEFT_CHANNEL" \
+    "$ARMED_OBSERVATION_RIGHT_CHANNEL"; do
+    [[ "$value" =~ ^[1-9][0-9]*$ ]] && [ "$value" -le 16 ] \
+      || fail 'armed-observation servo channels must be live-read values in 1..16'
+  done
+  [ "$ARMED_OBSERVATION_LEFT_CHANNEL" -ne "$ARMED_OBSERVATION_RIGHT_CHANNEL" ] \
+    || fail 'armed-observation left and right servo channels must differ'
+  for side in LEFT RIGHT; do
+    minimum="ARMED_OBSERVATION_${side}_PWM_MIN"
+    trim="ARMED_OBSERVATION_${side}_TRIM"
+    maximum="ARMED_OBSERVATION_${side}_PWM_MAX"
+    for name in "$minimum" "$trim" "$maximum"; do
+      value="${!name}"
+      [[ "$value" =~ ^[0-9]+$ ]] && [ "$value" -ge 1 ] \
+        && [ "$value" -le 65535 ] \
+        || fail "LIVE_${name} must be a live-read PWM integer in 1..65535"
+    done
+    [ "${!minimum}" -le "${!trim}" ] && [ "${!trim}" -lt "${!maximum}" ] \
+      || fail "$side armed-observation rail must satisfy min <= trim < max"
+    [ "${!trim}" -ge 800 ] && [ "${!trim}" -le 2200 ] \
+      || fail "$side armed-observation trim must be in the helper range 800..2200"
+  done
+  PI_HOLD_AFTER_WINDOW=0
 }
 
 usage() {
@@ -302,6 +363,12 @@ run_workstation_runtime_preflight() {
     || fail "dashboard server missing: $DASHBOARD_DIR/serve_dashboard.py"
   [ -x "$SCRIPT_DIR/rate_probe.py" ] \
     || fail "rate probe missing or not executable: $SCRIPT_DIR/rate_probe.py"
+  [ -r "$FCU_TO_VRX_EVIDENCE" ] \
+    || fail "FCU-to-VRX evidence observer missing: $FCU_TO_VRX_EVIDENCE"
+  if [ "$ARMED_OBSERVATION" -eq 1 ]; then
+    python3 -c 'import mavros_msgs, rclpy, sensor_msgs' \
+      || fail 'Pi-side evidence observer Python dependencies are unavailable'
+  fi
 
   check_helper_pin
   resolve_workstation_network
@@ -496,6 +563,21 @@ start_workstation_services() {
   start_child rosbridge "$RUN_DIR/rosbridge.log" "${ROSBRIDGE_COMMAND[@]}"
   start_child web-video-server "$RUN_DIR/web_video_server.log" "${VIDEO_COMMAND[@]}"
   start_child dashboard "$RUN_DIR/dashboard.log" "${DASHBOARD_COMMAND[@]}"
+  if [ "$ARMED_OBSERVATION" -eq 1 ]; then
+    start_child pi-evidence-observer "$RUN_DIR/fcu_to_vrx_pi_observer.log" \
+      python3 "$FCU_TO_VRX_EVIDENCE" observe-pi \
+      --output "$RUN_DIR/fcu_to_vrx_pi_events.jsonl" \
+      --status "$RUN_DIR/fcu_to_vrx_pi_status.json" \
+      --stale-seconds "$ARMED_OBSERVATION_STALE_SECONDS" \
+      --left-channel "$ARMED_OBSERVATION_LEFT_CHANNEL" \
+      --right-channel "$ARMED_OBSERVATION_RIGHT_CHANNEL" \
+      --left-min "$ARMED_OBSERVATION_LEFT_PWM_MIN" \
+      --left-trim "$ARMED_OBSERVATION_LEFT_TRIM" \
+      --left-max "$ARMED_OBSERVATION_LEFT_PWM_MAX" \
+      --right-min "$ARMED_OBSERVATION_RIGHT_PWM_MIN" \
+      --right-trim "$ARMED_OBSERVATION_RIGHT_TRIM" \
+      --right-max "$ARMED_OBSERVATION_RIGHT_PWM_MAX"
+  fi
 }
 
 print_pi_command() {
@@ -518,8 +600,13 @@ print_pi_command() {
   printf '  chmod +x "$PI_HELPER"\n'
   printf "  printf 'PI_TEMP_START_MC='\n"
   printf '  cat /sys/class/thermal/thermal_zone0/temp\n'
-  printf '  exec env WORKSTATION_IP=%q LIVE_SSID=%q LIVE_HOLD_AFTER_WINDOW=1 LIVE_FCU_TO_VRX_FANOUT=%q HAILO_DEMO_ROOT="$PI_RUNTIME_ROOT" HAILO_LOCAL_DISPLAY=1 HAILO_LOCAL_WINDOW_MODE=%q "$PI_HELPER"\n' \
-    "$WORKSTATION_IP" "$EXPECTED_SSID" "$FCU_TO_VRX_FANOUT" "$PI_WINDOW_MODE"
+  printf '  exec env WORKSTATION_IP=%q LIVE_SSID=%q LIVE_HOLD_AFTER_WINDOW=%q LIVE_FCU_TO_VRX_FANOUT=%q LIVE_ARMED_OBSERVATION=%q LIVE_ARMED_OBSERVATION_MAX_SECONDS=%q LIVE_ARMED_OBSERVATION_FINAL_SECONDS=%q LIVE_ARMED_OBSERVATION_STALE_SECONDS=%q LIVE_ARMED_OBSERVATION_LEFT_CHANNEL=%q LIVE_ARMED_OBSERVATION_LEFT_TRIM=%q LIVE_ARMED_OBSERVATION_RIGHT_CHANNEL=%q LIVE_ARMED_OBSERVATION_RIGHT_TRIM=%q HAILO_DEMO_ROOT="$PI_RUNTIME_ROOT" HAILO_LOCAL_DISPLAY=1 HAILO_LOCAL_WINDOW_MODE=%q "$PI_HELPER"\n' \
+    "$WORKSTATION_IP" "$EXPECTED_SSID" "$PI_HOLD_AFTER_WINDOW" \
+    "$FCU_TO_VRX_FANOUT" "$ARMED_OBSERVATION" \
+    "$ARMED_OBSERVATION_MAX_SECONDS" "$ARMED_OBSERVATION_FINAL_SECONDS" \
+    "$ARMED_OBSERVATION_STALE_SECONDS" "$ARMED_OBSERVATION_LEFT_CHANNEL" \
+    "$ARMED_OBSERVATION_LEFT_TRIM" "$ARMED_OBSERVATION_RIGHT_CHANNEL" \
+    "$ARMED_OBSERVATION_RIGHT_TRIM" "$PI_WINDOW_MODE"
   printf ')\n\n'
 }
 
@@ -536,6 +623,23 @@ all_expected_publishers_present() {
   for topic in "${EXPECTED_TOPICS[@]}"; do
     topic_has_publisher "$topic" || return 1
   done
+}
+
+wait_for_pi_observer_ready() {
+  local deadline="$1"
+  [ "$ARMED_OBSERVATION" -eq 1 ] || return 0
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    monitor_workstation_once || return 1
+    if grep -Fq '"phase":"READY"' \
+        "$RUN_DIR/fcu_to_vrx_pi_status.json" 2>/dev/null; then
+      emit_marker_once FCU_TO_VRX_PI_OBSERVER \
+        "FCU_TO_VRX_PI_OBSERVER=READY events=$RUN_DIR/fcu_to_vrx_pi_events.jsonl"
+      return 0
+    fi
+    sleep "$SUPERVISOR_POLL_SECONDS" || true
+  done
+  log_error 'FAIL: Pi-side FCU-to-VRX evidence observer did not reach READY'
+  return 1
 }
 
 wait_for_pi_data_arrival() {
@@ -558,9 +662,10 @@ wait_for_pi_data_arrival() {
   [ "$STOP_REQUESTED" -eq 0 ] || return 130
   all_expected_publishers_present || {
     log_error \
-      "FAIL: six expected publishers did not arrive within ${ARRIVAL_TIMEOUT_SECONDS}s"
+      "FAIL: seven expected publishers did not arrive within ${ARRIVAL_TIMEOUT_SECONDS}s"
     return 1
   }
+  wait_for_pi_observer_ready "$deadline" || return 1
   [ "$STOP_REQUESTED" -eq 0 ] || return 130
 
   for index in "${!EXPECTED_TOPICS[@]}"; do
@@ -907,7 +1012,16 @@ run_pi_preflight() {
 
   WORKSTATION_IP="$workstation_ip" \
     LIVE_SSID="$EXPECTED_SSID" \
+    LIVE_HOLD_AFTER_WINDOW="$PI_HOLD_AFTER_WINDOW" \
     LIVE_FCU_TO_VRX_FANOUT="$FCU_TO_VRX_FANOUT" \
+    LIVE_ARMED_OBSERVATION="$ARMED_OBSERVATION" \
+    LIVE_ARMED_OBSERVATION_MAX_SECONDS="$ARMED_OBSERVATION_MAX_SECONDS" \
+    LIVE_ARMED_OBSERVATION_FINAL_SECONDS="$ARMED_OBSERVATION_FINAL_SECONDS" \
+    LIVE_ARMED_OBSERVATION_STALE_SECONDS="$ARMED_OBSERVATION_STALE_SECONDS" \
+    LIVE_ARMED_OBSERVATION_LEFT_CHANNEL="$ARMED_OBSERVATION_LEFT_CHANNEL" \
+    LIVE_ARMED_OBSERVATION_LEFT_TRIM="$ARMED_OBSERVATION_LEFT_TRIM" \
+    LIVE_ARMED_OBSERVATION_RIGHT_CHANNEL="$ARMED_OBSERVATION_RIGHT_CHANNEL" \
+    LIVE_ARMED_OBSERVATION_RIGHT_TRIM="$ARMED_OBSERVATION_RIGHT_TRIM" \
     "$HELPER" --preflight-only
   log "P1_PREFLIGHT=PASS workstation=$workstation_ip dev=$pi_interface ssid=$ssid"
 }

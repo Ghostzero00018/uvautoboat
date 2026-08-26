@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PREFLIGHT="${1:-$SCRIPT_DIR/live_dashboard_preflight.sh}"
 HELPER="$SCRIPT_DIR/pi_live_hailo_mavlink_dashboard.sh"
 WIKI="$SCRIPT_DIR/../wiki/Live_Hailo_MAVLink_Dashboard_Testing.md"
-EXPECTED_PREFLIGHT_SHA256='dfa41732e5fc39572e9f927bf5c202aba3250c18e2372dc238b6d72212dc9372'
+EXPECTED_PREFLIGHT_SHA256='642fddc1f8edb20b988e610bc71205fead7c54b4c874a3b351287a027ccab1d9'
 CASE_COUNT=0
 
 fail() {
@@ -64,6 +64,12 @@ require_literal "EXPECTED_HELPER_SHA256='b0793bdac61595a2c5e85dafbc18806bde8146c
 require_literal 'EXPECTED_SSID="${LIVE_SSID:-IoT IMT Nord Europe}"'
 require_literal 'PI_WINDOW_MODE="${LIVE_PI_WINDOW_MODE:-fullscreen}"'
 require_literal 'FCU_TO_VRX_FANOUT="${LIVE_FCU_TO_VRX_FANOUT:-0}"'
+require_literal 'ARMED_OBSERVATION="${LIVE_ARMED_OBSERVATION:-0}"'
+require_literal 'ARMED_OBSERVATION_MAX_SECONDS="${LIVE_ARMED_OBSERVATION_MAX_SECONDS:-}"'
+require_literal 'ARMED_OBSERVATION_STALE_SECONDS="${LIVE_ARMED_OBSERVATION_STALE_SECONDS:-}"'
+require_literal 'python3 "$FCU_TO_VRX_EVIDENCE" observe-pi \'
+require_literal '--output "$RUN_DIR/fcu_to_vrx_pi_events.jsonl" \'
+require_literal '--left-min "$ARMED_OBSERVATION_LEFT_PWM_MIN" \'
 require_literal 'FCU_TO_VRX_INGRESS_PORT=14556'
 require_literal 'validate_pi_window_selectors() {'
 require_literal 'LIVE_PI_WINDOW_MODE must be resizable or fullscreen'
@@ -92,7 +98,7 @@ require_literal "grep -Fxq '/rosapi/topics_for_type'"
 require_literal 'all_expected_publishers_present'
 require_literal 'ARRIVAL_TIMEOUT_SECONDS="${LIVE_ARRIVAL_TIMEOUT_SECONDS:-360}"'
 require_literal 'ARRIVAL_SAMPLE_SECONDS="${LIVE_ARRIVAL_SAMPLE_SECONDS:-10}"'
-require_literal 'LIVE_HOLD_AFTER_WINDOW=1'
+require_literal 'PI_HOLD_AFTER_WINDOW=1'
 require_literal 'run_post_service_phases'
 require_literal 'WORKSTATION_RUNTIME_PREFLIGHT=PASS'
 require_literal 'if [ "$pgid" = "$SUPERVISOR_PGID" ]; then'
@@ -176,6 +182,61 @@ grep -Fq 'HAILO_LOCAL_WINDOW_MODE=resizable' <<<"$PI_COMMAND_OVERRIDE_BLOCK" \
   || fail 'printed Pi command did not carry the resizable selector'
 grep -Fq 'LIVE_FCU_TO_VRX_FANOUT=1' <<<"$PI_COMMAND_OVERRIDE_BLOCK" \
   || fail 'printed Pi command did not carry the enabled fanout selector'
+
+PI_COMMAND_ARMED_OUTPUT="$(
+  LIVE_FCU_TO_VRX_FANOUT=1 \
+  LIVE_ARMED_OBSERVATION=1 \
+  LIVE_ARMED_OBSERVATION_MAX_SECONDS=20 \
+  LIVE_ARMED_OBSERVATION_FINAL_SECONDS=25 \
+  LIVE_ARMED_OBSERVATION_STALE_SECONDS=7 \
+  LIVE_ARMED_OBSERVATION_LEFT_CHANNEL=3 \
+  LIVE_ARMED_OBSERVATION_LEFT_PWM_MIN=800 \
+  LIVE_ARMED_OBSERVATION_LEFT_TRIM=800 \
+  LIVE_ARMED_OBSERVATION_LEFT_PWM_MAX=2200 \
+  LIVE_ARMED_OBSERVATION_RIGHT_CHANNEL=1 \
+  LIVE_ARMED_OBSERVATION_RIGHT_PWM_MIN=800 \
+  LIVE_ARMED_OBSERVATION_RIGHT_TRIM=800 \
+  LIVE_ARMED_OBSERVATION_RIGHT_PWM_MAX=2200 \
+  bash -c '
+    source "$1"
+    WORKSTATION_IP=192.0.2.20
+    print_pi_command
+  ' _ "$PREFLIGHT")"
+PI_COMMAND_ARMED_BLOCK="$(sed -n '/^($/,/^)$/{p}' <<<"$PI_COMMAND_ARMED_OUTPUT")"
+bash -n <<<"$PI_COMMAND_ARMED_BLOCK"
+for literal in \
+  'LIVE_HOLD_AFTER_WINDOW=0' \
+  'LIVE_FCU_TO_VRX_FANOUT=1' \
+  'LIVE_ARMED_OBSERVATION=1' \
+  'LIVE_ARMED_OBSERVATION_MAX_SECONDS=20' \
+  'LIVE_ARMED_OBSERVATION_FINAL_SECONDS=25' \
+  'LIVE_ARMED_OBSERVATION_STALE_SECONDS=7' \
+  'LIVE_ARMED_OBSERVATION_LEFT_CHANNEL=3' \
+  'LIVE_ARMED_OBSERVATION_LEFT_TRIM=800' \
+  'LIVE_ARMED_OBSERVATION_RIGHT_CHANNEL=1' \
+  'LIVE_ARMED_OBSERVATION_RIGHT_TRIM=800'; do
+  grep -Fq "$literal" <<<"$PI_COMMAND_ARMED_BLOCK" \
+    || fail "armed-observation Pi command is missing: $literal"
+done
+pass_case
+
+set +e
+MISSING_ARMED_VALUE_OUTPUT="$(
+  LIVE_FCU_TO_VRX_FANOUT=1 \
+  LIVE_ARMED_OBSERVATION=1 \
+  bash -c '
+    source "$1"
+    WORKSTATION_IP=192.0.2.20
+    print_pi_command
+  ' _ "$PREFLIGHT" 2>&1)"
+MISSING_ARMED_VALUE_RC=$?
+set -e
+[ "$MISSING_ARMED_VALUE_RC" -ne 0 ] \
+  || fail 'armed-observation emitter accepted missing live-read values'
+grep -Fq 'LIVE_ARMED_OBSERVATION_MAX_SECONDS is required' \
+  <<<"$MISSING_ARMED_VALUE_OUTPUT" \
+  || fail 'missing armed-observation value was not identified'
+pass_case
 for invalid_case in 'stretch:LIVE_PI_WINDOW_MODE'; do
   IFS=: read -r bad_mode expected_error <<<"$invalid_case"
   set +e
@@ -355,6 +416,7 @@ EXPECTED_WORKSTATION_PATTERNS=(
   'gz sim'
   'waypoint_planner'
   'pi_live_hailo_mavlink_dashboard.sh'
+  'fcu_to_vrx_evidence.py observe-pi'
 )
 EXPECTED_PI_PATTERNS=(
   'realsense2_camera'
@@ -1077,5 +1139,5 @@ set -e
   || fail "real-SIGINT lifecycle case failed rc=$REAL_SIGINT_CASE_RC: $REAL_SIGINT_CASE_OUTPUT"
 pass_case
 
-[ "$CASE_COUNT" -eq 14 ] || fail "executed $CASE_COUNT cases instead of 14"
+[ "$CASE_COUNT" -eq 16 ] || fail "executed $CASE_COUNT cases instead of 16"
 printf 'PASS: live-dashboard preflight contracts cases=%s\n' "$CASE_COUNT"

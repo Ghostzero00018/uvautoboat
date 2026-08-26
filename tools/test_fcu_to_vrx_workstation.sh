@@ -4,6 +4,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 SUPERVISOR="${1:-$SCRIPT_DIR/fcu_to_vrx_workstation.sh}"
+EVIDENCE="$SCRIPT_DIR/fcu_to_vrx_evidence.py"
+WIKI="$SCRIPT_DIR/../wiki/Live_Hailo_MAVLink_Dashboard_Testing.md"
 CASE_COUNT=0
 
 fail_test() {
@@ -22,7 +24,17 @@ require_text() {
 
 [ -r "$SUPERVISOR" ] \
   || fail_test "FCU-to-VRX workstation supervisor missing: $SUPERVISOR"
+[ -r "$EVIDENCE" ] || fail_test "FCU-to-VRX evidence recorder missing: $EVIDENCE"
+[ -r "$WIKI" ] || fail_test "live-dashboard runbook missing: $WIKI"
 bash -n "$SUPERVISOR"
+pass_case
+
+SUPERVISOR_SHA256="$(sha256sum "$SUPERVISOR" | awk '{print $1}')"
+EVIDENCE_SHA256="$(sha256sum "$EVIDENCE" | awk '{print $1}')"
+grep -Fqx -- "| VRX supervisor SHA-256 | \`$SUPERVISOR_SHA256\` |" "$WIKI" \
+  || fail_test 'live-dashboard runbook VRX supervisor checksum is stale'
+grep -Fqx -- "| Correlation recorder SHA-256 | \`$EVIDENCE_SHA256\` |" "$WIKI" \
+  || fail_test 'live-dashboard runbook correlation recorder checksum is stale'
 pass_case
 
 FIXTURE_ROOT="$(mktemp -d)"
@@ -135,6 +147,31 @@ for invalid_case in \
 done
 pass_case
 
+set +e
+MISSING_OBSERVER_STALE_OUTPUT="$(env "${VALID_ENV[@]}" \
+  FCU_VRX_CORRELATED_OBSERVATION=1 bash -c '
+    source "$1"
+    fcuvrx_validate_configuration
+  ' _ "$SUPERVISOR" 2>&1)"
+MISSING_OBSERVER_STALE_RC=$?
+set -e
+[ "$MISSING_OBSERVER_STALE_RC" -ne 0 ] \
+  || fail_test 'Block E observer accepted a missing staleness limit'
+require_text "$MISSING_OBSERVER_STALE_OUTPUT" \
+  'FCU_VRX_OBSERVER_STALE_SECONDS is required' \
+  'missing Block E observer staleness limit was not identified'
+CORRELATED_OUTPUT="$(env "${VALID_ENV[@]}" \
+  FCU_VRX_CORRELATED_OBSERVATION=1 FCU_VRX_OBSERVER_STALE_SECONDS=7 \
+  bash -c '
+    source "$1"
+    fcuvrx_validate_configuration
+    printf "correlated=%s stale=%s\n" \
+      "$FCU_VRX_CORRELATED_OBSERVATION" "$FCU_VRX_OBSERVER_STALE_SECONDS"
+  ' _ "$SUPERVISOR")"
+[ "$CORRELATED_OUTPUT" = 'correlated=1 stale=7' ] \
+  || fail_test "valid Block E observer configuration changed: $CORRELATED_OUTPUT"
+pass_case
+
 COMMAND_OUTPUT="$(env "${VALID_ENV[@]}" bash -c '
   source "$1"
   fcuvrx_validate_configuration
@@ -143,6 +180,8 @@ COMMAND_OUTPUT="$(env "${VALID_ENV[@]}" bash -c '
   printf "\t%q" "${FCUVRX_VRX_COMMAND[@]}"
   printf "\nBRIDGE"
   printf "\t%q" "${FCUVRX_BRIDGE_COMMAND[@]}"
+  printf "\nOBSERVER"
+  printf "\t%q" "${FCUVRX_OBSERVER_COMMAND[@]}"
   printf "\n"
 ' _ "$SUPERVISOR")"
 for literal in \
@@ -155,6 +194,13 @@ for literal in \
   'publish_cmd_vel:=false'; do
   require_text "$COMMAND_OUTPUT" "$literal" \
     "built command is missing: $literal"
+done
+for literal in \
+  'fcu_to_vrx_evidence.py' 'observe-vrx' \
+  '--servo-topic' '/fcu_to_vrx/servo_output_raw' \
+  '--pose-topic' '/wamv/pose'; do
+  require_text "$COMMAND_OUTPUT" "$literal" \
+    "built observer command is missing: $literal"
 done
 for forbidden in ttyAMA0 mavros MAVProxy sim_vehicle.py ardupilot; do
   ! grep -Fq -- "$forbidden" <<<"$COMMAND_OUTPUT" \
@@ -206,6 +252,7 @@ LIFECYCLE_OUTPUT="$(bash -c '
   FCUVRX_CHILD_INDEX=()
   fcuvrx_udp_listener_present() { return 1; }
   fcuvrx_start_child vrx "$2/logs/vrx.log" "$3" vrx "$2/trace"
+  fcuvrx_start_child observer "$2/logs/observer.log" "$3" observer "$2/trace"
   fcuvrx_start_child bridge "$2/logs/bridge.log" "$3" bridge "$2/trace"
   FCUVRX_READY_REACHED=1
   FCUVRX_OPERATOR_STOP_REQUESTED=1
@@ -216,10 +263,10 @@ set -e
 [ "$LIFECYCLE_RC" -eq 0 ] \
   || fail_test "ordered lifecycle fixture failed rc=$LIFECYCLE_RC: $LIFECYCLE_OUTPUT"
 require_text "$LIFECYCLE_OUTPUT" \
-  'FCU_TO_VRX_WORKSTATION_TEARDOWN=PASS order=bridge,vrx udp=14555-free' \
+  'FCU_TO_VRX_WORKSTATION_TEARDOWN=PASS order=bridge,observer,vrx udp=14555-free' \
   'successful lifecycle did not emit the teardown proof'
-[ "$(tail -n 2 "$LIFECYCLE_ROOT/trace")" = $'bridge\nvrx' ] \
-  || fail_test 'children did not stop in bridge-then-VRX order'
+[ "$(tail -n 3 "$LIFECYCLE_ROOT/trace")" = $'bridge\nobserver\nvrx' ] \
+  || fail_test 'children did not stop in bridge-observer-VRX order'
 pass_case
 
 FAILURE_ROOT="$FIXTURE_ROOT/failure"

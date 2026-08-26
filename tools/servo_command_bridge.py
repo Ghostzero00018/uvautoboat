@@ -109,19 +109,21 @@ specific mistake this file previously documented; check both together.
 Requires rclpy and pymavlink (already used by tools/qgc_live_mission_bridge.py).
 """
 
+import json
 import math
 import signal
 import socket
 import threading
 import time
 
+from fcu_to_vrx_evidence import bridge_servo_event, pwm_to_normalised
 from geometry_msgs.msg import Twist
 from pymavlink import mavutil
 import rclpy
 from rclpy.node import Node
 from rclpy.signals import SignalHandlerOptions
 from sensor_msgs.msg import Imu, NavSatFix
-from std_msgs.msg import Float64
+from std_msgs.msg import Float64, String
 
 # MAVLink identity constants (avoids importing the dialect module directly).
 MAV_TYPE_ONBOARD_CONTROLLER = 18
@@ -185,8 +187,26 @@ class ServoCommandBridge(Node):
         # --- ROS interfaces --------------------------------------------------
         self.pub_left = self.create_publisher(Float64, left_topic, 10)
         self.pub_right = self.create_publisher(Float64, right_topic, 10)
+        self.pub_servo_evidence = self.create_publisher(
+            String, '/fcu_to_vrx/servo_output_raw', 10)
         self.pub_cmd_vel = (
             self.create_publisher(Twist, '/cmd_vel', 10) if self.publish_cmd_vel else None)
+
+        self.evidence_config = {
+            'left_channel': self.left_channel,
+            'right_channel': self.right_channel,
+            'left': {
+                'minimum': self.pwm_min,
+                'trim': self.pwm_neutral,
+                'maximum': self.pwm_max,
+            },
+            'right': {
+                'minimum': self.pwm_min,
+                'trim': self.pwm_neutral,
+                'maximum': self.pwm_max,
+            },
+            'max_thrust': self.max_thrust,
+        }
 
         self.sub_gps = self.create_subscription(
             NavSatFix, gps_topic, self.gps_callback, 10)
@@ -233,15 +253,8 @@ class ServoCommandBridge(Node):
 
         A raw value of 0 means the channel is disabled and yields 0.0.
         """
-        if pwm is None or pwm <= 0:
-            return 0.0
-        pwm = float(min(max(pwm, self.pwm_min), self.pwm_max))
-        if self.pwm_neutral <= self.pwm_min:
-            # Unidirectional: neutral sits at the bottom of the range.
-            return (pwm - self.pwm_min) / (self.pwm_max - self.pwm_min)
-        if pwm >= self.pwm_neutral:
-            return (pwm - self.pwm_neutral) / max(self.pwm_max - self.pwm_neutral, 1.0)
-        return -(self.pwm_neutral - pwm) / max(self.pwm_neutral - self.pwm_min, 1.0)
+        return pwm_to_normalised(
+            pwm, self.pwm_min, self.pwm_neutral, self.pwm_max)
 
     @staticmethod
     def quaternion_to_rpy(x, y, z, w):
@@ -347,14 +360,23 @@ class ServoCommandBridge(Node):
     def handle_servo_output(self, msg):
         left_pwm = getattr(msg, f'servo{self.left_channel}_raw', 0)
         right_pwm = getattr(msg, f'servo{self.right_channel}_raw', 0)
-
-        left_norm = self.pwm_to_normalised(left_pwm)
-        right_norm = self.pwm_to_normalised(right_pwm)
+        evidence = bridge_servo_event(
+            self.evidence_config,
+            left_pwm=int(left_pwm),
+            right_pwm=int(right_pwm),
+            time_usec=int(getattr(msg, 'time_usec', 0)),
+            received_unix_ns=time.time_ns(),
+        )
+        left_norm = evidence['left_thrust'] / self.max_thrust
+        right_norm = evidence['right_thrust'] / self.max_thrust
 
         left_msg = Float64()
-        left_msg.data = left_norm * self.max_thrust
+        left_msg.data = evidence['left_thrust']
         right_msg = Float64()
-        right_msg.data = right_norm * self.max_thrust
+        right_msg.data = evidence['right_thrust']
+        evidence_msg = String()
+        evidence_msg.data = json.dumps(
+            evidence, allow_nan=False, separators=(',', ':'), sort_keys=True)
 
         diagnostic = (
             f'SERVO_OUTPUT_RAW: left SERVO{self.left_channel} {left_pwm} -> '
@@ -370,6 +392,7 @@ class ServoCommandBridge(Node):
         with self._publish_lock:
             if not self._running.is_set():
                 return
+            self.pub_servo_evidence.publish(evidence_msg)
             self.pub_left.publish(left_msg)
             self.pub_right.publish(right_msg)
 

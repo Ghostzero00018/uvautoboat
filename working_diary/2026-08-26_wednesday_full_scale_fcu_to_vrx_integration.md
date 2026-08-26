@@ -494,3 +494,147 @@ Gazebo or live network path ran. The helper deployed to the Pi Desktop is a
 separate copy: its checksum must be computed from workstation bytes at the time
 of use and reverified on the Pi after any transfer, rather than carried forward
 from an earlier recorded value.
+
+## Piece 2 offline implementation - 26/08/2026
+
+Piece 2 started after the operator's explicit instruction. Its scope remained
+offline implementation and tests only. No Pi, FCU, Herelink, camera, MAVProxy,
+MAVROS, VRX, Gazebo, simulator acceptance or live network path ran.
+
+The Pi command emitter in `tools/live_dashboard_preflight.sh` now carries the
+armed-observation selector. The default remains unchanged:
+`LIVE_ARMED_OBSERVATION=0`, `LIVE_FCU_TO_VRX_FANOUT=0` and
+`LIVE_HOLD_AFTER_WINDOW=1`, so the helper's unconditional `FCU_ARMED` abort is
+still active. The enabled form requires fanout, explicit max-window,
+final-verification and staleness limits, both live-read channel numbers and both
+complete min/trim/max rails. It emits `LIVE_HOLD_AFTER_WINDOW=0` and passes the
+validated channel/trim values to the helper. No live rail or cadence value is
+baked into the emitter.
+
+Two read-only observers preserve the existing domain boundary. W1 starts a
+domain-12 recorder only for the enabled armed-observation form; it subscribes
+to `/mavros/state`, `/mavros/sys_status`, `/mavros/rc/out` and
+`/hailo/overlay/image_raw`. W2 always starts a domain-77 recorder before the
+bridge. `tools/servo_command_bridge.py` now publishes one structured
+`/fcu_to_vrx/servo_output_raw` evidence message for each decoded UDP `14555`
+frame before publishing left and right thrust. The W2 recorder subscribes to
+that evidence topic, both thrust topics and `/wamv/pose`. Neither recorder
+creates a ROS publisher or client.
+
+`FCU_VRX_CORRELATED_OBSERVATION=0` leaves W2 in record-only mode for the first
+disarmed measurement. Block E requires the selector to be `1` and requires an
+explicit positive `FCU_VRX_OBSERVER_STALE_SECONDS` measured during Block D.
+Once the first UDP servo frame arrives, a missing observer input must become
+READY within that limit; after READY, any stale required input aborts the
+observer. Teardown is now bridge, observer, VRX, followed by the existing UDP
+`14555`-free requirement.
+
+`tools/fcu_to_vrx_evidence.py adjudicate` joins the two workstation-clock JSONL
+streams after teardown. It has no default acceptance thresholds. The caller
+must supply the allowed PWM timestamp skew, thrust delay, motion delay and
+minimum motion measured from Block D. It requires matching asymmetric PWM at
+dashboard `/mavros/rc/out` and the UDP-decoded frame, the bridge's live-rail
+mapping on both thrust topics, VRX motion above the supplied drift threshold, a
+Hailo frame during the armed window, neutral return, connected disarm and
+restored hardware safety. An observer abort, missing READY event, value drift
+or missing/late stage is a failure. Downstream timing is anchored to the
+bridge's UDP receive timestamp, so a valid run is not rejected when callbacks
+from separate ROS topics are processed in a different order.
+
+The focused tests were first confirmed red for the three absent contracts:
+the emitter had no armed-observation variables, W2 built no observer command,
+and the evidence module did not exist. The resulting passing and deliberate
+failure coverage includes missing emitter values, missing W2 staleness,
+dashboard-to-UDP PWM drift, insufficient VRX motion, missing final hardware
+safety, observer abort, bridge parameter drift and ordered child teardown.
+
+Current tracked pins after the implementation are:
+
+```text
+Pi helper:             b0793bdac61595a2c5e85dafbc18806bde8146cecece4ae232846b51ae4b8cb0 (90,518 bytes)
+W1 supervisor:         642fddc1f8edb20b988e610bc71205fead7c54b4c874a3b351287a027ccab1d9 (35,812 bytes)
+W2 supervisor:         01e4947140eefa3338390775ef357acbee68fa40e07020082f8fad1aaf5759ee (23,530 bytes)
+correlation recorder:  341f2ae9ede40a6db4c287360b76e538f04bb753ec9ee55ed77a566908c1a07b (30,962 bytes)
+servo bridge:          db8bddf558ceec7baec534800122c96cfc4a31653b37cd978bbdf00dcd3db034 (19,959 bytes)
+```
+
+The complete offline gate passed:
+
+```text
+Pi lifecycle: PASS
+live-dashboard preflight: PASS cases=16
+real-FCU helper suite: PASS cases=24
+SITL runner suite: PASS cases=41
+FCU-to-VRX workstation: PASS shell_cases=14 python_tests=12 runtime=not-started
+Python: 92 passed
+Node: tests=80 pass=80 fail=0
+SHELL_GATE_RC=0
+GATE_REMAINDER_RC=0
+```
+
+Piece 2 is implemented and tested offline, not accepted live. The worktree is
+uncommitted, so W2's clean-repository parity gate will refuse a runtime start.
+The full current-source simulator acceptance through
+`tools/live_dashboard_preflight.sh sitl` remains unrun. The seven exact physical
+states remain unstated, Block D has no start approval and Block E still requires
+its own later T2b approval.
+
+## Piece 2 recorder finalization - 26/08/2026
+
+Final review found that the first recorder implementation called `fsync` for
+every topic event. That could add avoidable callback latency during the live
+multi-topic capture. Event appends now flush and close without a per-event disk
+sync, while observer teardown explicitly syncs the retained JSONL stream. The
+atomic status-file writes keep their existing `fsync` because they are
+low-frequency supervisor gates.
+
+A focused regression was first confirmed red against the per-event behavior:
+the append path made one unexpected `fsync` call. It then passed after the
+finalization change and requires exactly one explicit sync when capture ends.
+
+Current affected pins are:
+
+```text
+W2 supervisor:         6ad20b28b364cabb1175211f24e70f03738687d7b8dc2551a8b9b7d07c1c5f3e (23,530 bytes)
+correlation recorder:  5c40d6376efc7456929ddf1e80454f3e17ff87c7530629a65f4c10ac0db361dc (31,069 bytes)
+```
+
+Affected offline checks passed:
+
+```text
+live-dashboard preflight: PASS cases=16
+FCU-to-VRX workstation: PASS shell_cases=14 python_tests=13 runtime=not-started
+Focused Python: 13 passed
+Repository Python: 93 passed
+```
+
+The Pi lifecycle, real-FCU helper, SITL synthetic and Node results recorded in
+the preceding section were not rerun because this finalization did not change
+their inputs. No live service, simulator acceptance or hardware path ran.
+
+## Piece 2 bridge import coverage - 26/08/2026
+
+Review confirmed that the production bridge imports correctly when launched as
+`python3 <absolute-script-path>`, but the offline suite previously parsed the
+bridge without importing the module. A renamed or missing
+`fcu_to_vrx_evidence.py` could therefore leave the suite green and stop W2 only
+at runtime.
+
+`tools/test_servo_command_bridge_mapping.py` now loads the real bridge in a
+fresh Python subprocess. The probe sets the bridge directory at `sys.path[0]`
+and uses a non-`__main__` run name, matching production module resolution
+without starting the ROS node. This avoids a prior test module cache masking a
+missing dependency.
+
+The affected checks passed:
+
+```text
+bridge import and mapping: PASS tests=3
+FCU-to-VRX workstation: PASS shell_cases=14 python_tests=14 runtime=not-started
+Repository Python: 94 passed
+git diff --check: PASS
+```
+
+The current W2 supervisor pin is
+`981fba979e86d0e7a2e50c4d9c89b30b699b62b7a24343b4d315c819fb931091`
+(`23,530` bytes). No live service, simulator acceptance or hardware path ran.

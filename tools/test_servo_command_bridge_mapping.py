@@ -1,12 +1,23 @@
 #!/usr/bin/env python3
-"""Dependency-free characterization tests for the bridge PWM mapping."""
+"""Offline characterization tests for bridge imports and PWM mapping."""
 
 import ast
+import importlib.util
 import pathlib
+import subprocess
+import sys
 import unittest
 
 
 BRIDGE_PATH = pathlib.Path(__file__).with_name("servo_command_bridge.py")
+EVIDENCE_PATH = pathlib.Path(__file__).with_name("fcu_to_vrx_evidence.py")
+EVIDENCE_SPEC = importlib.util.spec_from_file_location(
+    "fcu_to_vrx_evidence_mapping_test", EVIDENCE_PATH
+)
+EVIDENCE = importlib.util.module_from_spec(EVIDENCE_SPEC)
+assert EVIDENCE_SPEC.loader is not None
+sys.modules[EVIDENCE_SPEC.name] = EVIDENCE
+EVIDENCE_SPEC.loader.exec_module(EVIDENCE)
 
 
 def load_mapping_probe():
@@ -29,7 +40,7 @@ def load_mapping_probe():
         decorator_list=[],
     )
     module = ast.fix_missing_locations(ast.Module(body=[probe_class], type_ignores=[]))
-    namespace = {}
+    namespace = {"pwm_to_normalised": EVIDENCE.pwm_to_normalised}
     exec(compile(module, str(BRIDGE_PATH), "exec"), namespace)
     return namespace["MappingProbe"]
 
@@ -38,6 +49,27 @@ MappingProbe = load_mapping_probe()
 
 
 class ServoCommandBridgeMappingTests(unittest.TestCase):
+    def test_bridge_imports_with_real_script_path_semantics(self):
+        import_probe = (
+            "import runpy, sys\n"
+            f"sys.path[0] = {str(BRIDGE_PATH.parent)!r}\n"
+            f"runpy.run_path({str(BRIDGE_PATH)!r}, "
+            "run_name='servo_command_bridge_import_test')\n"
+        )
+        completed = subprocess.run(
+            [sys.executable, "-c", import_probe],
+            cwd=BRIDGE_PATH.parent,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        self.assertEqual(
+            completed.returncode,
+            0,
+            msg=completed.stdout + completed.stderr,
+        )
+
     def make_probe(self, minimum, neutral, maximum):
         probe = MappingProbe()
         probe.pwm_min = minimum
