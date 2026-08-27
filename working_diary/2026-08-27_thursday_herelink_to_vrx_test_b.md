@@ -567,3 +567,69 @@ Node: tests=80 pass=80 fail=0
 bundle manifest: 4/4 OK
 GATE_RC=0
 ```
+
+### T0b query-source repair - 27/08/2026
+
+The retained 26/08 evidence separates two failures. Run `175757` reached live
+`connected: true`, `armed: false` and hardware safety ON, then the forced
+MAVROS parameter pull did not return before its bounded timeout. Run `175855`
+stopped earlier because the live `MOTOR_OUTPUTS` safety bit showed hardware
+safety released. Repeating the same MAVROS pull would not distinguish a new
+hypothesis.
+
+The same Pi UART subsequently returned a complete `986`-parameter list through
+MAVProxy's MAVFTP parameter path. The query mechanism therefore differs from
+the failed MAVROS `PARAM_REQUEST_LIST` path. The 26/08 snapshot remains useful
+regression input, but it does not close the fresh 27/08 query tier.
+
+The Pi helper now has a default-off, probe-only
+`probe-snapshot SNAPSHOT SHA256` path. It requires a freshly fetched complete
+MAVProxy/MAVFTP snapshot, verifies its SHA-256 before any serial open, and waits
+for the operator to type one exact fresh declaration and approval. The normal
+probe then independently requires live connected/disarmed state and live
+hardware safety ON before selecting exactly the `41` T0b safety, mapping and
+rail values from the immutable snapshot.
+
+The retained run records:
+
+- `t0b_source=mavproxy-ftp-snapshot`, the absolute snapshot path, SHA-256 and
+  exact operator declaration in `manifest/environment.txt`;
+- the snapshot bytes in `manifest/artifacts.sha256` and
+  `evidence/t0b_parameter_snapshot.parm`;
+- the full snapshot parameter count and hash in `evidence/t0b.json`;
+- exactly `41` selected values in `evidence/t0b_parameters.txt`;
+- `REAL_FCU_T0B=PASS ... source=mavproxy-ftp-snapshot` and
+  `REAL_FCU_PROBE_VERDICT=PASS writes=none bridge=not-started` only after all
+  live and artifact checks pass.
+
+The selector rejects a partial selector, absent approval, non-probe use, hash
+drift, malformed snapshots, missing mapping/rail values and hardware safety
+released. It starts no bridge, publishes no command, performs no parameter
+write and keeps probe discovery at `LOCALHOST`. The original MAVROS parameter
+path remains the default when no snapshot is explicitly selected.
+
+Offline evidence:
+
+```text
+real-FCU helper suite: PASS cases=34
+focused bridge tests:  34 passed
+repository Python:     117 passed
+Pi lifecycle:          PASS
+live preflight:        PASS cases=17
+SITL runner:           PASS cases=41
+FCU-to-VRX:            shell_cases=23 python_tests=30 runtime=not-started
+Node:                  tests=80 pass=80 fail=0
+bundle manifest:       4/4 OK
+```
+
+The production snapshot converter was also exercised against both retained
+26/08 complete snapshots. Each produced `41` selected values and the live
+`RC1`/`RC3`, `SERVO3`/`SERVO1`, `800/800/2200` mapping and rails; the Test A
+snapshot retained its `986`-parameter count and
+`3854b9705bea81b4b86d6b57476671872d1a0e30a21edadf188270889fb473e9`
+hash.
+
+This is offline preparation only. T0b remains open until a fresh snapshot and
+the live snapshot-backed probe pass on 27/08. Test B remains **NOT RUN**. The
+source change also keeps current-source SITL acceptance open until its complete
+supervised acceptance and independent adjudication are rerun.

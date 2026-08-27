@@ -207,6 +207,76 @@ class BridgeFunctionsTest(unittest.TestCase):
                 missing_rail, "/dev/ttyAMA0", 43, "t0b_parameters.txt"
             )
 
+    def test_hash_pinned_mavproxy_snapshot_can_supply_t0b_evidence(self):
+        values = valid_parameters()
+        values["RC_OVERRIDE_TIME"] = 3.0
+        values["UNRELATED_PARAMETER"] = 123
+        path, digest = self.write_guard_snapshot(values)
+
+        selected, evidence = MODULE.load_t0b_snapshot(
+            path,
+            digest,
+            "/dev/ttyAMA0",
+            43,
+            "t0b_parameters.txt",
+        )
+
+        self.assertEqual(len(selected), 41)
+        self.assertNotIn("RC_OVERRIDE_TIME", selected)
+        self.assertNotIn("UNRELATED_PARAMETER", selected)
+        self.assertEqual(evidence["schema"], "uvautoboat.real_fcu.t0b.v2")
+        self.assertEqual(evidence["parameter_source"], "mavproxy-ftp-snapshot")
+        self.assertEqual(evidence["snapshot_sha256"], digest)
+        self.assertEqual(evidence["snapshot_parameter_count"], len(values))
+        self.assertEqual(evidence["resolved"]["left_servo"], 3)
+        self.assertEqual(evidence["servo_rails"]["right"]["trim"], 800)
+
+    def test_t0b_snapshot_cli_writes_selected_parameters_and_provenance(self):
+        values = valid_parameters()
+        values["UNRELATED_PARAMETER"] = 123
+        path, digest = self.write_guard_snapshot(values)
+        with tempfile.TemporaryDirectory() as directory:
+            parameters = pathlib.Path(directory, "t0b_parameters.txt")
+            evidence_path = pathlib.Path(directory, "t0b.json")
+            self.assertEqual(
+                MODULE.cli(
+                    [
+                        "t0b-snapshot-write-evidence",
+                        path,
+                        digest,
+                        str(parameters),
+                        str(evidence_path),
+                        "/dev/ttyAMA0",
+                        "43",
+                    ]
+                ),
+                0,
+            )
+            selected = MODULE.read_t0b_parameter_file(str(parameters))
+            evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(len(selected), 41)
+        self.assertNotIn("UNRELATED_PARAMETER", selected)
+        self.assertEqual(evidence["snapshot_sha256"], digest)
+        self.assertEqual(evidence["snapshot_parameter_count"], len(values))
+
+        with tempfile.TemporaryDirectory() as directory:
+            with mock.patch("sys.stderr"):
+                self.assertEqual(
+                    MODULE.cli(
+                        [
+                            "t0b-snapshot-write-evidence",
+                            path,
+                            "0" * 64,
+                            str(pathlib.Path(directory, "parameters.txt")),
+                            str(pathlib.Path(directory, "evidence.json")),
+                            "/dev/ttyAMA0",
+                            "43",
+                        ]
+                    ),
+                    2,
+                )
+
     def test_rejects_duplicate_throttle_function(self):
         values = valid_parameters()
         values["SERVO2_FUNCTION"] = 73

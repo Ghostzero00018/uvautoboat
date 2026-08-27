@@ -460,27 +460,88 @@ def parse_guard_snapshot(payload: bytes) -> Dict[str, float]:
     return values
 
 
-def load_guard_snapshot(
+def load_parameter_snapshot(
     encoded_path: str,
     expected_sha256: str,
-) -> tuple[LiveGuard, dict]:
-    """Resolve the existing guard from one immutable, hash-pinned snapshot."""
+) -> tuple[pathlib.Path, Dict[str, float], str]:
+    """Load one strict, immutable MAVProxy parameter snapshot."""
     snapshot_path = pathlib.Path(encoded_path)
     if not snapshot_path.is_absolute():
-        raise GuardError("guard snapshot path must be absolute")
+        raise GuardError("parameter snapshot path must be absolute")
     if not SNAPSHOT_SHA256.fullmatch(expected_sha256):
-        raise GuardError("guard snapshot SHA-256 must be 64 lowercase hex characters")
+        raise GuardError("parameter snapshot SHA-256 must be 64 lowercase hex characters")
     if not snapshot_path.is_file() or not os.access(snapshot_path, os.R_OK):
-        raise GuardError(f"guard snapshot is not a readable regular file: {snapshot_path}")
+        raise GuardError(
+            f"parameter snapshot is not a readable regular file: {snapshot_path}"
+        )
 
     payload = snapshot_path.read_bytes()
     actual_sha256 = hashlib.sha256(payload).hexdigest()
     if actual_sha256 != expected_sha256:
         raise GuardError(
-            "guard snapshot SHA-256 mismatch: "
+            "parameter snapshot SHA-256 mismatch: "
             f"expected={expected_sha256} actual={actual_sha256}"
         )
-    values = parse_guard_snapshot(payload)
+    return snapshot_path, parse_guard_snapshot(payload), actual_sha256
+
+
+def t0b_snapshot_values(values: Mapping[str, float]) -> Dict[str, float]:
+    """Select the exact T0b contract from a complete parameter snapshot."""
+    discovery_names = t0b_discovery_parameter_names()
+    discovery_missing = sorted(set(discovery_names) - set(values))
+    if discovery_missing:
+        raise GuardError(
+            "T0b snapshot is missing discovery parameters: "
+            + ",".join(discovery_missing)
+        )
+    discovery = {name: values[name] for name in discovery_names}
+    required_names = (
+        "BRD_SAFETY_DEFLT",
+        "BRD_SAFETY_MASK",
+        "BRD_SAFETYOPTION",
+        *discovery_names,
+        *t0b_rail_parameter_names(discovery),
+    )
+    missing = sorted(set(required_names) - set(values))
+    if missing:
+        raise GuardError(
+            "T0b snapshot is missing required parameters: " + ",".join(missing)
+        )
+    return {name: values[name] for name in required_names}
+
+
+def load_t0b_snapshot(
+    encoded_path: str,
+    expected_sha256: str,
+    serial: str,
+    domain: int,
+    parameters_file: str,
+) -> tuple[Dict[str, float], Dict[str, object]]:
+    """Resolve T0b evidence from a hash-pinned MAVProxy/MAVFTP snapshot."""
+    snapshot_path, snapshot_values, actual_sha256 = load_parameter_snapshot(
+        encoded_path, expected_sha256
+    )
+    selected = t0b_snapshot_values(snapshot_values)
+    evidence = t0b_evidence_payload(selected, serial, domain, parameters_file)
+    evidence.update(
+        {
+            "parameter_source": "mavproxy-ftp-snapshot",
+            "snapshot_file": str(snapshot_path),
+            "snapshot_sha256": actual_sha256,
+            "snapshot_parameter_count": len(snapshot_values),
+        }
+    )
+    return selected, evidence
+
+
+def load_guard_snapshot(
+    encoded_path: str,
+    expected_sha256: str,
+) -> tuple[LiveGuard, dict]:
+    """Resolve the existing guard from one immutable, hash-pinned snapshot."""
+    snapshot_path, values, actual_sha256 = load_parameter_snapshot(
+        encoded_path, expected_sha256
+    )
     guard = resolve_guard(values)
     critical_names = (
         "ARMING_CHECK",
@@ -1167,6 +1228,40 @@ def run_t0b_command(args: Sequence[str]) -> None:
             encoding="utf-8",
         )
         return
+    if command == "t0b-snapshot-write-evidence":
+        if len(args) != 7:
+            raise GuardError(
+                "usage: t0b-snapshot-write-evidence SNAPSHOT SHA256 "
+                "PARAMETERS OUTPUT SERIAL DOMAIN"
+            )
+        (
+            snapshot_path,
+            expected_sha256,
+            parameters_path,
+            output_path,
+            serial,
+            encoded_domain,
+        ) = args[1:]
+        try:
+            domain = int(encoded_domain)
+        except ValueError as exc:
+            raise GuardError(f"invalid ROS domain: {encoded_domain}") from exc
+        values, payload = load_t0b_snapshot(
+            snapshot_path,
+            expected_sha256,
+            serial,
+            domain,
+            pathlib.Path(parameters_path).name,
+        )
+        pathlib.Path(parameters_path).write_text(
+            "".join(f"{name}={value}\n" for name, value in values.items()),
+            encoding="utf-8",
+        )
+        pathlib.Path(output_path).write_text(
+            json.dumps(payload, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        return
     if command == "guard-snapshot-write-evidence":
         if len(args) != 4:
             raise GuardError(
@@ -1188,6 +1283,7 @@ def cli(args: Optional[Sequence[str]] = None) -> int:
         "t0b-discovery-parameters",
         "t0b-rail-parameters",
         "t0b-write-evidence",
+        "t0b-snapshot-write-evidence",
         "guard-snapshot-write-evidence",
     }
     if argv and argv[0] in t0b_commands:

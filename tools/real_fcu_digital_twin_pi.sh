@@ -26,6 +26,11 @@ RFCU_PI_GUARD_SNAPSHOT_FILE="${REAL_FCU_GUARD_SNAPSHOT_FILE:-}"
 RFCU_PI_GUARD_SNAPSHOT_SHA256="${REAL_FCU_GUARD_SNAPSHOT_SHA256:-}"
 RFCU_PI_GUARD_SNAPSHOT_APPROVED="${REAL_FCU_GUARD_SNAPSHOT_APPROVED:-0}"
 RFCU_PI_GUARD_SOURCE='live'
+RFCU_PI_T0B_SNAPSHOT_FILE="${REAL_FCU_T0B_SNAPSHOT_FILE:-}"
+RFCU_PI_T0B_SNAPSHOT_SHA256="${REAL_FCU_T0B_SNAPSHOT_SHA256:-}"
+RFCU_PI_T0B_SNAPSHOT_APPROVED="${REAL_FCU_T0B_SNAPSHOT_APPROVED:-0}"
+RFCU_PI_T0B_SOURCE='mavros-param'
+RFCU_PI_T0B_OPERATOR_DECLARATION=''
 RFCU_PI_WORKSTATION_STOP_TOPIC='/real_fcu/workstation_stop'
 RFCU_PI_WORKSTATION_STOP_MESSAGE='REAL_FCU_WORKSTATION_STOPPED final=disarmed children=stopped ports=free'
 RFCU_PI_MOTOR_OUTPUTS_BIT=32768
@@ -72,7 +77,8 @@ rfcu_pi_fail() {
 }
 
 rfcu_pi_usage() {
-  printf 'usage: %s check|probe|run-t2a|run\n' "${0##*/}" >&2
+  printf 'usage: %s check|probe|probe-snapshot SNAPSHOT SHA256|run-t2a|run\n' \
+    "${0##*/}" >&2
   return 2
 }
 
@@ -152,6 +158,39 @@ rfcu_pi_validate_guard_snapshot_selector() {
     || rfcu_pi_fail \
       "guard snapshot SHA-256 mismatch: expected=$RFCU_PI_GUARD_SNAPSHOT_SHA256 actual=$actual_sha256"
   RFCU_PI_GUARD_SOURCE=snapshot
+}
+
+rfcu_pi_validate_t0b_snapshot_selector() {
+  local actual_sha256
+  if [ -z "$RFCU_PI_T0B_SNAPSHOT_FILE" ] \
+      && [ -z "$RFCU_PI_T0B_SNAPSHOT_SHA256" ]; then
+    [ "$RFCU_PI_T0B_SNAPSHOT_APPROVED" = 0 ] \
+      || rfcu_pi_fail \
+        'REAL_FCU_T0B_SNAPSHOT_APPROVED must be 0 without a T0b snapshot'
+    RFCU_PI_T0B_SOURCE=mavros-param
+    return 0
+  fi
+  [ -n "$RFCU_PI_T0B_SNAPSHOT_FILE" ] \
+    && [ -n "$RFCU_PI_T0B_SNAPSHOT_SHA256" ] \
+    || rfcu_pi_fail \
+      'REAL_FCU_T0B_SNAPSHOT_FILE and REAL_FCU_T0B_SNAPSHOT_SHA256 must be set together'
+  [ "$RFCU_PI_RUN_MODE" = probe ] \
+    || rfcu_pi_fail 'T0b snapshot mode is allowed only for probe'
+  [ "$RFCU_PI_T0B_SNAPSHOT_APPROVED" = 1 ] \
+    || rfcu_pi_fail 'REAL_FCU_T0B_SNAPSHOT_APPROVED must be 1'
+  [[ "$RFCU_PI_T0B_SNAPSHOT_FILE" == /* ]] \
+    || rfcu_pi_fail 'T0b snapshot path must be absolute'
+  [ -f "$RFCU_PI_T0B_SNAPSHOT_FILE" ] \
+    && [ -r "$RFCU_PI_T0B_SNAPSHOT_FILE" ] \
+    || rfcu_pi_fail 'T0b snapshot must be a readable regular file'
+  [[ "$RFCU_PI_T0B_SNAPSHOT_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+    || rfcu_pi_fail 'T0b snapshot SHA-256 must be 64 lowercase hex characters'
+  actual_sha256="$(sha256sum "$RFCU_PI_T0B_SNAPSHOT_FILE" | awk '{print $1}')" \
+    || rfcu_pi_fail 'cannot hash T0b snapshot'
+  [ "$actual_sha256" = "$RFCU_PI_T0B_SNAPSHOT_SHA256" ] \
+    || rfcu_pi_fail \
+      "T0b snapshot SHA-256 mismatch: expected=$RFCU_PI_T0B_SNAPSHOT_SHA256 actual=$actual_sha256"
+  RFCU_PI_T0B_SOURCE=mavproxy-ftp-snapshot
 }
 
 rfcu_pi_configure_ros_environment() {
@@ -257,6 +296,7 @@ rfcu_pi_static_preflight() {
     || rfcu_pi_fail "log root is not writable: $RFCU_PI_LOG_ROOT"
   rfcu_pi_verify_bundle
   rfcu_pi_validate_guard_snapshot_selector
+  rfcu_pi_validate_t0b_snapshot_selector
   [ -r "$RFCU_PI_BRIDGE" ] || rfcu_pi_fail "bridge missing: $RFCU_PI_BRIDGE"
   [ -r "$RFCU_PI_PLUGIN_YAML" ] \
     || rfcu_pi_fail "closed-loop plugin YAML missing: $RFCU_PI_PLUGIN_YAML"
@@ -349,11 +389,13 @@ rfcu_pi_build_commands() {
 }
 
 rfcu_pi_write_manifest() {
-  printf 'mode=%s\nROS_DOMAIN_ID=%s\nROS_AUTOMATIC_DISCOVERY_RANGE=%s\nROS_LOCALHOST_ONLY=%s\nserial=%s\nbaud=%s\nguard_source=%s\nguard_snapshot_file=%s\nguard_snapshot_sha256=%s\n' \
+  printf 'mode=%s\nROS_DOMAIN_ID=%s\nROS_AUTOMATIC_DISCOVERY_RANGE=%s\nROS_LOCALHOST_ONLY=%s\nserial=%s\nbaud=%s\nguard_source=%s\nguard_snapshot_file=%s\nguard_snapshot_sha256=%s\nt0b_source=%s\nt0b_snapshot_file=%s\nt0b_snapshot_sha256=%s\nt0b_operator_declaration=%s\n' \
     "$RFCU_PI_RUN_MODE" "$ROS_DOMAIN_ID" "$ROS_AUTOMATIC_DISCOVERY_RANGE" \
     "$ROS_LOCALHOST_ONLY" "$RFCU_PI_SERIAL" "$RFCU_PI_BAUD" \
     "$RFCU_PI_GUARD_SOURCE" "$RFCU_PI_GUARD_SNAPSHOT_FILE" \
-    "$RFCU_PI_GUARD_SNAPSHOT_SHA256" \
+    "$RFCU_PI_GUARD_SNAPSHOT_SHA256" "$RFCU_PI_T0B_SOURCE" \
+    "$RFCU_PI_T0B_SNAPSHOT_FILE" "$RFCU_PI_T0B_SNAPSHOT_SHA256" \
+    "$RFCU_PI_T0B_OPERATOR_DECLARATION" \
     >"$RFCU_PI_RUN_DIR/manifest/environment.txt"
   {
     sha256sum "$RFCU_PI_SCRIPT_DIR/real_fcu_digital_twin_pi.sh" \
@@ -361,6 +403,8 @@ rfcu_pi_write_manifest() {
       "$RFCU_PI_APM_CONFIG"
     [ "$RFCU_PI_GUARD_SOURCE" != snapshot ] \
       || sha256sum "$RFCU_PI_GUARD_SNAPSHOT_FILE"
+    [ "$RFCU_PI_T0B_SOURCE" != mavproxy-ftp-snapshot ] \
+      || sha256sum "$RFCU_PI_T0B_SNAPSHOT_FILE"
   } >"$RFCU_PI_RUN_DIR/manifest/artifacts.sha256"
   printf 'probe_mavros' >"$RFCU_PI_RUN_DIR/manifest/commands.tsv"
   printf '\t%q' "${RFCU_PI_PROBE_MAVROS_COMMAND[@]}" \
@@ -577,8 +621,10 @@ rfcu_pi_capture_t0b() {
   local sys_status_file="$RFCU_PI_RUN_DIR/evidence/t0b_sys_status.yaml"
   local pull_file="$RFCU_PI_RUN_DIR/evidence/t0b_param_pull.txt"
   local parameters_file="$RFCU_PI_RUN_DIR/evidence/t0b_parameters.txt"
+  local snapshot_copy="$RFCU_PI_RUN_DIR/evidence/t0b_parameter_snapshot.parm"
   local resolver_log="$RFCU_PI_RUN_DIR/logs/t0b_resolver.log"
   local parameter default_value discovery_output rail_output parameter_reads
+  local snapshot_parameter_count=''
   local -a discovery_parameters=() rail_parameters=()
   rfcu_pi_capture_topic /mavros/state mavros_msgs/msg/State "$state_file" 8 \
     || rfcu_pi_fail 'T0b did not receive a MAVROS state sample'
@@ -596,53 +642,76 @@ enabled = values[0].get("sensors_enabled")
 if not isinstance(enabled, int) or enabled & 32768:
     raise SystemExit(1)
 ' "$sys_status_file" || rfcu_pi_fail 'T0b hardware safety state is not ON (safe)'
-  timeout 20 ros2 service call /mavros/param/pull mavros_msgs/srv/ParamPull \
-    '{force_pull: true}' >"$pull_file" 2>&1 \
-    || rfcu_pi_fail 'T0b MAVROS parameter pull failed'
-  grep -Eq 'success[=:][[:space:]]*(True|true)' "$pull_file" \
-    || rfcu_pi_fail 'T0b MAVROS parameter pull was not successful'
-  : >"$parameters_file"
   : >"$resolver_log"
-  for parameter in BRD_SAFETY_DEFLT BRD_SAFETY_MASK BRD_SAFETYOPTION; do
-    rfcu_pi_read_t0b_parameter "$parameter" "$parameters_file" || return 1
-  done
-  if ! discovery_output="$(/usr/bin/python3 "$RFCU_PI_BRIDGE" \
-      t0b-discovery-parameters 2>>"$resolver_log")"; then
-    rfcu_pi_fail 'T0b discovery parameter plan failed'
-    return 1
+  if [ "$RFCU_PI_T0B_SOURCE" = mavproxy-ftp-snapshot ]; then
+    cp "$RFCU_PI_T0B_SNAPSHOT_FILE" "$snapshot_copy" \
+      || rfcu_pi_fail 'cannot preserve T0b snapshot in run evidence'
+    if ! /usr/bin/python3 "$RFCU_PI_BRIDGE" t0b-snapshot-write-evidence \
+        "$snapshot_copy" "$RFCU_PI_T0B_SNAPSHOT_SHA256" \
+        "$parameters_file" "$RFCU_PI_RUN_DIR/evidence/t0b.json" \
+        "$RFCU_PI_SERIAL" "$ROS_DOMAIN_ID" 2>>"$resolver_log"; then
+      rfcu_pi_fail 'hash-pinned MAVProxy/MAVFTP T0b snapshot validation failed'
+      return 1
+    fi
+    snapshot_parameter_count="$(/usr/bin/python3 -c '
+import json
+import sys
+value = json.load(open(sys.argv[1], encoding="utf-8")).get("snapshot_parameter_count")
+if not isinstance(value, int) or value < 41:
+    raise SystemExit(1)
+print(value)
+' "$RFCU_PI_RUN_DIR/evidence/t0b.json")" \
+      || rfcu_pi_fail 'T0b snapshot parameter count is invalid'
+  else
+    timeout 20 ros2 service call /mavros/param/pull mavros_msgs/srv/ParamPull \
+      '{force_pull: true}' >"$pull_file" 2>&1 \
+      || rfcu_pi_fail 'T0b MAVROS parameter pull failed'
+    grep -Eq 'success[=:][[:space:]]*(True|true)' "$pull_file" \
+      || rfcu_pi_fail 'T0b MAVROS parameter pull was not successful'
+    : >"$parameters_file"
+    for parameter in BRD_SAFETY_DEFLT BRD_SAFETY_MASK BRD_SAFETYOPTION; do
+      rfcu_pi_read_t0b_parameter "$parameter" "$parameters_file" || return 1
+    done
+    if ! discovery_output="$(/usr/bin/python3 "$RFCU_PI_BRIDGE" \
+        t0b-discovery-parameters 2>>"$resolver_log")"; then
+      rfcu_pi_fail 'T0b discovery parameter plan failed'
+      return 1
+    fi
+    mapfile -t discovery_parameters <<<"$discovery_output"
+    if [ "${#discovery_parameters[@]}" -ne 18 ]; then
+      rfcu_pi_fail 'T0b discovery parameter plan must contain 18 names'
+      return 1
+    fi
+    for parameter in "${discovery_parameters[@]}"; do
+      rfcu_pi_read_t0b_parameter "$parameter" "$parameters_file" || return 1
+    done
+    if ! rail_output="$(/usr/bin/python3 "$RFCU_PI_BRIDGE" \
+        t0b-rail-parameters "$parameters_file" 2>>"$resolver_log")"; then
+      rfcu_pi_fail 'T0b live mapping resolution failed'
+      return 1
+    fi
+    mapfile -t rail_parameters <<<"$rail_output"
+    if [ "${#rail_parameters[@]}" -ne 20 ]; then
+      rfcu_pi_fail 'T0b resolved rail plan must contain 20 names'
+      return 1
+    fi
+    for parameter in "${rail_parameters[@]}"; do
+      rfcu_pi_read_t0b_parameter "$parameter" "$parameters_file" || return 1
+    done
   fi
-  mapfile -t discovery_parameters <<<"$discovery_output"
-  if [ "${#discovery_parameters[@]}" -ne 18 ]; then
-    rfcu_pi_fail 'T0b discovery parameter plan must contain 18 names'
-    return 1
-  fi
-  for parameter in "${discovery_parameters[@]}"; do
-    rfcu_pi_read_t0b_parameter "$parameter" "$parameters_file" || return 1
-  done
-  if ! rail_output="$(/usr/bin/python3 "$RFCU_PI_BRIDGE" \
-      t0b-rail-parameters "$parameters_file" 2>>"$resolver_log")"; then
-    rfcu_pi_fail 'T0b live mapping resolution failed'
-    return 1
-  fi
-  mapfile -t rail_parameters <<<"$rail_output"
-  if [ "${#rail_parameters[@]}" -ne 20 ]; then
-    rfcu_pi_fail 'T0b resolved rail plan must contain 20 names'
-    return 1
-  fi
-  for parameter in "${rail_parameters[@]}"; do
-    rfcu_pi_read_t0b_parameter "$parameter" "$parameters_file" || return 1
-  done
   default_value="$(sed -n 's/^BRD_SAFETY_DEFLT=//p' \
     "$parameters_file")"
   if [ "$default_value" != 1 ] && [ "$default_value" != 1.0 ]; then
     rfcu_pi_fail "BRD_SAFETY_DEFLT is not 1: $default_value"
     return 1
   fi
-  if ! /usr/bin/python3 "$RFCU_PI_BRIDGE" t0b-write-evidence \
-      "$parameters_file" "$RFCU_PI_RUN_DIR/evidence/t0b.json" \
-      "$RFCU_PI_SERIAL" "$ROS_DOMAIN_ID" 2>>"$resolver_log"; then
-    rfcu_pi_fail 'T0b mapping and rail artifact validation failed'
-    return 1
+  if [ "$RFCU_PI_T0B_SOURCE" = mavros-param ]; then
+    if ! /usr/bin/python3 "$RFCU_PI_BRIDGE" t0b-write-evidence \
+        "$parameters_file" "$RFCU_PI_RUN_DIR/evidence/t0b.json" \
+        "$RFCU_PI_SERIAL" "$ROS_DOMAIN_ID" 2>>"$resolver_log"; then
+      rfcu_pi_fail 'T0b mapping and rail artifact validation failed'
+      return 1
+    fi
   fi
   if ! parameter_reads="$(grep -cE '^[A-Z][A-Z0-9_]*=' "$parameters_file")"; then
     rfcu_pi_fail 'T0b parameter record is empty'
@@ -652,7 +721,7 @@ if not isinstance(enabled, int) or enabled & 32768:
     rfcu_pi_fail "T0b parameter record has $parameter_reads values instead of 41"
     return 1
   fi
-  rfcu_pi_log "REAL_FCU_T0B=PASS serial=$RFCU_PI_SERIAL parameter_reads=$parameter_reads safety=ON mapping=retained rails=retained"
+  rfcu_pi_log "REAL_FCU_T0B=PASS serial=$RFCU_PI_SERIAL parameter_reads=$parameter_reads safety=ON mapping=retained rails=retained source=$RFCU_PI_T0B_SOURCE snapshot_parameters=${snapshot_parameter_count:-none}"
 }
 
 rfcu_pi_capture_snapshot_guard() {
@@ -888,7 +957,42 @@ rfcu_pi_probe() {
     "$RFCU_PI_RUN_DIR/evidence/probe_connected_disarmed.yaml" \
     || rfcu_pi_fail 'T0b MAVROS did not reach connected:true and armed:false'
   rfcu_pi_capture_t0b
-  rfcu_pi_log 'REAL_FCU_PROBE_VERDICT=PASS writes=none bridge=not-started'
+  rfcu_pi_log "REAL_FCU_PROBE_VERDICT=PASS writes=none bridge=not-started query_source=$RFCU_PI_T0B_SOURCE"
+}
+
+rfcu_pi_probe_snapshot() {
+  local snapshot_file="$1" snapshot_sha256="$2" actual_sha256 confirmation
+  local expected='T0A_COMPLETE T0B_APPROVED FCU_DISARMED SAFETY_ON HERELINK_READ_ONLY STICKS_NEUTRAL PROPULSION_ISOLATED PROPELLERS_REMOVED HULL_RESTRAINED'
+  [[ "$snapshot_file" == /* ]] \
+    || rfcu_pi_fail 'T0b snapshot path must be absolute'
+  [ -f "$snapshot_file" ] && [ -r "$snapshot_file" ] \
+    || rfcu_pi_fail 'T0b snapshot must be a readable regular file'
+  [[ "$snapshot_sha256" =~ ^[0-9a-f]{64}$ ]] \
+    || rfcu_pi_fail 'T0b snapshot SHA-256 must be 64 lowercase hex characters'
+  actual_sha256="$(sha256sum "$snapshot_file" | awk '{print $1}')" \
+    || rfcu_pi_fail 'cannot hash T0b snapshot'
+  [ "$actual_sha256" = "$snapshot_sha256" ] \
+    || rfcu_pi_fail \
+      "T0b snapshot SHA-256 mismatch: expected=$snapshot_sha256 actual=$actual_sha256"
+  read -r -p \
+    "Type this exact fresh declaration and approval, then press Enter: $expected: " \
+    confirmation \
+    || rfcu_pi_fail 'T0b declaration and approval input failed'
+  [ "$confirmation" = "$expected" ] \
+    || rfcu_pi_fail 'T0b declaration and approval phrase did not match'
+
+  RFCU_PI_T0B_SNAPSHOT_FILE="$snapshot_file"
+  RFCU_PI_T0B_SNAPSHOT_SHA256="$snapshot_sha256"
+  RFCU_PI_T0B_SNAPSHOT_APPROVED=1
+  RFCU_PI_T0B_OPERATOR_DECLARATION="$expected"
+  REAL_FCU_T0A_COMPLETE=1
+  REAL_FCU_T0B_APPROVED=1
+  REAL_FCU_START_DISARMED=1
+  REAL_FCU_SAFETY_ON=1
+  REAL_FCU_PROPELLERS_REMOVED=1
+  REAL_FCU_HULL_RESTRAINED=1
+  REAL_FCU_PROPULSION_ISOLATED=1
+  rfcu_pi_probe
 }
 
 rfcu_pi_run() {
@@ -964,6 +1068,7 @@ rfcu_pi_main() {
   case "$#:${1:-}" in
     1:check) rfcu_pi_check ;;
     1:probe) rfcu_pi_probe ;;
+    3:probe-snapshot) rfcu_pi_probe_snapshot "$2" "$3" ;;
     1:run-t2a) rfcu_pi_run run-t2a ;;
     1:run) rfcu_pi_run run ;;
     *) rfcu_pi_usage ;;

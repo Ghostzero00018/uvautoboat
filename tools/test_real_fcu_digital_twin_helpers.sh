@@ -76,10 +76,12 @@ grep -Fq 'check|run' <<<"$WORKSTATION_USAGE" \
   || fail_test 'workstation usage does not expose check and run'
 [ "$PI_USAGE_RC" -eq 2 ] \
   || fail_test "Pi helper returned $PI_USAGE_RC instead of 2"
-grep -Fq 'check|probe|run-t2a|run' <<<"$PI_USAGE" \
+grep -Fq 'check|probe|probe-snapshot SNAPSHOT SHA256|run-t2a|run' <<<"$PI_USAGE" \
   || fail_test 'Pi usage does not expose the distinct T2a-only run'
 grep -Fq '1:run-t2a) rfcu_pi_run run-t2a' "$PI_HELPER" \
   || fail_test 'Pi main does not dispatch the T2a-only run'
+grep -Fq '3:probe-snapshot) rfcu_pi_probe_snapshot "$2" "$3"' "$PI_HELPER" \
+  || fail_test 'Pi main does not dispatch the snapshot-backed T0b probe'
 pass_case
 
 TEST_TMP="$(mktemp -d)"
@@ -428,6 +430,10 @@ T0B_FUNCTION="$(extract_function "$PI_HELPER" rfcu_pi_capture_t0b)"
 [ -n "$T0B_FUNCTION" ] || fail_test 'T0b capture function is missing'
 T0B_READ_FUNCTION="$(extract_function "$PI_HELPER" rfcu_pi_read_t0b_parameter)"
 [ -n "$T0B_READ_FUNCTION" ] || fail_test 'T0b parameter-read function is missing'
+T0B_SNAPSHOT_SELECTOR_FUNCTION="$(extract_function "$PI_HELPER" \
+  rfcu_pi_validate_t0b_snapshot_selector)"
+[ -n "$T0B_SNAPSHOT_SELECTOR_FUNCTION" ] \
+  || fail_test 'T0b snapshot selector function is missing'
 grep -Fq 'ros2 param get /mavros/param' <<<"$T0B_READ_FUNCTION" \
   || fail_test 'T0b parameter helper is not read-only MAVROS cache access'
 for literal in \
@@ -442,13 +448,118 @@ for literal in \
   't0b-discovery-parameters' \
   't0b-rail-parameters' \
   't0b-write-evidence' \
+  't0b-snapshot-write-evidence' \
+  'mavproxy-ftp-snapshot' \
   '32768'; do
   grep -Fq "$literal" <<<"$T0B_FUNCTION" \
     || fail_test "T0b capture is missing: $literal"
 done
 ! grep -Eiq 'param(eter)?[_ -]?set|set_mode|arming|motor.test|rc.override|create_publisher|publish\(' \
-  <<<"$T0B_FUNCTION$T0B_READ_FUNCTION" \
+  <<<"$T0B_FUNCTION$T0B_READ_FUNCTION$T0B_SNAPSHOT_SELECTOR_FUNCTION" \
   || fail_test 'T0b capture contains a forbidden write path'
+
+T0B_SNAPSHOT_FILE="$TEST_TMP/t0b_snapshot.parm"
+printf 'BRD_SAFETY_DEFLT 1\n' >"$T0B_SNAPSHOT_FILE"
+T0B_SNAPSHOT_SHA256="$(sha256sum "$T0B_SNAPSHOT_FILE" | awk '{print $1}')"
+T0B_SNAPSHOT_SELECTION="$(bash -c '
+  source "$1"
+  RFCU_PI_RUN_MODE=probe
+  RFCU_PI_T0B_SNAPSHOT_FILE="$2"
+  RFCU_PI_T0B_SNAPSHOT_SHA256="$3"
+  RFCU_PI_T0B_SNAPSHOT_APPROVED=1
+  rfcu_pi_validate_t0b_snapshot_selector
+  printf "%s\n" "$RFCU_PI_T0B_SOURCE"
+' _ "$PI_HELPER" "$T0B_SNAPSHOT_FILE" "$T0B_SNAPSHOT_SHA256")"
+[ "$T0B_SNAPSHOT_SELECTION" = 'mavproxy-ftp-snapshot' ] \
+  || fail_test 'approved hash-pinned T0b snapshot was not selected'
+T0B_SNAPSHOT_PROMPT_FUNCTION="$(extract_function "$PI_HELPER" \
+  rfcu_pi_probe_snapshot)"
+grep -Fq 'read -r -p' <<<"$T0B_SNAPSHOT_PROMPT_FUNCTION" \
+  || fail_test 'snapshot-backed T0b probe does not wait for fresh terminal approval'
+T0B_SNAPSHOT_PROMPT_OUTPUT="$(bash -c '
+  set -euo pipefail
+  source "$1"
+  rfcu_pi_probe() {
+    printf "%s|%s|%s|%s|%s|%s|%s|%s|%s\n" \
+      "$RFCU_PI_T0B_SNAPSHOT_FILE" "$RFCU_PI_T0B_SNAPSHOT_SHA256" \
+      "$RFCU_PI_T0B_SNAPSHOT_APPROVED" "$REAL_FCU_T0A_COMPLETE" \
+      "$REAL_FCU_T0B_APPROVED" "$REAL_FCU_START_DISARMED" \
+      "$REAL_FCU_SAFETY_ON" "$REAL_FCU_PROPELLERS_REMOVED" \
+      "$REAL_FCU_PROPULSION_ISOLATED:$REAL_FCU_HULL_RESTRAINED"
+  }
+  rfcu_pi_probe_snapshot "$2" "$3"
+' _ "$PI_HELPER" "$T0B_SNAPSHOT_FILE" "$T0B_SNAPSHOT_SHA256" \
+  <<< 'T0A_COMPLETE T0B_APPROVED FCU_DISARMED SAFETY_ON HERELINK_READ_ONLY STICKS_NEUTRAL PROPULSION_ISOLATED PROPELLERS_REMOVED HULL_RESTRAINED')"
+[ "$T0B_SNAPSHOT_PROMPT_OUTPUT" = \
+    "$T0B_SNAPSHOT_FILE|$T0B_SNAPSHOT_SHA256|1|1|1|1|1|1|1:1" ] \
+  || fail_test 'snapshot-backed T0b prompt did not set the exact fresh gates'
+if bash -c '
+    source "$1"
+    rfcu_pi_probe() { return 0; }
+    rfcu_pi_probe_snapshot "$2" "$3"
+  ' _ "$PI_HELPER" "$T0B_SNAPSHOT_FILE" "$T0B_SNAPSHOT_SHA256" \
+    <<< 'NOT_APPROVED' >/dev/null 2>&1; then
+  fail_test 'snapshot-backed T0b probe accepted an incorrect approval phrase'
+fi
+for failure_case in partial unauthorized run hash-drift; do
+  set +e
+  bash -c '
+    source "$1"
+    RFCU_PI_RUN_MODE=probe
+    RFCU_PI_T0B_SNAPSHOT_FILE="$2"
+    RFCU_PI_T0B_SNAPSHOT_SHA256="$3"
+    RFCU_PI_T0B_SNAPSHOT_APPROVED=1
+    case "$4" in
+      partial) RFCU_PI_T0B_SNAPSHOT_SHA256= ;;
+      unauthorized) RFCU_PI_T0B_SNAPSHOT_APPROVED=0 ;;
+      run) RFCU_PI_RUN_MODE=run ;;
+      hash-drift) RFCU_PI_T0B_SNAPSHOT_SHA256="$(printf "0%.0s" {1..64})" ;;
+    esac
+    rfcu_pi_validate_t0b_snapshot_selector
+  ' _ "$PI_HELPER" "$T0B_SNAPSHOT_FILE" "$T0B_SNAPSHOT_SHA256" \
+    "$failure_case" >/dev/null 2>&1
+  T0B_SNAPSHOT_FAILURE_RC=$?
+  set -e
+  [ "$T0B_SNAPSHOT_FAILURE_RC" -ne 0 ] \
+    || fail_test "T0b snapshot selector accepted $failure_case"
+done
+pass_case
+
+T0B_MANIFEST_DIR="$TEST_TMP/t0b-manifest"
+mkdir -p "$T0B_MANIFEST_DIR/manifest"
+bash -c '
+  set -euo pipefail
+  source "$1"
+  RFCU_PI_RUN_MODE=probe
+  RFCU_PI_RUN_DIR="$2"
+  RFCU_PI_T0B_SNAPSHOT_FILE="$3"
+  RFCU_PI_T0B_SNAPSHOT_SHA256="$4"
+  RFCU_PI_T0B_SNAPSHOT_APPROVED=1
+  RFCU_PI_T0B_OPERATOR_DECLARATION=FRESH_T0B_DECLARATION
+  ROS_DOMAIN_ID=43
+  ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
+  ROS_LOCALHOST_ONLY=0
+  rfcu_pi_validate_t0b_snapshot_selector
+  rfcu_pi_build_commands
+  rfcu_pi_write_manifest
+' _ "$PI_HELPER" "$T0B_MANIFEST_DIR" "$T0B_SNAPSHOT_FILE" \
+  "$T0B_SNAPSHOT_SHA256"
+grep -Fxq 't0b_source=mavproxy-ftp-snapshot' \
+  "$T0B_MANIFEST_DIR/manifest/environment.txt" \
+  || fail_test 'Pi manifest omitted the T0b snapshot source'
+grep -Fxq "t0b_snapshot_file=$T0B_SNAPSHOT_FILE" \
+  "$T0B_MANIFEST_DIR/manifest/environment.txt" \
+  || fail_test 'Pi manifest omitted the T0b snapshot path'
+grep -Fxq "t0b_snapshot_sha256=$T0B_SNAPSHOT_SHA256" \
+  "$T0B_MANIFEST_DIR/manifest/environment.txt" \
+  || fail_test 'Pi manifest omitted the T0b snapshot hash'
+grep -Fxq 't0b_operator_declaration=FRESH_T0B_DECLARATION' \
+  "$T0B_MANIFEST_DIR/manifest/environment.txt" \
+  || fail_test 'Pi manifest omitted the fresh T0b operator declaration'
+grep -Fq "$T0B_SNAPSHOT_SHA256  $T0B_SNAPSHOT_FILE" \
+  "$T0B_MANIFEST_DIR/manifest/artifacts.sha256" \
+  || fail_test 'Pi artifact manifest omitted the T0b snapshot bytes'
+pass_case
 
 CAPTURE_TOPIC_REGRESSION_FAILURES=0
 
