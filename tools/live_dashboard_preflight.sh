@@ -7,9 +7,9 @@ REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 DASHBOARD_DIR="$REPO_ROOT/web_dashboard/autoboat"
 HELPER="$SCRIPT_DIR/pi_live_hailo_mavlink_dashboard.sh"
 FCU_TO_VRX_EVIDENCE="$SCRIPT_DIR/fcu_to_vrx_evidence.py"
-EXPECTED_HELPER_SHA256='8458526c183479b1ca004dcbdfb3e498b585e415826025b4ee71b7856ecb311c'
+EXPECTED_HELPER_SHA256='ca0c1ff834ac347a04e8a59a01a85c05abe78d939e2083397c2f121a9b24314e'
 EXPECTED_SSID="${LIVE_SSID:-IoT IMT Nord Europe}"
-PI_WINDOW_MODE="${LIVE_PI_WINDOW_MODE:-fullscreen}"
+PI_WINDOW_MODE="${LIVE_PI_WINDOW_MODE:-resizable}"
 FCU_TO_VRX_FANOUT="${LIVE_FCU_TO_VRX_FANOUT:-0}"
 DISARMED_MEASUREMENT="${LIVE_FCU_TO_VRX_MEASUREMENT:-0}"
 ARMED_OBSERVATION="${LIVE_ARMED_OBSERVATION:-0}"
@@ -173,13 +173,16 @@ validate_pi_window_selectors() {
   [[ "$ARMED_OBSERVATION" =~ ^[01]$ ]] \
     || fail 'LIVE_ARMED_OBSERVATION must be 0 or 1'
   if [ -n "$RUN_SECONDS" ]; then
-    [[ "$RUN_SECONDS" =~ ^[1-9][0-9]*$ ]] \
-      || fail 'LIVE_RUN_SECONDS must be a positive integer'
+    [[ "$RUN_SECONDS" =~ ^[0-9]+$ ]] \
+      || fail 'LIVE_RUN_SECONDS must be zero or a positive integer'
   fi
   PI_HOLD_AFTER_WINDOW=1
   if [ "$DISARMED_MEASUREMENT" -eq 1 ] \
       && [ "$ARMED_OBSERVATION" -eq 1 ]; then
     fail 'LIVE_FCU_TO_VRX_MEASUREMENT and LIVE_ARMED_OBSERVATION cannot both be enabled'
+  fi
+  if [ "$ARMED_OBSERVATION" -eq 0 ] && [ "${RUN_SECONDS:-unset}" = 0 ]; then
+    fail 'LIVE_RUN_SECONDS=0 is allowed only for an unbounded armed observation'
   fi
   if [ "$DISARMED_MEASUREMENT" -eq 0 ] \
       && [ "$ARMED_OBSERVATION" -eq 0 ]; then
@@ -189,13 +192,25 @@ validate_pi_window_selectors() {
     || fail 'the FCU-to-VRX evidence observer requires LIVE_FCU_TO_VRX_FANOUT=1'
 
   if [ "$ARMED_OBSERVATION" -eq 1 ]; then
-    for name in ARMED_OBSERVATION_MAX_SECONDS \
-      ARMED_OBSERVATION_FINAL_SECONDS ARMED_OBSERVATION_STALE_SECONDS; do
+    [ -n "$ARMED_OBSERVATION_MAX_SECONDS" ] \
+      || fail 'LIVE_ARMED_OBSERVATION_MAX_SECONDS is required when LIVE_ARMED_OBSERVATION=1'
+    [[ "$ARMED_OBSERVATION_MAX_SECONDS" =~ ^[0-9]+$ ]] \
+      || fail 'LIVE_ARMED_OBSERVATION_MAX_SECONDS must be zero or a positive integer'
+    for name in ARMED_OBSERVATION_FINAL_SECONDS ARMED_OBSERVATION_STALE_SECONDS; do
       [ -n "${!name:-}" ] \
         || fail "LIVE_${name} is required when LIVE_ARMED_OBSERVATION=1"
       [[ "${!name}" =~ ^[1-9][0-9]*$ ]] \
-        || fail 'armed-observation time limits must be positive integers'
+        || fail 'final-state and stale-topic limits must be positive integers'
     done
+    if [ "${RUN_SECONDS:-unset}" = 0 ] \
+        || [ "$ARMED_OBSERVATION_MAX_SECONDS" = 0 ]; then
+      [ "${RUN_SECONDS:-unset}" = 0 ] \
+        && [ "$ARMED_OBSERVATION_MAX_SECONDS" = 0 ] \
+        || fail 'LIVE_RUN_SECONDS and LIVE_ARMED_OBSERVATION_MAX_SECONDS must both be 0 or both be positive'
+      PI_HOLD_AFTER_WINDOW=1
+    else
+      PI_HOLD_AFTER_WINDOW=0
+    fi
   fi
   for name in \
     ARMED_OBSERVATION_LEFT_CHANNEL \
@@ -228,9 +243,6 @@ validate_pi_window_selectors() {
     [ "${!trim}" -ge 800 ] && [ "${!trim}" -le 2200 ] \
       || fail "$side armed-observation trim must be in the helper range 800..2200"
   done
-  if [ "$ARMED_OBSERVATION" -eq 1 ]; then
-    PI_HOLD_AFTER_WINDOW=0
-  fi
 }
 
 usage() {
@@ -360,6 +372,7 @@ resolve_workstation_network() {
 run_workstation_static_gate() {
   require_command node
   "$SCRIPT_DIR/test_pi_live_hailo_mavlink_dashboard.sh" "$HELPER"
+  python3 -m unittest "$SCRIPT_DIR/test_pi_live_armed_observation_monitor.py"
   "$SCRIPT_DIR/test_live_dashboard_preflight.sh" "$SCRIPT_DIR/live_dashboard_preflight.sh"
   node --test --test-isolation=none "$DASHBOARD_DIR"/test/*.test.js
   node --check "$DASHBOARD_DIR/app.js"
@@ -400,7 +413,7 @@ run_workstation_runtime_preflight() {
 run_workstation_preflight() {
   run_workstation_static_gate
   run_workstation_runtime_preflight
-  log 'W1_PREFLIGHT=PASS tests=dashboard,helper,preflight ports=8002,8080,9090'
+  log 'W1_PREFLIGHT=PASS tests=dashboard,helper,armed-monitor,preflight ports=8002,8080,9090'
 }
 
 emit_marker_once() {

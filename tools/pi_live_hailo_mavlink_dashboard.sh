@@ -204,19 +204,33 @@ validate_armed_observation() {
   local value
   [[ "$ARMED_OBSERVATION" =~ ^[01]$ ]] \
     || die 'LIVE_ARMED_OBSERVATION must be 0 or 1'
-  [ "$ARMED_OBSERVATION" -eq 0 ] && return 0
+  if [ "$ARMED_OBSERVATION" -eq 0 ]; then
+    [ "$RUN_SECONDS" -ne 0 ] \
+      || die 'LIVE_RUN_SECONDS=0 is allowed only for an unbounded armed observation'
+    return 0
+  fi
 
   [ "$FCU_TO_VRX_FANOUT" -eq 1 ] \
     || die 'LIVE_ARMED_OBSERVATION=1 requires LIVE_FCU_TO_VRX_FANOUT=1'
-  [ "$HOLD_AFTER_WINDOW" -eq 0 ] \
-    || die 'LIVE_ARMED_OBSERVATION=1 requires LIVE_HOLD_AFTER_WINDOW=0'
+  [[ "$ARMED_OBSERVATION_MAX_SECONDS" =~ ^[0-9]+$ ]] \
+    || die 'LIVE_ARMED_OBSERVATION_MAX_SECONDS must be zero or a positive integer'
   for value in \
-    "$ARMED_OBSERVATION_MAX_SECONDS" \
     "$ARMED_OBSERVATION_FINAL_SECONDS" \
     "$ARMED_OBSERVATION_STALE_SECONDS"; do
     [[ "$value" =~ ^[1-9][0-9]*$ ]] \
-      || die 'armed-observation time limits must be positive integers'
+      || die 'final-state and stale-topic limits must be positive integers'
   done
+  if [ "$RUN_SECONDS" -eq 0 ] \
+      || [ "$ARMED_OBSERVATION_MAX_SECONDS" -eq 0 ]; then
+    [ "$RUN_SECONDS" -eq 0 ] \
+      && [ "$ARMED_OBSERVATION_MAX_SECONDS" -eq 0 ] \
+      || die 'LIVE_RUN_SECONDS and LIVE_ARMED_OBSERVATION_MAX_SECONDS must both be 0 or both be positive'
+    [ "$HOLD_AFTER_WINDOW" -eq 1 ] \
+      || die 'unbounded armed observation requires LIVE_HOLD_AFTER_WINDOW=1'
+  else
+    [ "$HOLD_AFTER_WINDOW" -eq 0 ] \
+      || die 'finite armed observation requires LIVE_HOLD_AFTER_WINDOW=0'
+  fi
   for value in \
     "$ARMED_OBSERVATION_LEFT_CHANNEL" \
     "$ARMED_OBSERVATION_RIGHT_CHANNEL"; do
@@ -1110,13 +1124,18 @@ require_armed_observation_complete() {
   [ "$ARMED_OBSERVATION" -eq 1 ] || return 0
   while [ "$SECONDS" -lt "$deadline" ]; do
     check_command_sentinel
-    if grep -Fxq 'phase=COMPLETE' "$ARMED_OBSERVATION_STATUS_FILE" 2>/dev/null; then
+    if armed_observation_is_complete; then
       log 'ARMED_OBSERVATION=PASS single_window=1 final=connected-disarmed-neutral-hardware-safe'
       return 0
     fi
     sleep 1
   done
   die "armed observation did not reach restored-safe completion; see $ARMED_OBSERVATION_STATUS_FILE"
+}
+
+armed_observation_is_complete() {
+  [ "$ARMED_OBSERVATION" -eq 1 ] \
+    && grep -Fxq 'phase=COMPLETE' "$ARMED_OBSERVATION_STATUS_FILE" 2>/dev/null
 }
 
 enable_armed_observation() {
@@ -1226,9 +1245,11 @@ check_power() {
 }
 
 check_command_sentinel() {
+  local abort_record
   [ ! -s "$COMMAND_ABORT_FILE" ] || {
+    abort_record="$(sed -n '1p' "$COMMAND_ABORT_FILE")"
     sed -n '1,5p' "$COMMAND_ABORT_FILE" >&2
-    die 'dashboard command publication detected'
+    die "safety monitor abort recorded: $abort_record"
   }
   require_group_alive safety-monitor \
     "$SAFETY_MONITOR_PID" "$SAFETY_MONITOR_PGID" "$SAFETY_LOG"
@@ -1317,9 +1338,20 @@ monitor_live_stack() {
     require_group_alive mavros "$MAVROS_PID" "$MAVROS_PGID" "$MAVROS_LOG"
     require_group_alive hailo-bridge "$HAILO_PID" "$HAILO_PGID" "$HAILO_LOG"
 
+    if [ "$context" = live-window ] \
+        && [ "${RUN_SECONDS:-1}" -eq 0 ] \
+        && armed_observation_is_complete; then
+      log 'UNBOUNDED_ARMED_OBSERVATION=COMPLETE final_verification=pending'
+      break
+    fi
+
     check_temperature "$context"
     if [ "$deadline" -eq 0 ]; then
-      log "hold_elapsed=$((SECONDS - HOLD_START_SECONDS))s"
+      if [ "$context" = live-window ]; then
+        log "unbounded_elapsed=$((SECONDS - WINDOW_START_SECONDS))s"
+      else
+        log "hold_elapsed=$((SECONDS - HOLD_START_SECONDS))s"
+      fi
     else
       log "remaining=$((deadline - SECONDS))s"
     fi
@@ -1408,25 +1440,66 @@ monitor_live_stack() {
   done
 }
 
+monitor_completed_armed_hold() {
+  local next_state_check=$SECONDS next_power_check=$SECONDS
+
+  while :; do
+    check_command_sentinel
+    check_thermal_watchdog
+    require_group_alive mavproxy "$MAVPROXY_PID" "$MAVPROXY_PGID" "$MAVPROXY_LOG"
+    require_group_alive mavros "$MAVROS_PID" "$MAVROS_PGID" "$MAVROS_LOG"
+    require_group_alive hailo-bridge "$HAILO_PID" "$HAILO_PGID" "$HAILO_LOG"
+    require_fcu_to_vrx_fanout_alive
+    check_temperature completed-armed-hold
+    log "hold_elapsed=$((SECONDS - HOLD_START_SECONDS))s"
+
+    if [ "$SECONDS" -ge "$next_state_check" ]; then
+      require_connected_disarmed_state completed-armed-hold 0
+      next_state_check=$((SECONDS + 4))
+    fi
+    if [ "$SECONDS" -ge "$next_power_check" ]; then
+      check_power completed-armed-hold
+      next_power_check=$((SECONDS + 10))
+    fi
+    sleep "$POLL_S"
+  done
+}
+
+live_window_deadline() {
+  if [ "$RUN_SECONDS" -eq 0 ]; then
+    printf '0\n'
+  else
+    printf '%s\n' "$((SECONDS + RUN_SECONDS))"
+  fi
+}
+
 complete_source_window() {
-  local monitored_seconds final_verification_seconds
+  local monitored_seconds final_verification_seconds target
   monitored_seconds=$((WINDOW_MONITOR_END_SECONDS - WINDOW_START_SECONDS))
   final_verification_seconds=$((SECONDS - WINDOW_MONITOR_END_SECONDS))
   WINDOW_ELAPSED_SECONDS=$((SECONDS - WINDOW_START_SECONDS))
   LIFECYCLE_TRANSITION_ACTIVE=1
   set_supervisor_phase source-window-complete
   if [ "$ARMED_OBSERVATION" -eq 1 ]; then
-    log 'COMMAND_SENTINEL=PASS messages=0; bounded armed observation completed'
+    log 'COMMAND_SENTINEL=PASS messages=0; armed observation completed'
   else
     log 'COMMAND_SENTINEL=PASS messages=0; FCU remained observed-disarmed'
   fi
-  log "PI_SOURCE_WINDOW=COMPLETE target=${RUN_SECONDS}s monitored=${monitored_seconds}s final_verification=${final_verification_seconds}s elapsed=${WINDOW_ELAPSED_SECONDS}s peak=$((PEAK_TEMP / 1000))C"
+  if [ "$RUN_SECONDS" -eq 0 ]; then
+    target=operator-stop
+  else
+    target="${RUN_SECONDS}s"
+  fi
+  log "PI_SOURCE_WINDOW=COMPLETE target=$target monitored=${monitored_seconds}s final_verification=${final_verification_seconds}s elapsed=${WINDOW_ELAPSED_SECONDS}s peak=$((PEAK_TEMP / 1000))C"
   WINDOW_COMPLETE=1
 
   if [ "$HOLD_AFTER_WINDOW" -eq 1 ]; then
     HOLD_START_SECONDS=$SECONDS
     set_supervisor_phase live-hold
     log 'PI_SOURCE_HOLD=ACTIVE monitored=true stop=Ctrl+C'
+    if [ "$ARMED_OBSERVATION" -eq 1 ] && [ "$RUN_SECONDS" -eq 0 ]; then
+      log 'PI_SOURCE_HOLD_MODE=completed-armed teardown=W2,W1,Pi'
+    fi
     HOLD_ACTIVE=1
   else
     set_supervisor_phase post-window
@@ -1443,7 +1516,11 @@ complete_source_window() {
   fi
 
   if [ "$HOLD_ACTIVE" -eq 1 ]; then
-    monitor_live_stack live-hold 0
+    if [ "$ARMED_OBSERVATION" -eq 1 ] && [ "$RUN_SECONDS" -eq 0 ]; then
+      monitor_completed_armed_hold
+    else
+      monitor_live_stack live-hold 0
+    fi
   fi
 }
 
@@ -1545,7 +1622,8 @@ case "$#:${1:-}" in
   *) die 'usage: pi_live_hailo_mavlink_dashboard.sh [--preflight-only]' ;;
 esac
 
-[[ "$RUN_SECONDS" =~ ^[1-9][0-9]*$ ]] || die 'LIVE_RUN_SECONDS must be a positive integer'
+[[ "$RUN_SECONDS" =~ ^[0-9]+$ ]] \
+  || die 'LIVE_RUN_SECONDS must be zero or a positive integer'
 [[ "$HOLD_AFTER_WINDOW" =~ ^[01]$ ]] \
   || die 'LIVE_HOLD_AFTER_WINDOW must be 0 or 1'
 [[ "$FINAL_VERIFY_SECONDS" =~ ^[1-9][0-9]*$ ]] \
@@ -2214,7 +2292,10 @@ class DashboardSafetyMonitor(Node):
             self.abort_seen("REQUIRED_TOPIC_STALE", stale)
             return
         if self.phase == "ARMED":
-            if now - self.armed_started > self.max_armed_seconds:
+            if (
+                self.max_armed_seconds > 0
+                and now - self.armed_started > self.max_armed_seconds
+            ):
                 self.abort_seen("ARMED_WINDOW_DEADLINE", "/mavros/state")
         elif self.phase == "FINALIZING":
             if self.restored_safe_state():
@@ -2341,7 +2422,11 @@ SHELL_THERMAL
 chmod 0700 "$HAILO_WRAPPER" "$SAFETY_MONITOR" "$THERMAL_WATCHDOG"
 
 log "PRECHECK=PASS model=$MODEL domain=$DOMAIN route=$ROUTE"
-log "stream=${STREAM_HEIGHT}p@${STREAM_FPS}fps safety-biased-temporary-diagnostic duration=${RUN_SECONDS}s hold_after_window=${HOLD_AFTER_WINDOW} abort=$((ABORT_MC / 1000))C"
+if [ "$RUN_SECONDS" -eq 0 ]; then
+  log "stream=${STREAM_HEIGHT}p@${STREAM_FPS}fps safety-biased-temporary-diagnostic duration=unbounded hold_after_window=${HOLD_AFTER_WINDOW} abort=$((ABORT_MC / 1000))C"
+else
+  log "stream=${STREAM_HEIGHT}p@${STREAM_FPS}fps safety-biased-temporary-diagnostic duration=${RUN_SECONDS}s hold_after_window=${HOLD_AFTER_WINDOW} abort=$((ABORT_MC / 1000))C"
+fi
 log 'boundary: Pi owns serial/MAVROS/Hailo DDS sources; workstation owns ports 8002/8080/9090 and browser'
 configure_mavproxy_outputs
 
@@ -2383,7 +2468,11 @@ done
 reject_unexpected_command_subscribers
 log 'COMMAND_SENTINEL=PASS topics=5; safety monitor publishers=0'
 if [ "$ARMED_OBSERVATION" -eq 1 ]; then
-  log "ARMED_OBSERVATION=ENABLED max=${ARMED_OBSERVATION_MAX_SECONDS}s final=${ARMED_OBSERVATION_FINAL_SECONDS}s stale=${ARMED_OBSERVATION_STALE_SECONDS}s left=SERVO${ARMED_OBSERVATION_LEFT_CHANNEL}:${ARMED_OBSERVATION_LEFT_TRIM} right=SERVO${ARMED_OBSERVATION_RIGHT_CHANNEL}:${ARMED_OBSERVATION_RIGHT_TRIM}"
+  if [ "$ARMED_OBSERVATION_MAX_SECONDS" -eq 0 ]; then
+    log "ARMED_OBSERVATION=ENABLED armed_deadline=disabled final=${ARMED_OBSERVATION_FINAL_SECONDS}s stale=${ARMED_OBSERVATION_STALE_SECONDS}s left=SERVO${ARMED_OBSERVATION_LEFT_CHANNEL}:${ARMED_OBSERVATION_LEFT_TRIM} right=SERVO${ARMED_OBSERVATION_RIGHT_CHANNEL}:${ARMED_OBSERVATION_RIGHT_TRIM}"
+  else
+    log "ARMED_OBSERVATION=ENABLED max=${ARMED_OBSERVATION_MAX_SECONDS}s final=${ARMED_OBSERVATION_FINAL_SECONDS}s stale=${ARMED_OBSERVATION_STALE_SECONDS}s left=SERVO${ARMED_OBSERVATION_LEFT_CHANNEL}:${ARMED_OBSERVATION_LEFT_TRIM} right=SERVO${ARMED_OBSERVATION_RIGHT_CHANNEL}:${ARMED_OBSERVATION_RIGHT_TRIM}"
+  fi
 else
   log 'ARMED_OBSERVATION=DISABLED armed-state-abort=active'
 fi
@@ -2545,7 +2634,7 @@ mavros_source_probe_selftest 0 || die 'batched MAVROS source probe self-test fai
 enable_armed_observation
 
 WINDOW_START_SECONDS=$SECONDS
-DEADLINE=$((WINDOW_START_SECONDS + RUN_SECONDS))
+DEADLINE="$(live_window_deadline)"
 monitor_live_stack live-window "$DEADLINE"
 WINDOW_MONITOR_END_SECONDS=$SECONDS
 FINAL_VERIFY_DEADLINE=$((WINDOW_MONITOR_END_SECONDS + FINAL_VERIFY_SECONDS))

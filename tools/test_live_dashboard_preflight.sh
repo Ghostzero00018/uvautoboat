@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PREFLIGHT="${1:-$SCRIPT_DIR/live_dashboard_preflight.sh}"
 HELPER="$SCRIPT_DIR/pi_live_hailo_mavlink_dashboard.sh"
 WIKI="$SCRIPT_DIR/../wiki/Live_Hailo_MAVLink_Dashboard_Testing.md"
-EXPECTED_PREFLIGHT_SHA256='2112df7a9e34cf2b62e0dda1a4ddb38692364ce6e0b50f8689e2f05f44228fa1'
+EXPECTED_PREFLIGHT_SHA256='d4fc4a72457d8d0d73ef3804023028239036abaaf18a3e4962cb8bd7f2afdbd6'
 CASE_COUNT=0
 
 # Production selectors are exercised explicitly below. Keep the default
@@ -71,9 +71,9 @@ grep -Fq 'the rosbridge `user interrupted with ctrl-c (SIGINT)` line as a discri
 ! grep -Fq 'The signature of a reversed order, observed 07/08/2026' "$WIKI" \
   || fail 'live-dashboard runbook retains the falsified 07/08 stop-order claim'
 
-require_literal "EXPECTED_HELPER_SHA256='8458526c183479b1ca004dcbdfb3e498b585e415826025b4ee71b7856ecb311c'"
+require_literal "EXPECTED_HELPER_SHA256='ca0c1ff834ac347a04e8a59a01a85c05abe78d939e2083397c2f121a9b24314e'"
 require_literal 'EXPECTED_SSID="${LIVE_SSID:-IoT IMT Nord Europe}"'
-require_literal 'PI_WINDOW_MODE="${LIVE_PI_WINDOW_MODE:-fullscreen}"'
+require_literal 'PI_WINDOW_MODE="${LIVE_PI_WINDOW_MODE:-resizable}"'
 require_literal 'FCU_TO_VRX_FANOUT="${LIVE_FCU_TO_VRX_FANOUT:-0}"'
 require_literal 'DISARMED_MEASUREMENT="${LIVE_FCU_TO_VRX_MEASUREMENT:-0}"'
 require_literal 'ARMED_OBSERVATION="${LIVE_ARMED_OBSERVATION:-0}"'
@@ -95,6 +95,8 @@ require_literal 'process pattern contains alternation'
 require_literal 'LIVE_FCU_TO_VRX_FANOUT="$FCU_TO_VRX_FANOUT" \'
 require_literal '"$HELPER" --preflight-only'
 require_literal 'W1_PREFLIGHT=PASS'
+require_literal 'python3 -m unittest "$SCRIPT_DIR/test_pi_live_armed_observation_monitor.py"'
+require_literal 'tests=dashboard,helper,armed-monitor,preflight'
 require_literal 'P1_PREFLIGHT=PASS'
 require_literal 'set +u'
 require_literal 'source "$ROS_SETUP" || source_rc=$?'
@@ -141,7 +143,7 @@ PI_COMMAND_OUTPUT="$(bash -c '
 PI_COMMAND_BLOCK="$(sed -n '/^($/,/^)$/{p}' <<<"$PI_COMMAND_OUTPUT")"
 [ -n "$PI_COMMAND_BLOCK" ] || fail 'printed Pi command block missing'
 bash -n <<<"$PI_COMMAND_BLOCK"
-grep -Fq '8458526c183479b1ca004dcbdfb3e498b585e415826025b4ee71b7856ecb311c' \
+grep -Fq 'ca0c1ff834ac347a04e8a59a01a85c05abe78d939e2083397c2f121a9b24314e' \
   <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not verify the helper pin'
 grep -Fq 'LIVE_HOLD_AFTER_WINDOW=1' <<<"$PI_COMMAND_BLOCK" \
@@ -150,8 +152,8 @@ grep -Fq 'LIVE_FCU_TO_VRX_FANOUT=0' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not keep FCU-to-VRX fanout disabled by default'
 grep -Fq 'HAILO_LOCAL_DISPLAY=1' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not enable the Pi desktop Hailo window'
-grep -Fq 'HAILO_LOCAL_WINDOW_MODE=fullscreen' <<<"$PI_COMMAND_BLOCK" \
-  || fail 'printed Pi command does not select fullscreen Hailo presentation'
+grep -Fq 'HAILO_LOCAL_WINDOW_MODE=resizable' <<<"$PI_COMMAND_BLOCK" \
+  || fail 'printed Pi command does not select resizable Hailo presentation'
 grep -Fq 'xdg-user-dir DESKTOP' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not resolve the Pi Desktop'
 grep -Fq '[ -n "$PI_HOME" ] && [ -d "$PI_HOME" ]' <<<"$PI_COMMAND_BLOCK" \
@@ -167,7 +169,7 @@ grep -Fq 'HAILO_DEMO_ROOT="$PI_RUNTIME_ROOT"' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not preserve the Hailo runtime root'
 grep -Fq '"$PI_HELPER"' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not execute the absolute Desktop helper'
-grep -Fq "\\n' '8458526c183479b1ca004dcbdfb3e498b585e415826025b4ee71b7856ecb311c' \"\$PI_HELPER\" | sha256sum -c -" \
+grep -Fq "\\n' 'ca0c1ff834ac347a04e8a59a01a85c05abe78d939e2083397c2f121a9b24314e' \"\$PI_HELPER\" | sha256sum -c -" \
   <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi checksum format contains a literal line break'
 ! grep -Fq './pi_live_hailo_mavlink_dashboard.sh' <<<"$PI_COMMAND_BLOCK" \
@@ -179,7 +181,7 @@ grep -Fq 'LIVE_SSID=IoT\ IMT\ Nord\ Europe' <<<"$PI_COMMAND_BLOCK" \
 
 PI_COMMAND_OVERRIDE_OUTPUT="$(
   LIVE_SSID="Test Lab's IoT" \
-  LIVE_PI_WINDOW_MODE=resizable \
+  LIVE_PI_WINDOW_MODE=fullscreen \
   LIVE_FCU_TO_VRX_FANOUT=1 \
   bash -c '
   source "$1"
@@ -191,8 +193,8 @@ EXPECTED_OVERRIDE_QUOTED="$(printf '%q' "Test Lab's IoT")"
 bash -n <<<"$PI_COMMAND_OVERRIDE_BLOCK"
 grep -Fq "LIVE_SSID=$EXPECTED_OVERRIDE_QUOTED" <<<"$PI_COMMAND_OVERRIDE_BLOCK" \
   || fail 'printed Pi command did not shell-quote the SSID override'
-grep -Fq 'HAILO_LOCAL_WINDOW_MODE=resizable' <<<"$PI_COMMAND_OVERRIDE_BLOCK" \
-  || fail 'printed Pi command did not carry the resizable selector'
+grep -Fq 'HAILO_LOCAL_WINDOW_MODE=fullscreen' <<<"$PI_COMMAND_OVERRIDE_BLOCK" \
+  || fail 'printed Pi command did not carry the fullscreen selector'
 grep -Fq 'LIVE_FCU_TO_VRX_FANOUT=1' <<<"$PI_COMMAND_OVERRIDE_BLOCK" \
   || fail 'printed Pi command did not carry the enabled fanout selector'
 
@@ -233,6 +235,74 @@ for literal in \
   grep -Fq "$literal" <<<"$PI_COMMAND_ARMED_BLOCK" \
     || fail "armed-observation Pi command is missing: $literal"
 done
+
+PI_COMMAND_UNBOUNDED_OUTPUT="$(
+  LIVE_FCU_TO_VRX_FANOUT=1 \
+  LIVE_ARMED_OBSERVATION=1 \
+  LIVE_ARMED_OBSERVATION_MAX_SECONDS=0 \
+  LIVE_ARMED_OBSERVATION_FINAL_SECONDS=25 \
+  LIVE_ARMED_OBSERVATION_STALE_SECONDS=7 \
+  LIVE_RUN_SECONDS=0 \
+  LIVE_ARMED_OBSERVATION_LEFT_CHANNEL=3 \
+  LIVE_ARMED_OBSERVATION_LEFT_PWM_MIN=800 \
+  LIVE_ARMED_OBSERVATION_LEFT_TRIM=800 \
+  LIVE_ARMED_OBSERVATION_LEFT_PWM_MAX=2200 \
+  LIVE_ARMED_OBSERVATION_RIGHT_CHANNEL=1 \
+  LIVE_ARMED_OBSERVATION_RIGHT_PWM_MIN=800 \
+  LIVE_ARMED_OBSERVATION_RIGHT_TRIM=800 \
+  LIVE_ARMED_OBSERVATION_RIGHT_PWM_MAX=2200 \
+  bash -c '
+    source "$1"
+    WORKSTATION_IP=192.0.2.20
+    print_pi_command
+  ' _ "$PREFLIGHT")"
+PI_COMMAND_UNBOUNDED_BLOCK="$(
+  sed -n '/^($/,/^)$/{p}' <<<"$PI_COMMAND_UNBOUNDED_OUTPUT"
+)"
+bash -n <<<"$PI_COMMAND_UNBOUNDED_BLOCK"
+for literal in \
+  'LIVE_RUN_SECONDS=0' \
+  'LIVE_ARMED_OBSERVATION_MAX_SECONDS=0' \
+  'LIVE_HOLD_AFTER_WINDOW=1' \
+  'HAILO_LOCAL_WINDOW_MODE=resizable'; do
+  grep -Fq "$literal" <<<"$PI_COMMAND_UNBOUNDED_BLOCK" \
+    || fail "unbounded armed-observation Pi command is missing: $literal"
+done
+pass_case
+
+for mismatched_pair in '0:20' '300:0'; do
+  IFS=: read -r bad_run bad_max <<<"$mismatched_pair"
+  set +e
+  MISMATCHED_UNBOUNDED_OUTPUT="$(
+    LIVE_FCU_TO_VRX_FANOUT=1 \
+    LIVE_ARMED_OBSERVATION=1 \
+    LIVE_ARMED_OBSERVATION_MAX_SECONDS="$bad_max" \
+    LIVE_ARMED_OBSERVATION_FINAL_SECONDS=25 \
+    LIVE_ARMED_OBSERVATION_STALE_SECONDS=7 \
+    LIVE_RUN_SECONDS="$bad_run" \
+    LIVE_ARMED_OBSERVATION_LEFT_CHANNEL=3 \
+    LIVE_ARMED_OBSERVATION_LEFT_PWM_MIN=800 \
+    LIVE_ARMED_OBSERVATION_LEFT_TRIM=800 \
+    LIVE_ARMED_OBSERVATION_LEFT_PWM_MAX=2200 \
+    LIVE_ARMED_OBSERVATION_RIGHT_CHANNEL=1 \
+    LIVE_ARMED_OBSERVATION_RIGHT_PWM_MIN=800 \
+    LIVE_ARMED_OBSERVATION_RIGHT_TRIM=800 \
+    LIVE_ARMED_OBSERVATION_RIGHT_PWM_MAX=2200 \
+    bash -c '
+      source "$1"
+      WORKSTATION_IP=192.0.2.20
+      print_pi_command
+    ' _ "$PREFLIGHT" 2>&1
+  )"
+  MISMATCHED_UNBOUNDED_RC=$?
+  set -e
+  [ "$MISMATCHED_UNBOUNDED_RC" -ne 0 ] \
+    || fail "mismatched unbounded selectors were accepted: $mismatched_pair"
+  grep -Fq 'LIVE_RUN_SECONDS and LIVE_ARMED_OBSERVATION_MAX_SECONDS must both be 0 or both be positive' \
+    <<<"$MISMATCHED_UNBOUNDED_OUTPUT" \
+    || fail "mismatched unbounded selectors were not identified: $mismatched_pair"
+done
+pass_case
 
 PI_COMMAND_MEASUREMENT_OUTPUT="$(
   LIVE_FCU_TO_VRX_FANOUT=1 \
@@ -1308,5 +1378,5 @@ set -e
   || fail "real-SIGINT lifecycle case failed rc=$REAL_SIGINT_CASE_RC: $REAL_SIGINT_CASE_OUTPUT"
 pass_case
 
-[ "$CASE_COUNT" -eq 20 ] || fail "executed $CASE_COUNT cases instead of 20"
+[ "$CASE_COUNT" -eq 22 ] || fail "executed $CASE_COUNT cases instead of 22"
 printf 'PASS: live-dashboard preflight contracts cases=%s\n' "$CASE_COUNT"

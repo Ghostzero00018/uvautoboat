@@ -993,3 +993,120 @@ correlation and final adjudication.
 The supervisor also recorded `POWER_TELEMETRY=UNAVAILABLE`. Thermal protection
 remained active and did not trip, but this run is not represented as direct
 evidence for Pi undervoltage or throttling flags.
+
+### First armed Test B attempt - failed, motion observed - 27/08/2026
+
+The operator explicitly superseded the current-revision SITL rerun for
+`eb9a337`, repeated the physical declaration and authorised the armed Test B
+attempt. The retained workstation runs are:
+
+```text
+W1=/home/ghostzero/Desktop/live_dashboard_workstation_20260827_191952
+W2=/home/ghostzero/Desktop/fcu_to_vrx_workstation_20260827_192020
+```
+
+The Pi run was copied to:
+
+```text
+/home/ghostzero/Desktop/pi_run_evidence/test_b_armed_failed_20260827_192234
+```
+
+The machine evidence captured a real motion chain. The first asymmetric FCU
+output was left `SERVO3=2200` and right `SERVO1=800`, approximately `49.99 s`
+after arming. The matching UDP frame had `0.0856 ms` left/right skew. W2 mapped
+that frame to left/right thrust `800.0/0.0 N` within `0.87 ms`, and VRX pose
+moved `2.47946 m` within `9.979 s`. Neutral `800/800` output returned `0.749 s`
+after the excursion. The operator also observed the VRX boat move while moving
+the Herelink stick.
+
+This attempt is **FAILED / NOT ACCEPTED**. The Pi abort record contains:
+
+```text
+reason=ARMED_WINDOW_DEADLINE topic=/mavros/state
+```
+
+The safety monitor progressed `READY -> ARMED -> ABORT`. Its last retained FCU
+state was connected and still armed in `MANUAL`. W1 later recorded
+`stale_camera`, W2 recorded `stale_left_thrust`, and canonical adjudication
+fails. Even when those terminal observer abort events are excluded for
+diagnosis, the record still lacks the required connected disarm after neutral
+return. No retained recorder captured final disarm, neutral restoration and
+hardware safety ON together. The operator's later statement that the FCU was
+disarmed, hardware safety ON and sticks neutral occurred outside the evidence
+window and is not substituted for that missing acceptance evidence.
+
+The Pi line `STOP: dashboard command publication detected` was a false
+classification. The shared abort file was non-empty because the safety monitor
+recorded `ARMED_WINDOW_DEADLINE`; no retained evidence attributes the stop to a
+dashboard command publisher. The copied log shows every named child being
+stopped and no `CLEANUP_ERROR`. The Pi's `cleanup_rc=1` was forced by the
+non-empty abort record, so it does not establish a surviving child process.
+
+The first attempt also used `HAILO_LOCAL_WINDOW_MODE=fullscreen`, which covered
+the Pi desktop and could not be resized with the attempted shortcuts. Future
+supervisor commands default to `resizable`.
+
+### Explicit unbounded retry repair - offline only - 27/08/2026
+
+The operator authorised removal of the armed-session and outer-runtime
+deadlines for the retry. The selector is deliberately explicit and paired:
+
+```text
+LIVE_RUN_SECONDS=0
+LIVE_ARMED_OBSERVATION_MAX_SECONDS=0
+```
+
+A zero/positive mismatch fails validation. The paired mode retains positive
+`LIVE_ARMED_OBSERVATION_FINAL_SECONDS` and
+`LIVE_ARMED_OBSERVATION_STALE_SECONDS`, so final safe-state restoration, topic
+freshness, disconnect, second-arm, command-sentinel, rail and thermal guards
+remain fail-closed. The test runs armed until the operator disarms; it does not
+end merely because time elapsed.
+
+After connected/disarmed neutral output and hardware safety ON are recorded,
+the Pi monitor transitions through final verification and emits
+`ARMED_OBSERVATION=PASS`, `PI_SOURCE_WINDOW=COMPLETE`,
+`PI_SOURCE_HOLD=ACTIVE`, and
+`PI_SOURCE_HOLD_MODE=completed-armed teardown=W2,W1,Pi`. That completed hold
+keeps MAVProxy, MAVROS, Hailo, fanout and Pi-local safety checks alive without
+depending on W1 nodes. The retry stop order is therefore W2, then W1, then P1,
+and is permitted only after the completion markers appear.
+
+The helper now reports the actual first abort record rather than the generic
+dashboard-publication message. W1 wires the armed-monitor unit suite into its
+static gate. Focused tests cover finite and zero deadline selection, mismatched
+pair rejection, stale-data failure under zero armed deadline, completion
+handoff, the completed hold's local-only contract, truthful abort reporting,
+the revised teardown marker and the default resizable display.
+
+Current uncommitted artifact identities after this repair are:
+
+```text
+Pi helper size=95316 sha256=ca0c1ff834ac347a04e8a59a01a85c05abe78d939e2083397c2f121a9b24314e
+W1 size=38444 sha256=d4fc4a72457d8d0d73ef3804023028239036abaaf18a3e4962cb8bd7f2afdbd6
+W2 size=26906 sha256=a5afddc81d59a39d63e7cca77a7b3852e30b5a555f1be2e04f3746f5540bdd5f
+```
+
+Offline verification after the repair:
+
+```text
+Pi lifecycle:             PASS
+live-dashboard preflight: PASS cases=22
+real-FCU helper suite:    PASS cases=34
+SITL runner suite:        PASS cases=41
+FCU-to-VRX workstation:   PASS shell_cases=23 python_tests=35 runtime=not-started
+Python tools:             123 passed
+Node:                     tests=80 pass=80 fail=0
+bundle manifest:          4/4 OK
+git diff --check:         clean
+```
+
+No live retry has run with this repair. Because it changes source after
+`eb9a337`, the explicit SITL supersession naming `eb9a337` does not carry
+forward. A published clean revision, exact-revision SITL acceptance or a new
+explicit supersession, fresh physical declaration and separate live approval
+are required before a retry.
+
+`RC_OVERRIDE_TIME=0.5` remains temporary for this campaign. Restore it to
+`3.0`, confirm live readback and retain a rollback snapshot after Test B is
+accepted or abandoned, or before any different operation.

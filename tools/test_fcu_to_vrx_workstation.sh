@@ -468,6 +468,9 @@ require_text "$RUN_BODY" 'observer=ready streams=4' \
   'the final READY marker does not record proven observer readiness'
 ! grep -Fq 'observer=started publish_sensors' <<<"$RUN_BODY" \
   || fail_test 'the final READY marker still claims only observer=started'
+require_text "$RUN_BODY" \
+  'after PI_SOURCE_HOLD=ACTIVE, press Ctrl+C here before stopping W1 and the Pi helper' \
+  'correlated Test B teardown does not preserve Pi streams until both observers stop'
 pass_case
 
 printf 'FCU-to-VRX workstation supervisor tests: PASS cases=%d runtime=not-started\n' \

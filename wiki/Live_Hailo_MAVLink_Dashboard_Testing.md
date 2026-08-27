@@ -26,8 +26,8 @@ the retained `pi` wrapper mode is not part of this procedure.
 ## Current tracked revisions
 
 The repository artifacts below identify the current revisions, refreshed on
-27/08/2026 after the disarmed-measurement mode and publisher-before-subscriber
-ordering repair were added. The tracked Pi helper
+27/08/2026 after the explicit unbounded armed-observation retry mode was added.
+The tracked Pi helper
 is the copy that must be transferred to the Pi Desktop before a run; a
 previously transferred copy is stale until its hash is checked against the
 value below. The workstation supervisors and evidence recorder remain
@@ -38,14 +38,14 @@ below only for traceability.
 | --- | --- |
 | Helper source | `tools/pi_live_hailo_mavlink_dashboard.sh` |
 | Helper Pi destination | resolved Pi Desktop: `$(xdg-user-dir DESKTOP)/pi_live_hailo_mavlink_dashboard.sh` |
-| Helper size | `92,101` bytes |
-| Helper SHA-256 | `8458526c183479b1ca004dcbdfb3e498b585e415826025b4ee71b7856ecb311c` |
+| Helper size | `95,316` bytes |
+| Helper SHA-256 | `ca0c1ff834ac347a04e8a59a01a85c05abe78d939e2083397c2f121a9b24314e` |
 | Workstation supervisor | `tools/live_dashboard_preflight.sh` |
-| Supervisor size | `37,636` bytes |
-| Supervisor SHA-256 | `2112df7a9e34cf2b62e0dda1a4ddb38692364ce6e0b50f8689e2f05f44228fa1` |
+| Supervisor size | `38,444` bytes |
+| Supervisor SHA-256 | `d4fc4a72457d8d0d73ef3804023028239036abaaf18a3e4962cb8bd7f2afdbd6` |
 | VRX supervisor | `tools/fcu_to_vrx_workstation.sh` |
-| VRX supervisor size | `26,694` bytes |
-| VRX supervisor SHA-256 | `a416fb134b9a32d2a134816cf82fb717b05e6447d042c24b3e1a7c1f72e9e303` |
+| VRX supervisor size | `26,906` bytes |
+| VRX supervisor SHA-256 | `a5afddc81d59a39d63e7cca77a7b3852e30b5a555f1be2e04f3746f5540bdd5f` |
 | Correlation recorder | `tools/fcu_to_vrx_evidence.py` |
 | Correlation recorder size | `43,839` bytes |
 | Correlation recorder SHA-256 | `19df4dae7015cfe3af44512c7a0bf854e1e448df8a3fc0b1f37075e6d62d0126` |
@@ -71,7 +71,7 @@ the Hailo runtime tree, and generated logs remain outside this repository.
 Direct helper calls default to `HAILO_LOCAL_DISPLAY=0` and retain `--no-display`.
 When local display is enabled, `HAILO_LOCAL_WINDOW_MODE` defaults to `resizable`.
 The tracked supervisor defaults to `HAILO_LOCAL_DISPLAY=1` and
-`HAILO_LOCAL_WINDOW_MODE=fullscreen`, and keeps the normal display path.
+`HAILO_LOCAL_WINDOW_MODE=resizable`, and keeps the normal display path.
 Window outcome tracking remains through `HAILO_LOCAL_WINDOW` markers:
 `READY`, `FALLBACK_HEADLESS`, `FALLBACK_RESIZABLE`, and `EVIDENCE_UNAVAILABLE`.
 
@@ -87,21 +87,27 @@ properties are outbound-only direction and local-only ingress.
 `LIVE_ARMED_OBSERVATION` defaults to `0`; at that default, the existing
 `FCU_ARMED` abort remains unconditional and the emitted Pi command retains
 `LIVE_HOLD_AFTER_WINDOW=1`. Setting it to `1` is accepted only with fanout
-enabled and explicit positive max-window, final-verification and staleness
-limits plus both live-read channel and complete min/trim/max rails. The emitter
-then sets `LIVE_HOLD_AFTER_WINDOW=0`, passes the helper's channel/trim values,
-and starts the domain-12 subscriber-only recorder for `/mavros/state`,
+enabled, an explicit positive final-restoration limit, a positive staleness
+limit, and both live-read channel and complete min/trim/max rails. A finite run
+uses positive `LIVE_RUN_SECONDS` and `LIVE_ARMED_OBSERVATION_MAX_SECONDS` and
+sets `LIVE_HOLD_AFTER_WINDOW=0`. The explicit operator-controlled mode requires
+both values to be exactly `0`; a mixed zero/positive pair is rejected, and the
+emitter sets `LIVE_HOLD_AFTER_WINDOW=1`. The emitter passes the helper's
+channel/trim values and starts the domain-12 subscriber-only recorder for `/mavros/state`,
 `/mavros/sys_status`, `/mavros/rc/out` and `/hailo/overlay/image_raw`.
 
-The helper's subscriber-only safety monitor permits one bounded armed window
+The helper's subscriber-only safety monitor permits one armed session
 only after the supervisor has proved fresh connected/disarmed telemetry,
 neutral output, hardware safety ON, an empty command sentinel and the complete
 pre-ready graph. It fails closed on an armed startup, a second arm, disconnect,
-stale required telemetry, deadline, command publication, or failure to return
-to connected/disarmed neutral output with hardware safety restored. The
-selector, emitter and recorder implementation has passed the offline suite.
-The separate dashboard-to-real-FCU Test A passed on 26/08/2026; the enabled
-Herelink-to-VRX Test B remains **NOT RUN**.
+stale required telemetry, command publication, a finite armed deadline, or
+failure to return to connected/disarmed neutral output with hardware safety
+restored within the final-restoration limit. In the paired zero mode only the
+armed and outer runtime deadlines are disabled; staleness, disconnect, second
+arm, command-sentinel, rail, thermal and final-restoration checks remain
+fail-closed. The separate dashboard-to-real-FCU Test A passed on 26/08/2026.
+The first enabled Herelink-to-VRX Test B attempt on 27/08/2026 observed motion
+but failed before final-safe-state capture and is **NOT ACCEPTED**.
 
 Before enabling the selector, use the retained T0b artifact for
 `BRD_SAFETY_DEFLT`, mapping and rails, then observe the live hardware-safety
@@ -164,6 +170,12 @@ subscriber-ordering paths after the `147efe0` simulator run, so the
 exact-revision SITL gate is reopened unless the operator explicitly supersedes
 that rerun. The live disarmed measurement and limits are closed in the section
 below; Test B itself remains **NOT RUN**.
+
+**Armed-attempt update 27/08/2026:** the operator explicitly superseded the
+SITL rerun for revision `eb9a337` and started Test B. The motion chain was
+observed, but the run failed at its armed deadline before final-safe-state
+capture and is not accepted. The unbounded retry repair changes source after
+`eb9a337`; that earlier supersession does not cover the repaired revision.
 
 The Pi helper copied to `/home/imt-aqua-drone/Desktop` also passed its
 checksum and `--preflight-only` path. The retained output included
@@ -294,8 +306,9 @@ bash tools/fcu_to_vrx_workstation.sh check
 ```
 
 The production `run` mode has been exercised in disarmed record-only mode and
-decoded neutral real-FCU output at `800/800 us`; the armed correlated motion
-mode required for Test B remains **NOT RUN**. Every run requires a clean
+decoded neutral real-FCU output at `800/800 us`. One armed correlated attempt
+decoded asymmetric output, mapped thrust and VRX motion, but ended in recorder
+aborts before the final safe state and is not accepted. Every run requires a clean
 checkout at `origin/main`, an empty ROS domain `77`, free UDP `14555`, no
 simulator/bridge/MAVROS conflict, and all left/right channel and PWM values from
 the same live FCU parameter read. It rejects missing values,
@@ -412,6 +425,57 @@ reported `POWER_TELEMETRY=UNAVAILABLE`, so this run does not prove the absence
 of undervoltage or throttling flags; the independent thermal guard remained
 active and did not trip.
 
+#### First armed attempt and explicit unbounded retry
+
+The first armed Test B attempt on 27/08/2026 used W1 run
+`live_dashboard_workstation_20260827_191952`, W2 run
+`fcu_to_vrx_workstation_20260827_192020`, and Pi run
+`live_dashboard_20260827_192234`. The complete Pi copy is retained at
+`/home/ghostzero/Desktop/pi_run_evidence/test_b_armed_failed_20260827_192234`.
+
+The recorders captured the first asymmetric output as left `SERVO3=2200` and
+right `SERVO1=800` approximately `49.99 s` after arming. The matching UDP frame
+arrived with `0.0856 ms` left/right skew; W2 mapped it to `800.0/0.0 N` within
+`0.87 ms`, and the model moved `2.47946 m` within `9.979 s`. Neutral output
+`800/800` returned `0.749 s` after the excursion. This proves that Herelink
+input reached the real FCU output, outbound fanout, the W2 bridge and VRX
+motion for that observed interval.
+
+The attempt is not accepted. The Pi monitor recorded
+`reason=ARMED_WINDOW_DEADLINE topic=/mavros/state`, then entered `ABORT` while
+the last captured FCU sample remained connected and armed in `MANUAL`. W1
+recorded `stale_camera`; W2 recorded `stale_left_thrust`; canonical
+adjudication therefore fails. No retained recorder captured the required final
+connected/disarmed, neutral and hardware-safe state. The later operator report
+of disarm, safety ON and neutral sticks occurred outside the retained evidence
+window and is not substituted for that missing evidence.
+
+The Pi message `STOP: dashboard command publication detected` was a false
+classification of the shared abort file. The retained file identifies the
+actual cause as `ARMED_WINDOW_DEADLINE`; there is no evidence that dashboard
+command publication caused this stop. The Pi stopped every named child and
+reported no `CLEANUP_ERROR`. Its `cleanup_rc=1` was forced by the non-empty
+abort record, so it does not establish that a child survived teardown.
+
+The retry mode is explicit and paired:
+
+```text
+LIVE_RUN_SECONDS=0
+LIVE_ARMED_OBSERVATION_MAX_SECONDS=0
+LIVE_ARMED_OBSERVATION_FINAL_SECONDS=60
+LIVE_ARMED_OBSERVATION_STALE_SECONDS=5
+```
+
+Both zero values must be supplied together. This disables only the outer
+runtime and armed-session deadlines. The final-restoration bound, topic
+freshness, disconnect, second-arm, command-sentinel, rail and thermal guards
+remain active. After the operator disarms, restores hardware safety and leaves
+neutral output, the monitor must record `ARMED_OBSERVATION=PASS` and complete
+final verification. P1 then enters `PI_SOURCE_HOLD=ACTIVE` with
+`PI_SOURCE_HOLD_MODE=completed-armed`; it retains Pi-local safety checks without
+depending on W1 nodes. In that hold, stop W2 first, then W1, and stop P1 last.
+No retry result exists yet.
+
 The W1 certification suite clears inherited live selectors before constructing
 its default fixtures. Configured production selectors are exercised only by
 the suite's explicit cases, so certifying an armed command can no longer turn
@@ -485,8 +549,14 @@ armed before it. Waiting for it before starting the Pi would deadlock. Its own
 budget is `FCU_TO_VRX_OBSERVER_READY_TIMEOUT_SECONDS`, default `900` seconds,
 because it spans the operator's Pi start.
 
-Stop in reverse: Pi first, then `W2` (bridge, recorder, VRX, then UDP `14555`
-confirmed free), then `W1`.
+For the default and finite paths, stop in reverse: Pi first, then `W2` (bridge,
+recorder, VRX, then UDP `14555` confirmed free), then `W1`. For the explicit
+paired-zero armed retry, first disarm and restore safety, then wait for
+`ARMED_OBSERVATION=PASS`, `PI_SOURCE_WINDOW=COMPLETE`, and
+`PI_SOURCE_HOLD_MODE=completed-armed`. Only from that hold, stop W2, then W1,
+then P1. This preserves both recorders through final-safe-state capture while
+allowing the Pi to keep its local source and safety stack alive during
+workstation teardown.
 
 ### Batched MAVROS source view
 
@@ -657,7 +727,7 @@ D="$(xdg-user-dir DESKTOP)" || exit 1
 D="$(readlink -f -- "$D")" || exit 1
 [ -n "$D" ] && [ -d "$D" ] && [ "$D" != "$H" ] || exit 1
 printf '%s  %s\n' \
-  '8458526c183479b1ca004dcbdfb3e498b585e415826025b4ee71b7856ecb311c' \
+  'ca0c1ff834ac347a04e8a59a01a85c05abe78d939e2083397c2f121a9b24314e' \
   "$D/pi_live_hailo_mavlink_dashboard.sh" | sha256sum -c -
 ```
 
@@ -667,7 +737,7 @@ only the helper from a workstation terminal:
 ```bash
 cd ~/seal_ws/src/uvautoboat
 printf '%s  %s\n' \
-  '8458526c183479b1ca004dcbdfb3e498b585e415826025b4ee71b7856ecb311c' \
+  'ca0c1ff834ac347a04e8a59a01a85c05abe78d939e2083397c2f121a9b24314e' \
   tools/pi_live_hailo_mavlink_dashboard.sh | sha256sum -c -
 
 read -r -p 'Current Pi SSH endpoint (user@host): ' PI_SSH
@@ -684,7 +754,7 @@ scp tools/pi_live_hailo_mavlink_dashboard.sh \
 ssh "$PI_SSH" "
   cd '$PI_DESKTOP' &&
   printf '%s  %s\n' \
-    '8458526c183479b1ca004dcbdfb3e498b585e415826025b4ee71b7856ecb311c' \
+    'ca0c1ff834ac347a04e8a59a01a85c05abe78d939e2083397c2f121a9b24314e' \
     pi_live_hailo_mavlink_dashboard.sh |
   sha256sum -c -
 "
@@ -721,9 +791,10 @@ workstation IPv4 address, selected SSID, helper checksum and
 `HAILO_LOCAL_DISPLAY=1`. The default carries
 `LIVE_HOLD_AFTER_WINDOW=1`, `LIVE_FCU_TO_VRX_FANOUT=0` and
 `LIVE_ARMED_OBSERVATION=0`. An explicitly configured armed-observation run
-instead carries fanout and selector `1`, hold `0`, and every supplied bounded
-window, staleness, channel and trim value. With no display selector override,
-the command carries `HAILO_LOCAL_WINDOW_MODE=fullscreen`. The printed command
+instead carries fanout and selector `1`, every supplied runtime, staleness,
+channel and trim value, and either finite hold `0` or paired-zero hold `1`.
+With no display selector override, the command carries
+`HAILO_LOCAL_WINDOW_MODE=resizable`. The printed command
 resolves, checksums, and executes the helper from the Pi Desktop while
 retaining `~/hailo_coco_overlay_2026-07-10` as the runtime root.
 
@@ -752,27 +823,22 @@ printf 'DISPLAY=%s\n' "${DISPLAY:-}"
 ```
 
 Stop if the value is empty. The helper must print
-`HAILO_LOCAL_DISPLAY=ENABLED display=... window_mode=fullscreen`; it fails closed instead
+`HAILO_LOCAL_DISPLAY=ENABLED display=... window_mode=resizable`; it fails closed instead
 of silently accepting a missing desktop session. The Hailo child first prints the
 frame gate and then the request-and-measurement marker:
 
 ```text
-HAILO_LOCAL_WINDOW=PENDING mode=fullscreen name=Output gate=first-imshow
-HAILO_LOCAL_WINDOW=READY mode=fullscreen name=Output rect=x,y,width,height source=getWindowImageRect
+HAILO_LOCAL_WINDOW=PENDING mode=resizable name=Output gate=first-imshow
+HAILO_LOCAL_WINDOW=READY mode=resizable name=Output rect=x,y,width,height source=getWindowImageRect
 ```
 
-`HAILO_LOCAL_WINDOW=READY ...` confirms that the fullscreen request returned and an image
-rectangle was read. It does not by itself prove that the outer Pi window filled the display
-or that the rendered image filled that window. Fullscreen acceptance also requires the
-visible Pi-local result and recorded rectangle observations to show the expected scaling.
+`HAILO_LOCAL_WINDOW=READY ...` confirms that the resizable window opened and an
+image rectangle was read. Window size remains an operator display choice and is
+not Test B motion evidence.
 
-`HAILO_LOCAL_WINDOW=FALLBACK_RESIZABLE ...` means fullscreen setup failed but the
-resizable window remains available. `HAILO_LOCAL_WINDOW=FALLBACK_HEADLESS ...` means
-window creation failed and the visualizer continued headless.
-`HAILO_LOCAL_WINDOW=EVIDENCE_UNAVAILABLE ...` means fullscreen was requested but its
-rendered image rectangle could not be measured. Any of these three markers fails the new
-Pi-window acceptance; preserve the logs and do not describe the run as verified
-fullscreen.
+`HAILO_LOCAL_WINDOW=FALLBACK_HEADLESS ...` means window creation failed and the
+visualizer continued headless. Preserve that result; it does not satisfy the
+Pi-local visible-window check.
 
 The expected negative import probe prints
 `CANONICAL_STRIPPED_RCLPY=UNAVAILABLE informational rc=1` and a
@@ -794,7 +860,8 @@ live-read servo outputs and hardware safety restored.
 
 Stop immediately on a checksum failure, missing readiness marker, `STOP:`,
 `ERROR line=`, thermal abort, command-sentinel abort, unexpected armed state,
-disconnect, stale required telemetry, or an armed/restoration deadline.
+disconnect, stale required telemetry, a finite armed deadline, or the
+final-restoration deadline.
 `CLEANUP_ERROR` or `TEARDOWN=FAIL` also makes the run a failure. GPS no-fix is
 valid telemetry and is not transport loss.
 

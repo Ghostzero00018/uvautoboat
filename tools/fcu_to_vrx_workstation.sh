@@ -710,7 +710,11 @@ fcuvrx_run() {
   FCUVRX_READY_REACHED=1
   fcuvrx_log \
     "FCU_TO_VRX_WORKSTATION_READY=PASS domain=77 udp=14555 world=$FCUVRX_WORLD mapping=$FCU_VRX_LEFT_SERVO_CHANNEL/$FCU_VRX_RIGHT_SERVO_CHANNEL rails=$FCU_VRX_PWM_MIN/$FCU_VRX_PWM_NEUTRAL/$FCU_VRX_PWM_MAX observer=ready streams=4 observer_stale_seconds=${FCU_VRX_OBSERVER_STALE_SECONDS:-0} observer_ready_timeout_seconds=$FCUVRX_OBSERVER_READY_TIMEOUT_SECONDS publish_sensors=false publish_cmd_vel=false"
-  fcuvrx_log 'no arming before this line; planned stop: stop the Pi helper first, then press Ctrl+C here'
+  if [ "$FCU_VRX_CORRELATED_OBSERVATION" -eq 1 ]; then
+    fcuvrx_log 'no arming before this line; planned stop: after PI_SOURCE_HOLD=ACTIVE, press Ctrl+C here before stopping W1 and the Pi helper'
+  else
+    fcuvrx_log 'no arming before this line; planned stop: stop the Pi helper first, then press Ctrl+C here'
+  fi
 
   while fcuvrx_children_alive; do
     sleep "$FCUVRX_POLL_SECONDS" || true

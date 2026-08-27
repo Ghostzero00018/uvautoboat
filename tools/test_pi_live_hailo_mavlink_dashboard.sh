@@ -42,6 +42,10 @@ require_literal 'IMAGE_RECOVERY_SAMPLE="$RUN_DIR/hailo_graph_zero_recovery.yaml"
 require_literal 'HOLD_AFTER_WINDOW="${LIVE_HOLD_AFTER_WINDOW:-0}"'
 require_literal '[[ "$HOLD_AFTER_WINDOW" =~ ^[01]$ ]]'
 require_literal "die 'LIVE_HOLD_AFTER_WINDOW must be 0 or 1'"
+require_literal '[[ "$RUN_SECONDS" =~ ^[0-9]+$ ]]'
+require_literal 'LIVE_RUN_SECONDS and LIVE_ARMED_OBSERVATION_MAX_SECONDS must both be 0 or both be positive'
+require_literal 'monitor_completed_armed_hold() {'
+require_literal 'UNBOUNDED_ARMED_OBSERVATION=COMPLETE final_verification=pending'
 require_literal 'LOCAL_DISPLAY="${HAILO_LOCAL_DISPLAY:-0}"'
 require_literal '[[ "$LOCAL_DISPLAY" =~ ^[01]$ ]]'
 require_literal "die 'HAILO_LOCAL_DISPLAY must be 0 or 1'"
@@ -166,6 +170,49 @@ grep -Fxq \
   'MAVPROXY_OUTPUT_ARGS=--out=udpout:127.0.0.1:14550 --out=udpout:127.0.0.1:14556' \
   <<<"$ENABLED_FANOUT_OUTPUT" \
   || fail 'enabled fanout did not keep both MAVProxy outputs loopback-only'
+
+ARMED_VALIDATE_FUNCTION="$(extract_function validate_armed_observation)"
+[ -n "$ARMED_VALIDATE_FUNCTION" ] \
+  || fail 'armed-observation validation function was not extractable'
+validate_armed_selectors() {
+  local run_seconds="$1" max_seconds="$2" hold_after_window="$3"
+  bash -c '
+    eval "$1"
+    die() { printf "DIE: %s\n" "$*" >&2; exit 17; }
+    RUN_SECONDS="$2"
+    ARMED_OBSERVATION_MAX_SECONDS="$3"
+    HOLD_AFTER_WINDOW="$4"
+    ARMED_OBSERVATION=1
+    FCU_TO_VRX_FANOUT=1
+    ARMED_OBSERVATION_FINAL_SECONDS=60
+    ARMED_OBSERVATION_STALE_SECONDS=5
+    ARMED_OBSERVATION_LEFT_CHANNEL=3
+    ARMED_OBSERVATION_RIGHT_CHANNEL=1
+    ARMED_OBSERVATION_LEFT_TRIM=800
+    ARMED_OBSERVATION_RIGHT_TRIM=800
+    validate_armed_observation
+  ' _ "$ARMED_VALIDATE_FUNCTION" "$run_seconds" "$max_seconds" \
+    "$hold_after_window"
+}
+validate_armed_selectors 300 60 0 \
+  || fail 'finite armed-observation selectors were rejected'
+validate_armed_selectors 0 0 1 \
+  || fail 'paired unbounded armed-observation selectors were rejected'
+for mismatched_pair in '0:60:1' '300:0:0'; do
+  IFS=: read -r bad_run bad_max bad_hold <<<"$mismatched_pair"
+  set +e
+  MISMATCHED_HELPER_OUTPUT="$(
+    validate_armed_selectors "$bad_run" "$bad_max" "$bad_hold" 2>&1
+  )"
+  MISMATCHED_HELPER_RC=$?
+  set -e
+  [ "$MISMATCHED_HELPER_RC" -eq 17 ] \
+    || fail "helper accepted mismatched unbounded selectors: $mismatched_pair"
+  grep -Fq 'LIVE_RUN_SECONDS and LIVE_ARMED_OBSERVATION_MAX_SECONDS must both be 0 or both be positive' \
+    <<<"$MISMATCHED_HELPER_OUTPUT" \
+    || fail "helper did not identify mismatched unbounded selectors: $mismatched_pair"
+done
+
 FANOUT_SOURCE="$(awk '
   /^[[:space:]]*cat >"\$TELEMETRY_FANOUT" <<'"'"'PYTHON_TELEMETRY_FANOUT'"'"'$/ {
     capture = 1
@@ -1988,6 +2035,65 @@ grep -Fq 'dashboard command service server detected' <<<"$FORBIDDEN_SERVICE_OUTP
 
 require_literal 'monitor_live_stack() {'
 MONITOR_FUNCTION="$(extract_function monitor_live_stack)"
+ARMED_COMPLETE_STATUS="$(mktemp)"
+printf 'phase=COMPLETE\n' >"$ARMED_COMPLETE_STATUS"
+set +e
+UNBOUNDED_MONITOR_OUTPUT="$(bash -c '
+  eval "$1"
+  set -u
+  log() { printf "%s\n" "$*"; }
+  die() { printf "DIE: %s\n" "$*" >&2; exit 17; }
+  check_command_sentinel() { :; }
+  check_thermal_watchdog() { :; }
+  require_group_alive() { :; }
+  require_fcu_to_vrx_fanout_alive() { :; }
+  check_temperature() { :; }
+  graph_nodes() { printf "nodes\n"; }
+  reject_forbidden_nodes() { :; }
+  require_workstation_nodes() { :; }
+  reject_command_services() { :; }
+  reject_unexpected_command_subscribers() { :; }
+  require_owned_hailo_stream() { :; }
+  require_mavros_source() { :; }
+  require_connected_observation_state() { :; }
+  check_power() { :; }
+  armed_observation_is_complete() {
+    grep -Fxq "phase=COMPLETE" "$ARMED_OBSERVATION_STATUS_FILE"
+  }
+  sleep() { printf "UNEXPECTED_SLEEP\n"; exit 99; }
+  SECONDS=77
+  POLL_S=1
+  RUN_SECONDS=0
+  ARMED_OBSERVATION=1
+  ARMED_OBSERVATION_STATUS_FILE="$2"
+  WINDOW_START_SECONDS=70
+  STOP_REQUESTED=0
+  MAVPROXY_PID=11
+  MAVPROXY_PGID=11
+  MAVPROXY_LOG=mavproxy.log
+  MAVROS_PID=12
+  MAVROS_PGID=12
+  MAVROS_LOG=mavros.log
+  HAILO_PID=13
+  HAILO_PGID=13
+  HAILO_LOG=hailo.log
+  IMAGE_TOPIC=/hailo/overlay/image_raw
+  monitor_live_stack live-window 0
+  printf "UNBOUNDED_MONITOR=HANDOFF\n"
+' _ "$MONITOR_FUNCTION" "$ARMED_COMPLETE_STATUS" 2>&1)"
+UNBOUNDED_MONITOR_RC=$?
+set -e
+rm -f "$ARMED_COMPLETE_STATUS"
+[ "$UNBOUNDED_MONITOR_RC" -eq 0 ] \
+  || fail "unbounded live monitor did not hand off after completion: $UNBOUNDED_MONITOR_OUTPUT"
+grep -Fxq 'UNBOUNDED_ARMED_OBSERVATION=COMPLETE final_verification=pending' \
+  <<<"$UNBOUNDED_MONITOR_OUTPUT" \
+  || fail 'unbounded live monitor omitted its completion handoff marker'
+grep -Fxq 'UNBOUNDED_MONITOR=HANDOFF' <<<"$UNBOUNDED_MONITOR_OUTPUT" \
+  || fail 'unbounded live monitor did not return for final verification'
+! grep -Fq 'UNEXPECTED_SLEEP' <<<"$UNBOUNDED_MONITOR_OUTPUT" \
+  || fail 'unbounded live monitor slept after restored-safe completion'
+
 set +e
 MONITOR_DEADLINE_OUTPUT="$(bash -c '
   eval "$1"
@@ -2189,12 +2295,57 @@ for contract in \
 done
 
 require_literal 'monitor_live_stack live-window "$DEADLINE"'
+require_literal 'live_window_deadline() {'
+DEADLINE_FUNCTION="$(extract_function live_window_deadline)"
+[ -n "$DEADLINE_FUNCTION" ] || fail 'live-window deadline selector is not extractable'
+FINITE_DEADLINE="$(bash -c '
+  eval "$1"
+  SECONDS=77
+  RUN_SECONDS=300
+  live_window_deadline
+' _ "$DEADLINE_FUNCTION")"
+[ "$FINITE_DEADLINE" = '377' ] \
+  || fail "finite live-window deadline changed: $FINITE_DEADLINE"
+UNBOUNDED_DEADLINE="$(bash -c '
+  eval "$1"
+  SECONDS=77
+  RUN_SECONDS=0
+  live_window_deadline
+' _ "$DEADLINE_FUNCTION")"
+[ "$UNBOUNDED_DEADLINE" = '0' ] \
+  || fail "zero runtime did not disable the outer deadline: $UNBOUNDED_DEADLINE"
 require_literal 'WINDOW_MONITOR_END_SECONDS=$SECONDS'
 require_literal 'FINAL_VERIFY_DEADLINE=$((WINDOW_MONITOR_END_SECONDS + FINAL_VERIFY_SECONDS))'
 require_literal 'final_graph_verification "$FINAL_VERIFY_DEADLINE"'
 require_literal 'check_temperature final-verification'
 require_literal 'check_power final-verification'
 require_literal 'monitor_live_stack live-hold 0'
+COMPLETED_HOLD_FUNCTION="$(extract_function monitor_completed_armed_hold)"
+[ -n "$COMPLETED_HOLD_FUNCTION" ] \
+  || fail 'completed armed-observation hold is not extractable'
+[ "$(grep -Fc 'monitor_completed_armed_hold' "$HELPER")" -eq 2 ] \
+  || fail 'completed armed hold must have exactly one definition and one call'
+require_literal 'PI_SOURCE_HOLD_MODE=completed-armed teardown=W2,W1,Pi'
+for contract in \
+  'check_command_sentinel' \
+  'check_thermal_watchdog' \
+  'require_group_alive mavproxy' \
+  'require_group_alive mavros' \
+  'require_group_alive hailo-bridge' \
+  'require_fcu_to_vrx_fanout_alive' \
+  'require_connected_disarmed_state completed-armed-hold' \
+  'check_temperature completed-armed-hold' \
+  'check_power completed-armed-hold'; do
+  grep -Fq -- "$contract" <<<"$COMPLETED_HOLD_FUNCTION" \
+    || fail "completed armed hold omits safety contract: $contract"
+done
+for forbidden_contract in \
+  'require_workstation_nodes' \
+  'reject_command_services' \
+  'reject_unexpected_command_subscribers'; do
+  ! grep -Fq -- "$forbidden_contract" <<<"$COMPLETED_HOLD_FUNCTION" \
+    || fail "completed armed hold retains workstation dependency: $forbidden_contract"
+done
 require_literal 'complete_source_window() {'
 [ "$(grep -Fc 'complete_source_window' "$HELPER")" -eq 2 ] \
   || fail 'completion function must have exactly one definition and one call'
@@ -2203,6 +2354,33 @@ require_literal 'if [ "$HOLD_ACTIVE" -eq 1 ]; then'
 require_literal 'PI_SOURCE_HOLD=STOP operator-requested'
 require_literal 'on_termination() {'
 require_literal 'trap on_termination TERM'
+
+COMMAND_SENTINEL_FUNCTION="$(extract_function check_command_sentinel)"
+[ -n "$COMMAND_SENTINEL_FUNCTION" ] \
+  || fail 'command-sentinel function is not extractable'
+SENTINEL_ABORT_FILE="$(mktemp)"
+printf 'reason=ARMED_WINDOW_DEADLINE topic=/mavros/state\n' \
+  >"$SENTINEL_ABORT_FILE"
+set +e
+SENTINEL_ABORT_OUTPUT="$(bash -c '
+  eval "$1"
+  COMMAND_ABORT_FILE="$2"
+  die() { printf "DIE: %s\n" "$*" >&2; exit 17; }
+  check_command_sentinel
+' _ "$COMMAND_SENTINEL_FUNCTION" "$SENTINEL_ABORT_FILE" 2>&1)"
+SENTINEL_ABORT_RC=$?
+set -e
+rm -f "$SENTINEL_ABORT_FILE"
+[ "$SENTINEL_ABORT_RC" -eq 17 ] \
+  || fail 'safety-monitor abort did not stop the supervisor'
+grep -Fq 'reason=ARMED_WINDOW_DEADLINE topic=/mavros/state' \
+  <<<"$SENTINEL_ABORT_OUTPUT" \
+  || fail 'safety-monitor abort omitted its recorded reason'
+grep -Fq 'safety monitor abort recorded: reason=ARMED_WINDOW_DEADLINE topic=/mavros/state' \
+  <<<"$SENTINEL_ABORT_OUTPUT" \
+  || fail 'safety-monitor abort was not classified truthfully'
+! grep -Fq 'dashboard command publication detected' <<<"$SENTINEL_ABORT_OUTPUT" \
+  || fail 'non-command safety abort retained the command-publication label'
 
 MONITOR_TRACE="$(mktemp)"
 trap 'rm -f "$PASS_LOG" "$FAIL_LOG" "$ORDER_LOG" "$LATE_LOG" "$SERVICE_TRACE" "$GRAPH_TRACE" "$MONITOR_TRACE"' EXIT

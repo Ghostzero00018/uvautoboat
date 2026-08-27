@@ -134,13 +134,13 @@ class ArmedObservationMonitorTests(unittest.TestCase):
         self.enable_file = self.root / "enable"
         self.clock = [100.0]
 
-    def _load(self, enabled: bool):
+    def _load(self, enabled: bool, *, max_seconds: str = "30"):
         environment = {
             "COMMAND_ABORT_FILE": str(self.abort_file),
             "ARMED_OBSERVATION": "1" if enabled else "0",
             "ARMED_OBSERVATION_STATUS_FILE": str(self.status_file),
             "ARMED_OBSERVATION_ENABLE_FILE": str(self.enable_file),
-            "ARMED_OBSERVATION_MAX_SECONDS": "30",
+            "ARMED_OBSERVATION_MAX_SECONDS": max_seconds,
             "ARMED_OBSERVATION_FINAL_SECONDS": "10",
             "ARMED_OBSERVATION_STALE_SECONDS": "5",
             "ARMED_OBSERVATION_LEFT_CHANNEL": "3",
@@ -294,6 +294,22 @@ class ArmedObservationMonitorTests(unittest.TestCase):
         )
         node.timers[0]()
         self.assertEqual(self._abort_reason(), "FINAL_STATE_DEADLINE")
+
+    def test_zero_armed_deadline_keeps_other_fail_closed_checks_active(self):
+        node = self._load(True, max_seconds="0")
+        self._ready(node)
+        node.subscriptions["/mavros/state"](
+            _Message(armed=True, connected=True)
+        )
+        self.clock[0] += 3600
+        self._publish_required(node, armed=True, safety_on=False)
+        node.timers[0]()
+        self.assertEqual(self._phase(), "ARMED")
+        self.assertFalse(self.abort_file.exists())
+
+        self.clock[0] += 6
+        node.timers[0]()
+        self.assertEqual(self._abort_reason(), "REQUIRED_TOPIC_STALE")
 
     def test_monitor_remains_subscriber_only(self):
         source = _safety_monitor_definitions()
