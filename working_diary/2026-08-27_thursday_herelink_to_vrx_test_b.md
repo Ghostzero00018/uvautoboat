@@ -878,3 +878,118 @@ stopped bridge, observer and VRX in order and left UDP `14555` free; because it
 had reached PRESTART rather than final READY, its expected interrupted-run exit
 status was `130` and it did not emit the post-READY teardown PASS marker. Both
 failed run directories are retained. Test B remains **NOT RUN**.
+
+### Live disarmed measurement and selected Test B limits - 27/08/2026
+
+The ordering repair was published as `1c1dff5`. A fresh disarmed measurement
+then reached full W1 and W2 readiness without arming or Herelink input. The
+retained workstation runs are:
+
+```text
+/home/ghostzero/Desktop/live_dashboard_workstation_20260827_185101
+/home/ghostzero/Desktop/fcu_to_vrx_workstation_20260827_185133
+```
+
+The Pi source run is retained on the Pi at:
+
+```text
+/home/imt-aqua-drone/hailo_coco_overlay_2026-07-10/logs/live_dashboard_20260827_185227
+```
+
+W1 observed all seven live topics, started its recorder only after the Pi
+publishers existed, reached recorder READY, passed the seven rate probes and
+entered supervision. W2 reached the live pose baseline, decoded the real
+`SERVO3`/`SERVO1` output at neutral, and reached four-stream observer READY.
+The FCU remained connected, disarmed, hardware-safe and neutral throughout the
+measurement.
+
+The 60-second common-window summary passed and reported:
+
+```text
+Pi maximum gaps:
+  camera=0.275542186 s
+  rc_out=0.497195719 s
+  state=1.039521457 s
+  sys_status=0.309898691 s
+VRX maximum gaps:
+  left_thrust=0.291955471 s
+  pose=0.129303774 s
+  right_thrust=0.291961215 s
+  servo_output_raw=0.291760135 s
+maximum Pi-PWM to UDP-PWM skew=223.019194 ms
+maximum UDP-PWM to thrust delay=9.633272 ms
+stationary pose drift=0.081450536 m
+FCU_TO_VRX_DISARMED_MEASUREMENT=PASS window_seconds=60 thresholds=not-selected
+```
+
+The following explicit limits are selected from those current-source
+measurements for the bounded armed phase:
+
+```text
+LIVE_ARMED_OBSERVATION_STALE_SECONDS=5
+FCU_VRX_OBSERVER_STALE_SECONDS=5
+MAX_PWM_SKEW_MS=750
+MAX_THRUST_DELAY_MS=100
+MAX_MOTION_DELAY_SECONDS=10
+MIN_MOTION_METRES=0.25
+LIVE_ARMED_OBSERVATION_MAX_SECONDS=60
+LIVE_ARMED_OBSERVATION_FINAL_SECONDS=60
+LIVE_RUN_SECONDS=600
+```
+
+The stale limit is more than four times the largest measured Pi gap. The PWM
+skew and thrust-delay limits retain more than three and ten times their
+respective measured maxima. The motion threshold is more than three times the
+measured stationary drift, with a ten-second correlation window. W1 required
+`403 s` to declare seven-topic arrival in this run, so the ten-minute Pi source
+window preserves time for the rate probes, one bounded 60-second armed window,
+neutral return and a 60-second final safe-state window without repeating the
+short-timeout failure class.
+
+Teardown completed in the required order. The Pi stopped its safety monitor,
+Hailo bridge, MAVROS, MAVProxy and telemetry fanout with `TEARDOWN=PASS`. W2
+stopped bridge, observer and VRX in order, confirmed UDP `14555` free and exited
+with status `0`. W1 stopped its evidence observer and three workstation services
+with `WORKSTATION_TEARDOWN=PASS` and status `0`.
+
+This closes the disarmed measurement and threshold-selection gate only. No FCU
+arming, Herelink stick excursion, asymmetric motor output or VRX motion occurred,
+so Test B remains **NOT RUN**. The successful SITL acceptance was earned on
+`147efe0`; the current revision still requires a fresh SITL acceptance or an
+explicit operator supersession naming that gate before the armed phase.
+
+### Pi measurement copy-back and log audit - 27/08/2026
+
+The complete Pi run was copied to the workstation at:
+
+```text
+/home/ghostzero/Desktop/pi_run_evidence/test_b_measurement_20260827_185227
+```
+
+The copied supervisor log verifies helper SHA-256
+`8458526c183479b1ca004dcbdfb3e498b585e415826025b4ee71b7856ecb311c`,
+an initially clean ROS graph, the outbound-only
+`127.0.0.1:14556 -> 10.120.2.168:14555` fanout, zero safety-monitor
+publishers, connected/disarmed MAVROS state, six-topic telemetry sampling and
+neutral output `SERVO1=800`, `SERVO3=800`. The Pi reached
+`PI_SOURCE_STACK_READY=PASS mavros_topics=29`, retained at least `3600` Hailo
+frames and recorded a thermal peak of `67750 mC`, below the `80 C` abort limit.
+
+The Pi was stopped deliberately during the disarmed live window. Its
+`status=130 trigger=signal signal=INT` is therefore the expected operator-stop
+status for this measurement, followed by ordered child shutdown and
+`TEARDOWN=PASS cleanup_rc=0`. The Hailo log's final `KeyboardInterrupt` is the
+matching process interruption during that teardown, not an earlier inference
+failure.
+
+Two bounded diagnostics remain in the retained logs: MAVROS version-service
+requests timed out during startup, and MAVProxy could not decode its cached
+terrain `filelist_python`. Neither prevented heartbeat, connected/disarmed
+state, the required telemetry samples, `986` FTP parameters, fanout readiness,
+Hailo publication or the passed disarmed evidence summary. They are not treated
+as Test B acceptance evidence and do not replace the still-required armed
+correlation and final adjudication.
+
+The supervisor also recorded `POWER_TELEMETRY=UNAVAILABLE`. Thermal protection
+remained active and did not trip, but this run is not represented as direct
+evidence for Pi undervoltage or throttling flags.

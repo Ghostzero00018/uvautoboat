@@ -25,9 +25,9 @@ the retained `pi` wrapper mode is not part of this procedure.
 
 ## Current tracked revisions
 
-The repository artifacts below identify the current revisions, pinned on
-26/08/2026 after the default-off armed-observation selector, parameterized
-emitter and read-only correlation recorders were added. The tracked Pi helper
+The repository artifacts below identify the current revisions, refreshed on
+27/08/2026 after the disarmed-measurement mode and publisher-before-subscriber
+ordering repair were added. The tracked Pi helper
 is the copy that must be transferred to the Pi Desktop before a run; a
 previously transferred copy is stale until its hash is checked against the
 value below. The workstation supervisors and evidence recorder remain
@@ -41,13 +41,13 @@ below only for traceability.
 | Helper size | `92,101` bytes |
 | Helper SHA-256 | `8458526c183479b1ca004dcbdfb3e498b585e415826025b4ee71b7856ecb311c` |
 | Workstation supervisor | `tools/live_dashboard_preflight.sh` |
-| Supervisor size | `36,413` bytes |
+| Supervisor size | `37,636` bytes |
 | Supervisor SHA-256 | `2112df7a9e34cf2b62e0dda1a4ddb38692364ce6e0b50f8689e2f05f44228fa1` |
 | VRX supervisor | `tools/fcu_to_vrx_workstation.sh` |
 | VRX supervisor size | `26,694` bytes |
 | VRX supervisor SHA-256 | `a416fb134b9a32d2a134816cf82fb717b05e6447d042c24b3e1a7c1f72e9e303` |
 | Correlation recorder | `tools/fcu_to_vrx_evidence.py` |
-| Correlation recorder size | `35,542` bytes |
+| Correlation recorder size | `43,839` bytes |
 | Correlation recorder SHA-256 | `19df4dae7015cfe3af44512c7a0bf854e1e448df8a3fc0b1f37075e6d62d0126` |
 
 Historical 23/07/2026 session artifacts:
@@ -103,8 +103,9 @@ selector, emitter and recorder implementation has passed the offline suite.
 The separate dashboard-to-real-FCU Test A passed on 26/08/2026; the enabled
 Herelink-to-VRX Test B remains **NOT RUN**.
 
-Before enabling the selector, read `BRD_SAFETY_DEFLT` in the open T0b parameter
-check and observe the live hardware-safety state. Stop if hardware safety is
+Before enabling the selector, use the retained T0b artifact for
+`BRD_SAFETY_DEFLT`, mapping and rails, then observe the live hardware-safety
+state. Stop if hardware safety is
 disabled, absent, or never reaches the required safe state. Observe a stable
 disarmed `/mavros/rc/out` pair before supplying the exact live-read trims; a
 reported `0` is not an accepted substitute for a PWM trim in `800..2200`.
@@ -152,6 +153,17 @@ hashes, control cross-check, teardown, stop order, port/process cleanup and
 `SITL_ADJUDICATION=PASS`. The current-source SITL evidence gate is therefore
 closed on `147efe0`. This remains simulator evidence only; T0b is the remaining
 open evidence gate and Test B remains **NOT RUN**.
+
+**Later closure 27/08/2026:** the snapshot-backed T0b probe passed `41`
+selected reads from the pinned `986`-parameter MAVFTP snapshot while retaining
+live connected/disarmed and hardware-safety checks. It exited with
+`writes=none bridge=not-started`, and its copied evidence is
+`/home/ghostzero/Desktop/pi_run_evidence/t0b_probe_20260827_174820`. T0b is
+closed. Revisions `aa4a07a` and `1c1dff5` then changed the W1 measurement and
+subscriber-ordering paths after the `147efe0` simulator run, so the
+exact-revision SITL gate is reopened unless the operator explicitly supersedes
+that rerun. The live disarmed measurement and limits are closed in the section
+below; Test B itself remains **NOT RUN**.
 
 The Pi helper copied to `/home/imt-aqua-drone/Desktop` also passed its
 checksum and `--preflight-only` path. The retained output included
@@ -377,6 +389,28 @@ data and valid JSONL on every retained line. It then reports per-stream maximum
 gaps, maximum absolute Pi-PWM to UDP-PWM skew, maximum UDP-receive to thrust
 delay and stationary pose drift. Armed, unsafe, non-neutral, short, empty,
 malformed or ROS-contaminated evidence fails instead of producing limits.
+
+**Live closure 27/08/2026:** the current-source disarmed measurement passed on
+W1 run `live_dashboard_workstation_20260827_185101` and W2 run
+`fcu_to_vrx_workstation_20260827_185133`. The 60-second common window measured
+maximum Pi/VRX stream gaps of `1.039521457 s` / `0.291961215 s`, maximum
+Pi-PWM to UDP-PWM skew of `223.019194 ms`, maximum UDP-PWM to thrust delay of
+`9.633272 ms`, and stationary pose drift of `0.081450536 m`. The selected
+armed-run limits are `5 s` staleness on both observers, `750 ms` PWM skew,
+`100 ms` thrust delay, `10 s` motion delay and `0.25 m` minimum motion, with
+`60 s` armed and final-restoration bounds. W1 required `403 s` to declare
+seven-topic arrival, so the Pi source window remains `600 s` rather than using
+a shorter limit.
+
+The copied Pi evidence is
+`/home/ghostzero/Desktop/pi_run_evidence/test_b_measurement_20260827_185227`.
+It records connected/disarmed state, neutral `SERVO1/SERVO3=800/800`,
+outbound-only fanout readiness, at least `3600` Hailo frames, a `67.75 C`
+thermal peak and `TEARDOWN=PASS`. This closes only disarmed measurement and
+limit selection; no arm, Herelink excursion or VRX motion occurred. The Pi
+reported `POWER_TELEMETRY=UNAVAILABLE`, so this run does not prove the absence
+of undervoltage or throttling flags; the independent thermal guard remained
+active and did not trip.
 
 The W1 certification suite clears inherited live selectors before constructing
 its default fixtures. Configured production selectors are exercised only by
