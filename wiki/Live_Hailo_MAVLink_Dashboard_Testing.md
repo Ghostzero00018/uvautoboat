@@ -42,7 +42,7 @@ below only for traceability.
 | Helper SHA-256 | `8458526c183479b1ca004dcbdfb3e498b585e415826025b4ee71b7856ecb311c` |
 | Workstation supervisor | `tools/live_dashboard_preflight.sh` |
 | Supervisor size | `36,413` bytes |
-| Supervisor SHA-256 | `d137a84765f7a4a93927407b4a9d67d6516b446666a9f16871bd1c5237815f57` |
+| Supervisor SHA-256 | `2112df7a9e34cf2b62e0dda1a4ddb38692364ce6e0b50f8689e2f05f44228fa1` |
 | VRX supervisor | `tools/fcu_to_vrx_workstation.sh` |
 | VRX supervisor size | `26,694` bytes |
 | VRX supervisor SHA-256 | `a416fb134b9a32d2a134816cf82fb717b05e6447d042c24b3e1a7c1f72e9e303` |
@@ -351,6 +351,14 @@ four-stream READY state. The Pi command remains disarmed-only:
 `LIVE_ARMED_OBSERVATION=0`, `LIVE_HOLD_AFTER_WINDOW=1` and
 `LIVE_FCU_TO_VRX_FANOUT=1`. W2 stays in record-only mode with
 `FCU_VRX_CORRELATED_OBSERVATION=0`.
+
+W1 does not create that subscriber during workstation service startup. The Pi
+helper first completes its zero-existing-endpoint sentinel and brings up all
+seven publishers. Only after W1 observes those publishers does its arrival
+phase start the evidence recorder and wait for recorder READY. Starting the
+recorder earlier makes the intended `/hailo/overlay/image_raw` subscription
+indistinguishable from a stale browser or simulation endpoint and correctly
+causes the Pi helper to fail closed.
 
 After a deliberately timed disarmed interval and the required Pi, W2, W1 stop
 order, calculate the observed limits from the two retained JSONL files:

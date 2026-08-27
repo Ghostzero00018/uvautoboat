@@ -593,33 +593,37 @@ wait_for_workstation_services() {
 }
 
 start_workstation_services() {
-  local observer_mode observer_stale_seconds
   start_child rosbridge "$RUN_DIR/rosbridge.log" "${ROSBRIDGE_COMMAND[@]}"
   start_child web-video-server "$RUN_DIR/web_video_server.log" "${VIDEO_COMMAND[@]}"
   start_child dashboard "$RUN_DIR/dashboard.log" "${DASHBOARD_COMMAND[@]}"
-  if [ "$DISARMED_MEASUREMENT" -eq 1 ] \
-      || [ "$ARMED_OBSERVATION" -eq 1 ]; then
-    observer_mode=armed-observation
-    observer_stale_seconds="$ARMED_OBSERVATION_STALE_SECONDS"
-    if [ "$DISARMED_MEASUREMENT" -eq 1 ]; then
-      observer_mode=disarmed-measurement
-      observer_stale_seconds=0
-    fi
-    start_child pi-evidence-observer "$RUN_DIR/fcu_to_vrx_pi_observer.log" \
-      python3 "$FCU_TO_VRX_EVIDENCE" observe-pi \
-      --output "$RUN_DIR/fcu_to_vrx_pi_events.jsonl" \
-      --status "$RUN_DIR/fcu_to_vrx_pi_status.json" \
-      --stale-seconds "$observer_stale_seconds" \
-      --left-channel "$ARMED_OBSERVATION_LEFT_CHANNEL" \
-      --right-channel "$ARMED_OBSERVATION_RIGHT_CHANNEL" \
-      --left-min "$ARMED_OBSERVATION_LEFT_PWM_MIN" \
-      --left-trim "$ARMED_OBSERVATION_LEFT_TRIM" \
-      --left-max "$ARMED_OBSERVATION_LEFT_PWM_MAX" \
-      --right-min "$ARMED_OBSERVATION_RIGHT_PWM_MIN" \
-      --right-trim "$ARMED_OBSERVATION_RIGHT_TRIM" \
-      --right-max "$ARMED_OBSERVATION_RIGHT_PWM_MAX"
-    log "FCU_TO_VRX_PI_OBSERVER_STARTED mode=$observer_mode stale_seconds=$observer_stale_seconds"
+}
+
+start_pi_evidence_observer() {
+  local observer_mode observer_stale_seconds
+  if [ "$DISARMED_MEASUREMENT" -eq 0 ] \
+      && [ "$ARMED_OBSERVATION" -eq 0 ]; then
+    return 0
   fi
+  observer_mode=armed-observation
+  observer_stale_seconds="$ARMED_OBSERVATION_STALE_SECONDS"
+  if [ "$DISARMED_MEASUREMENT" -eq 1 ]; then
+    observer_mode=disarmed-measurement
+    observer_stale_seconds=0
+  fi
+  start_child pi-evidence-observer "$RUN_DIR/fcu_to_vrx_pi_observer.log" \
+    python3 "$FCU_TO_VRX_EVIDENCE" observe-pi \
+    --output "$RUN_DIR/fcu_to_vrx_pi_events.jsonl" \
+    --status "$RUN_DIR/fcu_to_vrx_pi_status.json" \
+    --stale-seconds "$observer_stale_seconds" \
+    --left-channel "$ARMED_OBSERVATION_LEFT_CHANNEL" \
+    --right-channel "$ARMED_OBSERVATION_RIGHT_CHANNEL" \
+    --left-min "$ARMED_OBSERVATION_LEFT_PWM_MIN" \
+    --left-trim "$ARMED_OBSERVATION_LEFT_TRIM" \
+    --left-max "$ARMED_OBSERVATION_LEFT_PWM_MAX" \
+    --right-min "$ARMED_OBSERVATION_RIGHT_PWM_MIN" \
+    --right-trim "$ARMED_OBSERVATION_RIGHT_TRIM" \
+    --right-max "$ARMED_OBSERVATION_RIGHT_PWM_MAX"
+  log "FCU_TO_VRX_PI_OBSERVER_STARTED mode=$observer_mode stale_seconds=$observer_stale_seconds"
 }
 
 print_pi_command() {
@@ -712,6 +716,7 @@ wait_for_pi_data_arrival() {
       "FAIL: seven expected publishers did not arrive within ${ARRIVAL_TIMEOUT_SECONDS}s"
     return 1
   }
+  start_pi_evidence_observer || return 1
   wait_for_pi_observer_ready "$deadline" || return 1
   [ "$STOP_REQUESTED" -eq 0 ] || return 130
 

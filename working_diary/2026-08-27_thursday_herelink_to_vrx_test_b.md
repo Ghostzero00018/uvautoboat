@@ -822,3 +822,59 @@ from the successful `147efe0` SITL run; current-revision SITL acceptance must be
 rerun or explicitly superseded before the armed phase. The disarmed measurement,
 selection and recording of explicit limits, and a fresh physical declaration
 also remain outstanding. Test B remains **NOT RUN**.
+
+### Live disarmed-measurement preflight failure and ordering repair - 27/08/2026
+
+After `aa4a07a` was published, the operator supplied the fresh physical
+declaration and the Pi preflight passed after rebuilding HailoRT DKMS for the
+new running kernel `6.8.0-1063-raspi`. W1 reached workstation service readiness
+in:
+
+```text
+/home/ghostzero/Desktop/live_dashboard_workstation_20260827_184220
+```
+
+W2 reached VRX pose baseline and UDP `14555` prestart readiness in:
+
+```text
+/home/ghostzero/Desktop/fcu_to_vrx_workstation_20260827_184300
+```
+
+The first Pi start then failed closed during runtime preflight:
+
+```text
+STOP: existing endpoint on /hailo/overlay/image_raw (publishers=0, subscribers=1)
+TEARDOWN=PASS
+```
+
+The retained Pi run is
+`hailo_coco_overlay_2026-07-10/logs/live_dashboard_20260827_184424`.
+The subscriber was W1's intended Pi evidence recorder. W1 had created it during
+workstation service startup, before the Pi helper could complete its
+zero-existing-endpoint sentinel. This made the new measurement launch order
+internally contradictory; the failure was not an operator or Hailo defect.
+
+The repair keeps W1's dashboard, rosbridge and web-video services at the initial
+startup phase, but defers `pi-evidence-observer` until all seven Pi publishers
+are observed in the arrival phase. W1 then starts the recorder and waits for its
+READY state. The same order applies to disarmed measurement and armed
+observation, while the default view-only path remains unchanged.
+
+A focused test reproduced the original early-subscriber behavior, then passed
+after the repair. It now requires both that workstation service startup creates
+no Pi evidence subscriber and that publisher arrival starts the subscriber
+before the observer READY wait. Offline verification after the repair:
+
+```text
+Pi lifecycle:             PASS
+live-dashboard preflight: PASS cases=20
+Node:                     pass=80 fail=0
+git diff --check:         clean
+```
+
+No FCU arming, Herelink input, output excursion or VRX Test B motion occurred.
+W1 subsequently reported `WORKSTATION_TEARDOWN=PASS` and exit status `0`. W2
+stopped bridge, observer and VRX in order and left UDP `14555` free; because it
+had reached PRESTART rather than final READY, its expected interrupted-run exit
+status was `130` and it did not emit the post-READY teardown PASS marker. Both
+failed run directories are retained. Test B remains **NOT RUN**.

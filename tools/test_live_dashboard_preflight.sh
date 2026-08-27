@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PREFLIGHT="${1:-$SCRIPT_DIR/live_dashboard_preflight.sh}"
 HELPER="$SCRIPT_DIR/pi_live_hailo_mavlink_dashboard.sh"
 WIKI="$SCRIPT_DIR/../wiki/Live_Hailo_MAVLink_Dashboard_Testing.md"
-EXPECTED_PREFLIGHT_SHA256='d137a84765f7a4a93927407b4a9d67d6516b446666a9f16871bd1c5237815f57'
+EXPECTED_PREFLIGHT_SHA256='2112df7a9e34cf2b62e0dda1a4ddb38692364ce6e0b50f8689e2f05f44228fa1'
 CASE_COUNT=0
 
 # Production selectors are exercised explicitly below. Keep the default
@@ -263,7 +263,7 @@ for literal in \
 done
 pass_case
 
-MEASUREMENT_OBSERVER_OUTPUT="$(
+MEASUREMENT_SERVICE_OUTPUT="$(
   LIVE_FCU_TO_VRX_FANOUT=1 \
   LIVE_FCU_TO_VRX_MEASUREMENT=1 \
   LIVE_ARMED_OBSERVATION_LEFT_CHANNEL=3 \
@@ -282,13 +282,57 @@ MEASUREMENT_OBSERVER_OUTPUT="$(
     start_workstation_services
   ' _ "$PREFLIGHT"
 )"
+if grep -Fq 'child=pi-evidence-observer' <<<"$MEASUREMENT_SERVICE_OUTPUT"; then
+  fail 'disarmed measurement started its subscriber before Pi publishers existed'
+fi
+
+MEASUREMENT_OBSERVER_OUTPUT="$(
+  LIVE_FCU_TO_VRX_FANOUT=1 \
+  LIVE_FCU_TO_VRX_MEASUREMENT=1 \
+  LIVE_ARMED_OBSERVATION_LEFT_CHANNEL=3 \
+  LIVE_ARMED_OBSERVATION_LEFT_PWM_MIN=800 \
+  LIVE_ARMED_OBSERVATION_LEFT_TRIM=800 \
+  LIVE_ARMED_OBSERVATION_LEFT_PWM_MAX=2200 \
+  LIVE_ARMED_OBSERVATION_RIGHT_CHANNEL=1 \
+  LIVE_ARMED_OBSERVATION_RIGHT_PWM_MIN=800 \
+  LIVE_ARMED_OBSERVATION_RIGHT_TRIM=800 \
+  LIVE_ARMED_OBSERVATION_RIGHT_PWM_MAX=2200 \
+  bash -c '
+    source "$1"
+    RUN_DIR=/tmp/fcu-to-vrx-measurement-test
+    start_child() { printf "child=%s %s\n" "$1" "${*:3}"; }
+    log() { printf "%s\n" "$*"; }
+    start_pi_evidence_observer
+  ' _ "$PREFLIGHT"
+)"
 grep -Fq 'child=pi-evidence-observer' <<<"$MEASUREMENT_OBSERVER_OUTPUT" \
-  || fail 'disarmed measurement did not start the Pi evidence observer'
+  || fail 'disarmed measurement did not start its observer after Pi publishers'
 grep -Fq -- '--stale-seconds 0' <<<"$MEASUREMENT_OBSERVER_OUTPUT" \
   || fail 'disarmed measurement observer was not record-only'
 grep -Fq 'FCU_TO_VRX_PI_OBSERVER_STARTED mode=disarmed-measurement stale_seconds=0' \
   <<<"$MEASUREMENT_OBSERVER_OUTPUT" \
   || fail 'disarmed measurement observer marker is missing'
+
+MEASUREMENT_ARRIVAL_OUTPUT="$(
+  LIVE_FCU_TO_VRX_FANOUT=1 \
+  LIVE_FCU_TO_VRX_MEASUREMENT=1 \
+  bash -c '
+    source "$1"
+    STOP_REQUESTED=0
+    ARRIVAL_TIMEOUT_SECONDS=2
+    EXPECTED_TOPICS=()
+    EXPECTED_TOPIC_TYPES=()
+    EXPECTED_TOPIC_RELIABILITY=()
+    EXPECTED_TOPIC_DEPTH=()
+    monitor_workstation_once() { return 0; }
+    all_expected_publishers_present() { return 0; }
+    start_pi_evidence_observer() { printf "observer-started\n"; }
+    wait_for_pi_observer_ready() { printf "observer-ready\n"; }
+    wait_for_pi_data_arrival
+  ' _ "$PREFLIGHT"
+)"
+[ "$MEASUREMENT_ARRIVAL_OUTPUT" = $'observer-started\nobserver-ready' ] \
+  || fail 'Pi evidence observer was not started after publisher arrival and before its READY wait'
 pass_case
 
 set +e
