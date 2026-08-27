@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PREFLIGHT="${1:-$SCRIPT_DIR/live_dashboard_preflight.sh}"
 HELPER="$SCRIPT_DIR/pi_live_hailo_mavlink_dashboard.sh"
 WIKI="$SCRIPT_DIR/../wiki/Live_Hailo_MAVLink_Dashboard_Testing.md"
-EXPECTED_PREFLIGHT_SHA256='d4fc4a72457d8d0d73ef3804023028239036abaaf18a3e4962cb8bd7f2afdbd6'
+EXPECTED_PREFLIGHT_SHA256='00effd85198cf156d08a450504dc9dc4ae0b67a2cb3fa99ea064faa0ff00a3ac'
 CASE_COUNT=0
 
 # Production selectors are exercised explicitly below. Keep the default
@@ -71,7 +71,7 @@ grep -Fq 'the rosbridge `user interrupted with ctrl-c (SIGINT)` line as a discri
 ! grep -Fq 'The signature of a reversed order, observed 07/08/2026' "$WIKI" \
   || fail 'live-dashboard runbook retains the falsified 07/08 stop-order claim'
 
-require_literal "EXPECTED_HELPER_SHA256='ca0c1ff834ac347a04e8a59a01a85c05abe78d939e2083397c2f121a9b24314e'"
+require_literal "EXPECTED_HELPER_SHA256='8cfd313eb8c6a65e6ef903c8d240d91500f5dfea32a52837c2aa7e8425cdbfe5'"
 require_literal 'EXPECTED_SSID="${LIVE_SSID:-IoT IMT Nord Europe}"'
 require_literal 'PI_WINDOW_MODE="${LIVE_PI_WINDOW_MODE:-resizable}"'
 require_literal 'FCU_TO_VRX_FANOUT="${LIVE_FCU_TO_VRX_FANOUT:-0}"'
@@ -143,7 +143,7 @@ PI_COMMAND_OUTPUT="$(bash -c '
 PI_COMMAND_BLOCK="$(sed -n '/^($/,/^)$/{p}' <<<"$PI_COMMAND_OUTPUT")"
 [ -n "$PI_COMMAND_BLOCK" ] || fail 'printed Pi command block missing'
 bash -n <<<"$PI_COMMAND_BLOCK"
-grep -Fq 'ca0c1ff834ac347a04e8a59a01a85c05abe78d939e2083397c2f121a9b24314e' \
+grep -Fq '8cfd313eb8c6a65e6ef903c8d240d91500f5dfea32a52837c2aa7e8425cdbfe5' \
   <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not verify the helper pin'
 grep -Fq 'LIVE_HOLD_AFTER_WINDOW=1' <<<"$PI_COMMAND_BLOCK" \
@@ -169,7 +169,7 @@ grep -Fq 'HAILO_DEMO_ROOT="$PI_RUNTIME_ROOT"' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not preserve the Hailo runtime root'
 grep -Fq '"$PI_HELPER"' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not execute the absolute Desktop helper'
-grep -Fq "\\n' 'ca0c1ff834ac347a04e8a59a01a85c05abe78d939e2083397c2f121a9b24314e' \"\$PI_HELPER\" | sha256sum -c -" \
+grep -Fq "\\n' '8cfd313eb8c6a65e6ef903c8d240d91500f5dfea32a52837c2aa7e8425cdbfe5' \"\$PI_HELPER\" | sha256sum -c -" \
   <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi checksum format contains a literal line break'
 ! grep -Fq './pi_live_hailo_mavlink_dashboard.sh' <<<"$PI_COMMAND_BLOCK" \
@@ -1021,6 +1021,7 @@ CHILD_CASE_OUTPUT="$(bash -c '
   start_child rosbridge "$CASE_DIR/rosbridge.log" "${long_child[@]}"
   start_child web-video-server "$CASE_DIR/video.log" "${long_child[@]}"
   start_child dashboard "$CASE_DIR/dashboard.log" bash -c "sleep 0.15"
+  start_child pi-evidence-observer "$CASE_DIR/observer.log" bash -c "sleep 0.18"
   test_local_ok() { return 0; }
   MONITOR_CALLS=0
   arrival_ok() { return 0; }
@@ -1037,8 +1038,10 @@ CHILD_CASE_OUTPUT="$(bash -c '
     rc=$?
   fi
   [ "$rc" -eq 1 ] || fail "premature child exit returned $rc instead of 1"
-  grep -Fq "CHILD_EXITED: name=dashboard" "$CASE_DIR/monitor.out" \
-    || fail "exited child name was not reported"
+  [ "$(grep -Fc "CHILD_EXITED: name=dashboard" "$CASE_DIR/monitor.out")" -eq 1 ] \
+    || fail "exited child name was not reported exactly once"
+  [ "$(grep -Fc "CHILD_EXITED: name=pi-evidence-observer" "$CASE_DIR/monitor.out")" -eq 1 ] \
+    || fail "later exited child name was not reported exactly once"
   grep -Fq "PHASE_FAIL: phase=supervision" "$CASE_DIR/monitor.out" \
     || fail "supervision failure was not preserved"
   grep -Fq "FAILURE_HOLD=ACTIVE" "$CASE_DIR/monitor.out" \

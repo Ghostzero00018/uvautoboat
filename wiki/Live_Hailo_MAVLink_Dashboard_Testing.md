@@ -26,7 +26,8 @@ the retained `pi` wrapper mode is not part of this procedure.
 ## Current tracked revisions
 
 The repository artifacts below identify the current revisions, refreshed on
-27/08/2026 after the explicit unbounded armed-observation retry mode was added.
+27/08/2026 after the unbounded armed-observation mode and batched source-view
+default were added.
 The tracked Pi helper
 is the copy that must be transferred to the Pi Desktop before a run; a
 previously transferred copy is stale until its hash is checked against the
@@ -39,10 +40,10 @@ below only for traceability.
 | Helper source | `tools/pi_live_hailo_mavlink_dashboard.sh` |
 | Helper Pi destination | resolved Pi Desktop: `$(xdg-user-dir DESKTOP)/pi_live_hailo_mavlink_dashboard.sh` |
 | Helper size | `95,316` bytes |
-| Helper SHA-256 | `ca0c1ff834ac347a04e8a59a01a85c05abe78d939e2083397c2f121a9b24314e` |
+| Helper SHA-256 | `8cfd313eb8c6a65e6ef903c8d240d91500f5dfea32a52837c2aa7e8425cdbfe5` |
 | Workstation supervisor | `tools/live_dashboard_preflight.sh` |
-| Supervisor size | `38,444` bytes |
-| Supervisor SHA-256 | `d4fc4a72457d8d0d73ef3804023028239036abaaf18a3e4962cb8bd7f2afdbd6` |
+| Supervisor size | `38,763` bytes |
+| Supervisor SHA-256 | `00effd85198cf156d08a450504dc9dc4ae0b67a2cb3fa99ea064faa0ff00a3ac` |
 | VRX supervisor | `tools/fcu_to_vrx_workstation.sh` |
 | VRX supervisor size | `26,906` bytes |
 | VRX supervisor SHA-256 | `a5afddc81d59a39d63e7cca77a7b3852e30b5a555f1be2e04f3746f5540bdd5f` |
@@ -108,6 +109,8 @@ arm, command-sentinel, rail, thermal and final-restoration checks remain
 fail-closed. The separate dashboard-to-real-FCU Test A passed on 26/08/2026.
 The first enabled Herelink-to-VRX Test B attempt on 27/08/2026 observed motion
 but failed before final-safe-state capture and is **NOT ACCEPTED**.
+The paired-zero retry reached its safe disarmed baseline and never armed; it
+failed instead on a contradictory GPS source graph check described below.
 
 Before enabling the selector, use the retained T0b artifact for
 `BRD_SAFETY_DEFLT`, mapping and rails, then observe the live hardware-safety
@@ -176,6 +179,11 @@ SITL rerun for revision `eb9a337` and started Test B. The motion chain was
 observed, but the run failed at its armed deadline before final-safe-state
 capture and is not accepted. The unbounded retry repair changes source after
 `eb9a337`; that earlier supersession does not cover the repaired revision.
+
+**Paired-zero retry update 27/08/2026:** the published repair was run from
+clean revision `550b992`. P1 reached its connected/disarmed neutral
+hardware-safe baseline, never armed, and failed on its GPS source verifier.
+Test B remains not formally accepted.
 
 The Pi helper copied to `/home/imt-aqua-drone/Desktop` also passed its
 checksum and `--preflight-only` path. The retained output included
@@ -474,7 +482,57 @@ neutral output, the monitor must record `ARMED_OBSERVATION=PASS` and complete
 final verification. P1 then enters `PI_SOURCE_HOLD=ACTIVE` with
 `PI_SOURCE_HOLD_MODE=completed-armed`; it retains Pi-local safety checks without
 depending on W1 nodes. In that hold, stop W2 first, then W1, and stop P1 last.
-No retry result exists yet.
+Before execution, no retry result existed.
+
+#### Paired-zero retry result
+
+The published paired-zero mode was run from clean revision `550b992` with W1
+`live_dashboard_workstation_20260827_200652`, W2
+`fcu_to_vrx_workstation_20260827_200727` and copied Pi evidence at
+`/home/ghostzero/Desktop/pi_run_evidence/test_b_unbounded_failed_20260827_200821`.
+P1 recorded `duration=unbounded`, `armed_deadline=disabled` and
+`ARMED_OBSERVATION_BASELINE=PASS`. The safety monitor stayed in `READY`; no
+armed transition, deadline abort, command abort, asymmetric output or new
+motion occurred.
+
+Approximately `234 s` after the live window began, three graph queries for
+`/mavros/global_position/raw/fix` returned `query_rc=0` with
+`publisher count 0`. The data-plane fallback was then skipped as
+`no-declared-type`. That result conflicts with the retained NavSatFix sample
+and W1's immediately preceding `40` messages in `10.02 s` at `4.00 Hz`.
+MAVROS remained alive and continued logging no-fix GPS warnings. This is a
+source-verification false negative, not an armed/runtime deadline or FCU
+disconnect.
+
+P1 stopped all named children with `TEARDOWN=PASS cleanup_rc=0`. Its stream
+loss then caused W1 `stale_camera`, W2 `stale_left_thrust` and a zero-message
+W1 RC-input rate probe. W2 and W1 stopped their governed children with
+`cleanup_rc=0`; W1 also reported `WORKSTATION_TEARDOWN=PASS`. The retry never
+reached the armed action and adds no motion evidence.
+
+The earlier armed attempt remains functional evidence for its captured
+interval: machine records prove the output, thrust and `2.47946 m` motion chain,
+and the operator observed Herelink-driven VRX movement. No video was retained
+before the armed deadline stopped that source window. The missing accepted
+final-safe-state capture still means Test B is **ATTEMPTED - FAILED / NOT
+FORMALLY ACCEPTED**.
+
+The operator reported heavy rain and hail during the paired-zero retry. Severe
+weather can degrade GNSS fix quality, but it does not explain a ROS graph
+publisher-count result: retained NavSatFix messages and the W1 rate measurement
+show that the source was still delivering data.
+
+#### Source-verifier repair after the paired-zero retry
+
+The helper now defaults `LIVE_MAVROS_SOURCE_BATCH` to `1`, promoting the
+existing bounded six-topic `rclpy` view that accumulates discovery before the
+unchanged publisher-count and `/mavros` publisher-identity verdict. Explicit
+`LIVE_MAVROS_SOURCE_BATCH=0` retains the legacy daemonless CLI path for
+diagnosis. No data-plane-only acceptance path was added. W1 also records a
+given governed child PID/PGID exit once while continuing to fail every
+subsequent supervision poll. Focused Pi and W1 suites pass; this is an offline
+repair pending the direct live retry, not proof that DDS discovery can never be
+transient.
 
 The W1 certification suite clears inherited live selectors before constructing
 its default fixtures. Configured production selectors are exercised only by
@@ -560,11 +618,12 @@ workstation teardown.
 
 ### Batched MAVROS source view
 
-`LIVE_MAVROS_SOURCE_BATCH` defaults to `0`. At the default the six MAVROS source
-checks run exactly as before, one `ros2 topic info --verbose --no-daemon --spin-time 2`
-process per topic per attempt. Set it to `1` in the Pi terminal before pasting the
-compound command to serve those checks instead from one run-owned `rclpy` participant
-that spins to accumulate discovery and answers all six topics from a single generation.
+`LIVE_MAVROS_SOURCE_BATCH` defaults to `1`. The six MAVROS source checks are
+served from one bounded `rclpy` participant that spins to accumulate discovery
+and answers all six topics from a single generation. The strict publisher-count,
+publisher-identity, retry and deadline verdicts are unchanged. Set it explicitly
+to `0` only to reproduce the legacy per-query `ros2 topic info --verbose
+--no-daemon --spin-time 2` diagnostic path.
 
 The probe budget is split by `LIVE_PROBE_MAX_SECONDS` (default `6`, the outer hard
 bound) and `LIVE_PROBE_STARTUP_RESERVE` (default `3`, withheld for interpreter start,
@@ -727,7 +786,7 @@ D="$(xdg-user-dir DESKTOP)" || exit 1
 D="$(readlink -f -- "$D")" || exit 1
 [ -n "$D" ] && [ -d "$D" ] && [ "$D" != "$H" ] || exit 1
 printf '%s  %s\n' \
-  'ca0c1ff834ac347a04e8a59a01a85c05abe78d939e2083397c2f121a9b24314e' \
+  '8cfd313eb8c6a65e6ef903c8d240d91500f5dfea32a52837c2aa7e8425cdbfe5' \
   "$D/pi_live_hailo_mavlink_dashboard.sh" | sha256sum -c -
 ```
 
@@ -737,7 +796,7 @@ only the helper from a workstation terminal:
 ```bash
 cd ~/seal_ws/src/uvautoboat
 printf '%s  %s\n' \
-  'ca0c1ff834ac347a04e8a59a01a85c05abe78d939e2083397c2f121a9b24314e' \
+  '8cfd313eb8c6a65e6ef903c8d240d91500f5dfea32a52837c2aa7e8425cdbfe5' \
   tools/pi_live_hailo_mavlink_dashboard.sh | sha256sum -c -
 
 read -r -p 'Current Pi SSH endpoint (user@host): ' PI_SSH
@@ -754,7 +813,7 @@ scp tools/pi_live_hailo_mavlink_dashboard.sh \
 ssh "$PI_SSH" "
   cd '$PI_DESKTOP' &&
   printf '%s  %s\n' \
-    'ca0c1ff834ac347a04e8a59a01a85c05abe78d939e2083397c2f121a9b24314e' \
+    '8cfd313eb8c6a65e6ef903c8d240d91500f5dfea32a52837c2aa7e8425cdbfe5' \
     pi_live_hailo_mavlink_dashboard.sh |
   sha256sum -c -
 "
@@ -950,7 +1009,7 @@ then hard-refresh the dashboard. Select `/hailo/overlay/image_raw` in the Camera
 and verify:
 
 - live Hailo boxes and class labels;
-- the Pi desktop window starts fullscreen and remains open with the same live Hailo boxes
+- the Pi desktop window starts resizable and remains open with the same live Hailo boxes
   and class labels;
 - all six MAVROS badges remain `Live` with independent ages below `3.0 s` - the
   sixth is `Thrust`, added 07/08/2026, carrying `/mavros/rc/out` servo output;

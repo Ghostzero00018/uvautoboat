@@ -1119,3 +1119,111 @@ published as `d9dd120` with subject
 `Current uncommitted artifact identities` label records the pre-publication
 state at the time those bytes were calculated. The helper, W1 and W2 byte
 identities themselves are unchanged. No live retry has run on `d9dd120`.
+
+### Paired-zero live retry and EOD handoff - 27/08/2026
+
+The published paired-zero mode was exercised from clean revision `550b992`.
+The retained run directories are:
+
+```text
+W1=/home/ghostzero/Desktop/live_dashboard_workstation_20260827_200652
+W2=/home/ghostzero/Desktop/fcu_to_vrx_workstation_20260827_200727
+Pi=/home/ghostzero/Desktop/pi_run_evidence/test_b_unbounded_failed_20260827_200821
+```
+
+P1 recorded `duration=unbounded`, `armed_deadline=disabled` and
+`ARMED_OBSERVATION_BASELINE=PASS`. The safety monitor remained in `READY`;
+there was no `ARMED` transition, command abort, deadline abort, asymmetric
+output or new motion evidence. The final retained FCU sample was connected,
+disarmed and in `MANUAL`. Hardware safety ON is proven at the baseline only;
+no final hardware-state declaration is inferred from these logs.
+
+The retry failed approximately `234 s` after the live window began. Three
+successful graph queries for `/mavros/global_position/raw/fix` each reported
+`publisher count 0`, then the data-plane fallback was skipped with
+`reason=no-declared-type`. This conflicts with the retained NavSatFix sample
+and W1's immediately preceding `40` messages in `10.02 s` at `4.00 Hz`.
+MAVROS remained alive and continued its no-fix GPS warnings. The evidence
+therefore identifies a source-verification false negative, not an FCU
+disconnect and not a failure of the paired-zero deadline mode.
+
+P1 stopped all named children with `TEARDOWN=PASS` and `cleanup_rc=0`. Loss of
+the Pi streams then caused the W1 observer to abort on `stale_camera`, the W2
+observer to abort on `stale_left_thrust`, and the W1 RC-input rate probe to
+receive zero messages. W2 stopped bridge, observer and VRX with `cleanup_rc=0`;
+W1 stopped dashboard, web-video-server and rosbridge with
+`WORKSTATION_TEARDOWN=PASS cleanup_rc=0`. A workstation post-run check found
+no governed process and no listener on `8002`, `8080`, `9090` or `14555`.
+
+The first armed attempt remains a genuine functional result for the observed
+interval: retained machine evidence proves Herelink input reached real-FCU
+output, mapped thrust and `2.47946 m` of VRX motion, and the operator observed
+the boat move in VRX. No video was retained because the armed deadline ended
+the source window before the operator could record one. This does not convert
+the attempt into formal acceptance because the recorders did not capture the
+required final connected/disarmed, neutral and hardware-safe state.
+
+Test B closes 27/08/2026 as **ATTEMPTED - FAILED / NOT FORMALLY ACCEPTED**.
+The minimal next-source change is to make the existing bounded, accumulated-
+discovery MAVROS source view the default while retaining exact publisher
+identity checks. The repeated W1
+`CHILD_EXITED` marker in failure hold also needs one-shot reporting. After the
+minimal repair is tested and published, the next operator flow is the direct
+`W1 -> W2 -> P1` Test B pipeline. No separate SITL, T0b, disarmed-measurement
+or standalone Pi preflight is scheduled; the supervisors' built-in fail-closed
+checks remain mandatory.
+
+`RC_OVERRIDE_TIME=0.5` remains the last verified live value. Rollback to
+`3.0`, live readback and a retained rollback snapshot remain pending after the
+campaign is accepted or abandoned, or before any different operation.
+
+### EOD minimal verifier repair - 27/08/2026
+
+The source failure is bounded to the default daemonless graph-query path. The
+retained NavSatFix sample and the W1 `4.00 Hz` measurement prove the GPS data
+stream remained live while a fresh graph participant reported zero publishers.
+The operator also reported heavy rain and hail during the run. That weather can
+degrade GNSS fix quality, but it cannot explain a ROS publisher-count result;
+the weather is context, not the cause of the supervisor abort.
+
+The narrow repair promotes the existing bounded six-topic `rclpy` source view
+by changing `LIVE_MAVROS_SOURCE_BATCH` from default `0` to default `1`. It
+retains the exact publisher-count, `/mavros` identity, retry, deadline and
+command-sentinel verdicts. Explicit `LIVE_MAVROS_SOURCE_BATCH=0` remains
+available only to reproduce the legacy per-query diagnostic path. No
+data-plane-only bypass or publisher-identity relaxation was added.
+
+W1 now latches each governed child PID/PGID exit message, so failure hold keeps
+returning failure without printing the same `CHILD_EXITED` line every second.
+Red-first focused coverage pinned the new default and one-shot marker; the Pi
+lifecycle suite and W1 preflight suite then passed, with W1 reporting
+`cases=22`.
+
+Current repaired artifact identities are:
+
+```text
+Pi helper size=95316 sha256=8cfd313eb8c6a65e6ef903c8d240d91500f5dfea32a52837c2aa7e8425cdbfe5
+W1 size=38763 sha256=00effd85198cf156d08a450504dc9dc4ae0b67a2cb3fa99ea064faa0ff00a3ac
+```
+
+This is an offline repair ready for live validation, not proof that discovery
+can never be transient. Test B remains **ATTEMPTED - FAILED / NOT FORMALLY
+ACCEPTED**. The next live action is the same direct `W1 -> W2 -> P1` paired-zero
+pipeline after transferring the repaired helper. No separate SITL, T0b,
+disarmed-measurement or standalone Pi preflight is scheduled; all built-in
+supervisor gates and fresh physical/live approvals still apply.
+
+The complete offline EOD verification is:
+
+```text
+Pi lifecycle:             PASS
+live-dashboard preflight: PASS cases=22
+real-FCU helpers:         PASS cases=34
+SITL runner:              PASS cases=41
+FCU-to-VRX:               PASS shell_cases=23 python_tests=35 runtime=not-started
+Python tools:             123 passed
+Node:                     tests=80 pass=80 fail=0
+bundle manifest:          4/4 OK
+shell syntax:             PASS
+git diff --check:         clean
+```

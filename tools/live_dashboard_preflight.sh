@@ -7,7 +7,7 @@ REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 DASHBOARD_DIR="$REPO_ROOT/web_dashboard/autoboat"
 HELPER="$SCRIPT_DIR/pi_live_hailo_mavlink_dashboard.sh"
 FCU_TO_VRX_EVIDENCE="$SCRIPT_DIR/fcu_to_vrx_evidence.py"
-EXPECTED_HELPER_SHA256='ca0c1ff834ac347a04e8a59a01a85c05abe78d939e2083397c2f121a9b24314e'
+EXPECTED_HELPER_SHA256='8cfd313eb8c6a65e6ef903c8d240d91500f5dfea32a52837c2aa7e8425cdbfe5'
 EXPECTED_SSID="${LIVE_SSID:-IoT IMT Nord Europe}"
 PI_WINDOW_MODE="${LIVE_PI_WINDOW_MODE:-resizable}"
 FCU_TO_VRX_FANOUT="${LIVE_FCU_TO_VRX_FANOUT:-0}"
@@ -424,6 +424,14 @@ emit_marker_once() {
   log "$*"
 }
 
+log_error_once() {
+  local key="$1"
+  shift
+  [ "${EMITTED_MARKERS[$key]:-0}" -eq 0 ] || return 0
+  EMITTED_MARKERS[$key]=1
+  log_error "$*"
+}
+
 init_supervisor_state() {
   CHILD_NAMES=()
   CHILD_PIDS=()
@@ -518,18 +526,21 @@ start_child() {
 }
 
 monitor_children_once() {
-  local verifier_fn="${1:-:}" i
+  local verifier_fn="${1:-:}" i child_failed=0
   for ((i=0; i<${#CHILD_NAMES[@]}; i++)); do
     if ! kill -0 "${CHILD_PIDS[$i]}" 2>/dev/null; then
-      log_error "CHILD_EXITED: name=${CHILD_NAMES[$i]} pid=${CHILD_PIDS[$i]}"
-      return 1
+      log_error_once "CHILD_EXITED_${CHILD_PIDS[$i]}" \
+        "CHILD_EXITED: name=${CHILD_NAMES[$i]} pid=${CHILD_PIDS[$i]}"
+      child_failed=1
+      continue
     fi
     if ! group_alive "${CHILD_PGIDS[$i]}"; then
-      log_error \
+      log_error_once "CHILD_GROUP_EXITED_${CHILD_PGIDS[$i]}" \
         "CHILD_GROUP_EXITED: name=${CHILD_NAMES[$i]} pgid=${CHILD_PGIDS[$i]}"
-      return 1
+      child_failed=1
     fi
   done
+  [ "$child_failed" -eq 0 ] || return 1
   "$verifier_fn"
 }
 

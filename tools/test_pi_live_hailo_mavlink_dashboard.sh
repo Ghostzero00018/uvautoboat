@@ -55,6 +55,8 @@ require_literal "die 'HAILO_LOCAL_WINDOW_MODE must be resizable or fullscreen'"
 require_literal 'FINAL_VERIFY_SECONDS="${LIVE_FINAL_VERIFY_SECONDS:-180}"'
 require_literal '[[ "$FINAL_VERIFY_SECONDS" =~ ^[1-9][0-9]*$ ]]'
 require_literal "die 'LIVE_FINAL_VERIFY_SECONDS must be a positive integer'"
+require_literal 'MAVROS_SOURCE_BATCH="${LIVE_MAVROS_SOURCE_BATCH:-1}"'
+reject_literal 'MAVROS_SOURCE_BATCH="${LIVE_MAVROS_SOURCE_BATCH:-0}"'
 require_literal 'for command in fuser ss setsid iwgetid ip install ros2 timeout; do'
 require_literal 'timeout --signal=KILL'
 reject_literal 'timeout --foreground'
