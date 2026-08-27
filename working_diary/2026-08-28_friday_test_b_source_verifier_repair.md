@@ -107,8 +107,29 @@ Start the same live pipeline directly:
 2. W2: `tools/fcu_to_vrx_workstation.sh run` with correlated observation.
 3. P1: paste only the exact compound command emitted by W1.
 
-There is no separate SITL run, T0b probe, disarmed-measurement run or standalone
-Pi preflight before this retry. Do not bypass the checks already embedded in
+The user explicitly supersedes a new full current-revision SITL acceptance for
+this 28/08/2026 Test B retry. The acceptance remains stale; this decision does
+not reclassify it as current, and no separate SITL run is scheduled. The scope
+is supported by the reviewed dependency boundary:
+
+1. `tools/real_fcu_rc_command_bridge.py`, the SITL runner, its operator and
+   evidence tools, and the dashboard application are unchanged since the
+   passing `147efe0` run.
+2. `tools/live_dashboard_preflight.sh` changed afterwards, but its SITL entry
+   and shared `start_child` function did not. The SITL runner uses its own
+   `sitl_monitor_children_once`; the later one-shot child-reporting change was
+   made in the separate `monitor_children_once` path. The `41`-case SITL suite
+   passes on the current source, but it is not represented as an integrated
+   acceptance run.
+3. Test B uses the outbound FCU-to-VRX path through
+   `tools/fcu_to_vrx_workstation.sh` and `tools/servo_command_bridge.py`; it
+   does not invoke the guarded command-ingress bridge above.
+
+This supersession applies only to that SITL precondition for this retry. It
+does not authorize Test B, carry hardware approval into 28/08/2026, waive any
+W1, W2 or P1 fail-closed gate, or carry forward to a later retry or revision.
+Apart from that, there is no separate T0b probe, disarmed-measurement run or
+standalone Pi preflight before this retry. Do not bypass the checks embedded in
 W1, W2 or P1. Before any arm, require the fresh physical declaration, explicit
 Test B approval, `ARMED_OBSERVATION_BASELINE=PASS`, W1
 `FCU_TO_VRX_PI_OBSERVER=READY`, W1 `W5_RATE_PROBES=PASS` and W2
