@@ -11,9 +11,12 @@ authorise or start a powered run.
 
 - `RC_OVERRIDE_TIME=0.5` remains live for Test B; rollback to `3.0` remains
   mandatory after Test B or before any different operation.
-- Test B is **NOT RUN** and remains blocked by `/wamv/pose` versus
-  `/model/wamv/pose`. Repair and prove that contract offline before any live
-  Test B start.
+- Test B is **NOT RUN**. It was recorded here as blocked by `/wamv/pose` versus
+  `/model/wamv/pose`. **Withdrawn 27/08/2026** - the topic was never wrong; see
+  "Pose and readiness repair - 27/08/2026" at the end of this file. The real
+  defect was the transform selected from that stream, now repaired offline.
+  Test B remains blocked on the physical declaration, approval, current-source
+  SITL acceptance and the query tier.
 
 ## Objective
 
@@ -101,6 +104,11 @@ operation.
 
 ## Blocker to close before any Test B live start
 
+**Withdrawn 27/08/2026.** The diagnosis in this section is superseded by "Pose
+and readiness repair - 27/08/2026" at the end of this file. `/wamv/pose` was
+correct; step 1 below must not be carried out. The section is retained as the
+record of what was believed at the 26/08/2026 close.
+
 The 26/08/2026 W2 record-only evidence exposed a pose-topic mismatch:
 
 ```text
@@ -152,8 +160,10 @@ Pi `RELEASED_DISARMED` prompt before the readiness wait and pass the complete
 helper suite. Recheck those assertions after any helper edit.
 
 Test B uses different supervisors and must not inherit the Test A numbers by
-assumption. Current source defaults W1 publisher arrival to `360 s` and W2
-readiness to `120 s`. The Pi helper defaults its armed-observation maximum,
+assumption. Current source defaults W1 publisher arrival to `360 s`, W2 pre-Pi
+readiness to `120 s` and W2 post-Pi observer readiness to `900 s`
+(`FCU_TO_VRX_OBSERVER_READY_TIMEOUT_SECONDS`; it spans the operator's Pi start,
+so it is deliberately longer than its pre-Pi sibling). The Pi helper defaults its armed-observation maximum,
 final and stale limits to `30/30/5 s`, but W1 requires those three values to be
 set explicitly when armed observation is enabled. Correlated W2 observation
 also requires an explicit `FCU_VRX_OBSERVER_STALE_SECONDS` value.
@@ -233,8 +243,23 @@ Also require, before launch:
   after the snapshot. If this cannot be established, fetch a fresh complete
   list and pin the new bytes before continuing.
 
-The Test A approval is expired. Test B requires a separate explicit approval
-after all gates above pass.
+Two evidence gates sit alongside the physical and environmental items above and
+are **not** satisfied by any preflight command:
+
+- **current-source SITL acceptance.** The recorded `SITL_VERDICT=PASS` /
+  `SITL_ADJUDICATION=PASS` was earned on `3ca6b0b`; `81efb73` later changed
+  `tools/real_fcu_rc_command_bridge.py`, the bridge the SITL runner launches
+  under test. A fresh acceptance on current source is required, or an explicit
+  operator supersession that names this gate.
+- **query-tier (T0b) closure.** No tracked file records T0b closed. It requires
+  a successful parameter response and the mapping/rail artifact over the direct
+  link, or an explicit operator supersession that names this gate.
+
+The Test A approval is expired. Test B requires a separate explicit approval,
+and that approval may only be requested once the physical declaration, the
+environmental items and **both evidence gates above** are satisfied or
+explicitly superseded. Passing the preflight commands alone does not reach the
+approval question.
 
 ## Observation limits to resolve before launch
 
@@ -348,3 +373,197 @@ Test B remains **NOT RUN**. After the pose repair, offline checks, measured
 limits, fresh physical declaration and all preflight gates pass, ask exactly:
 
 > Do you approve starting the bounded Herelink-to-VRX Test B now?
+
+## Pose and readiness repair - 27/08/2026 (offline only)
+
+The pose-topic blocker recorded above is **withdrawn**. A source review of the
+installed `vrx_gz` established that `/wamv/pose` was correct all along, and that
+the observed `WAIT_DATA` had a different cause. Nothing in this section was run
+against a simulator, Pi, FCU, Herelink or network.
+
+### The topic was never wrong
+
+`/model/wamv/pose` is the Gazebo transport name. `vrx_gz` bridges it to the
+relative ROS topic `pose`, and launches the `ros_gz_bridge` node inside
+`PushRosNamespace('wamv')`, so the resolved ROS topic is `/wamv/pose`.
+
+The 26/08 diagnosis came from the bridge start-up log, which prints configured
+Gazebo-side names on both sides of its arrow. The same log in the same retained
+run renders the thrust bridge as `wamv/thrusters/left/thrust ->
+wamv/thrusters/left/thrust`, yet that run captured `1,195` events on
+`/wamv/thrusters/left/thrust`. The log form therefore cannot distinguish the two
+names. Independently, VRX's own `pose_tf_broadcaster` subscribes to the relative
+`pose` inside the same namespace, so a bridge publishing `/model/wamv/pose`
+would break VRX's own transform tree.
+
+`tools/fcu_to_vrx_workstation.sh` keeps `--pose-topic /wamv/pose`.
+
+### The real defect
+
+The recorder selected the first transform whose `child_frame_id` ended in
+`base_link`. The WAM-V `PosePublisher` runs with `publish_link_pose=false` and
+`publish_model_pose=true`, so `base_link` appears only as the *parent* of static
+sensor transforms and never as the child of a moving one. The filter matched
+nothing, `seen("pose")` never fired, and the observer could not leave
+`WAIT_DATA`.
+
+`tools/fcu_to_vrx_evidence.py` now selects the transform whose parent is the
+launched world frame, passed by the supervisor as `--world-frame`, so the
+vehicle's own model name is never assumed. When no transform matches, the
+recorder appends one `pose_frame_mismatch` event naming the observed parent
+frames and prints a matching marker, so a wrong world frame is named instead of
+stalling silently.
+
+### Two-stage workstation readiness
+
+`servo_output_raw` and both thrust streams originate from the Pi fanout, so
+waiting for four-stream observer readiness before the Pi starts would deadlock.
+W2 therefore gates in two stages:
+
+```text
+pre-Pi   VRX topics incl. /wamv/pose -> observer subscriptions started
+         -> one recorded pose baseline -> UDP 14555 listening
+         -> FCU_TO_VRX_WORKSTATION_PRESTART=PASS
+post-Pi  FCU_TO_VRX_VRX_OBSERVER_READY=PASS topics=4
+         -> FCU_TO_VRX_WORKSTATION_READY=PASS ... observer=ready streams=4
+```
+
+No arming before the final `READY` line. The pre-Pi pose baseline is provable
+without the Pi, so a world-frame mismatch now stops the run before the operator
+starts the boat rather than after. The post-Pi wait uses its own timeout,
+`FCU_TO_VRX_OBSERVER_READY_TIMEOUT_SECONDS`, default `900`, because it spans the
+operator's Pi start.
+
+`FCUVRX_READY_REACHED` is still set only at the final `READY`, so a run that
+never reaches four-stream readiness cannot report `TEARDOWN=PASS`.
+
+### Coverage
+
+Transform selection, the previous `base_link` filter matching nothing, wrong and
+empty world frames, a message without the world parent, and parent-frame
+reporting are covered in `tools/test_fcu_to_vrx_evidence.py`. The pre-Pi pose
+gate (timeout, named mismatch, satisfied baseline), the post-Pi readiness gate
+(`STARTED` alone rejected, `READY` accepted), the `--world-frame` argument, the
+pose topic in the VRX gate and the prestart/ready ordering are covered in
+`tools/test_fcu_to_vrx_workstation.sh`.
+
+The selection tests were confirmed to fail against the previous implementation
+before being accepted as passing: with the `base_link` filter restored,
+`test_selects_the_model_root_under_the_world_frame` fails.
+
+### Documentation
+
+The runbook diagnosis, `Board.md` and `wiki/Roadmap.md` carried the withdrawn
+topic-mismatch claim; each now carries a dated forward correction, and the dated
+26/08 rows are otherwise left intact. The same two files also asserted a
+current-source SITL acceptance that `81efb73` had already invalidated; both now
+record that the SITL acceptance and the query tier (T0b) remain open.
+
+### Offline gate
+
+```text
+Pi lifecycle: PASS
+live-dashboard preflight: PASS cases=17
+real-FCU helper suite: PASS cases=32
+SITL runner suite: PASS cases=41
+FCU-to-VRX workstation: PASS shell_cases=21 python_tests=21 runtime=not-started
+Python: 106 passed
+Node: tests=80 pass=80 fail=0
+bundle manifest: 4/4 OK
+GATE_RC=0
+```
+
+Whitespace checks passed. Test B remains **NOT RUN**. The physical declaration,
+Block D/Test B approval, current-source SITL acceptance and the query tier are
+all still open, and no workstation-only VRX run has been performed to confirm
+the live frame names.
+
+### Review follow-ups on the same repair - 27/08/2026
+
+An adversarial review of the repair above found further defects, all closed
+offline in the same change.
+
+- **The runbook start order contradicted the new gate.** It still said `W2` must
+  be ready before the Pi starts, which the two-stage gate makes unreachable. It
+  now names `FCU_TO_VRX_WORKSTATION_PRESTART=PASS` as the pre-Pi gate the
+  UDP-listener rule is actually about, and the four-stream
+  `FCU_TO_VRX_WORKSTATION_READY=PASS` as the post-Pi arming gate.
+- **`publish_model_pose=true` is not upstream VRX.** It comes from this
+  workspace's vrx commit `e384cd65`, applied by
+  `one_click_launch_all/patch_vrx.sh`. The recorder docstring said otherwise.
+  The wording is corrected, and the pre-Pi abort now names the disabled-model-pose
+  case alongside a wrong world name, because both produce the same signature.
+- **Readiness was set membership, never recency.** A pose sample recorded during
+  the pre-Pi hold could satisfy the four-stream marker minutes later, after the
+  operator had started the Pi. When a staleness limit is set, readiness now
+  additionally requires every stream to be within it, so `observer=ready
+  streams=4` means four concurrently live streams. Record-only mode keeps
+  membership semantics, having no acceptance role.
+- **Pose was recorded at the simulator step rate.** Over a pre-Pi hold that
+  lasts as long as the operator takes, that dominated the retained stream. The
+  record is now thinned to `20 Hz`, far finer than the motion correlation needs.
+  Readiness and staleness still observe every message.
+- **`FCU_TO_VRX_OBSERVER_READY_TIMEOUT_SECONDS` was unvalidated**, unlike the two
+  tunables beside it, so a bad override would have failed the run mid-flight
+  rather than in static preflight. It is validated now.
+- **The pose fixture used invented frame names.** It now uses the names this
+  repository recorded live on 10/04/2026: model root `sydney_regatta -> wamv`,
+  and double-prefixed sensor parents `wamv/wamv/base_link`. That name does end
+  in `base_link`, which is why the previous filter looked plausible - but it
+  appears only as a parent, never as a `child_frame_id`.
+- The withdrawn topic-mismatch claim is now marked withdrawn at the two places
+  earlier in this file that still asserted it, and the runbook records a dated
+  forward correction for the reopened current-source SITL acceptance.
+
+Both new behaviours were confirmed to fail against the pre-fix implementation
+before being accepted: with membership-only readiness,
+`test_fail_closed_mode_rejects_a_stale_pre_pi_pose` fails; with unthrottled
+recording, `test_samples_inside_the_gap_are_not_recorded` fails.
+
+```text
+Pi lifecycle: PASS
+live-dashboard preflight: PASS cases=17
+real-FCU helper suite: PASS cases=32
+SITL runner suite: PASS cases=41
+FCU-to-VRX workstation: PASS shell_cases=22 python_tests=30 runtime=not-started
+Python: 115 passed
+Node: tests=80 pass=80 fail=0
+bundle manifest: 4/4 OK
+GATE_RC=0
+```
+
+Still offline only. Test B remains **NOT RUN**, and no workstation-only VRX run
+has confirmed the live frame names against a running simulator.
+
+### Closure defects from the second review - 27/08/2026
+
+- **The post-Pi budget was unrecoverable from a retained run.**
+  `FCU_TO_VRX_OBSERVER_READY_TIMEOUT_SECONDS` governs acceptance but appeared in
+  no artifact, so a later adjudicator could not prove which value applied.
+  `manifest/environment.txt` now records `ready_timeout_seconds` and
+  `observer_ready_timeout_seconds`; the pre-Pi marker carries both, the final
+  `READY` marker carries the observer-ready timeout and the staleness limit that
+  governed it, and the timeout failure message names the value it exceeded. A
+  focused case requires all four keys, so the manifest cannot drift from the
+  markers.
+- **The approval question was reachable through preflight alone.** The
+  enumerated 27/08 list held only physical and environmental items, while the
+  approval sentence read "after all gates above pass". Current-source SITL
+  acceptance and query-tier (T0b) closure are now enumerated beside them as
+  evidence gates that no preflight command can satisfy, each with its explicit
+  supersession alternative, and the approval sentence states that passing the
+  preflight commands alone does not reach the approval question.
+- Malformed emphasis in the `Board.md` and `wiki/Roadmap.md` forward-correction
+  pointers is repaired.
+
+```text
+Pi lifecycle: PASS
+live-dashboard preflight: PASS cases=17
+real-FCU helper suite: PASS cases=32
+SITL runner suite: PASS cases=41
+FCU-to-VRX workstation: PASS shell_cases=23 python_tests=30 runtime=not-started
+Python: 115 passed
+Node: tests=80 pass=80 fail=0
+bundle manifest: 4/4 OK
+GATE_RC=0
+```

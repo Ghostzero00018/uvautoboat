@@ -16,6 +16,9 @@ from typing import Any, Mapping, Sequence
 
 SCHEMA = "uvautoboat.fcu_to_vrx.evidence.v1"
 MOTOR_OUTPUTS_BIT = 32768
+# Pose is recorded at most this often. 20 Hz is far finer than the motion
+# correlation needs and keeps a long pre-Pi hold from dominating the stream.
+POSE_EVENT_MIN_GAP_NS = 50_000_000
 
 
 class EvidenceError(RuntimeError):
@@ -135,6 +138,73 @@ def append_event(path: Path, kind: str, **values: Any) -> dict[str, Any]:
 def sync_evidence(path: Path) -> None:
     with path.open("rb") as stream:
         os.fsync(stream.fileno())
+
+
+def required_streams_are_live(
+    required: Any, last_seen: Mapping[str, int], now: int, stale_seconds: int
+) -> bool:
+    """All required streams present, and fresh when a limit is set.
+
+    Membership alone would let a pose sample recorded during the long pre-Pi
+    hold satisfy readiness minutes later, after the operator has started the
+    Pi. Record-only mode (stale_seconds == 0) keeps membership semantics; the
+    fail-closed mode that gates arming also requires every stream to be within
+    its limit, so READY means four concurrently live streams.
+    """
+    if not set(required).issubset(last_seen):
+        return False
+    if stale_seconds == 0:
+        return True
+    limit = stale_seconds * 1_000_000_000
+    return all(now - last_seen[kind] <= limit for kind in required)
+
+
+def pose_event_is_due(last_event_ns: int | None, now_ns: int) -> bool:
+    """Whether another pose sample should be written to the retained stream.
+
+    Readiness and staleness observe every message; only the retained record is
+    thinned, so the correlation contracts are unaffected.
+    """
+    return (
+        last_event_ns is None
+        or now_ns - last_event_ns >= POSE_EVENT_MIN_GAP_NS
+    )
+
+
+def observed_parent_frames(transforms: Any) -> list[str]:
+    """Parent frame ids present in one TFMessage, sorted and de-duplicated."""
+    return sorted({str(item.header.frame_id) for item in transforms})
+
+
+def select_world_transform(transforms: Any, world_frame: str) -> Any:
+    """Return the transform published directly against the world frame.
+
+    In this workspace the WAM-V gz PosePublisher runs with
+    publish_link_pose=false and publish_model_pose=true. The second value is
+    not upstream VRX's default: it comes from this workspace's own vrx commit
+    e384cd65, applied by one_click_launch_all/patch_vrx.sh. With it in place
+    the only transform carrying WAM-V world displacement is the model root,
+    whose parent is the world frame (the launched world name, e.g.
+    sydney_regatta) and whose child is the bare model name.
+
+    Link names such as base_link appear only as parents of sensor transforms
+    -- observed as the double-prefixed wamv/wamv/base_link -- and never as the
+    child of a moving one, so selecting on the child name matches nothing.
+
+    If the patch is absent, publish_model_pose is false, no transform carries
+    the world frame as parent, and this returns None on every message. The
+    caller reports that as a frame mismatch listing the observed parents,
+    which is also the signature of a genuinely wrong world name.
+
+    The world frame is supplied by the caller from the launched world name;
+    the vehicle's own model name is never assumed here.
+    """
+    if not world_frame:
+        return None
+    for item in transforms:
+        if str(item.header.frame_id) == world_frame:
+            return item
+    return None
 
 
 def write_status(path: Path, phase: str, **values: Any) -> None:
@@ -508,6 +578,8 @@ def _run_observer(args: argparse.Namespace) -> int:
             super().__init__(f"fcu_to_vrx_{args.side}_observer")
             self.failed = False
             self.ready = False
+            self.pose_mismatch_reported = False
+            self.last_pose_event_ns: int | None = None
             self.last_seen: dict[str, int] = {}
             if args.side == "pi":
                 from mavros_msgs.msg import RCOut, State, SysStatus
@@ -545,8 +617,11 @@ def _run_observer(args: argparse.Namespace) -> int:
             )
 
         def seen(self, kind: str) -> None:
-            self.last_seen[kind] = time.monotonic_ns()
-            if not self.ready and self.required.issubset(self.last_seen):
+            now = time.monotonic_ns()
+            self.last_seen[kind] = now
+            if not self.ready and required_streams_are_live(
+                self.required, self.last_seen, now, args.stale_seconds
+            ):
                 self.ready = True
                 append_event(output, "observer_ready", side=args.side)
                 write_status(status, "READY", side=args.side)
@@ -670,19 +745,42 @@ def _run_observer(args: argparse.Namespace) -> int:
             self.seen("right_thrust")
             append_event(output, "right_thrust", value=value)
 
+        def note_pose_frame_mismatch(self, message: Any) -> None:
+            """Name a wrong or missing world frame once, instead of stalling silently."""
+            if self.pose_mismatch_reported:
+                return
+            self.pose_mismatch_reported = True
+            observed = observed_parent_frames(message.transforms)
+            append_event(
+                output,
+                "pose_frame_mismatch",
+                side=args.side,
+                expected_frame=args.world_frame,
+                observed_frames=observed,
+            )
+            print(
+                f"FCU_TO_VRX_{args.side.upper()}_POSE_FRAME_MISMATCH "
+                f"expected={args.world_frame} "
+                f"observed={','.join(observed) if observed else 'none'}",
+                flush=True,
+            )
+
         def pose_cb(self, message: Any) -> None:
-            transform = next(
-                (
-                    item
-                    for item in message.transforms
-                    if str(item.child_frame_id).endswith("base_link")
-                ),
-                None,
+            transform = select_world_transform(
+                message.transforms, args.world_frame
             )
             if transform is None:
+                self.note_pose_frame_mismatch(message)
                 return
             translation = transform.transform.translation
             self.seen("pose")
+            # Readiness and staleness see every message; the retained stream
+            # does not. VRX publishes pose at the simulator step rate, and the
+            # pre-Pi hold lasts as long as the operator takes to start the Pi.
+            now = time.monotonic_ns()
+            if not pose_event_is_due(self.last_pose_event_ns, now):
+                return
+            self.last_pose_event_ns = now
             append_event(
                 output,
                 "pose",
@@ -745,6 +843,7 @@ def build_parser() -> argparse.ArgumentParser:
                 "--right-thrust-topic", default="/wamv/thrusters/right/thrust"
             )
             observer.add_argument("--pose-topic", default="/wamv/pose")
+            observer.add_argument("--world-frame", required=True)
     adjudicate = subparsers.add_parser("adjudicate")
     adjudicate.add_argument("--pi-events", required=True)
     adjudicate.add_argument("--vrx-events", required=True)

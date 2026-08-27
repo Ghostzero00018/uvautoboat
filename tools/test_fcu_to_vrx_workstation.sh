@@ -17,6 +17,15 @@ pass_case() {
   CASE_COUNT=$((CASE_COUNT + 1))
 }
 
+extract_function() {
+  local name="$1"
+  awk -v start="${name}() {" '
+    $0 == start { capture = 1 }
+    capture { print }
+    capture && $0 == "}" { exit }
+  ' "$SUPERVISOR"
+}
+
 require_text() {
   local text="$1" literal="$2" message="$3"
   grep -Fq -- "$literal" <<<"$text" || fail_test "$message"
@@ -326,6 +335,139 @@ USAGE_RC=$?
 set -e
 [ "$USAGE_RC" -eq 2 ] || fail_test "usage returned $USAGE_RC instead of 2"
 require_text "$USAGE_OUTPUT" 'check|run' 'usage does not expose check and run'
+pass_case
+
+# --- two-stage readiness and world-frame pose selection -------------------
+
+SUPERVISOR_SOURCE="$(cat "$SUPERVISOR")"
+require_text "$SUPERVISOR_SOURCE" '--world-frame "$FCUVRX_WORLD"' \
+  'the observer command does not pass the launched world as the pose parent frame'
+require_text "$(extract_function fcuvrx_topics_present)" '/wamv/pose' \
+  'the pre-Pi VRX topic gate does not require the pose topic'
+# Every wait tunable is validated before anything starts, so a bad override
+# cannot kill the supervisor mid-run.
+PREFLIGHT_BODY="$(extract_function fcuvrx_static_preflight)"
+for timeout_name in FCU_TO_VRX_READY_TIMEOUT_SECONDS FCU_TO_VRX_POLL_SECONDS \
+  FCU_TO_VRX_OBSERVER_READY_TIMEOUT_SECONDS; do
+  require_text "$PREFLIGHT_BODY" "$timeout_name" \
+    "static preflight does not validate $timeout_name"
+done
+pass_case
+
+set +e
+BAD_TIMEOUT_OUTPUT="$(env "${VALID_ENV[@]}" \
+  FCU_TO_VRX_OBSERVER_READY_TIMEOUT_SECONDS=0 bash -c '
+    source "$1"
+    fcuvrx_validate_positive_integer FCU_TO_VRX_OBSERVER_READY_TIMEOUT_SECONDS \
+      "$FCUVRX_OBSERVER_READY_TIMEOUT_SECONDS"
+  ' _ "$SUPERVISOR" 2>&1)"
+BAD_TIMEOUT_RC=$?
+set -e
+[ "$BAD_TIMEOUT_RC" -ne 0 ] \
+  || fail_test 'a non-positive observer-ready timeout was accepted'
+require_text "$BAD_TIMEOUT_OUTPUT" \
+  'FCU_TO_VRX_OBSERVER_READY_TIMEOUT_SECONDS must be a positive integer' \
+  'the rejected observer-ready timeout did not report its contract'
+pass_case
+
+# Every wait budget that governs acceptance must be recoverable from the
+# retained run, so a later adjudicator can prove which value applied.
+MANIFEST_BODY="$(extract_function fcuvrx_write_manifest)"
+for manifest_key in 'ready_timeout_seconds=' 'observer_ready_timeout_seconds=' \
+  'observer_stale_seconds=' 'correlated_observation='; do
+  require_text "$MANIFEST_BODY" "$manifest_key" \
+    "the run manifest does not record $manifest_key"
+done
+RUN_BODY_TIMEOUTS="$(extract_function fcuvrx_run)"
+require_text "$RUN_BODY_TIMEOUTS" \
+  'observer_ready_timeout_seconds=$FCUVRX_OBSERVER_READY_TIMEOUT_SECONDS' \
+  'the readiness markers do not record the observer-ready timeout'
+require_text "$(extract_function fcuvrx_run)" \
+  'observer_stale_seconds=${FCU_VRX_OBSERVER_STALE_SECONDS:-0}' \
+  'the final READY marker does not record the staleness limit that governed it'
+pass_case
+
+# The pre-Pi gate must be provable without the Pi, and the post-Pi gate must
+# require the observer's own four-stream READY marker, not its STARTED marker.
+POSE_ROOT="$FIXTURE_ROOT/pose_gate"
+mkdir -p "$POSE_ROOT/evidence" "$POSE_ROOT/logs"
+: >"$POSE_ROOT/evidence/vrx_events.jsonl"
+
+pose_gate() {
+  bash -c '
+    set -uo pipefail
+    source "$1"
+    set +e
+    FCUVRX_RUN_DIR="$2"
+    FCUVRX_READY_TIMEOUT_SECONDS=1
+    FCUVRX_POLL_SECONDS=1
+    fcuvrx_children_alive() { return 0; }
+    fcuvrx_wait_pose_baseline
+    printf "rc=%s\n" "$?"
+  ' _ "$SUPERVISOR" "$POSE_ROOT" 2>&1
+}
+
+require_text "$(pose_gate)" 'rc=1' \
+  'an empty evidence stream did not time out the pose baseline gate'
+pass_case
+
+printf '{"kind":"pose_frame_mismatch","expected_frame":"sydney_regatta"}\n' \
+  >"$POSE_ROOT/evidence/vrx_events.jsonl"
+require_text "$(pose_gate)" 'rc=2' \
+  'a recorded world-frame mismatch was not reported distinctly'
+pass_case
+
+printf '{"kind":"pose","x":1.0}\n' >"$POSE_ROOT/evidence/vrx_events.jsonl"
+require_text "$(pose_gate)" 'rc=0' \
+  'a recorded pose baseline did not satisfy the pre-Pi gate'
+pass_case
+
+READY_ROOT="$FIXTURE_ROOT/observer_ready"
+mkdir -p "$READY_ROOT/logs"
+
+observer_ready_gate() {
+  bash -c '
+    set -uo pipefail
+    source "$1"
+    set +e
+    FCUVRX_RUN_DIR="$2"
+    FCUVRX_OBSERVER_READY_TIMEOUT_SECONDS=1
+    FCUVRX_POLL_SECONDS=1
+    fcuvrx_children_alive() { return 0; }
+    fcuvrx_wait_observer_ready
+    printf "rc=%s\n" "$?"
+  ' _ "$SUPERVISOR" "$READY_ROOT" 2>&1
+}
+
+printf 'FCU_TO_VRX_VRX_OBSERVER_STARTED=PASS topics=4 publishers=0\n' \
+  >"$READY_ROOT/logs/observer.log"
+require_text "$(observer_ready_gate)" 'rc=1' \
+  'the STARTED marker alone incorrectly satisfied the observer READY gate'
+pass_case
+
+printf 'FCU_TO_VRX_VRX_OBSERVER_READY=PASS topics=4\n' \
+  >>"$READY_ROOT/logs/observer.log"
+require_text "$(observer_ready_gate)" 'rc=0' \
+  'the four-stream READY marker did not satisfy the observer READY gate'
+pass_case
+
+# Ordering: the pre-Pi marker must be emitted before the observer READY wait,
+# and the final workstation READY only after it.
+RUN_BODY="$(extract_function fcuvrx_run)"
+PRESTART_LINE="$(grep -n 'FCU_TO_VRX_WORKSTATION_PRESTART=PASS' <<<"$RUN_BODY" |
+  head -1 | cut -d: -f1)"
+WAIT_LINE="$(grep -n 'fcuvrx_wait_observer_ready' <<<"$RUN_BODY" |
+  head -1 | cut -d: -f1)"
+READY_LINE="$(grep -n 'FCU_TO_VRX_WORKSTATION_READY=PASS' <<<"$RUN_BODY" |
+  head -1 | cut -d: -f1)"
+[ -n "$PRESTART_LINE" ] && [ -n "$WAIT_LINE" ] && [ -n "$READY_LINE" ] \
+  || fail_test 'two-stage readiness markers are missing from fcuvrx_run'
+[ "$PRESTART_LINE" -lt "$WAIT_LINE" ] && [ "$WAIT_LINE" -lt "$READY_LINE" ] \
+  || fail_test 'readiness ordering is not prestart -> observer-ready -> READY'
+require_text "$RUN_BODY" 'observer=ready streams=4' \
+  'the final READY marker does not record proven observer readiness'
+! grep -Fq 'observer=started publish_sensors' <<<"$RUN_BODY" \
+  || fail_test 'the final READY marker still claims only observer=started'
 pass_case
 
 printf 'FCU-to-VRX workstation supervisor tests: PASS cases=%d runtime=not-started\n' \

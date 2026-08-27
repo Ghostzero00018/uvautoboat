@@ -44,11 +44,11 @@ below only for traceability.
 | Supervisor size | `36,413` bytes |
 | Supervisor SHA-256 | `2a272106b47f1b6988a01fe5f7fcc536e66aad3889b86c538b699a77e58cd90b` |
 | VRX supervisor | `tools/fcu_to_vrx_workstation.sh` |
-| VRX supervisor size | `23,530` bytes |
-| VRX supervisor SHA-256 | `981fba979e86d0e7a2e50c4d9c89b30b699b62b7a24343b4d315c819fb931091` |
+| VRX supervisor size | `26,694` bytes |
+| VRX supervisor SHA-256 | `333ea19f78c640b0b04e9767fc4bcea340a48a5d8e6343571c4d0214bfd76535` |
 | Correlation recorder | `tools/fcu_to_vrx_evidence.py` |
-| Correlation recorder size | `31,069` bytes |
-| Correlation recorder SHA-256 | `5c40d6376efc7456929ddf1e80454f3e17ff87c7530629a65f4c10ac0db361dc` |
+| Correlation recorder size | `35,542` bytes |
+| Correlation recorder SHA-256 | `464d8f91684d83bf00162afe598d1175976f1a29e1ef9dfb8ec5a640a84cd4b6` |
 
 Historical 23/07/2026 session artifacts:
 
@@ -127,9 +127,17 @@ Independent adjudication checked ten evidence hashes and the stop order
 `dashboard,rosbridge,bridge,evidence,mavros,mavproxy,sitl`. It reported
 `CONTROL_CROSSCHECK=PASS`, `VERDICT_CHECK=PASS`, `TEARDOWN_CHECK=PASS`, all
 governed ports free, no surviving governed process and
-`SITL_ADJUDICATION=PASS`. This closes the current-source simulator acceptance
-precondition only; it is not real-FCU forwarding, parameter, thrust or motion
-evidence.
+`SITL_ADJUDICATION=PASS`. At the time it was recorded this closed the
+current-source simulator acceptance precondition only; it was never real-FCU
+forwarding, parameter, thrust or motion evidence.
+
+**Forward correction 27/08/2026:** that acceptance is no longer current-source.
+It was earned on `3ca6b0b`; `81efb73` later changed
+`tools/real_fcu_rc_command_bridge.py`, the bridge `tools/sitl_digital_twin_runner.sh`
+launches under test, and no `SITL_VERDICT` or `SITL_ADJUDICATION` has been
+recorded against a revision containing that change. The query tier (T0b) also
+remains open. Both must close on current source, or receive an explicit operator
+supersession, before Test B.
 
 The Pi helper copied to `/home/imt-aqua-drone/Desktop` also passed its
 checksum and `--preflight-only` path. The retained output included
@@ -293,13 +301,30 @@ evidence topic, both thrust topics and a WAM-V pose stream; it creates no ROS
 publisher or client. Event capture does not force a disk sync for every topic
 callback; the retained stream is explicitly synced when the observer exits.
 
-The 26/08/2026 record-only run exposed a blocking pose-topic mismatch. The
-current supervisor passed `/wamv/pose`, while the launched VRX bridge reported
-the actual `tf2_msgs/msg/TFMessage` source as `/model/wamv/pose`. The retained
-observer stayed `WAIT_DATA` and its `3,585` events contained no pose event.
-Test B must not start until the supervisor uses the actual pose source, focused
-coverage guards that contract, and a workstation-only check receives a matching
-WAM-V transform.
+The 26/08/2026 record-only run left the observer at `WAIT_DATA` with no pose
+event among its `3,585` records. The first diagnosis attributed that to a
+pose-topic mismatch; a source review on 27/08/2026 established that the topic
+was never wrong.
+
+`/model/wamv/pose` is the Gazebo transport name. `vrx_gz` bridges it to the
+relative ROS topic `pose` and launches the `ros_gz_bridge` node inside
+`PushRosNamespace('wamv')`, so the ROS topic is `/wamv/pose` — the name the
+supervisor already passed. The bridge start-up log prints configured
+Gazebo-side names on both sides of its arrow and does not report resolved ROS
+names: the same log renders the thrust bridge identically, and those topics
+carried `1,195` events each in that run. VRX's own `pose_tf_broadcaster`
+subscribes to the relative `pose` inside the same namespace, so a bridge
+publishing `/model/wamv/pose` would break VRX's own transform tree.
+
+The real defect was the transform selected from that stream. The recorder chose
+the first transform whose `child_frame_id` ended in `base_link`, but the WAM-V
+`PosePublisher` runs with `publish_link_pose=false` and `publish_model_pose=true`,
+so `base_link` appears only as the parent of static sensor transforms and never
+as the child of a moving one. The filter matched nothing, the pose stream never
+counted as seen, and the observer could not leave `WAIT_DATA`. The recorder now
+selects the transform whose parent is the launched world frame, supplied by the
+supervisor as `--world-frame`, and records a `pose_frame_mismatch` event naming
+the observed parents when no transform matches.
 
 #### Correlation evidence
 
@@ -341,10 +366,33 @@ so starting `W2` first makes `W1` abort with `workstation conflicting process
 found`. `W2` permits `W1`'s rosbridge, web-video-server and dashboard
 processes, so this direction is the only one that starts cleanly.
 
-`W2` must also be ready before the Pi starts. `W1`'s `PI_DATA_ARRIVED` phase
-samples ROS topics only; it does not prove UDP `14555` arrival, so a Pi started
-ahead of `W2` can report a passing dashboard phase while the fanout has no
-listener.
+`W2` gates in two stages, because three of its four recorder streams originate
+from the Pi fanout and cannot exist before the Pi runs.
+
+Start the Pi when `W2` prints its **pre-Pi** marker:
+
+```text
+FCU_TO_VRX_WORKSTATION_PRESTART=PASS ... udp=14555-listening observer=started pose=baseline
+```
+
+That marker proves the VRX topics including `/wamv/pose`, the recorder's
+subscriptions, one recorded pose baseline against the launched world frame, and
+a listening UDP `14555`. It is what the rule below is about: `W1`'s
+`PI_DATA_ARRIVED` phase samples ROS topics only and does not prove UDP `14555`
+arrival, so a Pi started before `PRESTART` can report a passing dashboard phase
+while the fanout has no listener.
+
+`W2` then blocks, printing `start the Pi helper now`, until the recorder reports
+all four streams:
+
+```text
+FCU_TO_VRX_WORKSTATION_READY=PASS ... observer=ready streams=4
+```
+
+That **post-Pi** line is the workstation readiness gate, and nothing may be
+armed before it. Waiting for it before starting the Pi would deadlock. Its own
+budget is `FCU_TO_VRX_OBSERVER_READY_TIMEOUT_SECONDS`, default `900` seconds,
+because it spans the operator's Pi start.
 
 Stop in reverse: Pi first, then `W2` (bridge, recorder, VRX, then UDP `14555`
 confirmed free), then `W1`.

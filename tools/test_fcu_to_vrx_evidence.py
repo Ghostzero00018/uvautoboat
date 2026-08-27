@@ -210,5 +210,153 @@ class CorrelationTests(unittest.TestCase):
         self.assertIn("FCU_TO_VRX_EVIDENCE=PASS", output.getvalue())
 
 
+class _Header:
+    def __init__(self, frame_id):
+        self.frame_id = frame_id
+
+
+class _Transform:
+    """Minimal duck type for geometry_msgs/TransformStamped."""
+
+    def __init__(self, frame_id, child_frame_id):
+        self.header = _Header(frame_id)
+        self.child_frame_id = child_frame_id
+
+
+# The shape observed on /wamv/pose in this workspace. The gz PosePublisher
+# runs with publish_link_pose=false and publish_model_pose=true (the latter
+# from this workspace's vrx commit e384cd65), so the moving transform is the
+# model root under the world frame, with the bare model name as its child.
+# Sensor parents are double-prefixed, as recorded on 10/04/2026: the frame is
+# wamv/wamv/base_link, not wamv/base_link. That name does end in "base_link",
+# which is why the previous filter looked plausible -- but it appears only as
+# a PARENT here, never as a child_frame_id.
+VRX_POSE_MESSAGE = [
+    _Transform("sydney_regatta", "wamv"),
+    _Transform(
+        "wamv/wamv/base_link", "wamv/wamv/base_link/front_left_camera_sensor"
+    ),
+    _Transform("wamv/wamv/base_link", "wamv/wamv/base_link/lidar_wamv_sensor"),
+]
+
+
+class WorldTransformSelectionTests(unittest.TestCase):
+    def test_selects_the_model_root_under_the_world_frame(self):
+        transform = MODULE.select_world_transform(
+            VRX_POSE_MESSAGE, "sydney_regatta"
+        )
+        self.assertIsNotNone(transform)
+        self.assertEqual(transform.child_frame_id, "wamv")
+        self.assertEqual(transform.header.frame_id, "sydney_regatta")
+
+    def test_the_previous_base_link_child_filter_matched_nothing(self):
+        # Regression guard for the defect this replaced: base_link never
+        # appears as a child_frame_id, so the old filter starved the pose
+        # stream and the observer stayed in WAIT_DATA forever.
+        matched = [
+            item
+            for item in VRX_POSE_MESSAGE
+            if str(item.child_frame_id).endswith("base_link")
+        ]
+        self.assertEqual(matched, [])
+
+    def test_a_wrong_world_frame_selects_nothing(self):
+        self.assertIsNone(
+            MODULE.select_world_transform(VRX_POSE_MESSAGE, "not_the_world")
+        )
+
+    def test_an_empty_world_frame_selects_nothing(self):
+        self.assertIsNone(MODULE.select_world_transform(VRX_POSE_MESSAGE, ""))
+
+    def test_a_message_without_the_world_parent_selects_nothing(self):
+        sensors_only = [
+            item
+            for item in VRX_POSE_MESSAGE
+            if item.header.frame_id != "sydney_regatta"
+        ]
+        self.assertIsNone(
+            MODULE.select_world_transform(sensors_only, "sydney_regatta")
+        )
+
+    def test_observed_parent_frames_are_sorted_and_deduplicated(self):
+        self.assertEqual(
+            MODULE.observed_parent_frames(VRX_POSE_MESSAGE),
+            ["sydney_regatta", "wamv/wamv/base_link"],
+        )
+
+    def test_observed_parent_frames_is_empty_for_an_empty_message(self):
+        self.assertEqual(MODULE.observed_parent_frames([]), [])
+
+
+REQUIRED = {"servo_output_raw", "left_thrust", "right_thrust", "pose"}
+SECOND = 1_000_000_000
+
+
+class ObserverReadinessTests(unittest.TestCase):
+    def test_readiness_needs_every_required_stream(self):
+        partial = {kind: 10 * SECOND for kind in REQUIRED - {"pose"}}
+        self.assertFalse(
+            MODULE.required_streams_are_live(REQUIRED, partial, 10 * SECOND, 5)
+        )
+
+    def test_record_only_mode_keeps_membership_semantics(self):
+        # stale_seconds == 0 is the record-only default; an old pose still
+        # counts, because that mode carries no acceptance semantics.
+        last_seen = dict.fromkeys(REQUIRED, 1 * SECOND)
+        last_seen["pose"] = 1
+        self.assertTrue(
+            MODULE.required_streams_are_live(
+                REQUIRED, last_seen, 900 * SECOND, 0
+            )
+        )
+
+    def test_fail_closed_mode_rejects_a_stale_pre_pi_pose(self):
+        # The pose baseline is recorded before the Pi starts, so without a
+        # recency check it could satisfy the arming gate minutes later.
+        last_seen = dict.fromkeys(REQUIRED, 900 * SECOND)
+        last_seen["pose"] = 5 * SECOND
+        self.assertFalse(
+            MODULE.required_streams_are_live(
+                REQUIRED, last_seen, 900 * SECOND, 5
+            )
+        )
+
+    def test_fail_closed_mode_accepts_four_concurrently_live_streams(self):
+        last_seen = dict.fromkeys(REQUIRED, 898 * SECOND)
+        self.assertTrue(
+            MODULE.required_streams_are_live(
+                REQUIRED, last_seen, 900 * SECOND, 5
+            )
+        )
+
+    def test_a_stream_exactly_at_the_limit_is_still_live(self):
+        last_seen = dict.fromkeys(REQUIRED, 895 * SECOND)
+        self.assertTrue(
+            MODULE.required_streams_are_live(
+                REQUIRED, last_seen, 900 * SECOND, 5
+            )
+        )
+
+
+class PoseRecordingRateTests(unittest.TestCase):
+    def test_the_first_pose_sample_is_always_recorded(self):
+        self.assertTrue(MODULE.pose_event_is_due(None, 0))
+
+    def test_samples_inside_the_gap_are_not_recorded(self):
+        self.assertFalse(
+            MODULE.pose_event_is_due(0, MODULE.POSE_EVENT_MIN_GAP_NS - 1)
+        )
+
+    def test_samples_at_or_beyond_the_gap_are_recorded(self):
+        self.assertTrue(
+            MODULE.pose_event_is_due(0, MODULE.POSE_EVENT_MIN_GAP_NS)
+        )
+
+    def test_the_gap_is_fine_enough_for_motion_correlation(self):
+        # The adjudicator's motion window is measured in seconds, so the
+        # retained rate must stay well below it.
+        self.assertLessEqual(MODULE.POSE_EVENT_MIN_GAP_NS, SECOND // 10)
+
+
 if __name__ == "__main__":
     unittest.main()

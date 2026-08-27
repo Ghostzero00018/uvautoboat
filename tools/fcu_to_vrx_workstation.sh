@@ -12,6 +12,7 @@ FCUVRX_ROS_SETUP="${FCU_TO_VRX_ROS_SETUP:-/opt/ros/jazzy/setup.bash}"
 FCUVRX_WORKSPACE_SETUP="${FCU_TO_VRX_WORKSPACE_SETUP:-$FCUVRX_REPO_ROOT/../../install/setup.bash}"
 FCUVRX_LOG_ROOT="${FCU_TO_VRX_LOG_ROOT:-$HOME/Desktop}"
 FCUVRX_READY_TIMEOUT_SECONDS="${FCU_TO_VRX_READY_TIMEOUT_SECONDS:-120}"
+FCUVRX_OBSERVER_READY_TIMEOUT_SECONDS="${FCU_TO_VRX_OBSERVER_READY_TIMEOUT_SECONDS:-900}"
 FCUVRX_POLL_SECONDS="${FCU_TO_VRX_POLL_SECONDS:-1}"
 FCUVRX_DOMAIN_ID='77'
 FCUVRX_DISCOVERY_RANGE='LOCALHOST'
@@ -314,6 +315,8 @@ fcuvrx_static_preflight() {
     "$FCUVRX_READY_TIMEOUT_SECONDS"
   fcuvrx_validate_positive_integer FCU_TO_VRX_POLL_SECONDS \
     "$FCUVRX_POLL_SECONDS"
+  fcuvrx_validate_positive_integer FCU_TO_VRX_OBSERVER_READY_TIMEOUT_SECONDS \
+    "$FCUVRX_OBSERVER_READY_TIMEOUT_SECONDS"
   for command in awk bash date git grep mkdir pgrep ps python3 sed setsid \
     sha256sum sleep ss tail tr; do
     fcuvrx_require_command "$command"
@@ -383,6 +386,7 @@ fcuvrx_build_commands() {
     --left-thrust-topic /wamv/thrusters/left/thrust
     --right-thrust-topic /wamv/thrusters/right/thrust
     --pose-topic /wamv/pose
+    --world-frame "$FCUVRX_WORLD"
   )
 }
 
@@ -434,6 +438,9 @@ fcuvrx_write_manifest() {
     printf 'correlated_observation=%s\n' "$FCU_VRX_CORRELATED_OBSERVATION"
     printf 'observer_stale_seconds=%s\n' \
       "${FCU_VRX_OBSERVER_STALE_SECONDS:-0}"
+    printf 'ready_timeout_seconds=%s\n' "$FCUVRX_READY_TIMEOUT_SECONDS"
+    printf 'observer_ready_timeout_seconds=%s\n' \
+      "$FCUVRX_OBSERVER_READY_TIMEOUT_SECONDS"
     printf 'publish_sensors=false\n'
     printf 'publish_cmd_vel=false\n'
   } >"$FCUVRX_RUN_DIR/manifest/environment.txt"
@@ -517,6 +524,7 @@ fcuvrx_topics_present() {
   local topics
   topics="$(ros2 topic list --no-daemon --spin-time 1)" || return 1
   grep -Fxq '/clock' <<<"$topics" \
+    && grep -Fxq '/wamv/pose' <<<"$topics" \
     && grep -Fxq '/wamv/thrusters/left/thrust' <<<"$topics" \
     && grep -Fxq '/wamv/thrusters/right/thrust' <<<"$topics"
 }
@@ -554,6 +562,36 @@ fcuvrx_wait_observer_started() {
   while [ "$SECONDS" -lt "$deadline" ]; do
     fcuvrx_children_alive || return 1
     grep -Fq 'FCU_TO_VRX_VRX_OBSERVER_STARTED=PASS topics=4 publishers=0' \
+      "$FCUVRX_RUN_DIR/logs/observer.log" && return 0
+    sleep "$FCUVRX_POLL_SECONDS" || true
+  done
+  return 1
+}
+
+fcuvrx_wait_pose_baseline() {
+  # Pre-Pi gate. VRX publishes pose without the Pi, so a world-frame mismatch
+  # is provable here rather than after the operator has started the boat.
+  # Returns 2 for a named frame mismatch, 1 for a plain timeout.
+  local deadline=$((SECONDS + FCUVRX_READY_TIMEOUT_SECONDS))
+  local events="$FCUVRX_RUN_DIR/evidence/vrx_events.jsonl"
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    fcuvrx_children_alive || return 1
+    if grep -Fq '"kind":"pose_frame_mismatch"' "$events" 2>/dev/null; then
+      return 2
+    fi
+    grep -Fq '"kind":"pose"' "$events" 2>/dev/null && return 0
+    sleep "$FCUVRX_POLL_SECONDS" || true
+  done
+  return 1
+}
+
+fcuvrx_wait_observer_ready() {
+  # Post-Pi gate. servo_output_raw and both thrust streams originate from the
+  # Pi fanout, so this can only be satisfied after the operator starts the Pi.
+  local deadline=$((SECONDS + FCUVRX_OBSERVER_READY_TIMEOUT_SECONDS))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    fcuvrx_children_alive || return 1
+    grep -Fq 'FCU_TO_VRX_VRX_OBSERVER_READY=PASS topics=4' \
       "$FCUVRX_RUN_DIR/logs/observer.log" && return 0
     sleep "$FCUVRX_POLL_SECONDS" || true
   done
@@ -616,10 +654,11 @@ fcuvrx_check() {
   python3 -m unittest "$FCUVRX_SCRIPT_DIR/test_fcu_to_vrx_parameter_contract.py"
   python3 -m unittest "$FCUVRX_SCRIPT_DIR/test_fcu_to_vrx_evidence.py"
   fcuvrx_log \
-    'FCU_TO_VRX_WORKSTATION_CHECK=PASS shell_cases=14 python_tests=14 runtime=not-started'
+    'FCU_TO_VRX_WORKSTATION_CHECK=PASS shell_cases=23 python_tests=30 runtime=not-started'
 }
 
 fcuvrx_run() {
+  local fcuvrx_pose_rc=0
   fcuvrx_static_preflight
   fcuvrx_init_state
   fcuvrx_build_commands
@@ -635,7 +674,7 @@ fcuvrx_run() {
   fcuvrx_wait_vrx_ready \
     || fcuvrx_fail 'VRX topics did not become ready before the deadline'
   fcuvrx_log \
-    'FCU_TO_VRX_VRX_READY=PASS topics=/clock,/wamv/thrusters/left/thrust,/wamv/thrusters/right/thrust'
+    'FCU_TO_VRX_VRX_READY=PASS topics=/clock,/wamv/pose,/wamv/thrusters/left/thrust,/wamv/thrusters/right/thrust'
 
   fcuvrx_start_child observer "$FCUVRX_RUN_DIR/logs/observer.log" \
     "${FCUVRX_OBSERVER_COMMAND[@]}"
@@ -644,14 +683,34 @@ fcuvrx_run() {
   fcuvrx_log \
     "FCU_TO_VRX_OBSERVER_STARTED=PASS mode=$([ "$FCU_VRX_CORRELATED_OBSERVATION" -eq 1 ] && printf fail-closed || printf record-only) status=$FCUVRX_RUN_DIR/evidence/vrx_status.json"
 
+  fcuvrx_pose_rc=0
+  fcuvrx_wait_pose_baseline || fcuvrx_pose_rc=$?
+  case "$fcuvrx_pose_rc" in
+    0) ;;
+    2)
+      fcuvrx_fail "no VRX pose transform has parent '$FCUVRX_WORLD'; either the world name is wrong or publish_model_pose is disabled in the WAM-V model (one_click_launch_all/patch_vrx.sh). Observed parents are listed in $FCUVRX_RUN_DIR/evidence/vrx_events.jsonl"
+      ;;
+    *)
+      fcuvrx_fail 'no VRX pose baseline arrived before the deadline'
+      ;;
+  esac
+  fcuvrx_log \
+    "FCU_TO_VRX_POSE_BASELINE=PASS topic=/wamv/pose world_frame=$FCUVRX_WORLD"
+
   fcuvrx_start_child bridge "$FCUVRX_RUN_DIR/logs/bridge.log" \
     "${FCUVRX_BRIDGE_COMMAND[@]}"
   fcuvrx_wait_bridge_ready \
     || fcuvrx_fail 'bridge UDP listener did not become ready before the deadline'
+  fcuvrx_log \
+    "FCU_TO_VRX_WORKSTATION_PRESTART=PASS domain=77 udp=14555-listening world=$FCUVRX_WORLD mapping=$FCU_VRX_LEFT_SERVO_CHANNEL/$FCU_VRX_RIGHT_SERVO_CHANNEL rails=$FCU_VRX_PWM_MIN/$FCU_VRX_PWM_NEUTRAL/$FCU_VRX_PWM_MAX observer=started pose=baseline ready_timeout_seconds=$FCUVRX_READY_TIMEOUT_SECONDS observer_ready_timeout_seconds=$FCUVRX_OBSERVER_READY_TIMEOUT_SECONDS publish_sensors=false publish_cmd_vel=false"
+  fcuvrx_log 'start the Pi helper now; this terminal waits for the four-stream observer READY before declaring workstation readiness'
+
+  fcuvrx_wait_observer_ready \
+    || fcuvrx_fail "VRX observer did not reach four-stream READY within observer_ready_timeout_seconds=$FCUVRX_OBSERVER_READY_TIMEOUT_SECONDS"
   FCUVRX_READY_REACHED=1
   fcuvrx_log \
-    "FCU_TO_VRX_WORKSTATION_READY=PASS domain=77 udp=14555 world=$FCUVRX_WORLD mapping=$FCU_VRX_LEFT_SERVO_CHANNEL/$FCU_VRX_RIGHT_SERVO_CHANNEL rails=$FCU_VRX_PWM_MIN/$FCU_VRX_PWM_NEUTRAL/$FCU_VRX_PWM_MAX observer=started publish_sensors=false publish_cmd_vel=false"
-  fcuvrx_log 'planned stop: stop the Pi helper first, then press Ctrl+C here'
+    "FCU_TO_VRX_WORKSTATION_READY=PASS domain=77 udp=14555 world=$FCUVRX_WORLD mapping=$FCU_VRX_LEFT_SERVO_CHANNEL/$FCU_VRX_RIGHT_SERVO_CHANNEL rails=$FCU_VRX_PWM_MIN/$FCU_VRX_PWM_NEUTRAL/$FCU_VRX_PWM_MAX observer=ready streams=4 observer_stale_seconds=${FCU_VRX_OBSERVER_STALE_SECONDS:-0} observer_ready_timeout_seconds=$FCUVRX_OBSERVER_READY_TIMEOUT_SECONDS publish_sensors=false publish_cmd_vel=false"
+  fcuvrx_log 'no arming before this line; planned stop: stop the Pi helper first, then press Ctrl+C here'
 
   while fcuvrx_children_alive; do
     sleep "$FCUVRX_POLL_SECONDS" || true
