@@ -446,8 +446,9 @@ Status row in §3 Phase 5 status table now records Path A landed 05/05/2026 and 
    The explicit paired-zero retry repair removes the armed and outer runtime
    deadlines only, retains the remaining fail-closed gates, defaults the Pi
    display to resizable and uses W2, W1, Pi teardown after recorded completion.
-   It remains offline-only pending publication and fresh revision-specific
-   approval.
+   **Publication update:** the repair is published as `d9dd120`; it remains
+   unrun live and requires revision-specific SITL acceptance or explicit
+   supersession, a fresh physical declaration and separate live approval.
 
 ---
 

@@ -1110,3 +1110,12 @@ are required before a retry.
 `RC_OVERRIDE_TIME=0.5` remains temporary for this campaign. Restore it to
 `3.0`, confirm live readback and retain a rollback snapshot after Test B is
 accepted or abandoned, or before any different operation.
+
+### Publication update - 27/08/2026
+
+The explicit paired-zero retry repair and its offline verification were
+published as `d9dd120` with subject
+`fix(test-b): support operator-controlled armed runs`. The earlier
+`Current uncommitted artifact identities` label records the pre-publication
+state at the time those bytes were calculated. The helper, W1 and W2 byte
+identities themselves are unchanged. No live retry has run on `d9dd120`.

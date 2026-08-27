@@ -927,8 +927,10 @@ The whole repo is expected to run on the Pi 5. Long-term (Phase 5.2+): QGC and t
    restored hardware safety. Test B is **ATTEMPTED - FAILED / NOT ACCEPTED**.
    The explicit retry repair uses paired zero armed/runtime selectors, retains
    all non-duration safety gates, defaults the Pi display to resizable and uses
-   W2, W1, Pi teardown after recorded completion. It is offline-only until
-   published and separately approved against its resulting revision.
+   W2, W1, Pi teardown after recorded completion. **Publication update:** the
+   repair is published as `d9dd120`; it remains unrun live and requires
+   revision-specific SITL acceptance or explicit supersession, a fresh physical
+   declaration and separate live approval.
 
 3. **Detector recovery before Hailo accuracy gates**: the Hailo six-output decode
    contract is proven on saved frames (07/07/2026, `fb308f9`), and the 08/07 Pi
