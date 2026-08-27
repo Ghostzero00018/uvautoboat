@@ -633,3 +633,98 @@ This is offline preparation only. T0b remains open until a fresh snapshot and
 the live snapshot-backed probe pass on 27/08. Test B remains **NOT RUN**. The
 source change also keeps current-source SITL acceptance open until its complete
 supervised acceptance and independent adjudication are rerun.
+
+### Pipeline 1 and Pipeline 2 live closure - 27/08/2026
+
+The repository remained clean at
+`147efe0270b3357a17ca6489c96d1722cd55c6f8`, with `HEAD` equal to
+`origin/main` and divergence `0/0`, throughout both completed simulator-side
+pipelines.
+
+#### Pipeline 1 - workstation-only VRX frame proof
+
+The exact W2 launch ran on ROS domain `77` with localhost-only discovery. The
+capture in `/home/ghostzero/Desktop/vrx_pose_preflight_20260827/wamv_pose.yaml`
+contained eight transforms on `/wamv/pose`:
+
+```text
+sydney_regatta          -> wamv
+wamv/wamv/base_link     -> wamv/wamv/base_link/front_left_camera_sensor
+wamv/wamv/base_link     -> wamv/wamv/base_link/front_right_camera_sensor
+wamv/wamv/base_link     -> wamv/wamv/base_link/middle_right_camera_sensor
+wamv/wamv/base_link     -> wamv/wamv/base_link/lidar_wamv_sensor
+wamv/wamv/base_link     -> wamv/wamv/base_link/contact_sensor
+wamv/wamv/imu_wamv_link -> wamv/wamv/imu_wamv_link/imu_wamv_sensor
+wamv/wamv/gps_wamv_link -> wamv/wamv/gps_wamv_link/navsat
+```
+
+`sydney_regatta -> wamv` was the only world-parented transform. No
+`child_frame_id` ended in `base_link`, so the former child-frame selector would
+have matched nothing. The retained parser reported:
+
+```text
+VRX_FRAME_PROOF=PASS topic=/wamv/pose world_frame=sydney_regatta children=wamv
+```
+
+This directly proves that `/wamv/pose` is the correct ROS topic, the model-root
+pose is present, and selecting the transform by configured world parent is the
+correct live contract. Ctrl+C produced the expected SIGINT exit while all VRX
+bridges and publishers stopped cleanly; the post-stop process scan found no
+relevant survivor and domain `77` returned to zero nodes. The EGL/QML messages
+were rendering warnings, not evidence faults.
+
+#### Pipeline 2 - current-source SITL acceptance
+
+The full supervised acceptance ran in
+`/home/ghostzero/Desktop/sitl_digital_twin_20260827_164623`. Its repository
+manifest records:
+
+```ini
+revision=147efe0270b3357a17ca6489c96d1722cd55c6f8
+origin_main=147efe0270b3357a17ca6489c96d1722cd55c6f8
+worktree=clean
+```
+
+The run passed safety release, the disarmed-ready baseline, the browser disabled
+frame, arm, positive demand at steering `+0.10` and throttle `0.08`, neutral
+release, negative demand at steering `-0.04` and throttle `0.09`, E-Stop and
+normal disarm. It ended with:
+
+```text
+SITL_ACCEPTANCE=COMPLETE teardown=pending
+SITL_VERDICT=PASS
+SITL_SUPERVISOR_EXIT status=0 trigger=exit signal=none cleanup_rc=0 finalize_rc=0
+```
+
+Independent adjudication checked all ten retained evidence hashes and reported:
+
+```text
+STOP_ORDER_CHECK=PASS order=dashboard,rosbridge,bridge,evidence,mavros,mavproxy,sitl
+CONTROL_CROSSCHECK=PASS
+VERDICT_CHECK=PASS
+TEARDOWN_CHECK=PASS
+SITL_POSTRUN_PORTS=FREE
+SITL_POSTRUN_PROCESSES=FREE
+SITL_ADJUDICATION=PASS
+```
+
+The retained verdict records `session_complete: true`, `verdict: PASS`, no
+missing evidence and no capture fault. The teardown record reports every child
+stopped, all governed ports free and `cleanup_rc: 0`. This closes the
+current-source SITL evidence gate on `147efe0`; it remains simulator evidence
+and does not prove real-FCU, parameter, thrust or vehicle-motion behaviour.
+
+#### Remaining gate and Pipeline 3 authority
+
+After the two closures above, T0b is the sole remaining evidence gate from the
+original preconditions. The operator then stated:
+
+> FCU and Pi powered; FCU disarmed; hardware safety ON; Herelink powered
+> read-only with sticks neutral; propulsion battery disconnected; ESCs
+> unpowered; propellers removed; hull restrained; Pi runtime stack down.
+
+The operator separately approved Pipeline 3, the read-only MAVFTP snapshot.
+That approval is recorded, but Pipeline 3 is **NOT RUN** at this point. No
+serial link was opened, no fresh snapshot or T0b artifact was created, and no
+parameter write, bridge start, mode change, arm, RC command, motor command or
+thrust occurred under Pipeline 3. Herelink-to-VRX Test B remains **NOT RUN**.

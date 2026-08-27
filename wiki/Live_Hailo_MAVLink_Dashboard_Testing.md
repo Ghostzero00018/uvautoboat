@@ -139,6 +139,20 @@ recorded against a revision containing that change. The query tier (T0b) also
 remains open. Both must close on current source, or receive an explicit operator
 supersession, before Test B.
 
+**Closure 27/08/2026:** the workstation-only VRX frame proof captured eight
+transforms from `/wamv/pose`. The only transform parented by the configured
+world was `sydney_regatta -> wamv`; no `child_frame_id` ended in `base_link`.
+This directly confirms the ROS topic and the world-parent selector used by the
+observer. The full supervised SITL acceptance was then rerun on clean revision
+`147efe0270b3357a17ca6489c96d1722cd55c6f8` in
+`/home/ghostzero/Desktop/sitl_digital_twin_20260827_164623`. It completed the
+safety-off, disabled-frame, arm, positive, release, negative, E-Stop and disarm
+phases, produced `SITL_VERDICT=PASS`, and independently passed all ten evidence
+hashes, control cross-check, teardown, stop order, port/process cleanup and
+`SITL_ADJUDICATION=PASS`. The current-source SITL evidence gate is therefore
+closed on `147efe0`. This remains simulator evidence only; T0b is the remaining
+open evidence gate and Test B remains **NOT RUN**.
+
 The Pi helper copied to `/home/imt-aqua-drone/Desktop` also passed its
 checksum and `--preflight-only` path. The retained output included
 `HAILO_ROS_PREFLIGHT=PASS imports=5 monkeypatch=PASS publisher=RELIABLE` and
