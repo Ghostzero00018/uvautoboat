@@ -53,6 +53,51 @@ This repair has no live result yet. Transfer and verify the current Pi helper
 through the exact checksum block emitted by W1; do not add a separate trial or
 diagnostic run.
 
+## Pi transfer reminder
+
+**TRANSFER REQUIRED BEFORE P1:** revision `1deff7d` changes the Pi dashboard
+helper. W1 and W2 remain workstation-side; the current required Pi transfer is:
+
+```text
+tools/pi_live_hailo_mavlink_dashboard.sh
+-> /home/imt-aqua-drone/Desktop/pi_live_hailo_mavlink_dashboard.sh
+sha256=8cfd313eb8c6a65e6ef903c8d240d91500f5dfea32a52837c2aa7e8425cdbfe5
+```
+
+From a new workstation transfer terminal:
+
+```bash
+(
+  set -euo pipefail
+  cd /home/ghostzero/seal_ws/src/uvautoboat
+  printf '%s  %s\n' \
+    '8cfd313eb8c6a65e6ef903c8d240d91500f5dfea32a52837c2aa7e8425cdbfe5' \
+    tools/pi_live_hailo_mavlink_dashboard.sh | sha256sum -c -
+  scp tools/pi_live_hailo_mavlink_dashboard.sh \
+    imt-aqua-drone@10.120.2.249:/home/imt-aqua-drone/Desktop/pi_live_hailo_mavlink_dashboard.sh
+)
+```
+
+Then, in the existing Remmina Pi terminal, verify the transferred bytes and
+make the helper executable:
+
+```bash
+(
+  set -euo pipefail
+  PI_HELPER=/home/imt-aqua-drone/Desktop/pi_live_hailo_mavlink_dashboard.sh
+  printf '%s  %s\n' \
+    '8cfd313eb8c6a65e6ef903c8d240d91500f5dfea32a52837c2aa7e8425cdbfe5' \
+    "$PI_HELPER" | sha256sum -c -
+  chmod +x "$PI_HELPER"
+  test -x "$PI_HELPER"
+  echo "PI_HELPER_TRANSFER=PASS file=$PI_HELPER"
+)
+```
+
+Do not continue to P1 unless both checksum commands print `OK` and the final
+marker prints. If any Pi-owned source changes before the run, update this
+transfer list and its hashes first; never reuse this reminder as a stale pin.
+
 ## Direct operator retry
 
 Start the same live pipeline directly:
