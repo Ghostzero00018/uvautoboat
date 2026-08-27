@@ -285,6 +285,206 @@ def _matching_value_event(
     return None
 
 
+def _measurement_ready_ns(
+    events: Sequence[Mapping[str, Any]], side: str
+) -> int:
+    if _events(events, "observer_abort"):
+        raise EvidenceError(f"{side} observer recorded an abort")
+    ready = [
+        event
+        for event in _events(events, "observer_ready")
+        if event.get("side") == side
+    ]
+    if len(ready) != 1:
+        raise EvidenceError(f"{side} observer did not record exactly one READY event")
+    return int(ready[0]["captured_unix_ns"])
+
+
+def _measurement_events(
+    events: Sequence[Mapping[str, Any]], kind: str, start_ns: int, end_ns: int
+) -> list[Mapping[str, Any]]:
+    selected = [
+        event
+        for event in _events(events, kind)
+        if start_ns <= int(event["captured_unix_ns"]) <= end_ns
+    ]
+    if len(selected) < 2:
+        raise EvidenceError(
+            f"measurement window needs at least two {kind} events"
+        )
+    return selected
+
+
+def _max_gap_seconds(events: Sequence[Mapping[str, Any]]) -> float:
+    timestamps = [int(event["captured_unix_ns"]) for event in events]
+    return round(
+        max(second - first for first, second in zip(timestamps, timestamps[1:]))
+        / 1_000_000_000,
+        9,
+    )
+
+
+def _matching_thrust_delay_ns(
+    events: Sequence[Mapping[str, Any]], *, after_ns: int, expected: float
+) -> int:
+    match = _matching_value_event(
+        events,
+        after_ns=after_ns,
+        deadline_ns=max(int(event["captured_unix_ns"]) for event in events),
+        expected=expected,
+    )
+    if match is None:
+        raise EvidenceError("a UDP servo frame has no matching thrust publication")
+    return int(match["captured_unix_ns"]) - after_ns
+
+
+def summarize_disarmed_events(
+    pi_events: Sequence[Mapping[str, Any]],
+    vrx_events: Sequence[Mapping[str, Any]],
+    *,
+    window_seconds: int,
+) -> dict[str, Any]:
+    """Measure, but do not choose, the limits for the armed Test B run."""
+    if (
+        isinstance(window_seconds, bool)
+        or not isinstance(window_seconds, int)
+        or window_seconds <= 0
+    ):
+        raise EvidenceError("window_seconds must be a positive integer")
+
+    pi_config = _observer_config(pi_events, "pi")
+    vrx_config = _observer_config(vrx_events, "vrx")
+    for name in ("left_channel", "right_channel", "left", "right"):
+        if pi_config[name] != vrx_config[name]:
+            raise EvidenceError("Pi and VRX observer mapping or rails differ")
+
+    start_ns = max(
+        _measurement_ready_ns(pi_events, "pi"),
+        _measurement_ready_ns(vrx_events, "vrx"),
+    )
+    end_ns = start_ns + window_seconds * 1_000_000_000
+    for side, events in (("pi", pi_events), ("vrx", vrx_events)):
+        if max(int(event["captured_unix_ns"]) for event in events) < end_ns:
+            raise EvidenceError(f"{side} evidence does not cover the measurement window")
+
+    pi_kinds = ("state", "sys_status", "rc_out", "camera")
+    vrx_kinds = ("servo_output_raw", "left_thrust", "right_thrust", "pose")
+    pi_series = {
+        kind: _measurement_events(pi_events, kind, start_ns, end_ns)
+        for kind in pi_kinds
+    }
+    vrx_series = {
+        kind: _measurement_events(vrx_events, kind, start_ns, end_ns)
+        for kind in vrx_kinds
+    }
+
+    if not all(
+        event.get("connected") is True and event.get("armed") is False
+        for event in pi_series["state"]
+    ):
+        raise EvidenceError("measurement state must stay connected and disarmed")
+    if not all(
+        event.get("hardware_safety_on") is True
+        for event in pi_series["sys_status"]
+    ):
+        raise EvidenceError("measurement must keep hardware safety ON")
+
+    left_trim = pi_config["left"]["trim"]
+    right_trim = pi_config["right"]["trim"]
+    if not all(
+        event.get("left_pwm") == left_trim
+        and event.get("right_pwm") == right_trim
+        for event in pi_series["rc_out"]
+    ):
+        raise EvidenceError("Pi RC output was not neutral during measurement")
+    if not all(
+        event.get("left_pwm") == left_trim
+        and event.get("right_pwm") == right_trim
+        and math.isclose(float(event.get("left_thrust", math.nan)), 0.0, abs_tol=1e-6)
+        and math.isclose(float(event.get("right_thrust", math.nan)), 0.0, abs_tol=1e-6)
+        for event in vrx_series["servo_output_raw"]
+    ):
+        raise EvidenceError("UDP servo output was not neutral during measurement")
+    for kind in ("left_thrust", "right_thrust"):
+        if not all(
+            _finite_number(event.get("value"))
+            and math.isclose(float(event["value"]), 0.0, abs_tol=1e-6)
+            for event in vrx_series[kind]
+        ):
+            raise EvidenceError("VRX thrust was not zero during measurement")
+
+    rc_events = pi_series["rc_out"]
+    raw_events = vrx_series["servo_output_raw"]
+    for raw in raw_events:
+        received = raw.get("bridge_received_unix_ns")
+        if isinstance(received, bool) or not isinstance(received, int) or received <= 0:
+            raise EvidenceError("UDP servo frame has no bridge receive timestamp")
+    pwm_skews = [
+        min(
+            abs(int(raw["bridge_received_unix_ns"]) - int(rc["captured_unix_ns"]))
+            for raw in raw_events
+            if raw.get("left_pwm") == rc.get("left_pwm")
+            and raw.get("right_pwm") == rc.get("right_pwm")
+        )
+        for rc in rc_events
+    ]
+    pwm_skews.extend(
+        min(
+            abs(int(raw["bridge_received_unix_ns"]) - int(rc["captured_unix_ns"]))
+            for rc in rc_events
+            if raw.get("left_pwm") == rc.get("left_pwm")
+            and raw.get("right_pwm") == rc.get("right_pwm")
+        )
+        for raw in raw_events
+    )
+
+    left_events = _events(vrx_events, "left_thrust")
+    right_events = _events(vrx_events, "right_thrust")
+    thrust_delays = []
+    for raw in raw_events:
+        received = int(raw["bridge_received_unix_ns"])
+        thrust_delays.append(
+            _matching_thrust_delay_ns(
+                left_events, after_ns=received, expected=float(raw["left_thrust"])
+            )
+        )
+        thrust_delays.append(
+            _matching_thrust_delay_ns(
+                right_events, after_ns=received, expected=float(raw["right_thrust"])
+            )
+        )
+
+    poses = vrx_series["pose"]
+    baseline_x = float(poses[0].get("x", math.nan))
+    baseline_y = float(poses[0].get("y", math.nan))
+    if not math.isfinite(baseline_x) or not math.isfinite(baseline_y):
+        raise EvidenceError("VRX pose contains a non-finite value")
+    drift = 0.0
+    for pose in poses:
+        x = float(pose.get("x", math.nan))
+        y = float(pose.get("y", math.nan))
+        if not math.isfinite(x) or not math.isfinite(y):
+            raise EvidenceError("VRX pose contains a non-finite value")
+        drift = max(drift, math.hypot(x - baseline_x, y - baseline_y))
+
+    return {
+        "schema": SCHEMA,
+        "verdict": "MEASURED",
+        "window_seconds": window_seconds,
+        "max_gap_seconds": {
+            "pi": {kind: _max_gap_seconds(pi_series[kind]) for kind in pi_kinds},
+            "vrx": {kind: _max_gap_seconds(vrx_series[kind]) for kind in vrx_kinds},
+        },
+        "max_pwm_skew_ms": round(max(pwm_skews) / 1_000_000, 6),
+        "max_thrust_delay_ms": round(max(thrust_delays) / 1_000_000, 6),
+        "stationary_pose_drift_metres": round(drift, 9),
+        "sample_counts": {
+            "pi": {kind: len(pi_series[kind]) for kind in pi_kinds},
+            "vrx": {kind: len(vrx_series[kind]) for kind in vrx_kinds},
+        },
+    }
+
+
 def adjudicate_events(
     pi_events: Sequence[Mapping[str, Any]],
     vrx_events: Sequence[Mapping[str, Any]],
@@ -851,6 +1051,10 @@ def build_parser() -> argparse.ArgumentParser:
     adjudicate.add_argument("--max-thrust-delay-ms", type=int, required=True)
     adjudicate.add_argument("--max-motion-delay-seconds", type=float, required=True)
     adjudicate.add_argument("--min-motion-metres", type=float, required=True)
+    summarize = subparsers.add_parser("summarize-disarmed")
+    summarize.add_argument("--pi-events", required=True)
+    summarize.add_argument("--vrx-events", required=True)
+    summarize.add_argument("--window-seconds", type=int, required=True)
     return parser
 
 
@@ -861,23 +1065,36 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.stale_seconds < 0:
                 raise EvidenceError("stale_seconds must be zero or a positive integer")
             return _run_observer(args)
-        verdict = adjudicate_events(
-            read_events(Path(args.pi_events)),
-            read_events(Path(args.vrx_events)),
-            max_pwm_skew_ns=args.max_pwm_skew_ms * 1_000_000,
-            max_thrust_delay_ns=args.max_thrust_delay_ms * 1_000_000,
-            max_motion_delay_ns=int(args.max_motion_delay_seconds * 1_000_000_000),
-            min_motion_metres=args.min_motion_metres,
-        )
+        if args.command == "summarize-disarmed":
+            verdict = summarize_disarmed_events(
+                read_events(Path(args.pi_events)),
+                read_events(Path(args.vrx_events)),
+                window_seconds=args.window_seconds,
+            )
+        else:
+            verdict = adjudicate_events(
+                read_events(Path(args.pi_events)),
+                read_events(Path(args.vrx_events)),
+                max_pwm_skew_ns=args.max_pwm_skew_ms * 1_000_000,
+                max_thrust_delay_ns=args.max_thrust_delay_ms * 1_000_000,
+                max_motion_delay_ns=int(args.max_motion_delay_seconds * 1_000_000_000),
+                min_motion_metres=args.min_motion_metres,
+            )
     except (EvidenceError, OSError) as exc:
         print(f"FCU_TO_VRX_EVIDENCE=FAIL reason={exc}", file=sys.stderr)
         return 1
     print(json.dumps(verdict, allow_nan=False, separators=(",", ":"), sort_keys=True))
-    print(
-        "FCU_TO_VRX_EVIDENCE=PASS "
-        "stages=dashboard-rc-out,udp-14555,bridge-thrust,vrx-motion "
-        "final=connected-disarmed-neutral-hardware-safe"
-    )
+    if args.command == "summarize-disarmed":
+        print(
+            "FCU_TO_VRX_DISARMED_MEASUREMENT=PASS "
+            f"window_seconds={args.window_seconds} thresholds=not-selected"
+        )
+    else:
+        print(
+            "FCU_TO_VRX_EVIDENCE=PASS "
+            "stages=dashboard-rc-out,udp-14555,bridge-thrust,vrx-motion "
+            "final=connected-disarmed-neutral-hardware-safe"
+        )
     return 0
 
 

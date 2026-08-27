@@ -6,8 +6,19 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PREFLIGHT="${1:-$SCRIPT_DIR/live_dashboard_preflight.sh}"
 HELPER="$SCRIPT_DIR/pi_live_hailo_mavlink_dashboard.sh"
 WIKI="$SCRIPT_DIR/../wiki/Live_Hailo_MAVLink_Dashboard_Testing.md"
-EXPECTED_PREFLIGHT_SHA256='2a272106b47f1b6988a01fe5f7fcc536e66aad3889b86c538b699a77e58cd90b'
+EXPECTED_PREFLIGHT_SHA256='d137a84765f7a4a93927407b4a9d67d6516b446666a9f16871bd1c5237815f57'
 CASE_COUNT=0
+
+# Production selectors are exercised explicitly below. Keep the default
+# fixtures deterministic even when the caller certifies a configured live run.
+unset LIVE_SSID LIVE_PI_WINDOW_MODE LIVE_RUN_SECONDS
+unset LIVE_FCU_TO_VRX_FANOUT LIVE_FCU_TO_VRX_MEASUREMENT
+unset LIVE_ARMED_OBSERVATION LIVE_ARMED_OBSERVATION_MAX_SECONDS
+unset LIVE_ARMED_OBSERVATION_FINAL_SECONDS LIVE_ARMED_OBSERVATION_STALE_SECONDS
+unset LIVE_ARMED_OBSERVATION_LEFT_CHANNEL LIVE_ARMED_OBSERVATION_LEFT_PWM_MIN
+unset LIVE_ARMED_OBSERVATION_LEFT_TRIM LIVE_ARMED_OBSERVATION_LEFT_PWM_MAX
+unset LIVE_ARMED_OBSERVATION_RIGHT_CHANNEL LIVE_ARMED_OBSERVATION_RIGHT_PWM_MIN
+unset LIVE_ARMED_OBSERVATION_RIGHT_TRIM LIVE_ARMED_OBSERVATION_RIGHT_PWM_MAX
 
 fail() {
   printf 'FAIL: %s\n' "$*" >&2
@@ -64,6 +75,7 @@ require_literal "EXPECTED_HELPER_SHA256='8458526c183479b1ca004dcbdfb3e498b585e41
 require_literal 'EXPECTED_SSID="${LIVE_SSID:-IoT IMT Nord Europe}"'
 require_literal 'PI_WINDOW_MODE="${LIVE_PI_WINDOW_MODE:-fullscreen}"'
 require_literal 'FCU_TO_VRX_FANOUT="${LIVE_FCU_TO_VRX_FANOUT:-0}"'
+require_literal 'DISARMED_MEASUREMENT="${LIVE_FCU_TO_VRX_MEASUREMENT:-0}"'
 require_literal 'ARMED_OBSERVATION="${LIVE_ARMED_OBSERVATION:-0}"'
 require_literal 'ARMED_OBSERVATION_MAX_SECONDS="${LIVE_ARMED_OBSERVATION_MAX_SECONDS:-}"'
 require_literal 'ARMED_OBSERVATION_STALE_SECONDS="${LIVE_ARMED_OBSERVATION_STALE_SECONDS:-}"'
@@ -221,6 +233,82 @@ for literal in \
   grep -Fq "$literal" <<<"$PI_COMMAND_ARMED_BLOCK" \
     || fail "armed-observation Pi command is missing: $literal"
 done
+
+PI_COMMAND_MEASUREMENT_OUTPUT="$(
+  LIVE_FCU_TO_VRX_FANOUT=1 \
+  LIVE_FCU_TO_VRX_MEASUREMENT=1 \
+  LIVE_ARMED_OBSERVATION_LEFT_CHANNEL=3 \
+  LIVE_ARMED_OBSERVATION_LEFT_PWM_MIN=800 \
+  LIVE_ARMED_OBSERVATION_LEFT_TRIM=800 \
+  LIVE_ARMED_OBSERVATION_LEFT_PWM_MAX=2200 \
+  LIVE_ARMED_OBSERVATION_RIGHT_CHANNEL=1 \
+  LIVE_ARMED_OBSERVATION_RIGHT_PWM_MIN=800 \
+  LIVE_ARMED_OBSERVATION_RIGHT_TRIM=800 \
+  LIVE_ARMED_OBSERVATION_RIGHT_PWM_MAX=2200 \
+  bash -c '
+    source "$1"
+    WORKSTATION_IP=192.0.2.21
+    print_pi_command
+  ' _ "$PREFLIGHT")"
+PI_COMMAND_MEASUREMENT_BLOCK="$(
+  sed -n '/^($/,/^)$/{p}' <<<"$PI_COMMAND_MEASUREMENT_OUTPUT"
+)"
+bash -n <<<"$PI_COMMAND_MEASUREMENT_BLOCK"
+for literal in \
+  'LIVE_HOLD_AFTER_WINDOW=1' \
+  'LIVE_FCU_TO_VRX_FANOUT=1' \
+  'LIVE_ARMED_OBSERVATION=0'; do
+  grep -Fq "$literal" <<<"$PI_COMMAND_MEASUREMENT_BLOCK" \
+    || fail "disarmed-measurement Pi command is missing: $literal"
+done
+pass_case
+
+MEASUREMENT_OBSERVER_OUTPUT="$(
+  LIVE_FCU_TO_VRX_FANOUT=1 \
+  LIVE_FCU_TO_VRX_MEASUREMENT=1 \
+  LIVE_ARMED_OBSERVATION_LEFT_CHANNEL=3 \
+  LIVE_ARMED_OBSERVATION_LEFT_PWM_MIN=800 \
+  LIVE_ARMED_OBSERVATION_LEFT_TRIM=800 \
+  LIVE_ARMED_OBSERVATION_LEFT_PWM_MAX=2200 \
+  LIVE_ARMED_OBSERVATION_RIGHT_CHANNEL=1 \
+  LIVE_ARMED_OBSERVATION_RIGHT_PWM_MIN=800 \
+  LIVE_ARMED_OBSERVATION_RIGHT_TRIM=800 \
+  LIVE_ARMED_OBSERVATION_RIGHT_PWM_MAX=2200 \
+  bash -c '
+    source "$1"
+    RUN_DIR=/tmp/fcu-to-vrx-measurement-test
+    start_child() { printf "child=%s %s\n" "$1" "${*:3}"; }
+    log() { printf "%s\n" "$*"; }
+    start_workstation_services
+  ' _ "$PREFLIGHT"
+)"
+grep -Fq 'child=pi-evidence-observer' <<<"$MEASUREMENT_OBSERVER_OUTPUT" \
+  || fail 'disarmed measurement did not start the Pi evidence observer'
+grep -Fq -- '--stale-seconds 0' <<<"$MEASUREMENT_OBSERVER_OUTPUT" \
+  || fail 'disarmed measurement observer was not record-only'
+grep -Fq 'FCU_TO_VRX_PI_OBSERVER_STARTED mode=disarmed-measurement stale_seconds=0' \
+  <<<"$MEASUREMENT_OBSERVER_OUTPUT" \
+  || fail 'disarmed measurement observer marker is missing'
+pass_case
+
+set +e
+INVALID_MEASUREMENT_OUTPUT="$(
+  LIVE_FCU_TO_VRX_FANOUT=1 \
+  LIVE_FCU_TO_VRX_MEASUREMENT=1 \
+  LIVE_ARMED_OBSERVATION=1 \
+  bash -c '
+    source "$1"
+    WORKSTATION_IP=192.0.2.21
+    print_pi_command
+  ' _ "$PREFLIGHT" 2>&1
+)"
+INVALID_MEASUREMENT_RC=$?
+set -e
+[ "$INVALID_MEASUREMENT_RC" -ne 0 ] \
+  || fail 'disarmed measurement and armed observation were accepted together'
+grep -Fq 'cannot both be enabled' <<<"$INVALID_MEASUREMENT_OUTPUT" \
+  || fail 'incompatible observer modes were not identified'
+pass_case
 
 WORKSTATION_NODES_FUNCTION="$(extract_function workstation_nodes_present)"
 [ -n "$WORKSTATION_NODES_FUNCTION" ] \
@@ -1176,5 +1264,5 @@ set -e
   || fail "real-SIGINT lifecycle case failed rc=$REAL_SIGINT_CASE_RC: $REAL_SIGINT_CASE_OUTPUT"
 pass_case
 
-[ "$CASE_COUNT" -eq 17 ] || fail "executed $CASE_COUNT cases instead of 17"
+[ "$CASE_COUNT" -eq 20 ] || fail "executed $CASE_COUNT cases instead of 20"
 printf 'PASS: live-dashboard preflight contracts cases=%s\n' "$CASE_COUNT"

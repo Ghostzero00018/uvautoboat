@@ -42,13 +42,13 @@ below only for traceability.
 | Helper SHA-256 | `8458526c183479b1ca004dcbdfb3e498b585e415826025b4ee71b7856ecb311c` |
 | Workstation supervisor | `tools/live_dashboard_preflight.sh` |
 | Supervisor size | `36,413` bytes |
-| Supervisor SHA-256 | `2a272106b47f1b6988a01fe5f7fcc536e66aad3889b86c538b699a77e58cd90b` |
+| Supervisor SHA-256 | `d137a84765f7a4a93927407b4a9d67d6516b446666a9f16871bd1c5237815f57` |
 | VRX supervisor | `tools/fcu_to_vrx_workstation.sh` |
 | VRX supervisor size | `26,694` bytes |
-| VRX supervisor SHA-256 | `333ea19f78c640b0b04e9767fc4bcea340a48a5d8e6343571c4d0214bfd76535` |
+| VRX supervisor SHA-256 | `a416fb134b9a32d2a134816cf82fb717b05e6447d042c24b3e1a7c1f72e9e303` |
 | Correlation recorder | `tools/fcu_to_vrx_evidence.py` |
 | Correlation recorder size | `35,542` bytes |
-| Correlation recorder SHA-256 | `464d8f91684d83bf00162afe598d1175976f1a29e1ef9dfb8ec5a640a84cd4b6` |
+| Correlation recorder SHA-256 | `19df4dae7015cfe3af44512c7a0bf854e1e448df8a3fc0b1f37075e6d62d0126` |
 
 Historical 23/07/2026 session artifacts:
 
@@ -339,6 +339,41 @@ counted as seen, and the observer could not leave `WAIT_DATA`. The recorder now
 selects the transform whose parent is the launched world frame, supplied by the
 supervisor as `--world-frame`, and records a `pose_frame_mismatch` event naming
 the observed parents when no transform matches.
+
+#### Disarmed limit measurement
+
+W1 has a default-off `LIVE_FCU_TO_VRX_MEASUREMENT` selector for the required
+pre-Test-B measurement. It is mutually exclusive with
+`LIVE_ARMED_OBSERVATION`. When set to `1`, it requires outbound fanout plus the
+same live-read channel and PWM-rail values as the armed observer, starts W1's
+subscriber-only Pi evidence recorder with `stale_seconds=0`, and waits for its
+four-stream READY state. The Pi command remains disarmed-only:
+`LIVE_ARMED_OBSERVATION=0`, `LIVE_HOLD_AFTER_WINDOW=1` and
+`LIVE_FCU_TO_VRX_FANOUT=1`. W2 stays in record-only mode with
+`FCU_VRX_CORRELATED_OBSERVATION=0`.
+
+After a deliberately timed disarmed interval and the required Pi, W2, W1 stop
+order, calculate the observed limits from the two retained JSONL files:
+
+```bash
+python3 tools/fcu_to_vrx_evidence.py summarize-disarmed \
+  --pi-events "$W1_RUN/fcu_to_vrx_pi_events.jsonl" \
+  --vrx-events "$W2_RUN/evidence/vrx_events.jsonl" \
+  --window-seconds "$MEASUREMENT_WINDOW_SECONDS"
+```
+
+The summarizer does not select acceptance thresholds. It requires exactly one
+READY event on each side, a complete common window, connected and disarmed FCU
+state, hardware safety ON, neutral Pi and UDP PWM, zero VRX thrust, finite pose
+data and valid JSONL on every retained line. It then reports per-stream maximum
+gaps, maximum absolute Pi-PWM to UDP-PWM skew, maximum UDP-receive to thrust
+delay and stationary pose drift. Armed, unsafe, non-neutral, short, empty,
+malformed or ROS-contaminated evidence fails instead of producing limits.
+
+The W1 certification suite clears inherited live selectors before constructing
+its default fixtures. Configured production selectors are exercised only by
+the suite's explicit cases, so certifying an armed command can no longer turn
+the default hold/fanout check into a false failure.
 
 #### Correlation evidence
 

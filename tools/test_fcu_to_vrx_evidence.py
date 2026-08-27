@@ -89,6 +89,54 @@ def passing_events():
     return pi, vrx
 
 
+def disarmed_measurement_events():
+    base = 2_000_000_000_000
+    ready = base + SECOND
+    offsets = (100_000_000, 1_100_000_000, 2_100_000_000)
+    pi = [
+        event("observer_started", base, side="pi", config=CONFIG),
+        event("observer_ready", ready, side="pi"),
+    ]
+    vrx = [
+        event("observer_started", base, side="vrx", config=CONFIG),
+        event("observer_ready", ready, side="vrx"),
+    ]
+    for offset in offsets:
+        timestamp = ready + offset
+        pi.extend(
+            [
+                event("state", timestamp, connected=True, armed=False),
+                event("sys_status", timestamp, hardware_safety_on=True),
+                event("rc_out", timestamp, left_pwm=800, right_pwm=800),
+                event("camera", timestamp, source_stamp_ns=timestamp),
+            ]
+        )
+        received = timestamp + 50_000_000
+        vrx.extend(
+            [
+                event(
+                    "servo_output_raw",
+                    received + 10_000_000,
+                    bridge_received_unix_ns=received,
+                    left_pwm=800,
+                    right_pwm=800,
+                    left_thrust=0.0,
+                    right_thrust=0.0,
+                ),
+                event("left_thrust", received + 20_000_000, value=0.0),
+                event("right_thrust", received + 30_000_000, value=0.0),
+                event(
+                    "pose",
+                    timestamp + 100_000_000,
+                    x=(offset // SECOND) * 0.01,
+                    y=0.0,
+                    z=0.0,
+                ),
+            ]
+        )
+    return pi, vrx
+
+
 class CorrelationTests(unittest.TestCase):
     def adjudicate(self, pi, vrx):
         return MODULE.adjudicate_events(
@@ -208,6 +256,97 @@ class CorrelationTests(unittest.TestCase):
                 )
         self.assertEqual(rc, 0)
         self.assertIn("FCU_TO_VRX_EVIDENCE=PASS", output.getvalue())
+
+
+class DisarmedMeasurementTests(unittest.TestCase):
+    def test_disarmed_all_stream_summary_reports_observed_limits(self):
+        pi, vrx = disarmed_measurement_events()
+        summary = MODULE.summarize_disarmed_events(
+            pi, vrx, window_seconds=2
+        )
+        self.assertEqual(summary["verdict"], "MEASURED")
+        self.assertEqual(summary["max_gap_seconds"]["pi"]["camera"], 1.0)
+        self.assertEqual(summary["max_gap_seconds"]["vrx"]["pose"], 1.0)
+        self.assertEqual(summary["max_pwm_skew_ms"], 50.0)
+        self.assertEqual(summary["max_thrust_delay_ms"], 30.0)
+        self.assertAlmostEqual(summary["stationary_pose_drift_metres"], 0.01)
+
+    def test_disarmed_summary_rejects_armed_or_unsafe_state(self):
+        pi, vrx = disarmed_measurement_events()
+        next(item for item in pi if item["kind"] == "state")["armed"] = True
+        with self.assertRaisesRegex(MODULE.EvidenceError, "connected and disarmed"):
+            MODULE.summarize_disarmed_events(pi, vrx, window_seconds=2)
+
+        pi, vrx = disarmed_measurement_events()
+        next(item for item in pi if item["kind"] == "sys_status")[
+            "hardware_safety_on"
+        ] = False
+        with self.assertRaisesRegex(MODULE.EvidenceError, "hardware safety ON"):
+            MODULE.summarize_disarmed_events(pi, vrx, window_seconds=2)
+
+    def test_disarmed_summary_rejects_non_neutral_or_short_capture(self):
+        pi, vrx = disarmed_measurement_events()
+        next(item for item in pi if item["kind"] == "rc_out")["left_pwm"] = 801
+        with self.assertRaisesRegex(MODULE.EvidenceError, "Pi RC output was not neutral"):
+            MODULE.summarize_disarmed_events(pi, vrx, window_seconds=2)
+
+        pi, vrx = disarmed_measurement_events()
+        with self.assertRaisesRegex(MODULE.EvidenceError, "measurement window"):
+            MODULE.summarize_disarmed_events(pi, vrx, window_seconds=5)
+
+    def test_disarmed_summary_cli_reads_jsonl_and_emits_pass_marker(self):
+        pi, vrx = disarmed_measurement_events()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            pi_path = root / "pi.jsonl"
+            vrx_path = root / "vrx.jsonl"
+            for path, events in ((pi_path, pi), (vrx_path, vrx)):
+                path.write_text(
+                    "".join(
+                        json.dumps(item, separators=(",", ":"), sort_keys=True) + "\n"
+                        for item in events
+                    ),
+                    encoding="utf-8",
+                )
+            output = io.StringIO()
+            with redirect_stdout(output):
+                rc = MODULE.main(
+                    [
+                        "summarize-disarmed",
+                        "--pi-events",
+                        str(pi_path),
+                        "--vrx-events",
+                        str(vrx_path),
+                        "--window-seconds",
+                        "2",
+                    ]
+                )
+        self.assertEqual(rc, 0)
+        self.assertIn("FCU_TO_VRX_DISARMED_MEASUREMENT=PASS", output.getvalue())
+
+    def test_retained_jsonl_rejects_empty_malformed_and_non_event_lines(self):
+        invalid_contents = {
+            "empty": "",
+            "malformed": "{not-json}\n",
+            "scalar": '"diagnostic text"\n',
+            "wrong-schema": json.dumps(
+                {"schema": "wrong", "captured_unix_ns": 1}
+            ) + "\n",
+            "missing-timestamp": json.dumps(
+                {"schema": MODULE.SCHEMA, "kind": "state"}
+            ) + "\n",
+            "ros-separator": json.dumps(
+                event("state", 1, connected=True, armed=False)
+            ) + "\n---\n",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name, content in invalid_contents.items():
+                with self.subTest(name=name):
+                    path = root / f"{name}.jsonl"
+                    path.write_text(content, encoding="utf-8")
+                    with self.assertRaises(MODULE.EvidenceError):
+                        MODULE.read_events(path)
 
 
 class _Header:

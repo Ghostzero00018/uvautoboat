@@ -11,6 +11,7 @@ EXPECTED_HELPER_SHA256='8458526c183479b1ca004dcbdfb3e498b585e415826025b4ee71b785
 EXPECTED_SSID="${LIVE_SSID:-IoT IMT Nord Europe}"
 PI_WINDOW_MODE="${LIVE_PI_WINDOW_MODE:-fullscreen}"
 FCU_TO_VRX_FANOUT="${LIVE_FCU_TO_VRX_FANOUT:-0}"
+DISARMED_MEASUREMENT="${LIVE_FCU_TO_VRX_MEASUREMENT:-0}"
 ARMED_OBSERVATION="${LIVE_ARMED_OBSERVATION:-0}"
 ARMED_OBSERVATION_MAX_SECONDS="${LIVE_ARMED_OBSERVATION_MAX_SECONDS:-}"
 ARMED_OBSERVATION_FINAL_SECONDS="${LIVE_ARMED_OBSERVATION_FINAL_SECONDS:-}"
@@ -167,6 +168,8 @@ validate_pi_window_selectors() {
     || fail 'LIVE_PI_WINDOW_MODE must be resizable or fullscreen'
   [[ "$FCU_TO_VRX_FANOUT" =~ ^[01]$ ]] \
     || fail 'LIVE_FCU_TO_VRX_FANOUT must be 0 or 1'
+  [[ "$DISARMED_MEASUREMENT" =~ ^[01]$ ]] \
+    || fail 'LIVE_FCU_TO_VRX_MEASUREMENT must be 0 or 1'
   [[ "$ARMED_OBSERVATION" =~ ^[01]$ ]] \
     || fail 'LIVE_ARMED_OBSERVATION must be 0 or 1'
   if [ -n "$RUN_SECONDS" ]; then
@@ -174,24 +177,34 @@ validate_pi_window_selectors() {
       || fail 'LIVE_RUN_SECONDS must be a positive integer'
   fi
   PI_HOLD_AFTER_WINDOW=1
-  [ "$ARMED_OBSERVATION" -eq 0 ] && return 0
+  if [ "$DISARMED_MEASUREMENT" -eq 1 ] \
+      && [ "$ARMED_OBSERVATION" -eq 1 ]; then
+    fail 'LIVE_FCU_TO_VRX_MEASUREMENT and LIVE_ARMED_OBSERVATION cannot both be enabled'
+  fi
+  if [ "$DISARMED_MEASUREMENT" -eq 0 ] \
+      && [ "$ARMED_OBSERVATION" -eq 0 ]; then
+    return 0
+  fi
   [ "$FCU_TO_VRX_FANOUT" -eq 1 ] \
-    || fail 'LIVE_ARMED_OBSERVATION=1 requires LIVE_FCU_TO_VRX_FANOUT=1'
+    || fail 'the FCU-to-VRX evidence observer requires LIVE_FCU_TO_VRX_FANOUT=1'
 
+  if [ "$ARMED_OBSERVATION" -eq 1 ]; then
+    for name in ARMED_OBSERVATION_MAX_SECONDS \
+      ARMED_OBSERVATION_FINAL_SECONDS ARMED_OBSERVATION_STALE_SECONDS; do
+      [ -n "${!name:-}" ] \
+        || fail "LIVE_${name} is required when LIVE_ARMED_OBSERVATION=1"
+      [[ "${!name}" =~ ^[1-9][0-9]*$ ]] \
+        || fail 'armed-observation time limits must be positive integers'
+    done
+  fi
   for name in \
-    ARMED_OBSERVATION_MAX_SECONDS ARMED_OBSERVATION_FINAL_SECONDS \
-    ARMED_OBSERVATION_STALE_SECONDS ARMED_OBSERVATION_LEFT_CHANNEL \
+    ARMED_OBSERVATION_LEFT_CHANNEL \
     ARMED_OBSERVATION_LEFT_PWM_MIN ARMED_OBSERVATION_LEFT_TRIM \
     ARMED_OBSERVATION_LEFT_PWM_MAX ARMED_OBSERVATION_RIGHT_CHANNEL \
     ARMED_OBSERVATION_RIGHT_PWM_MIN ARMED_OBSERVATION_RIGHT_TRIM \
     ARMED_OBSERVATION_RIGHT_PWM_MAX; do
     [ -n "${!name:-}" ] \
-      || fail "LIVE_${name} is required when LIVE_ARMED_OBSERVATION=1"
-  done
-  for value in "$ARMED_OBSERVATION_MAX_SECONDS" \
-    "$ARMED_OBSERVATION_FINAL_SECONDS" "$ARMED_OBSERVATION_STALE_SECONDS"; do
-    [[ "$value" =~ ^[1-9][0-9]*$ ]] \
-      || fail 'armed-observation time limits must be positive integers'
+      || fail "LIVE_${name} is required when an FCU-to-VRX evidence observer is enabled"
   done
   for value in "$ARMED_OBSERVATION_LEFT_CHANNEL" \
     "$ARMED_OBSERVATION_RIGHT_CHANNEL"; do
@@ -215,7 +228,9 @@ validate_pi_window_selectors() {
     [ "${!trim}" -ge 800 ] && [ "${!trim}" -le 2200 ] \
       || fail "$side armed-observation trim must be in the helper range 800..2200"
   done
-  PI_HOLD_AFTER_WINDOW=0
+  if [ "$ARMED_OBSERVATION" -eq 1 ]; then
+    PI_HOLD_AFTER_WINDOW=0
+  fi
 }
 
 usage() {
@@ -370,7 +385,8 @@ run_workstation_runtime_preflight() {
     || fail "rate probe missing or not executable: $SCRIPT_DIR/rate_probe.py"
   [ -r "$FCU_TO_VRX_EVIDENCE" ] \
     || fail "FCU-to-VRX evidence observer missing: $FCU_TO_VRX_EVIDENCE"
-  if [ "$ARMED_OBSERVATION" -eq 1 ]; then
+  if [ "$DISARMED_MEASUREMENT" -eq 1 ] \
+      || [ "$ARMED_OBSERVATION" -eq 1 ]; then
     python3 -c 'import mavros_msgs, rclpy, sensor_msgs' \
       || fail 'Pi-side evidence observer Python dependencies are unavailable'
   fi
@@ -577,15 +593,23 @@ wait_for_workstation_services() {
 }
 
 start_workstation_services() {
+  local observer_mode observer_stale_seconds
   start_child rosbridge "$RUN_DIR/rosbridge.log" "${ROSBRIDGE_COMMAND[@]}"
   start_child web-video-server "$RUN_DIR/web_video_server.log" "${VIDEO_COMMAND[@]}"
   start_child dashboard "$RUN_DIR/dashboard.log" "${DASHBOARD_COMMAND[@]}"
-  if [ "$ARMED_OBSERVATION" -eq 1 ]; then
+  if [ "$DISARMED_MEASUREMENT" -eq 1 ] \
+      || [ "$ARMED_OBSERVATION" -eq 1 ]; then
+    observer_mode=armed-observation
+    observer_stale_seconds="$ARMED_OBSERVATION_STALE_SECONDS"
+    if [ "$DISARMED_MEASUREMENT" -eq 1 ]; then
+      observer_mode=disarmed-measurement
+      observer_stale_seconds=0
+    fi
     start_child pi-evidence-observer "$RUN_DIR/fcu_to_vrx_pi_observer.log" \
       python3 "$FCU_TO_VRX_EVIDENCE" observe-pi \
       --output "$RUN_DIR/fcu_to_vrx_pi_events.jsonl" \
       --status "$RUN_DIR/fcu_to_vrx_pi_status.json" \
-      --stale-seconds "$ARMED_OBSERVATION_STALE_SECONDS" \
+      --stale-seconds "$observer_stale_seconds" \
       --left-channel "$ARMED_OBSERVATION_LEFT_CHANNEL" \
       --right-channel "$ARMED_OBSERVATION_RIGHT_CHANNEL" \
       --left-min "$ARMED_OBSERVATION_LEFT_PWM_MIN" \
@@ -594,6 +618,7 @@ start_workstation_services() {
       --right-min "$ARMED_OBSERVATION_RIGHT_PWM_MIN" \
       --right-trim "$ARMED_OBSERVATION_RIGHT_TRIM" \
       --right-max "$ARMED_OBSERVATION_RIGHT_PWM_MAX"
+    log "FCU_TO_VRX_PI_OBSERVER_STARTED mode=$observer_mode stale_seconds=$observer_stale_seconds"
   fi
 }
 
@@ -643,14 +668,19 @@ all_expected_publishers_present() {
 }
 
 wait_for_pi_observer_ready() {
-  local deadline="$1"
-  [ "$ARMED_OBSERVATION" -eq 1 ] || return 0
+  local deadline="$1" observer_mode
+  if [ "$DISARMED_MEASUREMENT" -eq 0 ] \
+      && [ "$ARMED_OBSERVATION" -eq 0 ]; then
+    return 0
+  fi
+  observer_mode=armed-observation
+  [ "$DISARMED_MEASUREMENT" -eq 0 ] || observer_mode=disarmed-measurement
   while [ "$SECONDS" -lt "$deadline" ]; do
     monitor_workstation_once || return 1
     if grep -Fq '"phase":"READY"' \
         "$RUN_DIR/fcu_to_vrx_pi_status.json" 2>/dev/null; then
       emit_marker_once FCU_TO_VRX_PI_OBSERVER \
-        "FCU_TO_VRX_PI_OBSERVER=READY events=$RUN_DIR/fcu_to_vrx_pi_events.jsonl"
+        "FCU_TO_VRX_PI_OBSERVER=READY mode=$observer_mode events=$RUN_DIR/fcu_to_vrx_pi_events.jsonl"
       return 0
     fi
     sleep "$SUPERVISOR_POLL_SECONDS" || true

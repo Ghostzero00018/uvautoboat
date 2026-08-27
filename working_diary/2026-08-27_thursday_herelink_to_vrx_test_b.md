@@ -728,3 +728,97 @@ That approval is recorded, but Pipeline 3 is **NOT RUN** at this point. No
 serial link was opened, no fresh snapshot or T0b artifact was created, and no
 parameter write, bridge start, mode change, arm, RC command, motor command or
 thrust occurred under Pipeline 3. Herelink-to-VRX Test B remains **NOT RUN**.
+
+## Pipeline 3, Pipeline 4 and pre-Test-B readiness repair - 27/08/2026
+
+This section appends the results obtained after the Pipeline 3 authority record
+above. It does not rewrite that earlier point-in-time statement.
+
+### Pipeline 3 - fresh MAVFTP snapshot
+
+The operator opened the direct serial link in read-only MAVProxy mode, loaded
+the FTP and parameter modules, fetched `986` parameters, confirmed
+`RC_OVERRIDE_TIME=0.5` and saved:
+
+```text
+pi=/home/imt-aqua-drone/Desktop/real_fcu_params_20260827_live.parm
+workstation=/home/ghostzero/Desktop/pi_run_evidence/t0b_20260827/real_fcu_params_20260827_live.parm
+sha256=3347835b8482c9fa00c54e9d53586d2beb1db87fabd92adfe599259a9c346900
+parameters=986
+selected=41
+```
+
+Offline validation also retained `ARMING_CHECK=0` and
+`BRD_SAFETY_DEFLT=1.000000`. No parameter was written by Pipeline 3.
+
+### Pipeline 4 - snapshot-backed T0b probe
+
+The deployed `d88c712` bundle passed its four-member manifest and non-actuating
+`check`. The separately approved read-only probe ran on the Pi in localhost
+discovery and reported:
+
+```text
+REAL_FCU_T0B=PASS serial=/dev/ttyAMA0 parameter_reads=41 safety=ON mapping=retained rails=retained source=mavproxy-ftp-snapshot snapshot_parameters=986
+REAL_FCU_PROBE_VERDICT=PASS writes=none bridge=not-started query_source=mavproxy-ftp-snapshot
+REAL_FCU_PI_EXIT status=0 cleanup_rc=0
+```
+
+The complete copied run is:
+
+```text
+/home/ghostzero/Desktop/pi_run_evidence/t0b_probe_20260827_174820
+```
+
+The retained live state is connected, disarmed and `MANUAL`, with hardware
+safety ON. The artifact resolves steering `RC1`, throttle `RC3`, left
+`SERVO3`, right `SERVO1`, RC rails `1102/1515/1927` and both output rails
+`800/800/2200`. T0b is closed. This is read-only parameter, mapping, rail and
+state evidence; it is not Herelink-to-VRX motion evidence.
+
+### Test B approval and readiness audit
+
+The operator explicitly approved running Test B. The approval is recorded, but
+does not replace the remaining pre-run evidence and physical gates.
+
+The full offline readiness audit reproduced two defects before any live Test B
+launch:
+
+1. W1 started its Pi JSONL recorder only when armed observation was enabled.
+   There was no clean, supervisor-owned way to retain the required disarmed
+   all-stream measurement without entering the Pi helper's arm-window contract.
+2. W1's certification suite inherited the caller's `LIVE_*` selectors. An armed
+   certification therefore evaluated the default command fixture as armed and
+   failed its expected monitored-hold assertion even though the production
+   emitter was correct.
+
+The offline repair adds default-off `LIVE_FCU_TO_VRX_MEASUREMENT=1`. It is
+mutually exclusive with armed observation, requires fanout and the live-read
+mapping/rails, starts W1's subscriber-only Pi recorder with `stale_seconds=0`,
+and emits a Pi command that stays disarmed-only with hold and fanout enabled.
+`summarize-disarmed` validates both retained JSONL streams and reports the eight
+stream gaps, PWM skew, thrust delay and stationary pose drift without choosing
+acceptance thresholds. It rejects armed, unsafe, non-neutral, short, empty,
+malformed and ROS-contaminated evidence. The W1 suite now clears inherited live
+selectors before its default fixtures and exercises configured modes explicitly.
+
+Offline results after the repair:
+
+```text
+Pi lifecycle:             PASS
+live-dashboard preflight: PASS cases=20
+real-FCU helper suite:    PASS cases=34
+SITL runner suite:        PASS cases=41
+FCU-to-VRX workstation:   PASS shell_cases=23 python_tests=35 runtime=not-started
+Python:                   122 passed
+Node:                     pass=80 fail=0
+bundle manifest:          4/4 OK
+git diff --check:         clean
+```
+
+No simulator, Pi helper, FCU bridge, Herelink command or Test B motion ran under
+this repair. The worktree is modified and W2's clean pushed parity gate therefore
+blocks launch until publication. Landing the repair changes the exact revision
+from the successful `147efe0` SITL run; current-revision SITL acceptance must be
+rerun or explicitly superseded before the armed phase. The disarmed measurement,
+selection and recording of explicit limits, and a fresh physical declaration
+also remain outstanding. Test B remains **NOT RUN**.

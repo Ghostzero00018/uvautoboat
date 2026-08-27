@@ -654,7 +654,7 @@ fcuvrx_check() {
   python3 -m unittest "$FCUVRX_SCRIPT_DIR/test_fcu_to_vrx_parameter_contract.py"
   python3 -m unittest "$FCUVRX_SCRIPT_DIR/test_fcu_to_vrx_evidence.py"
   fcuvrx_log \
-    'FCU_TO_VRX_WORKSTATION_CHECK=PASS shell_cases=23 python_tests=30 runtime=not-started'
+    'FCU_TO_VRX_WORKSTATION_CHECK=PASS shell_cases=23 python_tests=35 runtime=not-started'
 }
 
 fcuvrx_run() {
