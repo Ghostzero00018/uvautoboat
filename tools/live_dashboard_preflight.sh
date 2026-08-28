@@ -104,6 +104,7 @@ DASHBOARD_COMMAND=(
 declare -a CHILD_NAMES=()
 declare -a CHILD_PIDS=()
 declare -a CHILD_PGIDS=()
+declare -a ARRIVAL_PUBLISHER_SEEN=()
 declare -A EMITTED_MARKERS=()
 SUPERVISOR_PGID=''
 SUPERVISOR_LOG=''
@@ -687,6 +688,14 @@ print_pi_command() {
   printf ')\n\n'
 }
 
+arrival_monotonic_seconds() {
+  local uptime_value uptime_rest
+  IFS=' ' read -r uptime_value uptime_rest </proc/uptime || return 1
+  uptime_value="${uptime_value%%.*}"
+  [[ "$uptime_value" =~ ^[0-9]+$ ]] || return 1
+  printf '%s\n' "$uptime_value"
+}
+
 topic_has_publisher() {
   local topic="$1" info count
   info="$(ros2 topic info --no-daemon --spin-time 2 "$topic" 2>/dev/null)" \
@@ -696,21 +705,44 @@ topic_has_publisher() {
 }
 
 all_expected_publishers_present() {
-  local topic
-  for topic in "${EXPECTED_TOPICS[@]}"; do
-    topic_has_publisher "$topic" || return 1
+  local index topic
+  for index in "${!EXPECTED_TOPICS[@]}"; do
+    [ "${ARRIVAL_PUBLISHER_SEEN[$index]:-0}" -eq 0 ] || continue
+    topic="${EXPECTED_TOPICS[$index]}"
+    if topic_has_publisher "$topic"; then
+      ARRIVAL_PUBLISHER_SEEN[$index]=1
+    fi
+  done
+  for index in "${!EXPECTED_TOPICS[@]}"; do
+    [ "${ARRIVAL_PUBLISHER_SEEN[$index]:-0}" -eq 1 ] || return 1
   done
 }
 
+missing_expected_publishers() {
+  local index
+  local -a missing=()
+  for index in "${!EXPECTED_TOPICS[@]}"; do
+    [ "${ARRIVAL_PUBLISHER_SEEN[$index]:-0}" -eq 1 ] \
+      || missing+=("${EXPECTED_TOPICS[$index]}")
+  done
+  local IFS=,
+  printf '%s\n' "${missing[*]}"
+}
+
 wait_for_pi_observer_ready() {
-  local deadline="$1" observer_mode
+  local deadline="$1" observer_mode now
   if [ "$DISARMED_MEASUREMENT" -eq 0 ] \
       && [ "$ARMED_OBSERVATION" -eq 0 ]; then
     return 0
   fi
   observer_mode=armed-observation
   [ "$DISARMED_MEASUREMENT" -eq 0 ] || observer_mode=disarmed-measurement
-  while [ "$SECONDS" -lt "$deadline" ]; do
+  while :; do
+    now="$(arrival_monotonic_seconds)" || {
+      log_error 'FAIL: cannot read the arrival monotonic clock'
+      return 1
+    }
+    [ "$now" -lt "$deadline" ] || break
     monitor_workstation_once || return 1
     if grep -Fq '"phase":"READY"' \
         "$RUN_DIR/fcu_to_vrx_pi_status.json" 2>/dev/null; then
@@ -725,28 +757,45 @@ wait_for_pi_observer_ready() {
 }
 
 wait_for_pi_data_arrival() {
-  local start_seconds="$SECONDS" deadline index remaining required rc
-  local topic type reliability depth sample
-  deadline=$((SECONDS + ARRIVAL_TIMEOUT_SECONDS))
+  local start_seconds deadline now index remaining required rc
+  local topic type reliability depth sample missing
+  local publishers_ready=0
+  ARRIVAL_PUBLISHER_SEEN=()
+  start_seconds="$(arrival_monotonic_seconds)" || {
+    log_error 'FAIL: cannot read the arrival monotonic clock'
+    return 1
+  }
+  deadline=$((start_seconds + ARRIVAL_TIMEOUT_SECONDS))
 
   [ "$STOP_REQUESTED" -eq 0 ] || return 130
-  while [ "$SECONDS" -lt "$deadline" ]; do
+  while :; do
+    now="$(arrival_monotonic_seconds)" || {
+      log_error 'FAIL: cannot read the arrival monotonic clock'
+      return 1
+    }
+    [ "$now" -lt "$deadline" ] || break
     [ "$STOP_REQUESTED" -eq 0 ] || return 130
     monitor_workstation_once || return 1
     [ "$STOP_REQUESTED" -eq 0 ] || return 130
     if all_expected_publishers_present; then
       [ "$STOP_REQUESTED" -eq 0 ] || return 130
+      publishers_ready=1
       break
     fi
     [ "$STOP_REQUESTED" -eq 0 ] || return 130
     sleep "$SUPERVISOR_POLL_SECONDS" || true
   done
   [ "$STOP_REQUESTED" -eq 0 ] || return 130
-  all_expected_publishers_present || {
+  if [ "$publishers_ready" -eq 0 ]; then
+    now="$(arrival_monotonic_seconds)" || {
+      log_error 'FAIL: cannot read the arrival monotonic clock'
+      return 1
+    }
+    missing="$(missing_expected_publishers)"
     log_error \
-      "FAIL: seven expected publishers did not arrive within ${ARRIVAL_TIMEOUT_SECONDS}s"
+      "FAIL: expected publishers missing timeout_seconds=$ARRIVAL_TIMEOUT_SECONDS elapsed_seconds=$((now - start_seconds)) missing=$missing"
     return 1
-  }
+  fi
   start_pi_evidence_observer || return 1
   wait_for_pi_observer_ready "$deadline" || return 1
   [ "$STOP_REQUESTED" -eq 0 ] || return 130
@@ -755,7 +804,11 @@ wait_for_pi_data_arrival() {
     [ "$STOP_REQUESTED" -eq 0 ] || return 130
     monitor_workstation_once || return 1
     [ "$STOP_REQUESTED" -eq 0 ] || return 130
-    remaining=$((deadline - SECONDS))
+    now="$(arrival_monotonic_seconds)" || {
+      log_error 'FAIL: cannot read the arrival monotonic clock'
+      return 1
+    }
+    remaining=$((deadline - now))
     required=$(((${#EXPECTED_TOPICS[@]} - index) * ARRIVAL_SAMPLE_SECONDS))
     [ "$remaining" -ge "$required" ] || {
       log_error \
@@ -782,7 +835,11 @@ wait_for_pi_data_arrival() {
   [ "$STOP_REQUESTED" -eq 0 ] || return 130
   monitor_workstation_once || return 1
   [ "$STOP_REQUESTED" -eq 0 ] || return 130
-  ARRIVAL_ELAPSED_SECONDS=$((SECONDS - start_seconds))
+  now="$(arrival_monotonic_seconds)" || {
+    log_error 'FAIL: cannot read the arrival monotonic clock'
+    return 1
+  }
+  ARRIVAL_ELAPSED_SECONDS=$((now - start_seconds))
 }
 
 run_rate_probe_body() {

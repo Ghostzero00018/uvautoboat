@@ -180,3 +180,43 @@ Test B approval, `ARMED_OBSERVATION_BASELINE=PASS`, W1
 After motion capture, return sticks to neutral, disarm and restore hardware
 safety ON. Wait for `ARMED_OBSERVATION=PASS`, `PI_SOURCE_HOLD=ACTIVE` and
 `PI_SOURCE_HOLD_MODE=completed-armed` before stopping W2, then W1, then P1.
+
+## Friday pre-arm arrival failure and focused repair
+
+The separately approved attempt started from clean revision `a23fc6d`. The Pi
+helper checksum
+`0d3f6d1b72c473eeac8a169eaa045f24930ba7ed31fe4f7485d47616704f6ad9`
+verified on both hosts. Retained evidence is:
+
+```text
+W1=/home/ghostzero/Desktop/live_dashboard_workstation_20260828_151158
+W2=/home/ghostzero/Desktop/fcu_to_vrx_workstation_20260828_151242
+P1=/home/ghostzero/Desktop/pi_run_evidence/test_b_friday_failed_20260828_151345
+```
+
+P1 reached `PI_SOURCE_STACK_READY=PASS` and the connected/disarmed, neutral,
+hardware-safe `ARMED_OBSERVATION_BASELINE=PASS`. W2 independently reached
+`FCU_TO_VRX_WORKSTATION_READY=PASS ... streams=4`. W1 remained in its
+publisher-arrival phase, created neither `arrival_*.log` nor its Pi evidence
+observer, emitted no `PI_DATA_ARRIVED=PASS`, and reported its configured
+`600 s` timeout after `244.968` epoch seconds between its own phase-entry and
+failure records. The cause of that timing discrepancy is not established.
+There was no arm, stick movement, correlation adjudication or new Test B
+acceptance. The Pi safety monitor remained at `ARMED_OBSERVATION_PHASE=READY`.
+P1 and W1 reported passing teardown with `cleanup_rc=0`; W2 stopped its bridge,
+observer and VRX children with `cleanup_rc=0`.
+
+The old W1 precheck required seven separate daemonless graph queries to all
+succeed in one scan and discarded earlier topic sightings whenever a later
+query was incomplete. The focused repair now retains each expected topic once
+observed and re-queries only unresolved topics. Its deadline, remaining budget
+and elapsed result use `/proc/uptime` monotonic time. A timeout records the
+configured budget, monotonic elapsed time and exact unresolved topic names.
+The existing Pi-observer READY gate and all seven compatible-QoS message probes
+remain mandatory after discovery, so a disappeared source still fails closed.
+
+Red/green coverage reproduces staggered publisher visibility, a raw `SECONDS`
+discontinuity and exact missing-topic diagnostics. The focused W1 suite passes
+`cases=25`. This workstation-only repair does not change the Pi helper or its
+transfer checksum, has not been exercised live, and does not accept Test B. A
+new live attempt still requires its own physical declaration and approval.

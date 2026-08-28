@@ -42,8 +42,8 @@ below only for traceability.
 | Helper size | `95,720` bytes |
 | Helper SHA-256 | `0d3f6d1b72c473eeac8a169eaa045f24930ba7ed31fe4f7485d47616704f6ad9` |
 | Workstation supervisor | `tools/live_dashboard_preflight.sh` |
-| Supervisor size | `39,198` bytes |
-| Supervisor SHA-256 | `6eab9f928b477c4ece73eb50deedb332074f74bef525aa1095a217e46b7676bf` |
+| Supervisor size | `41,001` bytes |
+| Supervisor SHA-256 | `a14da50ba6a2c582ac6ac0de019f31375ff880f1a6f1467212b7630d794fd601` |
 | VRX supervisor | `tools/fcu_to_vrx_workstation.sh` |
 | VRX supervisor size | `26,906` bytes |
 | VRX supervisor SHA-256 | `a5afddc81d59a39d63e7cca77a7b3852e30b5a555f1be2e04f3746f5540bdd5f` |
@@ -552,6 +552,27 @@ its default fixtures. Configured production selectors are exercised only by
 the suite's explicit cases, so certifying an armed command can no longer turn
 the default hold/fanout check into a false failure.
 
+#### W1 arrival repair after the 28/08 pre-arm attempt
+
+The clean `a23fc6d` attempt reached P1
+`PI_SOURCE_STACK_READY=PASS` and `ARMED_OBSERVATION_BASELINE=PASS`, while W2
+reached four-stream READY. W1 nevertheless stayed in publisher arrival, created
+no arrival sample or Pi-observer evidence, and emitted no
+`PI_DATA_ARRIVED=PASS`. Its log reported the configured `600 s` failure after
+`244.968` epoch seconds between phase entry and failure. The source of that
+timing discrepancy is unproven. Nothing was armed, all three stacks cleaned up
+with `cleanup_rc=0`, and Test B remains not accepted.
+
+W1 now latches each expected publisher independently across polling passes and
+re-queries only unresolved topics. The phase deadline, sample budget and elapsed
+result use `/proc/uptime` monotonic time. A timeout reports the configured
+timeout, monotonic elapsed time and exact unresolved topic names. This is still
+a pre-subscription graph gate: after all seven names are retained, the selected
+Pi-observer READY gate and all seven compatible-QoS message samples remain
+mandatory. The repair therefore removes the all-seven-single-scan dependency
+without turning an earlier publisher sighting into acceptance. Focused offline
+coverage passes `25` cases; a new live result is still required.
+
 #### Correlation evidence
 
 The two recorders stay in their required domains: the Pi/dashboard recorder in
@@ -994,8 +1015,14 @@ W1 waits for these seven publishers and then samples each topic with its compati
 | `/mavros/rc/in` | best effort | `10` |
 | `/mavros/rc/out` | best effort | `10` |
 
-The default arrival deadline is `360` seconds from the printed Pi command. Each arrival
-sample is `10` seconds. Continue only after:
+The default arrival deadline is `360` seconds from arrival-phase entry, measured
+with the supervisor's monotonic clock. Publisher discovery is cumulative across
+polling passes: W1 retains each observed expected topic and re-queries only
+unresolved topics. A timeout reports the configured timeout, monotonic elapsed
+time and the exact unresolved names. This publisher gate is not acceptance:
+after all seven names are retained, the selected Pi-observer READY gate and all
+seven compatible-QoS samples remain mandatory. Each arrival sample is `10`
+seconds. Continue only after:
 
 ```text
 PI_DATA_ARRIVED=PASS topics=7 ...

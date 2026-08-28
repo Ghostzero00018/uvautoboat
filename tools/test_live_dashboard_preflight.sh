@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PREFLIGHT="${1:-$SCRIPT_DIR/live_dashboard_preflight.sh}"
 HELPER="$SCRIPT_DIR/pi_live_hailo_mavlink_dashboard.sh"
 WIKI="$SCRIPT_DIR/../wiki/Live_Hailo_MAVLink_Dashboard_Testing.md"
-EXPECTED_PREFLIGHT_SHA256='6eab9f928b477c4ece73eb50deedb332074f74bef525aa1095a217e46b7676bf'
+EXPECTED_PREFLIGHT_SHA256='a14da50ba6a2c582ac6ac0de019f31375ff880f1a6f1467212b7630d794fd601'
 CASE_COUNT=0
 
 # Production selectors are exercised explicitly below. Keep the default
@@ -115,6 +115,10 @@ require_literal 'setsid sha256sum ss tee tr; do'
 require_literal 'require_command ros2'
 require_literal "grep -Fxq '/rosapi/topics_for_type'"
 require_literal 'all_expected_publishers_present'
+require_literal 'arrival_monotonic_seconds() {'
+require_literal "read -r uptime_value uptime_rest </proc/uptime"
+require_literal 'missing_expected_publishers() {'
+require_literal 'elapsed_seconds=$((now - start_seconds)) missing=$missing'
 require_literal 'ARRIVAL_TIMEOUT_SECONDS="${LIVE_ARRIVAL_TIMEOUT_SECONDS:-360}"'
 require_literal 'ARRIVAL_SAMPLE_SECONDS="${LIVE_ARRIVAL_SAMPLE_SECONDS:-10}"'
 require_literal 'PI_HOLD_AFTER_WINDOW=1'
@@ -728,6 +732,155 @@ grep -Fq '4242 mavproxy.py --master=/dev/ttyAMA0' <<<"$MATCH_OUTPUT" \
   || fail 'matching process was not reported'
 [ "$(wc -l <"$TRACE")" -eq 3 ] \
   || fail 'matching scan did not inspect each separate pattern'
+pass_case
+
+ARRIVAL_LATCH_CASE_DIR="$TEST_TMP/arrival-latch"
+mkdir -p "$ARRIVAL_LATCH_CASE_DIR"
+set +e
+ARRIVAL_LATCH_OUTPUT="$(bash -c '
+  set -euo pipefail
+  source "$1"
+  CASE_DIR="$2"
+  RUN_DIR="$CASE_DIR"
+  STOP_REQUESTED=0
+  ARMED_OBSERVATION=0
+  DISARMED_MEASUREMENT=0
+  ARRIVAL_TIMEOUT_SECONDS=5
+  ARRIVAL_SAMPLE_SECONDS=1
+  SUPERVISOR_POLL_SECONDS=0
+  EXPECTED_TOPICS=(/one /two /three)
+  EXPECTED_TOPIC_TYPES=(type/One type/Two type/Three)
+  EXPECTED_TOPIC_RELIABILITY=(best_effort best_effort best_effort)
+  EXPECTED_TOPIC_DEPTH=(1 1 1)
+  DISCOVERY_ROUND=1
+  SAMPLE_COUNT=0
+  declare -A QUERY_COUNT=()
+
+  monitor_workstation_once() { return 0; }
+  start_pi_evidence_observer() { return 0; }
+  topic_has_publisher() {
+    QUERY_COUNT[$1]=$((${QUERY_COUNT[$1]:-0} + 1))
+    case "$DISCOVERY_ROUND:$1" in
+      1:/one|2:/two|3:/three) return 0 ;;
+      *) return 1 ;;
+    esac
+  }
+  sleep() {
+    DISCOVERY_ROUND=$((DISCOVERY_ROUND + 1))
+    SECONDS=$((SECONDS + 1))
+  }
+  python3() {
+    SAMPLE_COUNT=$((SAMPLE_COUNT + 1))
+    return 0
+  }
+
+  wait_for_pi_data_arrival
+  [ "$SAMPLE_COUNT" -eq 3 ] \
+    || fail "latched arrival sampled $SAMPLE_COUNT topics instead of 3"
+  [ "${QUERY_COUNT[/one]:-0}" -eq 1 ] \
+    || fail "resolved /one was queried ${QUERY_COUNT[/one]:-0} times"
+  [ "${QUERY_COUNT[/two]:-0}" -eq 2 ] \
+    || fail "resolved /two was queried ${QUERY_COUNT[/two]:-0} times"
+  [ "${QUERY_COUNT[/three]:-0}" -eq 3 ] \
+    || fail "resolved /three was queried ${QUERY_COUNT[/three]:-0} times"
+  printf "LATCHED_ARRIVAL=PASS rounds=%s samples=%s\n" \
+    "$DISCOVERY_ROUND" "$SAMPLE_COUNT"
+' _ "$PREFLIGHT" "$ARRIVAL_LATCH_CASE_DIR" 2>&1)"
+ARRIVAL_LATCH_RC=$?
+set -e
+[ "$ARRIVAL_LATCH_RC" -eq 0 ] \
+  || fail "publisher sightings were not retained across arrival polls rc=$ARRIVAL_LATCH_RC: $ARRIVAL_LATCH_OUTPUT"
+grep -Fq 'LATCHED_ARRIVAL=PASS' <<<"$ARRIVAL_LATCH_OUTPUT" \
+  || fail 'latched publisher arrival did not reach message sampling'
+pass_case
+
+ARRIVAL_MONOTONIC_CASE_DIR="$TEST_TMP/arrival-monotonic"
+mkdir -p "$ARRIVAL_MONOTONIC_CASE_DIR"
+set +e
+ARRIVAL_MONOTONIC_OUTPUT="$(bash -c '
+  set -euo pipefail
+  source "$1"
+  RUN_DIR="$2"
+  STOP_REQUESTED=0
+  ARMED_OBSERVATION=0
+  DISARMED_MEASUREMENT=0
+  ARRIVAL_TIMEOUT_SECONDS=5
+  ARRIVAL_SAMPLE_SECONDS=0
+  SUPERVISOR_POLL_SECONDS=0
+  EXPECTED_TOPICS=(/delayed)
+  EXPECTED_TOPIC_TYPES=(type/Delayed)
+  EXPECTED_TOPIC_RELIABILITY=(best_effort)
+  EXPECTED_TOPIC_DEPTH=(1)
+  FAKE_NOW=100
+  SECONDS=0
+  SAMPLE_COUNT=0
+
+  arrival_monotonic_seconds() { printf "%s\n" "$FAKE_NOW"; }
+  monitor_workstation_once() { return 0; }
+  start_pi_evidence_observer() { return 0; }
+  topic_has_publisher() { [ "$FAKE_NOW" -ge 102 ]; }
+  sleep() {
+    FAKE_NOW=$((FAKE_NOW + 1))
+    SECONDS=$((SECONDS + 100))
+  }
+  python3() { SAMPLE_COUNT=$((SAMPLE_COUNT + 1)); }
+
+  wait_for_pi_data_arrival
+  [ "$SAMPLE_COUNT" -eq 1 ] \
+    || fail "monotonic arrival sampled $SAMPLE_COUNT topics instead of 1"
+  [ "$ARRIVAL_ELAPSED_SECONDS" -eq 2 ] \
+    || fail "monotonic arrival elapsed=$ARRIVAL_ELAPSED_SECONDS instead of 2"
+  printf "MONOTONIC_ARRIVAL=PASS elapsed=%s\n" "$ARRIVAL_ELAPSED_SECONDS"
+' _ "$PREFLIGHT" "$ARRIVAL_MONOTONIC_CASE_DIR" 2>&1)"
+ARRIVAL_MONOTONIC_RC=$?
+set -e
+[ "$ARRIVAL_MONOTONIC_RC" -eq 0 ] \
+  || fail "arrival deadline followed raw SECONDS instead of monotonic time rc=$ARRIVAL_MONOTONIC_RC: $ARRIVAL_MONOTONIC_OUTPUT"
+grep -Fq 'MONOTONIC_ARRIVAL=PASS elapsed=2' <<<"$ARRIVAL_MONOTONIC_OUTPUT" \
+  || fail 'arrival monotonic-clock contract was not demonstrated'
+pass_case
+
+ARRIVAL_MISSING_CASE_DIR="$TEST_TMP/arrival-missing"
+mkdir -p "$ARRIVAL_MISSING_CASE_DIR"
+set +e
+ARRIVAL_MISSING_OUTPUT="$(bash -c '
+  set -euo pipefail
+  source "$1"
+  RUN_DIR="$2"
+  STOP_REQUESTED=0
+  ARMED_OBSERVATION=0
+  DISARMED_MEASUREMENT=0
+  ARRIVAL_TIMEOUT_SECONDS=2
+  ARRIVAL_SAMPLE_SECONDS=1
+  SUPERVISOR_POLL_SECONDS=0
+  EXPECTED_TOPICS=(/present /missing-one /missing-two)
+  EXPECTED_TOPIC_TYPES=(type/Present type/MissingOne type/MissingTwo)
+  EXPECTED_TOPIC_RELIABILITY=(best_effort best_effort best_effort)
+  EXPECTED_TOPIC_DEPTH=(1 1 1)
+  FAKE_NOW=100
+
+  arrival_monotonic_seconds() { printf "%s\n" "$FAKE_NOW"; }
+  monitor_workstation_once() { return 0; }
+  topic_has_publisher() { [ "$1" = /present ]; }
+  sleep() {
+    FAKE_NOW=$((FAKE_NOW + 1))
+    SECONDS=$((SECONDS + 1))
+  }
+
+  wait_for_pi_data_arrival
+' _ "$PREFLIGHT" "$ARRIVAL_MISSING_CASE_DIR" 2>&1)"
+ARRIVAL_MISSING_RC=$?
+set -e
+[ "$ARRIVAL_MISSING_RC" -eq 1 ] \
+  || fail "missing-publisher timeout returned $ARRIVAL_MISSING_RC instead of 1"
+grep -Fq 'missing=/missing-one,/missing-two' <<<"$ARRIVAL_MISSING_OUTPUT" \
+  || fail "arrival timeout omitted exact missing topics: $ARRIVAL_MISSING_OUTPUT"
+grep -Fq 'timeout_seconds=2' <<<"$ARRIVAL_MISSING_OUTPUT" \
+  || fail "arrival timeout omitted its configured budget: $ARRIVAL_MISSING_OUTPUT"
+grep -Fq 'elapsed_seconds=2' <<<"$ARRIVAL_MISSING_OUTPUT" \
+  || fail "arrival timeout omitted monotonic elapsed time: $ARRIVAL_MISSING_OUTPUT"
+! grep -Fq 'missing=/present' <<<"$ARRIVAL_MISSING_OUTPUT" \
+  || fail 'arrival timeout reported a publisher that had already been observed'
 pass_case
 
 set +e
@@ -1391,5 +1544,5 @@ set -e
   || fail "real-SIGINT lifecycle case failed rc=$REAL_SIGINT_CASE_RC: $REAL_SIGINT_CASE_OUTPUT"
 pass_case
 
-[ "$CASE_COUNT" -eq 22 ] || fail "executed $CASE_COUNT cases instead of 22"
+[ "$CASE_COUNT" -eq 25 ] || fail "executed $CASE_COUNT cases instead of 25"
 printf 'PASS: live-dashboard preflight contracts cases=%s\n' "$CASE_COUNT"

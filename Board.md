@@ -8,7 +8,7 @@
 |---|---|
 | **Project** | AutoBoat Navigation System |
 | **Repository** | [Ghostzero00018/uvautoboat](https://github.com/Ghostzero00018/uvautoboat) |
-| **Last Updated** | 27/08/2026 |
+| **Last Updated** | 28/08/2026 |
 | **Status** | 🟢 Simulation ready (A\* path planning + one-click launcher + wiki docs + dashboard config system + MP/QGC install). First wet test completed 07/05/2026: boat survived float/manual-control bring-up, Herelink manual control works, QGC/MP MAVLink arm/disarm works. Herelink video A/B campus side verified 11/05/2026 — Linux QGC video works via the `Source = Herelink Hotspot` preset and `ffplay rtsp://<herelink-ip>:8554/fpv_stream` independently confirms the underlying LIVE555 H.264 stream; Linux MP video + arm/disarm also working after a host-local SkiaSharp 2.88.8 NuGet swap + `~/MissionPlanner/libdl.so` → `libdl.so.2` symlink (11/05/2026 late-day fix, reversible — see `wiki/Common_Issues.md` MP-Linux entry); GDAL/OGR/OSR Mono gaps from 24/04 remain (terrain / advanced geo-ref still degraded) but no longer block the video panel. Second-site (lake) retest deferred to next field session. **22/06/2026 update:** workstation on `IMT-Aquatic-drone` again reached the Herelink RTSP endpoint (`rtsp://192.168.43.1:8554/fpv_stream`, LIVE555 H.264 1920×1080@30); TCP was clean while UDP showed packet loss, but the current video source was a Pi desktop / `rqt_image_view` screen capture after starting the Pi camera node, not a direct camera feed. Treat this as transport reachability plus a current source-regression finding, not dashboard-camera integration evidence. Pi 5 MAVLink telemetry path proven 04/06/2026 (`/mavros/state connected: true` via MAVProxy → MAVROS on the reconfigured ArduPilot endpoint; GPS fix / EKF config still open). Pi 5 RealSense camera display in the workstation dashboard was proven 18/06/2026 over `IoT IMT Nord Europe` using a camera-only `424x240x15` profile; this is camera display only, not command/write validation. Local dashboard/planner → QGC visual mission bridge accepted 10-11/06/2026 (`tools/qgc_live_mission_bridge.py` over `127.0.0.1:14550`) and observed under a Herelink-hotspot mixed-topology setup 17/06/2026; visual-only — real-FCU upload, bidirectional sync, and command/write validation remain open. |
 
 > **15/07/2026 live update:** the workstation dashboard simultaneously displayed
@@ -120,6 +120,15 @@
 > requires the next phase to start a new generation. W1 also pins source batch
 > `1` and the `180 s` final-verification budget in the emitted P1 command. The
 > focused suites pass; no live retry has used these bytes yet.
+>
+> **Forward update (28/08/2026, pre-arm arrival):** the corrected Pi helper ran
+> live to `PI_SOURCE_STACK_READY=PASS` and its safe disarmed baseline, while W2
+> reached four-stream READY. W1's separate all-seven publisher precheck timed
+> out before starting message samples or its Pi observer, so nothing was armed
+> and Test B remains not accepted. W1 now retains publisher sightings across
+> polling passes, re-queries only unresolved topics, uses monotonic timing and
+> names unresolved topics on timeout. The focused `25`-case suite passes; this
+> workstation-only repair still needs a new live attempt.
 >
 > **10/08/2026 lifecycle correction:** copied Pi/workstation logs disprove the
 > 07/08 workstation-first explanation. The Pi's missing-rosbridge failure preceded
@@ -974,6 +983,13 @@ The whole repo is expected to run on the Pi 5. Long-term (Phase 5.2+): QGC and t
    recovered topic, a focused phase-boundary case requires a new generation,
    and W1 explicitly carries source batch `1` plus the `180 s` final-verification
    budget into P1. The corrected helper still has no live result.
+
+   **28/08 pre-arm arrival update:** the corrected helper subsequently reached
+   source-stack and safe disarmed baseline PASS, and W2 reached four-stream
+   READY. W1's independent publisher-arrival precheck timed out before any
+   message sample, Pi observer or arm. Its focused repair retains per-topic
+   discovery, uses monotonic timing and reports exact unresolved topics. The
+   `25`-case W1 suite passes offline; formal Test B acceptance remains open.
 
 3. **Detector recovery before Hailo accuracy gates**: the Hailo six-output decode
    contract is proven on saved frames (07/07/2026, `fb308f9`), and the 08/07 Pi
