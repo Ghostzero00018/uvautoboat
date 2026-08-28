@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PREFLIGHT="${1:-$SCRIPT_DIR/live_dashboard_preflight.sh}"
 HELPER="$SCRIPT_DIR/pi_live_hailo_mavlink_dashboard.sh"
 WIKI="$SCRIPT_DIR/../wiki/Live_Hailo_MAVLink_Dashboard_Testing.md"
-EXPECTED_PREFLIGHT_SHA256='00effd85198cf156d08a450504dc9dc4ae0b67a2cb3fa99ea064faa0ff00a3ac'
+EXPECTED_PREFLIGHT_SHA256='6eab9f928b477c4ece73eb50deedb332074f74bef525aa1095a217e46b7676bf'
 CASE_COUNT=0
 
 # Production selectors are exercised explicitly below. Keep the default
@@ -71,7 +71,7 @@ grep -Fq 'the rosbridge `user interrupted with ctrl-c (SIGINT)` line as a discri
 ! grep -Fq 'The signature of a reversed order, observed 07/08/2026' "$WIKI" \
   || fail 'live-dashboard runbook retains the falsified 07/08 stop-order claim'
 
-require_literal "EXPECTED_HELPER_SHA256='8cfd313eb8c6a65e6ef903c8d240d91500f5dfea32a52837c2aa7e8425cdbfe5'"
+require_literal "EXPECTED_HELPER_SHA256='0d3f6d1b72c473eeac8a169eaa045f24930ba7ed31fe4f7485d47616704f6ad9'"
 require_literal 'EXPECTED_SSID="${LIVE_SSID:-IoT IMT Nord Europe}"'
 require_literal 'PI_WINDOW_MODE="${LIVE_PI_WINDOW_MODE:-resizable}"'
 require_literal 'FCU_TO_VRX_FANOUT="${LIVE_FCU_TO_VRX_FANOUT:-0}"'
@@ -80,6 +80,10 @@ require_literal 'ARMED_OBSERVATION="${LIVE_ARMED_OBSERVATION:-0}"'
 require_literal 'ARMED_OBSERVATION_MAX_SECONDS="${LIVE_ARMED_OBSERVATION_MAX_SECONDS:-}"'
 require_literal 'ARMED_OBSERVATION_STALE_SECONDS="${LIVE_ARMED_OBSERVATION_STALE_SECONDS:-}"'
 require_literal 'RUN_SECONDS="${LIVE_RUN_SECONDS:-}"'
+require_literal 'FINAL_VERIFY_SECONDS="${LIVE_FINAL_VERIFY_SECONDS:-180}"'
+require_literal 'MAVROS_SOURCE_BATCH="${LIVE_MAVROS_SOURCE_BATCH:-1}"'
+require_literal 'LIVE_FINAL_VERIFY_SECONDS must be a positive integer'
+require_literal 'LIVE_MAVROS_SOURCE_BATCH must be 0 or 1'
 require_literal 'python3 "$FCU_TO_VRX_EVIDENCE" observe-pi \'
 require_literal '--output "$RUN_DIR/fcu_to_vrx_pi_events.jsonl" \'
 require_literal '--left-min "$ARMED_OBSERVATION_LEFT_PWM_MIN" \'
@@ -143,7 +147,7 @@ PI_COMMAND_OUTPUT="$(bash -c '
 PI_COMMAND_BLOCK="$(sed -n '/^($/,/^)$/{p}' <<<"$PI_COMMAND_OUTPUT")"
 [ -n "$PI_COMMAND_BLOCK" ] || fail 'printed Pi command block missing'
 bash -n <<<"$PI_COMMAND_BLOCK"
-grep -Fq '8cfd313eb8c6a65e6ef903c8d240d91500f5dfea32a52837c2aa7e8425cdbfe5' \
+grep -Fq '0d3f6d1b72c473eeac8a169eaa045f24930ba7ed31fe4f7485d47616704f6ad9' \
   <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not verify the helper pin'
 grep -Fq 'LIVE_HOLD_AFTER_WINDOW=1' <<<"$PI_COMMAND_BLOCK" \
@@ -154,6 +158,10 @@ grep -Fq 'HAILO_LOCAL_DISPLAY=1' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not enable the Pi desktop Hailo window'
 grep -Fq 'HAILO_LOCAL_WINDOW_MODE=resizable' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not select resizable Hailo presentation'
+grep -Fq 'LIVE_MAVROS_SOURCE_BATCH=1' <<<"$PI_COMMAND_BLOCK" \
+  || fail 'printed Pi command does not pin the repaired MAVROS source view'
+grep -Fq 'LIVE_FINAL_VERIFY_SECONDS=180' <<<"$PI_COMMAND_BLOCK" \
+  || fail 'printed Pi command does not pin the final-verification budget'
 grep -Fq 'xdg-user-dir DESKTOP' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not resolve the Pi Desktop'
 grep -Fq '[ -n "$PI_HOME" ] && [ -d "$PI_HOME" ]' <<<"$PI_COMMAND_BLOCK" \
@@ -169,7 +177,7 @@ grep -Fq 'HAILO_DEMO_ROOT="$PI_RUNTIME_ROOT"' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not preserve the Hailo runtime root'
 grep -Fq '"$PI_HELPER"' <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi command does not execute the absolute Desktop helper'
-grep -Fq "\\n' '8cfd313eb8c6a65e6ef903c8d240d91500f5dfea32a52837c2aa7e8425cdbfe5' \"\$PI_HELPER\" | sha256sum -c -" \
+grep -Fq "\\n' '0d3f6d1b72c473eeac8a169eaa045f24930ba7ed31fe4f7485d47616704f6ad9' \"\$PI_HELPER\" | sha256sum -c -" \
   <<<"$PI_COMMAND_BLOCK" \
   || fail 'printed Pi checksum format contains a literal line break'
 ! grep -Fq './pi_live_hailo_mavlink_dashboard.sh' <<<"$PI_COMMAND_BLOCK" \
@@ -231,7 +239,9 @@ for literal in \
   'LIVE_ARMED_OBSERVATION_LEFT_CHANNEL=3' \
   'LIVE_ARMED_OBSERVATION_LEFT_TRIM=800' \
   'LIVE_ARMED_OBSERVATION_RIGHT_CHANNEL=1' \
-  'LIVE_ARMED_OBSERVATION_RIGHT_TRIM=800'; do
+  'LIVE_ARMED_OBSERVATION_RIGHT_TRIM=800' \
+  'LIVE_MAVROS_SOURCE_BATCH=1' \
+  'LIVE_FINAL_VERIFY_SECONDS=180'; do
   grep -Fq "$literal" <<<"$PI_COMMAND_ARMED_BLOCK" \
     || fail "armed-observation Pi command is missing: $literal"
 done

@@ -113,6 +113,14 @@
 > retains the legacy diagnostic path. Exact `/mavros` identity checks remain,
 > and this promotion is offline-tested but not yet live-validated.
 >
+> **Forward update (28/08/2026):** a morning phase-freshness audit found that a
+> fresh generation created while retrying a later topic could leave an
+> already-checked earlier-topic block for the next phase. The consumer now
+> discards entries through the recovered topic, and the regression case
+> requires the next phase to start a new generation. W1 also pins source batch
+> `1` and the `180 s` final-verification budget in the emitted P1 command. The
+> focused suites pass; no live retry has used these bytes yet.
+>
 > **10/08/2026 lifecycle correction:** copied Pi/workstation logs disprove the
 > 07/08 workstation-first explanation. The Pi's missing-rosbridge failure preceded
 > its exit, rosbridge then accepted a new WebSocket client, and only afterwards did
@@ -959,6 +967,13 @@ The whole repo is expected to run on the Pi 5. Long-term (Phase 5.2+): QGC and t
    child PID/PGID exit once in failure hold. Focused Pi and W1 suites pass. The
    repair is offline-only pending the direct W1, W2, P1 retry; formal Test B
    acceptance remains open.
+
+   **28/08 morning correction:** a later-topic recovery could leave an
+   earlier-topic block from its new six-topic generation pending across a
+   verification boundary. The consumer now removes entries through the
+   recovered topic, a focused phase-boundary case requires a new generation,
+   and W1 explicitly carries source batch `1` plus the `180 s` final-verification
+   budget into P1. The corrected helper still has no live result.
 
 3. **Detector recovery before Hailo accuracy gates**: the Hailo six-output decode
    contract is proven on saved frames (07/07/2026, `fb308f9`), and the 08/07 Pi

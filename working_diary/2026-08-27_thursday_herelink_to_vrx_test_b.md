@@ -815,6 +815,17 @@ bundle manifest:          4/4 OK
 git diff --check:         clean
 ```
 
+### Forward blocker correction - 28/08/2026
+
+The blocker sentence near the start of this diary records the opening state of
+27/08/2026, not the close. The snapshot-backed T0b query tier passed later that
+day with `41` selected reads and retained evidence. The integrated SITL
+acceptance passed on revision `147efe0`; it is historical evidence rather than
+current-source acceptance after later revisions, and any use in place of a
+newer run remains an explicit scoped supersession. Fresh physical state and
+Test B approval remain operator gates, and Test B remains not formally
+accepted. Continue from the 28/08/2026 diary for the current retry.
+
 No simulator, Pi helper, FCU bridge, Herelink command or Test B motion ran under
 this repair. The worktree is modified and W2's clean pushed parity gate therefore
 blocks launch until publication. Landing the repair changes the exact revision

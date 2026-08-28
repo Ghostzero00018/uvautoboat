@@ -470,6 +470,13 @@ Status row in §3 Phase 5 status table now records Path A landed 05/05/2026 and 
    direct W1, W2, P1 live retry remains outstanding, so formal Test B
    acceptance stays open.
 
+   **28/08 morning correction:** a fresh generation created by a later-topic
+   recovery could leave an already-checked earlier-topic block pending across a
+   verification boundary. The consumer now discards entries through the
+   recovered topic, and a focused case requires a new generation for the next
+   phase. W1 explicitly carries source batch `1` and the `180 s`
+   final-verification budget into P1. These corrected bytes remain offline-only.
+
 ---
 
 ## 4. Research Extensions — Architecture

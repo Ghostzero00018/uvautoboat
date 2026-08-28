@@ -38,6 +38,23 @@ then failed on downstream stale streams and stopped their children.
 `3.0` remains mandatory after this campaign is accepted or abandoned, or
 before any different operation.
 
+## Test B selector provenance
+
+The retained T0b artifact contains two intentionally different rail families.
+For Test B, take left/right channels only from `resolved.left_servo=3` and
+`resolved.right_servo=1`, and take output calibration only from
+`servo_rails`: left function `73`, right function `74`, with both rails
+`800/800/2200`. The `rc_rails` entries are RC-input calibration
+`1102/1515/1927`; they are not valid servo-output selectors or neutral values.
+
+Use the same `SERVO3`/`SERVO1` and `800/800/2200` literals in W1 and W2, then
+confirm W2 reports `mapping=3/1 rails=800/800/2200` before arming. Disarmed
+servo output is already measured rather than inferred: both the retained
+disarmed-measurement run and paired-zero retry captured `/mavros/rc/out` with
+`SERVO1=800` and `SERVO3=800`, and the retry reached
+`ARMED_OBSERVATION_BASELINE=PASS`. No extra disarmed-measurement run is
+scheduled.
+
 ## Repair carried into the day
 
 The existing bounded six-topic `rclpy` source view is now the default. It
@@ -53,15 +70,40 @@ This repair has no live result yet. Transfer and verify the current Pi helper
 through the exact checksum block emitted by W1; do not add a separate trial or
 diagnostic run.
 
+## Morning phase-freshness correction
+
+The Friday audit found one cache edge before transfer. If a later source topic
+needed a fresh six-topic generation, its successful retry consumed only that
+topic and could leave an already-checked earlier-topic block pending for the
+next verification phase. A red focused case reproduced two phase-one probe
+runs followed by reuse of the second run's state block in phase two.
+
+The consumer now discards entries through the requested topic whenever it has
+created a fresh generation. The same case requires no pending entry at the
+phase boundary and a third probe for the next phase's state check. W1 also
+places `LIVE_MAVROS_SOURCE_BATCH=1` and
+`LIVE_FINAL_VERIFY_SECONDS=180` explicitly in the emitted P1 block, preventing
+stale Pi-terminal exports from selecting the old path or changing that budget.
+The focused Pi and W1 suites pass. These corrected bytes remain offline-only
+and require the updated transfer below before the direct retry.
+
+The complete Friday offline verification also passes on these bytes: Pi
+lifecycle and telemetry fanout, W1 `cases=22`, real-FCU `cases=34`, SITL
+`cases=41`, FCU-to-VRX `shell_cases=23 python_tests=35`, Python tools `123`,
+Node `80/80`, the four-file bundle, shell syntax and whitespace checks. No Pi,
+FCU, Gazebo, SITL, MAVProxy, MAVROS or dashboard runtime was started by this
+verification.
+
 ## Pi transfer reminder
 
-**TRANSFER REQUIRED BEFORE P1:** revision `1deff7d` changes the Pi dashboard
-helper. W1 and W2 remain workstation-side; the current required Pi transfer is:
+**TRANSFER REQUIRED BEFORE P1:** the current Friday repair changes the Pi
+dashboard helper. W1 and W2 remain workstation-side; the current required Pi
+transfer is:
 
 ```text
 tools/pi_live_hailo_mavlink_dashboard.sh
 -> /home/imt-aqua-drone/Desktop/pi_live_hailo_mavlink_dashboard.sh
-sha256=8cfd313eb8c6a65e6ef903c8d240d91500f5dfea32a52837c2aa7e8425cdbfe5
+sha256=0d3f6d1b72c473eeac8a169eaa045f24930ba7ed31fe4f7485d47616704f6ad9
 ```
 
 From a new workstation transfer terminal:
@@ -71,7 +113,7 @@ From a new workstation transfer terminal:
   set -euo pipefail
   cd /home/ghostzero/seal_ws/src/uvautoboat
   printf '%s  %s\n' \
-    '8cfd313eb8c6a65e6ef903c8d240d91500f5dfea32a52837c2aa7e8425cdbfe5' \
+    '0d3f6d1b72c473eeac8a169eaa045f24930ba7ed31fe4f7485d47616704f6ad9' \
     tools/pi_live_hailo_mavlink_dashboard.sh | sha256sum -c -
   scp tools/pi_live_hailo_mavlink_dashboard.sh \
     imt-aqua-drone@10.120.2.249:/home/imt-aqua-drone/Desktop/pi_live_hailo_mavlink_dashboard.sh
@@ -86,7 +128,7 @@ make the helper executable:
   set -euo pipefail
   PI_HELPER=/home/imt-aqua-drone/Desktop/pi_live_hailo_mavlink_dashboard.sh
   printf '%s  %s\n' \
-    '8cfd313eb8c6a65e6ef903c8d240d91500f5dfea32a52837c2aa7e8425cdbfe5' \
+    '0d3f6d1b72c473eeac8a169eaa045f24930ba7ed31fe4f7485d47616704f6ad9' \
     "$PI_HELPER" | sha256sum -c -
   chmod +x "$PI_HELPER"
   test -x "$PI_HELPER"

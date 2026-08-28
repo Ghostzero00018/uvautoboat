@@ -3105,6 +3105,61 @@ if source_view_case consumed-entry-refresh; then
     || fail 'the refreshed read of a consumed-entry case did not succeed'
 fi
 
+if source_view_case mid-phase-recovery-leaves-no-earlier-topic; then
+  # If a later topic forces a fresh generation, entries for topics already
+  # checked in this phase must not survive into the next phase.
+  PHASE_FRESH_DIR="$(source_run_dir mid-phase-recovery-leaves-no-earlier-topic)"
+  FIRST_PHASE_STREAM="$(source_complete_stream /mavros/global_position/raw/fix 0)"
+  set +e
+  PHASE_FRESH_OUTPUT="$(bash -c '
+    eval "$1"
+    RUN_DIR="$2"
+    RUNS="$3"
+    FIRST_STREAM="$4"
+    FRESH_STREAM="$5"
+    timeout() {
+      printf "run\n" >>"$RUNS"
+      if [ "$(grep -Fxc run "$RUNS")" -eq 1 ]; then
+        printf "%s\n" "$FIRST_STREAM"
+      else
+        printf "%s\n" "$FRESH_STREAM"
+      fi
+      return 0
+    }
+    log_error() { :; }
+    MAVROS_SOURCE_BATCH=1
+
+    mavros_source_view 0 /mavros/state >/dev/null
+    mavros_source_view 0 /mavros/global_position/raw/fix >/dev/null
+    mavros_source_view 0 /mavros/global_position/raw/fix >/dev/null
+    for view_topic in \
+      /mavros/imu/data /mavros/battery /mavros/rc/in /mavros/rc/out; do
+      mavros_source_view 0 "$view_topic" >/dev/null
+    done
+    printf "runs_after_phase_one=%s\n" "$(grep -Fxc run "$RUNS")"
+    if [ -s "$RUN_DIR/source_view/pending" ]; then
+      grep "^TOPIC: " "$RUN_DIR/source_view/pending" \
+        | sed "s/^/pending_after_phase_one=/"
+    else
+      printf "pending_after_phase_one=none\n"
+    fi
+
+    mavros_source_view 0 /mavros/state >/dev/null
+    printf "runs_after_phase_two_state=%s\n" "$(grep -Fxc run "$RUNS")"
+  ' _ "$SOURCE_VIEW_FUNCTION" "$PHASE_FRESH_DIR" "$PHASE_FRESH_DIR/runs" \
+    "$FIRST_PHASE_STREAM" "$SOURCE_PROBE_STREAM" 2>&1)"
+  PHASE_FRESH_RC=$?
+  set -e
+  [ "$PHASE_FRESH_RC" -eq 0 ] \
+    || fail "mid-phase recovery case returned $PHASE_FRESH_RC"
+  grep -Fxq 'runs_after_phase_one=2' <<<"$PHASE_FRESH_OUTPUT" \
+    || fail 'the recovery case did not require exactly two phase-one generations'
+  grep -Fxq 'pending_after_phase_one=none' <<<"$PHASE_FRESH_OUTPUT" \
+    || fail 'a later-topic recovery left earlier-topic evidence across the phase boundary'
+  grep -Fxq 'runs_after_phase_two_state=3' <<<"$PHASE_FRESH_OUTPUT" \
+    || fail 'the next phase reused an earlier-topic block from the recovery generation'
+fi
+
 if source_view_case execution-bounds-clean-phase; then
   # One run serves a clean phase, and every serve succeeds.
   CLEAN_DIR="$(source_run_dir execution-bounds-clean-phase)"

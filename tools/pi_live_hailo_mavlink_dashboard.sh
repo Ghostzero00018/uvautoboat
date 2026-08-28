@@ -931,11 +931,22 @@ mavros_source_probe_generation() {
 }
 
 mavros_source_consume_topic() {
-  local pending="$1" topic="$2" tmp="$1.consume.$$"
-  if ! awk -v want="TOPIC: $topic" '
-      $0 == want { skip = 1; next }
+  local pending="$1" topic="$2" consume_prior="${3:-0}" tmp="$1.consume.$$"
+  if [ "$consume_prior" -eq 1 ]; then
+    awk -v want="TOPIC: $topic" '
+      $0 == want { found = 1; next }
+      found && /^TOPIC: / { emit = 1 }
+      emit { print }
+      END { if (!found) exit 1 }
+    ' "$pending" >"$tmp" || {
+      rm -f "$tmp"
+      return 1
+    }
+  elif ! awk -v want="TOPIC: $topic" '
+      $0 == want { found = 1; skip = 1; next }
       /^TOPIC: / { skip = 0 }
       !skip { print }
+      END { if (!found) exit 1 }
     ' "$pending" >"$tmp"; then
     rm -f "$tmp"
     return 1
@@ -958,7 +969,7 @@ mavros_source_probe_selftest() {
 }
 
 mavros_source_view() {
-  local deadline="${1:-0}" topic="$2" pending block rc=0
+  local deadline="${1:-0}" topic="$2" pending block rc=0 fresh_generation=0
   if [ "${MAVROS_SOURCE_BATCH:-0}" -eq 0 ]; then
     ros2_graph_query_before "$deadline" topic info --verbose --no-daemon --spin-time 2 "$topic"
     return $?
@@ -973,6 +984,7 @@ mavros_source_view() {
       rm -f "$pending"
       return "$rc"
     fi
+    fresh_generation=1
   fi
   if [ "$deadline" -ne 0 ] && [ "$SECONDS" -ge "$deadline" ]; then
     rm -f "$pending"
@@ -983,7 +995,7 @@ mavros_source_view() {
     rm -f "$pending"
     return 1
   fi
-  if ! mavros_source_consume_topic "$pending" "$topic"; then
+  if ! mavros_source_consume_topic "$pending" "$topic" "$fresh_generation"; then
     rm -f "$pending"
     return 1
   fi

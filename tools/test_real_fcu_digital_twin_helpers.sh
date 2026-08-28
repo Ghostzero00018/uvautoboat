@@ -12,7 +12,7 @@ BUNDLE_MANIFEST="$REPO_ROOT/config/real_fcu_digital_twin_bundle.sha256"
 VIEW_ONLY_HELPER="$SCRIPT_DIR/pi_live_hailo_mavlink_dashboard.sh"
 CAPTURE_HELPER="$SCRIPT_DIR/real_fcu_command_feedback_capture.py"
 CAPTURE_TEST="$SCRIPT_DIR/test_real_fcu_command_feedback_capture.py"
-EXPECTED_VIEW_ONLY_SHA256='8cfd313eb8c6a65e6ef903c8d240d91500f5dfea32a52837c2aa7e8425cdbfe5'
+EXPECTED_VIEW_ONLY_SHA256='0d3f6d1b72c473eeac8a169eaa045f24930ba7ed31fe4f7485d47616704f6ad9'
 CASE_COUNT=0
 
 fail_test() {

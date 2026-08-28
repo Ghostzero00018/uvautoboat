@@ -39,11 +39,11 @@ below only for traceability.
 | --- | --- |
 | Helper source | `tools/pi_live_hailo_mavlink_dashboard.sh` |
 | Helper Pi destination | resolved Pi Desktop: `$(xdg-user-dir DESKTOP)/pi_live_hailo_mavlink_dashboard.sh` |
-| Helper size | `95,316` bytes |
-| Helper SHA-256 | `8cfd313eb8c6a65e6ef903c8d240d91500f5dfea32a52837c2aa7e8425cdbfe5` |
+| Helper size | `95,720` bytes |
+| Helper SHA-256 | `0d3f6d1b72c473eeac8a169eaa045f24930ba7ed31fe4f7485d47616704f6ad9` |
 | Workstation supervisor | `tools/live_dashboard_preflight.sh` |
-| Supervisor size | `38,763` bytes |
-| Supervisor SHA-256 | `00effd85198cf156d08a450504dc9dc4ae0b67a2cb3fa99ea064faa0ff00a3ac` |
+| Supervisor size | `39,198` bytes |
+| Supervisor SHA-256 | `6eab9f928b477c4ece73eb50deedb332074f74bef525aa1095a217e46b7676bf` |
 | VRX supervisor | `tools/fcu_to_vrx_workstation.sh` |
 | VRX supervisor size | `26,906` bytes |
 | VRX supervisor SHA-256 | `a5afddc81d59a39d63e7cca77a7b3852e30b5a555f1be2e04f3746f5540bdd5f` |
@@ -534,6 +534,19 @@ subsequent supervision poll. Focused Pi and W1 suites pass; this is an offline
 repair pending the direct live retry, not proof that DDS discovery can never be
 transient.
 
+The 28/08/2026 morning audit closed a phase-freshness edge in that view. If a
+later topic forces a fresh six-topic generation, the consumer now discards the
+already-checked earlier-topic entries through the requested topic. Those
+entries can no longer survive into the next verification phase. A focused
+recovery case requires two phase-one generations, an empty pending view at the
+phase boundary and a third generation for the next phase's state check.
+
+W1 also writes `LIVE_MAVROS_SOURCE_BATCH=1` and
+`LIVE_FINAL_VERIFY_SECONDS=180` explicitly into its emitted P1 command. A stale
+export in the Pi terminal therefore cannot reactivate the legacy source path or
+silently change the final-verification budget. Explicit W1 overrides remain
+validated before the command is printed.
+
 The W1 certification suite clears inherited live selectors before constructing
 its default fixtures. Configured production selectors are exercised only by
 the suite's explicit cases, so certifying an armed command can no longer turn
@@ -786,7 +799,7 @@ D="$(xdg-user-dir DESKTOP)" || exit 1
 D="$(readlink -f -- "$D")" || exit 1
 [ -n "$D" ] && [ -d "$D" ] && [ "$D" != "$H" ] || exit 1
 printf '%s  %s\n' \
-  '8cfd313eb8c6a65e6ef903c8d240d91500f5dfea32a52837c2aa7e8425cdbfe5' \
+  '0d3f6d1b72c473eeac8a169eaa045f24930ba7ed31fe4f7485d47616704f6ad9' \
   "$D/pi_live_hailo_mavlink_dashboard.sh" | sha256sum -c -
 ```
 
@@ -796,7 +809,7 @@ only the helper from a workstation terminal:
 ```bash
 cd ~/seal_ws/src/uvautoboat
 printf '%s  %s\n' \
-  '8cfd313eb8c6a65e6ef903c8d240d91500f5dfea32a52837c2aa7e8425cdbfe5' \
+  '0d3f6d1b72c473eeac8a169eaa045f24930ba7ed31fe4f7485d47616704f6ad9' \
   tools/pi_live_hailo_mavlink_dashboard.sh | sha256sum -c -
 
 read -r -p 'Current Pi SSH endpoint (user@host): ' PI_SSH
@@ -813,7 +826,7 @@ scp tools/pi_live_hailo_mavlink_dashboard.sh \
 ssh "$PI_SSH" "
   cd '$PI_DESKTOP' &&
   printf '%s  %s\n' \
-    '8cfd313eb8c6a65e6ef903c8d240d91500f5dfea32a52837c2aa7e8425cdbfe5' \
+    '0d3f6d1b72c473eeac8a169eaa045f24930ba7ed31fe4f7485d47616704f6ad9' \
     pi_live_hailo_mavlink_dashboard.sh |
   sha256sum -c -
 "
@@ -852,7 +865,9 @@ workstation IPv4 address, selected SSID, helper checksum and
 `LIVE_ARMED_OBSERVATION=0`. An explicitly configured armed-observation run
 instead carries fanout and selector `1`, every supplied runtime, staleness,
 channel and trim value, and either finite hold `0` or paired-zero hold `1`.
-With no display selector override, the command carries
+It also carries the selected `LIVE_MAVROS_SOURCE_BATCH` and
+`LIVE_FINAL_VERIFY_SECONDS` values explicitly. With no display selector
+override, the command carries
 `HAILO_LOCAL_WINDOW_MODE=resizable`. The printed command
 resolves, checksums, and executes the helper from the Pi Desktop while
 retaining `~/hailo_coco_overlay_2026-07-10` as the runtime root.
