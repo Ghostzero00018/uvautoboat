@@ -300,6 +300,66 @@ readback and retain a rollback snapshot after Test B or before any different
 operation. No Test A approval or physical declaration carries into a later
 date.
 
+### Enhanced Test A props-fitted observation - 28/08/2026
+
+A later one-off run used a fresh `986`-parameter snapshot with SHA-256
+`61406eee10c253daabfef4462ce0b3661be30b599bd7736909c5bff4e4b4943d`.
+It resolved steering/throttle as `RC1`/`RC3`, left/right output as
+`SERVO3`/`SERVO1`, both servo rails as `800/800/2200`, and retained
+`ARMING_CHECK=0`. The last value is safety context, not an explanation for the
+observed motor behavior. The Pi and workstation reached their READY markers,
+ended connected/disarmed, exchanged the stop marker and exited
+`status=0 cleanup_rc=0`.
+
+```text
+revision=70c4d8bfc4827bcf89af41b711700be713139f5d
+workstation=/home/ghostzero/Desktop/real_fcu_digital_twin_workstation_20260828_175310
+pi-copy=/home/ghostzero/Desktop/pi_run_evidence/test_a_props_fitted_observation_20260828_175321
+```
+
+The operator corrected the active-interval declaration after the run: the
+propellers were fitted and propulsion was available. The operator reported no
+rotation at steering/throttle `0.00/0.12`, at exact steering `+0.20` or
+`-0.20`, or at `0.05/0.04`, and one-sided rotation during other
+steering-heavy requests. The retained evidence contains only neutral demand,
+RC `1515/1515` and output `800/800`; it does not correlate the active slider
+requests with output PWM. Do not infer an ESC threshold or a motor-mixing
+fault from these observations.
+
+The correction also means `REAL_FCU_PROPELLERS_REMOVED=1` was inaccurate for
+the active interval. The helpers reported the nominal
+`tier=T2b authority=demand-enabled` software markers and clean teardown, but
+the run did not satisfy T2b's propellers-removed physical gate. No separate
+T3a approval, dedicated mechanical guarding or exclusion-zone evidence was
+retained.
+
+Exact steering `+0.20` and `-0.20` are a known input-contract defect. The
+browser exposes those endpoints, but `sensor_msgs/msg/Joy.axes` transports
+them as `float32`, producing approximately `+/-0.20000000298`. The bridge's
+exact `[-0.20, +0.20]` comparison rejects them as
+`COMMAND_OUT_OF_BOUNDS`. The endpoint contract must be repaired and covered by
+a red/green test before those slider endpoints are used again.
+
+Classification: **ENHANCED TEST A - PROPS-FITTED FUNCTIONAL OBSERVATION; NOT
+T2B ACCEPTANCE, T3A ACCEPTANCE OR APPROVAL FOR ROUTINE OR REPEATED
+PROPS-FITTED OPERATION.** This does not carry forward as approval for another
+run.
+
+Afterward, the separately approved rollback captured live
+`RC_OVERRIDE_TIME=0.5`, set it to `3.0`, fetched all `986` parameters,
+confirmed the live `3.0` readback and retained:
+
+```text
+directory=/home/ghostzero/Desktop/pi_run_evidence/rc_override_rollback_20260828
+snapshot=real_fcu_params_20260828_rc_override_rollback_3p0.parm
+sha256=a50fe5d313dd7ef2f2ab93f86dc2b6f7c800182eb603a1e4559580339aa1555b
+```
+
+The serial endpoint was free afterward. The temporary `0.5` value is no longer
+live. Any later demand-enabled Test A requires a separate approval to set
+`0.5`, confirm its readback and pin a fresh snapshot before either helper
+starts.
+
 ### Isolated FCU-to-VRX workstation half
 
 `tools/fcu_to_vrx_workstation.sh` is the workstation-only owner for the VRX
@@ -630,6 +690,15 @@ lifecycle completion and formal Test B acceptance are not. No post-run
 `RC_OVERRIDE_TIME` readback or rollback snapshot accompanies this evidence;
 the documented restoration from `0.5` to `3.0` remains open before a different
 operation.
+
+**Forward correction 28/08/2026:** a later separately approved rollback
+captured live `RC_OVERRIDE_TIME` readbacks `0.5 -> 3.0`, saved a `986`-parameter
+snapshot, copied it to
+`/home/ghostzero/Desktop/pi_run_evidence/rc_override_rollback_20260828`, and
+verified SHA-256
+`a50fe5d313dd7ef2f2ab93f86dc2b6f7c800182eb603a1e4559580339aa1555b`.
+The serial endpoint was free afterward. This supersedes the rollback-open
+sentence only; Test B remains not formally accepted.
 
 #### Correlation evidence
 

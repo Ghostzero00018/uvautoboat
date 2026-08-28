@@ -370,9 +370,23 @@ changed from `800/800 us` to `911/800 us`, and release restored `800/800 us`.
 Both supervised halves ended connected and disarmed with successful ordered
 teardown. This is bounded real-FCU command/output-feedback evidence with
 propulsion isolated, not approval for routine use or physical thrust.
-Herelink-to-VRX Test B remains **NOT RUN**. The temporary
-`RC_OVERRIDE_TIME=0.5` setting must be restored to `3.0` with a retained
-readback snapshot after Test B or before any different operation.
+Herelink-to-VRX Test B has demonstrated functional motion, but its externally
+interrupted run did not retain the required final safe lifecycle and is not
+formally accepted. A later guarded dashboard run on 28/08/2026 reached both
+READY markers and clean connected/disarmed teardown. The operator corrected
+that active interval to propellers fitted and reported limited one-sided
+rotation, but only neutral RC/output snapshots were retained. It is therefore
+an Enhanced Test A props-fitted functional observation. The launch assertion
+`REAL_FCU_PROPELLERS_REMOVED=1` was inaccurate for that interval; the run is
+neither T2b nor T3a acceptance. Exact steering `+/-0.20` is currently rejected
+after `float32` transport slightly exceeds the bridge's exact bound.
+
+The temporary `RC_OVERRIDE_TIME=0.5` setting was subsequently restored to
+`3.0`. The live before/after readbacks and `986`-parameter rollback snapshot
+are retained under
+`/home/ghostzero/Desktop/pi_run_evidence/rc_override_rollback_20260828`; the
+snapshot SHA-256 is
+`a50fe5d313dd7ef2f2ab93f86dc2b6f7c800182eb603a1e4559580339aa1555b`.
 
 ### FCU Bench Command/Feedback Component
 

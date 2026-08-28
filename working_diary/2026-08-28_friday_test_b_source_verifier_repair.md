@@ -345,3 +345,114 @@ EXTERNALLY INTERRUPTED / NOT FORMALLY ACCEPTED.** No post-run
 `RC_OVERRIDE_TIME` readback or rollback snapshot was retained with these runs;
 the documented restoration from `0.5` to `3.0` remains open before a different
 operation.
+
+## Enhanced Test A props-fitted observation and parameter restoration
+
+### Evidence classification
+
+Later on 28/08/2026, the operator ran the real-FCU dashboard path again with a
+fresh `986`-parameter snapshot:
+
+```text
+snapshot=/home/imt-aqua-drone/Desktop/real_fcu_params_20260828_test_a_live.parm
+sha256=61406eee10c253daabfef4462ce0b3661be30b599bd7736909c5bff4e4b4943d
+revision=70c4d8bfc4827bcf89af41b711700be713139f5d
+workstation=/home/ghostzero/Desktop/real_fcu_digital_twin_workstation_20260828_175310
+pi-copy=/home/ghostzero/Desktop/pi_run_evidence/test_a_props_fitted_observation_20260828_175321
+```
+
+The snapshot retained `RC_OVERRIDE_TIME=0.5`, resolved steering/throttle as
+`RC1`/`RC3`, left output as `SERVO3` function `73`, right output as `SERVO1`
+function `74`, both servo rails as `800/800/2200`, and `ARMING_CHECK=0`. The
+last value is retained safety context, not an explanation for the observed
+motor behavior. Both helpers reached their READY markers. Their retained final
+states were connected and disarmed; the stop marker was exchanged, all
+supervised children stopped, and both helpers exited `status=0 cleanup_rc=0`.
+
+The operator subsequently corrected the earlier physical declaration: the
+propellers were fitted and propulsion was available during the active interval.
+That later report supersedes the propellers-removed and propulsion-isolated
+parts of the earlier declaration for this interval. It also means the launch
+assertion `REAL_FCU_PROPELLERS_REMOVED=1` was factually inaccurate during the
+active interval. The helpers reported the nominal
+`tier=T2b authority=demand-enabled` software markers and clean teardown, but
+the run did not satisfy T2b's propellers-removed physical gate. No separate
+T3a approval, dedicated mechanical guarding or exclusion-zone evidence was
+established. Classification: **ENHANCED TEST A - PROPS-FITTED FUNCTIONAL
+OBSERVATION; NOT T2B ACCEPTANCE, T3A ACCEPTANCE OR APPROVAL FOR ROUTINE OR
+REPEATED PROPS-FITTED OPERATION.**
+
+`REAL_FCU_PROPELLERS_REMOVED`, `REAL_FCU_HULL_RESTRAINED` and
+`REAL_FCU_PROPULSION_ISOLATED` are operator attestations; the helper cannot
+observe those physical conditions. Their acceptance by the software is not
+physical proof and cannot replace the separate T3a approval, guarding and
+exclusion-zone requirements for props-fitted work.
+
+### Command observations and retained limits
+
+The operator reports these dashboard observations:
+
+- steering `0.00`, throttle `0.12`: neither propeller moved;
+- steering `+0.20` or `-0.20`: neither propeller moved;
+- steering `0.05`, throttle `0.04`: neither propeller moved; and
+- other steering-heavy requests produced one-sided propeller rotation.
+
+The retained artifacts contain only neutral snapshots: requested demand
+`0.00/0.00`, RC input `1515/1515` and mapped output `800/800`, followed by the
+final connected/disarmed state. They do not retain the active slider values or
+the corresponding live RC/output PWM. The observations above are therefore
+operator evidence, not a machine-correlated demand-to-output record, and they
+do not establish an ESC start threshold or explain the one-sided rotation.
+
+One source defect does explain the exact steering endpoints. The dashboard
+exposes `-0.20` and `+0.20`, but transports them through `Joy.axes` as
+`float32`. Those endpoints arrive as approximately `-0.20000000298` and
+`+0.20000000298`, outside the bridge's exact inclusive `[-0.20, +0.20]`
+comparison, and are rejected as `COMMAND_OUT_OF_BOUNDS`. The `0.12`, `0.05`
+and `0.04` values remain inside their limits after float32 conversion. No code
+change was made; the endpoint contract needs a focused red/green repair before
+either endpoint is relied on again.
+
+### Rollback and safe closeout
+
+After the run, the separately approved MAVProxy rollback captured a live
+readback of `RC_OVERRIDE_TIME=0.5`, set it to `3.0`, fetched all `986`
+parameters again, confirmed the live `3.0` readback and saved a new snapshot.
+The copied evidence is:
+
+```text
+directory=/home/ghostzero/Desktop/pi_run_evidence/rc_override_rollback_20260828
+snapshot=real_fcu_params_20260828_rc_override_rollback_3p0.parm
+sha256=a50fe5d313dd7ef2f2ab93f86dc2b6f7c800182eb603a1e4559580339aa1555b
+transcript=real_fcu_rc_override_rollback_20260828.log
+```
+
+The copied snapshot has `986` parameters, exactly one
+`RC_OVERRIDE_TIME=3.000000`, and matches its retained SHA-256. The serial owner
+check then returned free. This supersedes the earlier same-day rollback-open
+statements: the temporary `0.5` setting is no longer live. Any later
+demand-enabled Test A requires a separately approved change back to `0.5`, a
+fresh readback and a newly pinned snapshot.
+
+The final operator declaration was: FCU disarmed; hardware safety ON;
+propulsion battery disconnected; ESCs unpowered; propellers fully stopped;
+Herelink sticks neutral; Pi runtime stack down; workstation Test-A stack down.
+It does not state that the FCU, Pi or Herelink is powered off.
+
+### Next steps
+
+1. Before another demand-enabled run, repair and red/green test the float32
+   steering endpoint contract; do not infer an ESC threshold from this run.
+2. Keep formal Test B acceptance open; the functional VRX motion record remains
+   interrupted and lacks its required passing final lifecycle/adjudication.
+3. If a future Test A is approved, change `RC_OVERRIDE_TIME` from `3.0` to
+   `0.5` only inside that new approval, then capture and pin a fresh snapshot.
+4. For full physical EOD, power off the FCU, Pi and Herelink and record that
+   declaration; their powered-off state is not established by the current
+   closeout statement.
+
+### Final power-off confirmation
+
+The operator subsequently confirmed that the FCU, Pi and Herelink were powered
+off. This closes item 4 and the physical EOD layer. No physical declaration or
+live-test approval carries forward to a later session.
