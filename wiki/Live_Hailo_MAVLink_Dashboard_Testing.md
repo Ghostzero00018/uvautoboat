@@ -573,6 +573,64 @@ mandatory. The repair therefore removes the all-seven-single-scan dependency
 without turning an earlier publisher sighting into acceptance. Focused offline
 coverage passes `25` cases; a new live result is still required.
 
+#### Repaired W1 live result and interrupted Test B interval
+
+The separately approved clean-`6beb603` retry used these retained directories:
+
+```text
+W1=/home/ghostzero/Desktop/live_dashboard_workstation_20260828_155040
+W2=/home/ghostzero/Desktop/fcu_to_vrx_workstation_20260828_155105
+P1=/home/ghostzero/Desktop/pi_run_evidence/test_b_functional_interrupted_20260828_155345
+```
+
+P1 passed `PI_SOURCE_STACK_READY=PASS` and the connected/disarmed, neutral,
+hardware-safe `ARMED_OBSERVATION_BASELINE=PASS`. W1 then passed the repaired
+cumulative publisher-arrival gate, its armed Pi-observer READY gate and all
+seven rate probes. W2 reached four-stream READY with mapping `SERVO3/SERVO1`
+and rails `800/800/2200`.
+
+The retained record proves the functional chain before interruption. The first
+asymmetric Pi output was `800/1033`; the matching UDP frame arrived in
+`4.124019 ms`, mapped to `0.0/133.142857 N`, and reached the left/right thrust
+topics in `1.038506/1.126658 ms`. WAM-V moved `3.480079 m` inside the configured
+`10 s` motion window, above the `0.25 m` threshold. Both full asymmetric pairs,
+active-side `800.0 N` thrust, return to `800/800`, correlated zero thrust and
+camera frames during the armed interval were retained. The operator separately
+observed the Herelink sticks moving the boat in VRX while W1, W2 and P1 were
+healthy.
+
+The operator reports that the professor later cut FCU power. This is retained
+as external-interruption context, not as a machine-established cause. The Pi
+Hailo log records `/dev/video4` disappearing with `errno=19`, after which the
+Hailo process completed and the thermal watchdog exited when its watched Hailo
+process group disappeared. The supervisor therefore reported
+`thermal-watchdog leader exited`. The exact run-wide thermal peak was
+`70500 mC` (`70.5 C`), below the `80000 mC` abort threshold;
+`thermal_watchdog.log` is empty and no thermal-abort record exists.
+
+The independent P1 safety monitor moved `READY -> ARMED -> ABORT` and wrote
+`reason=REQUIRED_TOPIC_STALE topic=/mavros/state`. W1 recorded `stale_state`;
+W2 recorded `stale_left_thrust` `0.275 s` later. P1 stopped MAVROS, MAVProxy and
+telemetry fanout, then reported `TEARDOWN=FAIL cleanup_rc=1`. The non-empty
+stale-state abort record is itself sufficient to force `cleanup_rc=1`, so that
+marker does not independently prove a surviving process or occupied device.
+
+The final retained FCU state remained connected and armed, while mapped output
+had returned to `800/800` and the latest system-status evidence still reported
+hardware safety ON. No connected/disarmed final-state transition,
+`ARMED_OBSERVATION=PASS`, `PI_SOURCE_WINDOW=COMPLETE` or
+`PI_SOURCE_HOLD=ACTIVE` was retained. Canonical explicit-threshold adjudication
+therefore returns `FCU_TO_VRX_EVIDENCE=FAIL reason=pi observer recorded an
+abort`.
+
+Classification: **FUNCTIONAL MOTION DEMONSTRATED; RUN EXTERNALLY INTERRUPTED /
+NOT FORMALLY ACCEPTED.** The W1 arrival repair and the functional
+Herelink-to-real-FCU-to-VRX motion interval are live-proven. Final-safe
+lifecycle completion and formal Test B acceptance are not. No post-run
+`RC_OVERRIDE_TIME` readback or rollback snapshot accompanies this evidence;
+the documented restoration from `0.5` to `3.0` remains open before a different
+operation.
+
 #### Correlation evidence
 
 The two recorders stay in their required domains: the Pi/dashboard recorder in

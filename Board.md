@@ -130,6 +130,19 @@
 > names unresolved topics on timeout. The focused `25`-case suite passes; this
 > workstation-only repair still needs a new live attempt.
 >
+> **Forward update (28/08/2026, repaired live result):** clean revision
+> `6beb603` passed P1's safe baseline, the repaired W1 arrival/rate gates and W2
+> four-stream READY. Retained records contain both `2200/800` and `800/2200`
+> output pairs, active-side `800.0 N` thrust, neutral restoration and
+> `116.751869 m` of first-to-last VRX displacement; the operator also observed
+> Herelink-driven VRX motion while all three stacks were healthy. A later
+> operator-reported external interruption was followed by `/dev/video4` loss,
+> stale `/mavros/state`, and fail-closed W1/W2 stream exits. The copied Pi peak
+> was `70500 mC`, below the `80000 mC` abort threshold, with no thermal-abort
+> record. No retained connected/disarmed final state or passing lifecycle and
+> adjudication exists, so functional motion is demonstrated but Test B is not
+> formally accepted.
+>
 > **10/08/2026 lifecycle correction:** copied Pi/workstation logs disprove the
 > 07/08 workstation-first explanation. The Pi's missing-rosbridge failure preceded
 > its exit, rosbridge then accepted a new WebSocket client, and only afterwards did
@@ -990,6 +1003,23 @@ The whole repo is expected to run on the Pi 5. Long-term (Phase 5.2+): QGC and t
    message sample, Pi observer or arm. Its focused repair retains per-topic
    discovery, uses monotonic timing and reports exact unresolved topics. The
    `25`-case W1 suite passes offline; formal Test B acceptance remains open.
+
+   **28/08 repaired live result:** clean revision `6beb603` live-proved the W1
+   publisher latch and seven rate probes, P1's connected/disarmed neutral
+   hardware-safe baseline and W2 four-stream readiness. The first retained
+   asymmetric command `800/1033` crossed UDP in `4.124019 ms`, mapped to
+   `0.0/133.142857 N`, reached both thrust topics in about `1.1 ms`, and moved
+   WAM-V `3.480079 m` inside the `10 s` window; neutral and zero thrust were
+   subsequently retained. The operator also observed Herelink-driven VRX
+   motion. A later external interruption was followed by Pi `stale_state`, W2
+   `stale_left_thrust` and P1 loss of `/dev/video4`. The copied P1 evidence is
+   `/home/ghostzero/Desktop/pi_run_evidence/test_b_functional_interrupted_20260828_155345`;
+   its exact peak was `70500 mC`, below the `80000 mC` abort threshold. The
+   last retained FCU state remained connected and armed, and canonical
+   adjudication fails on the observer abort. Classification: **FUNCTIONAL
+   MOTION DEMONSTRATED; RUN EXTERNALLY INTERRUPTED / NOT FORMALLY ACCEPTED**.
+   No post-run rollback readback was retained, so the documented
+   `RC_OVERRIDE_TIME=0.5` to `3.0` rollback remains open.
 
 3. **Detector recovery before Hailo accuracy gates**: the Hailo six-output decode
    contract is proven on saved frames (07/07/2026, `fb308f9`), and the 08/07 Pi
