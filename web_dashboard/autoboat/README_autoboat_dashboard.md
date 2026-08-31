@@ -381,6 +381,16 @@ an Enhanced Test A props-fitted functional observation. The launch assertion
 neither T2b nor T3a acceptance. Exact steering `+/-0.20` is currently rejected
 after `float32` transport slightly exceeds the bridge's exact bound.
 
+**Forward repair 31/08/2026:** the command bridge now normalizes only the exact
+float32 encoding of each configured steering or throttle endpoint. The next
+adjacent float32, materially larger requests and any negative throttle remain
+rejected, while an enabled endpoint is covered through paired override
+publication. The configured `0.20` steering and `0.12` throttle limits are
+unchanged. The focused bridge suite passes `36` tests. The bridge bundle
+manifest changed, so these bytes still require current-source SITL acceptance,
+transfer and checksum verification before any later Pi use; this is not live
+hardware evidence.
+
 The temporary `RC_OVERRIDE_TIME=0.5` setting was subsequently restored to
 `3.0`. The live before/after readbacks and `986`-parameter rollback snapshot
 are retained under

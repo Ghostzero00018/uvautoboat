@@ -9,6 +9,7 @@ import inspect
 import json
 import os
 import pathlib
+import struct
 import sys
 import tempfile
 import unittest
@@ -83,6 +84,34 @@ def valid_parameters():
 
 
 class BridgeFunctionsTest(unittest.TestCase):
+    def test_float32_bound_clamp_accepts_only_encoded_endpoint(self):
+        def as_float32(value):
+            return struct.unpack(">f", struct.pack(">f", value))[0]
+
+        def next_float32(value):
+            bits = struct.unpack(">I", struct.pack(">f", value))[0]
+            return struct.unpack(">f", struct.pack(">I", bits + 1))[0]
+
+        for upper in (0.05, 0.07, 0.09, 0.10, 0.12, 0.20):
+            with self.subTest(upper=upper):
+                encoded = as_float32(upper)
+                self.assertEqual(
+                    MODULE.clamp_float32_axis(encoded, 0.0, upper),
+                    upper,
+                )
+                self.assertIsNone(
+                    MODULE.clamp_float32_axis(
+                        next_float32(encoded), 0.0, upper
+                    )
+                )
+        encoded_lower = as_float32(-0.20)
+        outside_lower = next_float32(encoded_lower)
+        self.assertLess(outside_lower, -0.20)
+        self.assertIsNone(
+            MODULE.clamp_float32_axis(outside_lower, -0.20, 0.20)
+        )
+        self.assertIsNone(MODULE.clamp_float32_axis(-1e-9, 0.0, 0.12))
+
     def test_uses_installed_mavros_ros2_parameter_api(self):
         self.assertEqual(MODULE.PARAM_NODE, "/mavros/param")
         self.assertEqual(MODULE.PARAM_PULL_SERVICE, "/mavros/param/pull")
@@ -579,6 +608,91 @@ class BridgeNodeStateMachineTest(unittest.TestCase):
         status = json.loads(self.node.status_pub.messages[-1].data)
         self.assertIs(status["neutral_only"], True)
         self.assertEqual(status["command"], {"steering": 0.0, "throttle": 0.0})
+
+    def test_float32_command_endpoints_clamp_without_expanding_authority(self):
+        def as_float32(value):
+            return struct.unpack("f", struct.pack("f", value))[0]
+
+        def next_float32(value):
+            bits = struct.unpack(">I", struct.pack(">f", value))[0]
+            return struct.unpack(">f", struct.pack(">I", bits + 1))[0]
+
+        def command(stamp, steering, throttle=0.12, enable=0):
+            message = Joy()
+            message.header.frame_id = MODULE.FRAME_ID
+            message.header.stamp.sec = stamp
+            message.axes = [as_float32(steering), as_float32(throttle)]
+            message.buttons = [enable]
+            return message
+
+        positive = as_float32(0.20)
+        negative = as_float32(-0.20)
+        self.assertGreater(positive, 0.20)
+        self.assertLess(negative, -0.20)
+
+        self.node._command_cb(command(1, 0.20))
+        self.assertEqual(self.node.last_command, (0.20, 0.12, False))
+
+        self.node._command_cb(command(2, -0.20))
+        self.assertEqual(self.node.last_command, (-0.20, 0.12, False))
+
+        accepted = self.node.last_command
+        accepted_stamp = self.node.last_command_stamp_ns
+        next_outside = next_float32(positive)
+        self.node._command_cb(command(3, next_outside))
+        self.assertEqual(self.node.fault, "COMMAND_OUT_OF_BOUNDS")
+        self.assertEqual(self.node.last_command, accepted)
+        self.assertEqual(self.node.last_command_stamp_ns, accepted_stamp)
+
+        self.node._command_cb(command(4, 0.20001))
+        self.assertEqual(self.node.fault, "COMMAND_OUT_OF_BOUNDS")
+        self.assertEqual(self.node.last_command, accepted)
+        self.assertEqual(self.node.last_command_stamp_ns, accepted_stamp)
+
+        self.node.max_throttle = 0.10
+        throttle_endpoint = as_float32(self.node.max_throttle)
+        self.assertGreater(throttle_endpoint, self.node.max_throttle)
+        self.node._command_cb(command(5, 0.0, self.node.max_throttle))
+        self.assertEqual(self.node.last_command, (0.0, 0.10, False))
+
+        accepted = self.node.last_command
+        accepted_stamp = self.node.last_command_stamp_ns
+        self.node._command_cb(command(6, 0.0, next_float32(throttle_endpoint)))
+        self.assertEqual(self.node.fault, "COMMAND_OUT_OF_BOUNDS")
+        self.assertEqual(self.node.last_command, accepted)
+        self.assertEqual(self.node.last_command_stamp_ns, accepted_stamp)
+
+        self.node._command_cb(command(7, 0.0, 0.10001))
+        self.assertEqual(self.node.fault, "COMMAND_OUT_OF_BOUNDS")
+        self.assertEqual(self.node.last_command, accepted)
+        self.assertEqual(self.node.last_command_stamp_ns, accepted_stamp)
+
+        self.node._command_cb(command(8, 0.0, -1e-9))
+        self.assertEqual(self.node.fault, "COMMAND_OUT_OF_BOUNDS")
+        self.assertEqual(self.node.last_command, accepted)
+        self.assertEqual(self.node.last_command_stamp_ns, accepted_stamp)
+
+        now = 100.0
+        self.node.latest_state = self.vehicle(True)
+        self.node.latest_state_at = now
+        self.node.arm_epoch_authorized = True
+        self.node.armed_enable_primed = True
+        self.set_valid_feedback(now)
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now), \
+                mock.patch.object(self.node, "count_publishers", return_value=1):
+            self.node._command_cb(command(9, 0.20, 0.10, enable=1))
+            self.node._tick()
+        channels = self.node.override_pub.messages[-1].channels
+        guard = self.node.guard
+        self.assertEqual(
+            channels[guard.steering_channel - 1],
+            MODULE.encode_axis(0.20, guard.steering_rail),
+        )
+        self.assertEqual(
+            channels[guard.throttle_channel - 1],
+            MODULE.encode_axis(0.10, guard.throttle_rail),
+        )
+        self.assertEqual(self.node.fault, "ACTIVE")
 
     def test_status_payload_includes_live_rc_and_servo_rails(self):
         now = 100.0

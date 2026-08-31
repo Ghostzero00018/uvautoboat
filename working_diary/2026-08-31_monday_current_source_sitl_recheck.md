@@ -288,3 +288,92 @@ Herelink, propulsion or props-fitted path.
    SITL if the float32 endpoint repair or another relevant source change lands.
 5. Keep Test B formal acceptance and all real-hardware activity outside this
    SITL-only block and subject to fresh declarations and approvals.
+
+## Live result - 31/08/2026
+
+The supervised acceptance ran on clean `main` revision
+`3ca4c9bd16414d37506b62ce9fa5b8dad55a3719`, with `origin/main` at the
+same commit. Its retained run is:
+
+```text
+run=/home/ghostzero/Desktop/sitl_digital_twin_20260831_150946
+adjudication=/home/ghostzero/Desktop/sitl_digital_twin_20260831_150946_adjudication.log
+```
+
+The operator completed the safety-off, disabled-frame, arm, positive demand,
+neutral release, negative demand, E-Stop and disarm sequence. The supervisor
+then emitted `SITL_ACCEPTANCE=COMPLETE`, `SITL_VERDICT=PASS` and
+`SITL_SUPERVISOR_EXIT status=0` with `cleanup_rc=0` and `finalize_rc=0`.
+`verdict.json` records `session_complete=true`, `verdict=PASS`, `missing=[]`
+and `capture_fault=null`.
+
+Independent adjudication checked all ten evidence hashes, the control
+cross-check and the exact stop order
+`dashboard,rosbridge,bridge,evidence,mavros,mavproxy,sitl`. It also confirmed
+the teardown, all governed host ports free, all governed processes absent and
+ended `SITL_ADJUDICATION=PASS`. This closes the acceptance gate for the exact
+recorded revision `3ca4c9b`.
+
+## Post-acceptance endpoint repair
+
+After that pass, the separately authorised float32 endpoint repair changed
+`tools/real_fcu_rc_command_bridge.py`. A red test first reproduced that the
+browser's exact steering endpoints arrive through `sensor_msgs/msg/Joy` as
+approximately `+/-0.20000000298` and are rejected by the bridge's exact
+`+/-0.20` comparison. A second red regression then reproduced the same defect
+when legal tunable throttle maxima such as `0.10` round upward in float32. The
+narrow repair normalizes only the exact float32 encoding of each configured
+command endpoint. It does not raise `max_steering=0.20` or
+`max_throttle=0.12`; the next adjacent float32, a materially larger request and
+a tiny negative throttle remain rejected without replacing the last accepted
+command.
+The focused bridge suite passes `36` tests after the change, and the bundle
+manifest is repinned to the repaired bridge bytes.
+
+The complete offline verification on the repaired working tree passed:
+
+```text
+Pi lifecycle:             PASS
+live-dashboard preflight: PASS cases=25
+real-FCU helper suite:    PASS cases=34
+SITL runner suite:        PASS cases=41
+FCU-to-VRX shell suite:   PASS cases=23 runtime=not-started
+Python tools:             125 passed
+Node dashboard:           tests=80 pass=80 fail=0
+bundle manifest:          4/4 OK
+git diff --check:         clean
+```
+
+This post-pass source edit reopens the revision-specific SITL gate for the
+working tree. The `3ca4c9b` result remains valid evidence for that recorded
+revision, but it must not be represented as acceptance of the repaired bytes.
+After the repair is committed and pushed, run S0, S1 and S2 again before a
+real-FCU pipeline relies on current-source SITL acceptance.
+
+## One-sided propulsion finding and remaining gate
+
+Source tracing found no one-sided publication defect. The dashboard publishes
+one paired steering/throttle `Joy` command, and the bridge writes the resolved
+steering and throttle RC channels together in one `OverrideRCIn` message.
+ArduRover's skid mixer then forms left output from throttle plus steering and
+right output from throttle minus steering. A steering-heavy request can
+therefore drive one side to the bottom-neutral rail while the other side rises.
+The earlier measured `0.05/0.04` request produced `911/800 us`, which is
+consistent with that mixer behavior rather than proof of a missing second
+command.
+
+The reported lack of rotation at straight throttle `0.12` remains
+unexplained by retained active feedback. Straight throttle introduces no
+mixer differential, but the evidence does not establish either ESC's physical
+start threshold. Do not raise the dashboard throttle authority or change
+`MOT_THR_MIN` from this observation. A future threshold measurement is a
+separate, freshly approved, propellers-removed hardware calibration. It must
+retain the requested pair, measured RC input, both servo-output PWM values and
+the operator-observed start point for each side. The existing feedback capture
+helper can retain the machine correlation, but it is not automatically added
+to the established Test A lifecycle by this repair.
+
+`RC_OVERRIDE_TIME` remains at its restored live value `3.0`. Any later
+demand-enabled real-FCU run requires its own approval, live `0.5` readback and
+fresh pinned snapshot. No hardware approval or physical-state declaration was
+used or carried forward during this workstation-only work.

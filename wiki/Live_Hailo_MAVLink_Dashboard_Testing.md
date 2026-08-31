@@ -185,6 +185,17 @@ clean revision `550b992`. P1 reached its connected/disarmed neutral
 hardware-safe baseline, never armed, and failed on its GPS source verifier.
 Test B remains not formally accepted.
 
+**Current-source update 31/08/2026:** the full supervised SITL acceptance and
+independent adjudication passed on clean revision
+`3ca4c9bd16414d37506b62ce9fa5b8dad55a3719`. The retained run is
+`/home/ghostzero/Desktop/sitl_digital_twin_20260831_150946`; adjudication
+checked ten evidence hashes, the control cross-check, the exact governed stop
+order, teardown and free host ports/processes before ending
+`SITL_ADJUDICATION=PASS`. This closes the gate for exact revision `3ca4c9b`.
+The float32 endpoint repair described below changed the bridge afterward, so
+the current-source gate is reopened for the repaired path until that revision
+passes the same supervised run and adjudication.
+
 The Pi helper copied to `/home/imt-aqua-drone/Desktop` also passed its
 checksum and `--preflight-only` path. The retained output included
 `HAILO_ROS_PREFLIGHT=PASS imports=5 monkeypatch=PASS publisher=RELIABLE` and
@@ -339,6 +350,31 @@ them as `float32`, producing approximately `+/-0.20000000298`. The bridge's
 exact `[-0.20, +0.20]` comparison rejects them as
 `COMMAND_OUT_OF_BOUNDS`. The endpoint contract must be repaired and covered by
 a red/green test before those slider endpoints are used again.
+
+**Forward repair 31/08/2026:** a failing regression reproduced both float32
+steering endpoints and the same defect at legal tunable throttle maxima that
+round upward in float32. The bridge now normalizes only the exact float32
+encoding of each configured command endpoint. The next adjacent float32,
+materially over-limit steering or throttle, and a tiny negative throttle remain
+rejected without replacing the last accepted command. An enabled endpoint also
+reaches the paired RC override.
+`max_steering=0.20` and `max_throttle=0.12` are unchanged. The focused bridge
+suite passes `36` tests, but the repair is offline-only until the repaired
+revision passes SITL and is deployed with its regenerated bundle manifest.
+
+Source tracing found no one-sided publication defect. The browser emits one
+paired steering/throttle `Joy` frame, and the bridge writes both resolved RC
+channels in one `OverrideRCIn` message. ArduRover's skid mixer calculates left
+demand as throttle plus steering and right demand as throttle minus steering.
+A steering-heavy request can therefore leave one side at bottom-neutral while
+the other rises; the retained `0.05/0.04` request producing `911/800 us` is
+consistent with this behavior. Straight throttle introduces no mixer
+differential, but the 28/08 props-fitted run retained no active PWM sample and
+establishes no ESC start threshold. Do not raise dashboard throttle authority
+or change `MOT_THR_MIN` from that observation. Any threshold measurement is a
+separate, freshly approved, propellers-removed calibration with correlated
+requested demand, RC input, both servo outputs and operator-observed start
+points.
 
 Classification: **ENHANCED TEST A - PROPS-FITTED FUNCTIONAL OBSERVATION; NOT
 T2B ACCEPTANCE, T3A ACCEPTANCE OR APPROVAL FOR ROUTINE OR REPEATED

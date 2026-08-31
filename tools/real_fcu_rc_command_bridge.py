@@ -26,6 +26,7 @@ import os
 import pathlib
 import re
 import signal
+import struct
 import sys
 import time
 from dataclasses import dataclass
@@ -70,6 +71,21 @@ def validate_ros_domain(expected_domain_id: str, actual_domain_id: Optional[str]
         raise GuardError("expected_domain_id must be explicitly set")
     if actual_domain_id != expected:
         raise GuardError(f"ROS_DOMAIN_ID must be {expected}")
+
+
+def clamp_float32_axis(
+    value: float,
+    lower: float,
+    upper: float,
+) -> Optional[float]:
+    """Clamp only the exact float32 encoding of a configured command bound."""
+    encoded_lower = struct.unpack("f", struct.pack("f", lower))[0]
+    encoded_upper = struct.unpack("f", struct.pack("f", upper))[0]
+    if value == encoded_lower:
+        return lower
+    if value == encoded_upper:
+        return upper
+    return value if lower <= value <= upper else None
 
 
 def decode_parameter_value(
@@ -926,8 +942,11 @@ class RealFcuRcCommandBridge(Node):
         if not (math.isfinite(steering) and math.isfinite(throttle)):
             self.fault = "INVALID_COMMAND_VALUE"
             return
-        if not (-self.max_steering <= steering <= self.max_steering
-                and 0.0 <= throttle <= self.max_throttle and enable in (0, 1)):
+        steering = clamp_float32_axis(
+            steering, -self.max_steering, self.max_steering
+        )
+        throttle = clamp_float32_axis(throttle, 0.0, self.max_throttle)
+        if steering is None or throttle is None or enable not in (0, 1):
             self.fault = "COMMAND_OUT_OF_BOUNDS"
             return
         vehicle_armed = bool(self.latest_state and self.latest_state.armed)

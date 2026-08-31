@@ -232,6 +232,7 @@ Status row in §3 Phase 5 status table now records Path A landed 05/05/2026 and 
 | W1 arrival-gate repair for Test B | 🟡 28/08/2026 — clean revision `a23fc6d` reached P1 source-stack and safe disarmed baseline PASS plus W2 four-stream READY, but W1's separate all-seven publisher precheck timed out before message sampling or Pi-observer startup. Nothing was armed and all stacks cleaned up with `cleanup_rc=0`; Test B remains not accepted. W1 now retains each observed expected publisher across polling passes, re-queries only unresolved topics, uses `/proc/uptime` monotonic timing and reports exact unresolved names. The focused `25`-case suite passes offline; the repair still needs a new live attempt. |
 | Test B repaired live functional run | 🟡 28/08/2026 — clean revision `6beb603` passed P1's safe baseline, the repaired W1 publisher-arrival and seven-topic rate gates, and W2 four-stream READY. Retained evidence contains both full asymmetric `SERVO3/SERVO1` pairs, active-side `800.0 N` thrust, neutral restoration and `116.751869 m` of first-to-last VRX displacement; the operator observed Herelink stick input moving the boat while W1, W2 and P1 remained healthy. A later operator-reported external interruption was followed by `/dev/video4` disappearing, stale `/mavros/state`, P1 `status=1 cleanup_rc=1`, and fail-closed W1/W2 stale-stream exits. The copied Pi peak was `70500 mC`, below the `80000 mC` abort threshold, with no thermal-abort record. No retained connected/disarmed final state or passing lifecycle/adjudication exists. Classification: **FUNCTIONAL MOTION DEMONSTRATED; RUN EXTERNALLY INTERRUPTED / NOT FORMALLY ACCEPTED**. |
 | Enhanced Test A and parameter rollback | 🟡 28/08/2026 — a fresh `986`-parameter snapshot with SHA-256 `61406eee10c253daabfef4462ce0b3661be30b599bd7736909c5bff4e4b4943d` resolved `RC1`/`RC3`, left `SERVO3`, right `SERVO1` and both rails `800/800/2200`. The real-FCU dashboard and Pi helpers reached READY and ended connected/disarmed with the ordered stop marker and `status=0 cleanup_rc=0`. The operator corrected the active-interval state to propellers fitted and propulsion available, making `REAL_FCU_PROPELLERS_REMOVED=1` inaccurate for that interval, then reported limited one-sided physical rotation. No active command/PWM interval was retained. The helpers reported nominal `tier=T2b authority=demand-enabled` software markers and clean teardown, but the run did not satisfy T2b's propellers-removed gate and had no separate T3a approval, dedicated guarding or exclusion-zone evidence. Classification: **ENHANCED TEST A - PROPS-FITTED FUNCTIONAL OBSERVATION; NOT T2B OR T3A ACCEPTANCE**. It establishes no ESC threshold. Exact steering `+/-0.20` is rejected because `float32` transport slightly exceeds the bridge's exact bounds; that code defect remains open. The approved rollback then captured live `RC_OVERRIDE_TIME` readbacks `0.5 -> 3.0`, saved and copied a `986`-parameter snapshot with SHA-256 `a50fe5d313dd7ef2f2ab93f86dc2b6f7c800182eb603a1e4559580339aa1555b`, and left the serial endpoint free. |
+| Current-source SITL and command endpoint repair | 🟡 31/08/2026 — clean revision `3ca4c9bd16414d37506b62ce9fa5b8dad55a3719` passed the full supervised SITL acceptance and independent adjudication in `/home/ghostzero/Desktop/sitl_digital_twin_20260831_150946`, including ten hashes, control cross-check, exact stop order, teardown and free host ports/processes. After that pass, the exact `+/-0.20` float32 steering defect and the equivalent defect at legal tunable throttle maxima were reproduced. The repair normalizes only the exact float32 encoding of each configured command endpoint within the unchanged authority; adjacent and materially over-limit values plus negative throttle remain rejected. The focused suite passes `36` tests and the four-file manifest is regenerated. The later bridge edit reopens current-source SITL for the repaired bytes. Source tracing confirms paired command/override publication and ArduRover throttle-plus/minus-steering mixing; the observed `911/800 us` steering-heavy result is consistent with the mixer, while the straight-throttle ESC onset remains unmeasured. No throttle-authority or `MOT_THR_MIN` change was made, and calibration remains a separate, freshly approved, propellers-removed activity. |
 
 ### Blockers
 
@@ -521,6 +522,20 @@ Status row in §3 Phase 5 status table now records Path A landed 05/05/2026 and 
    `/home/ghostzero/Desktop/pi_run_evidence/rc_override_rollback_20260828`, and
    left the serial endpoint free. This supersedes only the preceding
    rollback-open sentence; Test B remains not formally accepted.
+
+   **31/08/2026 forward update:** the complete SITL acceptance and independent
+   adjudication passed on exact revision `3ca4c9b`. The subsequent narrow bridge
+   repair normalizes only the exact float32 encoding of each configured
+   steering or throttle endpoint, keeps negative throttle fail-closed and
+   leaves both authority limits unchanged. The next adjacent float32 is also
+   rejected. The focused suite passes `36` tests, but the source edit reopens
+   current-source SITL and requires a new bundle transfer before Pi use. The
+   command path is paired end to end; one-sided output is consistent with the
+   skid mix when steering dominates throttle. The straight-throttle ESC start
+   threshold remains unmeasured, so no authority or `MOT_THR_MIN` change is
+   justified. A threshold measurement remains a separately approved,
+   propellers-removed calibration with correlated demand, RC-input and
+   servo-output capture.
 
 ---
 
