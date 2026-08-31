@@ -196,6 +196,17 @@ The float32 endpoint repair described below changed the bridge afterward, so
 the current-source gate is reopened for the repaired path until that revision
 passes the same supervised run and adjudication.
 
+**Current-source closure later 31/08/2026:** clean revision
+`bba195b19a0f06a874bfbcbcbbd1621524cbce60` passed the complete supervised
+SITL acceptance in `/home/ghostzero/Desktop/sitl_digital_twin_20260831_161839`.
+Independent adjudication retained at
+`/home/ghostzero/Desktop/sitl_digital_twin_20260831_161839_adjudication.log`
+checked all ten hashes, the control cross-check, exact stop order and teardown,
+with governed ports free and governed process patterns absent, before ending
+`SITL_ADJUDICATION=PASS`. This closes
+the current-source SITL gate for the repaired runtime path. It remains
+simulator-only evidence and grants no Pi or real-FCU authority.
+
 The Pi helper copied to `/home/imt-aqua-drone/Desktop` also passed its
 checksum and `--preflight-only` path. The retained output included
 `HAILO_ROS_PREFLIGHT=PASS imports=5 monkeypatch=PASS publisher=RELIABLE` and
@@ -361,6 +372,11 @@ reaches the paired RC override.
 `max_steering=0.20` and `max_throttle=0.12` are unchanged. The focused bridge
 suite passes `36` tests, but the repair is offline-only until the repaired
 revision passes SITL and is deployed with its regenerated bundle manifest.
+
+**Current-source closure later 31/08/2026:** revision `bba195b` has now passed
+the complete supervised SITL run and independent adjudication described above.
+The SITL half of this requirement is closed. The regenerated bundle still
+requires a separately verified transfer and checksum before any later Pi use.
 
 Source tracing found no one-sided publication defect. The browser emits one
 paired steering/throttle `Joy` frame, and the bridge writes both resolved RC

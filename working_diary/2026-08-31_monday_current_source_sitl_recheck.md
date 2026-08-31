@@ -377,3 +377,35 @@ to the established Test A lifecycle by this repair.
 demand-enabled real-FCU run requires its own approval, live `0.5` readback and
 fresh pinned snapshot. No hardware approval or physical-state declaration was
 used or carried forward during this workstation-only work.
+
+## Post-repair current-source acceptance
+
+After the endpoint repair landed on `main`, the complete supervised SITL
+acceptance was rerun on clean revision
+`bba195b19a0f06a874bfbcbcbbd1621524cbce60`. The run manifest records
+`origin_main` at the same commit and `worktree=clean`. The retained paths are:
+
+```text
+run=/home/ghostzero/Desktop/sitl_digital_twin_20260831_161839
+adjudication=/home/ghostzero/Desktop/sitl_digital_twin_20260831_161839_adjudication.log
+```
+
+The operator completed safety-off, the disabled browser frame, arm, positive
+demand, neutral release, negative demand, E-Stop and disarm. The supervisor
+then emitted `SITL_ACCEPTANCE=COMPLETE`, `SITL_VERDICT=PASS` and
+`SITL_SUPERVISOR_EXIT status=0` with `cleanup_rc=0` and `finalize_rc=0`.
+`verdict.json` records `session_complete=true`, `verdict=PASS`, `missing=[]`
+and `capture_fault=null`.
+
+Independent adjudication checked all ten evidence hashes, the control
+cross-check and the exact stop order
+`dashboard,rosbridge,bridge,evidence,mavros,mavproxy,sitl`. It also confirmed
+the teardown, all governed ports free, all governed process patterns absent and
+ended `SITL_ADJUDICATION=PASS`. This closes the current-source SITL/dashboard
+command-ingress acceptance gate for exact revision `bba195b`.
+
+This is simulator-only evidence. No Pi, real FCU, propulsion hardware or
+on-water path participated, and no physical approval carries forward. The
+regenerated real-FCU bundle still requires a separately verified transfer and
+checksum before any later Pi use. A later relevant source, pinned runtime
+artifact or acceptance-environment change reopens this exact-run gate.

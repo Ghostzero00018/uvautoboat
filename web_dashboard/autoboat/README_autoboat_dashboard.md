@@ -391,6 +391,15 @@ manifest changed, so these bytes still require current-source SITL acceptance,
 transfer and checksum verification before any later Pi use; this is not live
 hardware evidence.
 
+**Current-source closure later 31/08/2026:** clean revision
+`bba195b19a0f06a874bfbcbcbbd1621524cbce60` passed the complete supervised
+SITL acceptance in `/home/ghostzero/Desktop/sitl_digital_twin_20260831_161839`
+and independent adjudication retained at
+`/home/ghostzero/Desktop/sitl_digital_twin_20260831_161839_adjudication.log`.
+The SITL requirement for these repaired bytes is closed. Transfer and checksum
+verification of the regenerated bundle must still be established separately
+before Pi use; this is still not live hardware evidence.
+
 The temporary `RC_OVERRIDE_TIME=0.5` setting was subsequently restored to
 `3.0`. The live before/after readbacks and `986`-parameter rollback snapshot
 are retained under
@@ -674,4 +683,4 @@ Part of the uvautoboat project — Apache License 2.0.
 
 Built with [roslibjs](http://robotwebtools.org/), [Leaflet.js](https://leafletjs.com/), [OpenStreetMap](https://www.openstreetmap.org/).
 
-Last updated: 19/08/2026
+Last updated: 31/08/2026
