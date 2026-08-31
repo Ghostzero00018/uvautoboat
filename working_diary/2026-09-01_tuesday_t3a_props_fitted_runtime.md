@@ -165,6 +165,26 @@ executable bit, run the non-actuating `check`, and copy the certification back.
 Do not reuse the `20260831_bba195b` deployment for T3a. Do not write a new Pi
 path or SHA into a command until the new commit and manifest exist.
 
+## Keep the live window simple
+
+Before requesting Block E approval, prepare offline everything that does not
+require live hardware: the exact commands generated from the landed bytes,
+evidence paths, expected markers, and both normal and abort teardown plans.
+Refresh the physical declaration at the actual pre-arm point; an offline draft
+does not replace that observation.
+
+The Block E approval must explicitly include the abnormal stop sequence,
+including the relationship between supervisor teardown, E-Stop and physical
+power isolation. Once the approved live window begins, run
+only the prepared sequence. Do not edit source, regenerate a command, diagnose
+interactively or try an unreviewed variant while the propellers are fitted and
+the T3a hardware is energised.
+
+On any unexpected result, execute only the approved abort and safe-closeout
+plan, preserve the evidence and report. This paragraph authorises no retry.
+Use the fewest live actions required by the success condition; any other step
+stays outside this window.
+
 ## Block E - separately gated live test
 
 Only after Blocks A-D pass, request a fresh same-day physical declaration and
