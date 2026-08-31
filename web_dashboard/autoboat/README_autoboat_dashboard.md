@@ -400,6 +400,17 @@ The SITL requirement for these repaired bytes is closed. Transfer and checksum
 verification of the regenerated bundle must still be established separately
 before Pi use; this is still not live hardware evidence.
 
+**Pi deployment closure later 31/08/2026:** the regenerated manifest and four
+governed members were installed at
+`/home/imt-aqua-drone/uvautoboat_real_fcu_bundle_20260831_bba195b`. Exact
+inventory, the manifest digest and all four governed hashes passed before the
+non-actuating helper check ended
+`REAL_FCU_PI_CHECK=PASS serial=/dev/ttyAMA0 runtime=not-started`. The verified
+workstation copy-back is
+`/home/ghostzero/Desktop/pi_run_evidence/pi_bundle_certification_20260831_bba195b`.
+This closes bundle transfer/checksum certification only; no probe, MAVROS or
+bridge runtime, parameter write, arm or propulsion action ran.
+
 The temporary `RC_OVERRIDE_TIME=0.5` setting was subsequently restored to
 `3.0`. The live before/after readbacks and `986`-parameter rollback snapshot
 are retained under

@@ -409,3 +409,28 @@ on-water path participated, and no physical approval carries forward. The
 regenerated real-FCU bundle still requires a separately verified transfer and
 checksum before any later Pi use. A later relevant source, pinned runtime
 artifact or acceptance-environment change reopens this exact-run gate.
+
+## Pi bundle deployment certification
+
+After separate approval, the regenerated bundle was deployed to the new Pi
+root:
+
+```text
+deployment=/home/imt-aqua-drone/uvautoboat_real_fcu_bundle_20260831_bba195b
+manifest_sha256=ae338cb9516ab21457afe802d783a0061653f4592a906fcc654098c5b5047846
+copyback=/home/ghostzero/Desktop/pi_run_evidence/pi_bundle_certification_20260831_bba195b
+```
+
+The deployed inventory contained exactly the manifest and its four governed
+members. The manifest digest passed, all four member hashes returned `OK`, the
+Pi helper was executable and its static check ended
+`REAL_FCU_PI_CHECK=PASS serial=/dev/ttyAMA0 runtime=not-started`. The
+workstation copy-back contains those five deployment files plus the check log;
+the copied manifest digest and all four member hashes were independently
+reverified. This closes the repaired-bundle transfer, checksum and
+non-actuating Pi-certification gate.
+
+This block did not run a probe, MAVROS, the command bridge or a parameter
+write, and it created no arming, propulsion or real-FCU communication
+evidence. The separate ESC-threshold calibration and complete real-hardware
+acceptance remain open, and no hardware approval carries forward.

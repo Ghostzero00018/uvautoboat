@@ -378,6 +378,17 @@ the complete supervised SITL run and independent adjudication described above.
 The SITL half of this requirement is closed. The regenerated bundle still
 requires a separately verified transfer and checksum before any later Pi use.
 
+**Pi deployment closure later 31/08/2026:** the regenerated manifest and four
+governed members were installed at
+`/home/imt-aqua-drone/uvautoboat_real_fcu_bundle_20260831_bba195b`. Exact
+inventory, the manifest digest and all four governed hashes passed. The
+non-actuating helper check ended
+`REAL_FCU_PI_CHECK=PASS serial=/dev/ttyAMA0 runtime=not-started`, and the
+independently reverified copy-back is
+`/home/ghostzero/Desktop/pi_run_evidence/pi_bundle_certification_20260831_bba195b`.
+This closes deployment certification only; it is not a probe, command-runtime
+or real-FCU acceptance result.
+
 Source tracing found no one-sided publication defect. The browser emits one
 paired steering/throttle `Joy` frame, and the bridge writes both resolved RC
 channels in one `OverrideRCIn` message. ArduRover's skid mixer calculates left
