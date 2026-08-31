@@ -434,3 +434,74 @@ This block did not run a probe, MAVROS, the command bridge or a parameter
 write, and it created no arming, propulsion or real-FCU communication
 evidence. The separate ESC-threshold calibration and complete real-hardware
 acceptance remain open, and no hardware approval carries forward.
+
+## ESC-onset evidence capture preparation
+
+After separate workstation-only approval, the command-feedback recorder gained
+an opt-in `t2b --esc-threshold-calibration` mode. Normal T2a/T2b capture keeps
+the original three-topic contract. Calibration mode additionally subscribes to
+`/mavros/rc/in` and `/mavros/rc/out` and accepts local typed observations in the
+form `left|right stopped|started|not-observed`.
+
+Each accepted observation requires an enabled straight-steering command with
+positive bounded throttle, `ACTIVE` bridge status with fresh feedback, an armed
+`MANUAL` FCU and exact agreement between the raw mapped RC/PWM channels and the
+bridge's measured fields. The command, bridge status, RC input and RC output
+must be no more than `1 s` old; `/mavros/state` must be no more than `2.5 s`
+old, matching the bridge state guard. For each side, the verdict deliberately
+selects the highest retained stopped-output PWM and requires a later terminal
+observation at both higher requested throttle and higher delivered per-side
+PWM. `not-observed` is accepted only at the governed `0.12` maximum. Rotation
+remains operator-observed evidence; the request, mapping, RC input and output
+PWM are machine-retained evidence.
+
+The normal T2b lifecycle is still mandatory: `READY_DISARMED`,
+`ARMED_NEUTRAL`, `ACTIVE`, `EMERGENCY_STOP`, an armed FCU sample and final
+connected/disarmed `MANUAL` evidence. The helper is subscriber-only and creates
+no application publisher, service client, parameter write or controller-write
+path. Calibration runs have explicit readiness/final markers and the distinct
+`real_fcu_capture_t2b_esc_threshold_*` directory suffix.
+
+Focused red/green coverage passes `21` tests. The complete offline gate passes
+Pi lifecycle, W1 `25`, real-FCU helper `34`, SITL `41`, W2 `23`, Python `133`
+and Node `80/80`, with the four-file bundle manifest and whitespace checks
+clean. This capture-only change does not modify a Pi bundle member and does not
+invalidate the certified `bba195b` Pi deployment or its exact-revision SITL
+acceptance.
+
+Classification: **OFFLINE CAPTURE PREPARATION / NOT RUN**. Current Pi runtime
+modes still require `REAL_FCU_PROPULSION_ISOLATED=1`, so this recorder alone
+cannot honestly measure physical motor onset. Current helpers also have no
+T3a props-fitted mode, no fitted-propeller gate, and no machine-retained
+mechanical-guarding or exclusion-zone evidence. No Pi, FCU, MAVROS, bridge,
+ESC, motor or propeller runtime occurred; no threshold was measured;
+`RC_OVERRIDE_TIME` remains `3.0`; and no authority or `MOT_THR_MIN` changed.
+
+## EOD handoff
+
+The 31/08/2026 technical loop is complete. The endpoint repair has passing
+current-source SITL acceptance and independent adjudication; the repaired Pi
+bundle has exact transfer, checksum, executable-bit, static-check and copy-back
+evidence; and the later ESC-onset recorder change has focused `21`-test and
+complete offline-gate evidence. The retained SITL verdict remains `PASS` with
+`cleanup_rc=0`, and the governed workstation ports are free at this audit.
+
+The repository is not yet publication-closed. At EOD preparation time, the
+capture implementation, tests, adjacent documentation and the 01/09/2026
+pre-diary remain uncommitted. Closure requires one scoped commit, push, and a
+fresh proof that the worktree is clean with `HEAD == origin/main` and
+divergence `0/0`.
+
+Physical EOD is also not yet attested. The latest Pi-side action was the
+non-actuating bundle certification. A fresh operator confirmation is still
+required for the actual Pi, FCU, Herelink, propulsion-battery, ESC, propeller
+and runtime-stack state before the physical day can be called closed. No
+earlier declaration is carried forward.
+
+The next canonical handoff is
+`working_diary/2026-09-01_tuesday_t3a_props_fitted_runtime.md`. Tuesday starts
+with the smallest honest T3a implementation and focused red/green checks. It
+must reuse, not repeat, the 31/08/2026 SITL, W1, W2, Node, aggregate Python,
+Pi-dashboard, Test B and T0b evidence while their source surfaces remain
+unchanged. A supervised SITL rerun becomes meaningful only if the shared
+bridge or dashboard command logic changes.

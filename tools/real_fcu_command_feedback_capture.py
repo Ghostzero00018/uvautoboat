@@ -9,6 +9,7 @@ import json
 import math
 import os
 from pathlib import Path
+import select
 import signal
 import subprocess
 import sys
@@ -16,7 +17,7 @@ import time
 from typing import Any, Callable, Mapping, Optional, Sequence
 
 import rclpy
-from mavros_msgs.msg import State
+from mavros_msgs.msg import RCIn, RCOut, State
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from rclpy.signals import SignalHandlerOptions
@@ -36,6 +37,21 @@ TOPICS = {
     "/command_ingress/status": String,
     "/mavros/state": State,
 }
+CALIBRATION_TOPICS = {
+    "/mavros/rc/in": RCIn,
+    "/mavros/rc/out": RCOut,
+}
+OPERATOR_OBSERVATION_TOPIC = "operator/esc_threshold"
+CALIBRATION_CORRELATION_MAX_AGE_NS = {
+    "/command_ingress/rc_axes": 1_000_000_000,
+    "/command_ingress/status": 1_000_000_000,
+    "/mavros/state": 2_500_000_000,
+    "/mavros/rc/in": 1_000_000_000,
+    "/mavros/rc/out": 1_000_000_000,
+}
+CALIBRATION_MAX_THROTTLE = 0.12
+CALIBRATION_SIDES = ("left", "right")
+CALIBRATION_MOTIONS = ("stopped", "started", "not-observed")
 TIERS = ("t2a", "t2b")
 
 
@@ -120,7 +136,12 @@ def _receipt_clock() -> tuple[int, int]:
 
 
 def capture_qos(topic: str) -> Any:
-    if topic in ("/command_ingress/rc_axes", "/mavros/state"):
+    if topic in (
+        "/command_ingress/rc_axes",
+        "/mavros/state",
+        "/mavros/rc/in",
+        "/mavros/rc/out",
+    ):
         return QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
             depth=1 if topic == "/command_ingress/rc_axes" else 10,
@@ -144,6 +165,21 @@ def _finite_number(value: Any) -> bool:
         and isinstance(value, (int, float))
         and math.isfinite(value)
     )
+
+
+def parse_operator_observation(line: str) -> tuple[str, str]:
+    """Parse one interactive ESC/motor observation without controller writes."""
+    fields = line.strip().lower().split()
+    if len(fields) != 2:
+        raise CaptureError(
+            "observation must be '<left|right> <stopped|started|not-observed>'"
+        )
+    side, motion = fields
+    if side not in CALIBRATION_SIDES or motion not in CALIBRATION_MOTIONS:
+        raise CaptureError(
+            "observation must be '<left|right> <stopped|started|not-observed>'"
+        )
+    return side, motion
 
 
 def status_evidence_error(status: Mapping[str, Any], tier: str) -> Optional[str]:
@@ -246,12 +282,22 @@ class CaptureSession:
         run_dir: Path,
         tier: str,
         receipt_clock: Callable[[], tuple[int, int]] = _receipt_clock,
+        esc_threshold_calibration: bool = False,
     ) -> None:
         if tier not in TIERS:
             raise CaptureError(f"unsupported capture tier: {tier}")
+        if esc_threshold_calibration and tier != "t2b":
+            raise CaptureError("ESC-threshold calibration requires the t2b capture tier")
         self.run_dir = run_dir
         self.tier = tier
         self.receipt_clock = receipt_clock
+        self.esc_threshold_calibration = esc_threshold_calibration
+        self.subscription_topics = dict(TOPICS)
+        if esc_threshold_calibration:
+            self.subscription_topics.update(CALIBRATION_TOPICS)
+        event_topics = list(self.subscription_topics)
+        if esc_threshold_calibration:
+            event_topics.append(OPERATOR_OBSERVATION_TOPIC)
         self.evidence_dir = run_dir / "evidence"
         self.log_dir = run_dir / "logs"
         self.evidence_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -260,8 +306,11 @@ class CaptureSession:
         self.stream = self.events_path.open("xb", buffering=0)
         self.committed_offset = 0
         self.sequence = 0
-        self.counts = {topic: 0 for topic in TOPICS}
+        self.counts = {topic: 0 for topic in event_topics}
         self.latest: dict[str, dict[str, Any]] = {}
+        self.operator_observations: dict[str, list[dict[str, Any]]] = {
+            side: [] for side in CALIBRATION_SIDES
+        }
         self.states_seen: list[str] = []
         self.last_armed_state_sequence: Optional[int] = None
         self.invalid_status_count = 0
@@ -276,14 +325,18 @@ class CaptureSession:
         topic: str,
         message: Mapping[str, Any],
         source_stamp_ns: Optional[int] = None,
+        *,
+        _receipt: Optional[tuple[int, int]] = None,
     ) -> dict[str, Any]:
         if self.closed:
             raise CaptureError("capture stream is closed")
-        if topic not in TOPICS:
+        if topic not in self.counts:
             raise CaptureError(f"unexpected capture topic: {topic}")
         if not isinstance(message, Mapping):
             raise CaptureError(f"message for {topic} is not a mapping")
-        received_unix_ns, received_monotonic_ns = self.receipt_clock()
+        received_unix_ns, received_monotonic_ns = (
+            _receipt if _receipt is not None else self.receipt_clock()
+        )
         if not isinstance(received_unix_ns, int) or not isinstance(
             received_monotonic_ns, int
         ):
@@ -343,6 +396,14 @@ class CaptureSession:
         previous_first_unix_ns = self.first_received_unix_ns
         previous_last_unix_ns = self.last_received_unix_ns
         previous_last_monotonic_ns = self.last_received_monotonic_ns
+        observation_side = (
+            message.get("side") if topic == OPERATOR_OBSERVATION_TOPIC else None
+        )
+        previous_observation_length = (
+            len(self.operator_observations[observation_side])
+            if observation_side in self.operator_observations
+            else None
+        )
         previous_mask = signal.pthread_sigmask(
             signal.SIG_BLOCK, {signal.SIGINT, signal.SIGTERM}
         )
@@ -364,6 +425,8 @@ class CaptureSession:
                 self.states_seen.append(status_state)
             if topic == "/mavros/state" and message.get("armed") is True:
                 self.last_armed_state_sequence = sequence
+            if observation_side in self.operator_observations:
+                self.operator_observations[observation_side].append(event)
             if self.first_received_unix_ns is None:
                 self.first_received_unix_ns = received_unix_ns
             self.last_received_unix_ns = received_unix_ns
@@ -384,6 +447,10 @@ class CaptureSession:
             self.first_received_unix_ns = previous_first_unix_ns
             self.last_received_unix_ns = previous_last_unix_ns
             self.last_received_monotonic_ns = previous_last_monotonic_ns
+            if previous_observation_length is not None:
+                del self.operator_observations[observation_side][
+                    previous_observation_length:
+                ]
             self.committed_offset = start_offset
             raise
         finally:
@@ -393,6 +460,179 @@ class CaptureSession:
     def record_ros_message(self, topic: str, message: Any) -> dict[str, Any]:
         converted = dict(message_to_ordereddict(message))
         return self.record(topic, converted, source_stamp_ns(message))
+
+    @staticmethod
+    def _message_from_event(event: Optional[Mapping[str, Any]]) -> Mapping[str, Any]:
+        if not event:
+            raise CaptureError("calibration correlation is missing a required stream")
+        message = event.get("message")
+        if not isinstance(message, Mapping):
+            raise CaptureError("calibration correlation contains an invalid message")
+        return message
+
+    @staticmethod
+    def _channel_value(channels: Any, channel: Any, label: str) -> int:
+        if (
+            isinstance(channel, bool)
+            or not isinstance(channel, int)
+            or channel <= 0
+            or not isinstance(channels, Sequence)
+            or isinstance(channels, (str, bytes))
+            or channel > len(channels)
+        ):
+            raise CaptureError(f"calibration correlation cannot resolve {label}")
+        value = channels[channel - 1]
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise CaptureError(f"calibration correlation has invalid {label}")
+        return value
+
+    def _calibration_correlation(self, observation_monotonic_ns: int) -> dict[str, Any]:
+        required_topics = (
+            "/command_ingress/rc_axes",
+            "/command_ingress/status",
+            "/mavros/state",
+            "/mavros/rc/in",
+            "/mavros/rc/out",
+        )
+        events: dict[str, Mapping[str, Any]] = {}
+        ages_ms: dict[str, int] = {}
+        sequences: dict[str, int] = {}
+        for topic in required_topics:
+            event = self.latest.get(topic)
+            if not event:
+                raise CaptureError(f"calibration correlation is missing {topic}")
+            received = event.get("received_monotonic_ns")
+            sequence = event.get("sequence")
+            if (
+                isinstance(received, bool)
+                or not isinstance(received, int)
+                or isinstance(sequence, bool)
+                or not isinstance(sequence, int)
+            ):
+                raise CaptureError(f"calibration correlation has invalid {topic} timing")
+            age_ns = observation_monotonic_ns - received
+            maximum_age_ns = CALIBRATION_CORRELATION_MAX_AGE_NS[topic]
+            if age_ns < 0 or age_ns >= maximum_age_ns:
+                raise CaptureError(f"calibration correlation is stale for {topic}")
+            events[topic] = event
+            ages_ms[topic] = age_ns // 1_000_000
+            sequences[topic] = sequence
+
+        status_event = events["/command_ingress/status"]
+        status = status_event.get("decoded")
+        if "status_error" in status_event or not isinstance(status, Mapping):
+            raise CaptureError("calibration correlation has invalid bridge status")
+        if not (
+            status.get("state") == "ACTIVE"
+            and status.get("connected") is True
+            and status.get("armed") is True
+            and status.get("mode") == "MANUAL"
+            and status.get("feedback_fresh") is True
+        ):
+            raise CaptureError("calibration observation requires ACTIVE fresh feedback")
+
+        state = self._message_from_event(events["/mavros/state"])
+        if not (
+            state.get("connected") is True
+            and state.get("armed") is True
+            and state.get("mode") == "MANUAL"
+        ):
+            raise CaptureError("calibration observation requires an armed MANUAL FCU")
+
+        axes = self._message_from_event(events["/command_ingress/rc_axes"])
+        axis_values = axes.get("axes")
+        buttons = axes.get("buttons")
+        command = status.get("command")
+        if (
+            not isinstance(axis_values, Sequence)
+            or isinstance(axis_values, (str, bytes))
+            or len(axis_values) != 2
+            or not isinstance(buttons, Sequence)
+            or isinstance(buttons, (str, bytes))
+            or list(buttons) != [1]
+            or not isinstance(command, Mapping)
+        ):
+            raise CaptureError("calibration observation requires an enabled command")
+        steering = axis_values[0]
+        throttle = axis_values[1]
+        status_steering = command.get("steering")
+        status_throttle = command.get("throttle")
+        if not all(
+            _finite_number(value)
+            for value in (steering, throttle, status_steering, status_throttle)
+        ):
+            raise CaptureError("calibration observation has invalid command values")
+        if float(steering) != 0.0 or float(status_steering) != 0.0:
+            raise CaptureError("calibration observation requires straight steering")
+        if float(throttle) <= 0.0 or float(status_throttle) <= 0.0:
+            raise CaptureError("calibration observation requires positive throttle")
+        if not math.isclose(
+            float(throttle), float(status_throttle), rel_tol=0.0, abs_tol=1e-6
+        ):
+            raise CaptureError("calibration command and bridge status do not match")
+
+        resolved = status.get("resolved")
+        status_measured = status.get("measured")
+        if not isinstance(resolved, Mapping) or not isinstance(
+            status_measured, Mapping
+        ):
+            raise CaptureError("calibration correlation lacks resolved feedback")
+        rc_in_channels = self._message_from_event(events["/mavros/rc/in"]).get(
+            "channels"
+        )
+        rc_out_channels = self._message_from_event(events["/mavros/rc/out"]).get(
+            "channels"
+        )
+        measured = {
+            "rc_steering_pwm": self._channel_value(
+                rc_in_channels, resolved.get("steering_rc"), "steering RC input"
+            ),
+            "rc_throttle_pwm": self._channel_value(
+                rc_in_channels, resolved.get("throttle_rc"), "throttle RC input"
+            ),
+            "left_servo_pwm": self._channel_value(
+                rc_out_channels, resolved.get("left_servo"), "left servo output"
+            ),
+            "right_servo_pwm": self._channel_value(
+                rc_out_channels, resolved.get("right_servo"), "right servo output"
+            ),
+        }
+        if any(status_measured.get(name) != value for name, value in measured.items()):
+            raise CaptureError("raw feedback and bridge status do not match")
+        return {
+            "sequences": sequences,
+            "ages_ms": ages_ms,
+            "command": {
+                "steering": float(status_steering),
+                "throttle": float(status_throttle),
+            },
+            "measured": measured,
+            "resolved": dict(resolved),
+        }
+
+    def record_operator_observation(self, side: str, motion: str) -> dict[str, Any]:
+        if not self.esc_threshold_calibration:
+            raise CaptureError("operator ESC observation requires calibration mode")
+        if side not in CALIBRATION_SIDES or motion not in CALIBRATION_MOTIONS:
+            raise CaptureError("invalid ESC-threshold observation")
+        prior = self.operator_observations[side]
+        if any(
+            event["message"].get("motion") in ("started", "not-observed")
+            for event in prior
+        ):
+            raise CaptureError(f"terminal {side} observation was already recorded")
+        receipt = self.receipt_clock()
+        correlation = self._calibration_correlation(receipt[1])
+        return self.record(
+            OPERATOR_OBSERVATION_TOPIC,
+            {
+                "evidence_class": "operator_observed",
+                "side": side,
+                "motion": motion,
+                "correlation": correlation,
+            },
+            _receipt=receipt,
+        )
 
     def streams_ready(self) -> bool:
         status_event = self.latest.get("/command_ingress/status")
@@ -404,7 +644,7 @@ class CaptureSession:
         )
         state = state_event.get("message") if state_event else None
         expected_neutral_only = self.tier == "t2a"
-        return bool(
+        base_ready = bool(
             isinstance(status, dict)
             and isinstance(state, dict)
             and status.get("state") == "READY_DISARMED"
@@ -417,6 +657,81 @@ class CaptureSession:
             and state.get("armed") is False
             and state.get("mode") == "MANUAL"
         )
+        if not base_ready or not self.esc_threshold_calibration:
+            return base_ready
+        return all(topic in self.latest for topic in CALIBRATION_TOPICS)
+
+    def _calibration_verdict(self, reasons: list[str]) -> dict[str, Any]:
+        summary: dict[str, Any] = {}
+        for topic, reason in (
+            ("/mavros/rc/in", "calibration_rc_in_missing"),
+            ("/mavros/rc/out", "calibration_rc_out_missing"),
+        ):
+            if self.counts.get(topic, 0) == 0:
+                reasons.append(reason)
+        for side in CALIBRATION_SIDES:
+            observations = self.operator_observations[side]
+            servo_pwm_key = f"{side}_servo_pwm"
+            stopped = [
+                event for event in observations if event["message"]["motion"] == "stopped"
+            ]
+            terminal = next(
+                (
+                    event
+                    for event in observations
+                    if event["message"]["motion"] in ("started", "not-observed")
+                ),
+                None,
+            )
+            if not stopped or terminal is None:
+                reasons.append(f"calibration_{side}_observation_incomplete")
+                summary[side] = None
+                continue
+            lower = max(
+                stopped,
+                key=lambda event: (
+                    event["message"]["correlation"]["measured"][servo_pwm_key],
+                    event["message"]["correlation"]["command"]["throttle"],
+                    event["sequence"],
+                ),
+            )
+            lower_throttle = lower["message"]["correlation"]["command"]["throttle"]
+            lower_pwm = lower["message"]["correlation"]["measured"][servo_pwm_key]
+            terminal_throttle = terminal["message"]["correlation"]["command"][
+                "throttle"
+            ]
+            terminal_pwm = terminal["message"]["correlation"]["measured"][
+                servo_pwm_key
+            ]
+            outcome = terminal["message"]["motion"]
+            if terminal["sequence"] <= lower["sequence"] or terminal_throttle < lower_throttle:
+                reasons.append(f"calibration_{side}_observation_order_invalid")
+            elif outcome == "started" and terminal_throttle <= lower_throttle:
+                reasons.append(f"calibration_{side}_threshold_not_bracketed")
+            elif terminal_pwm <= lower_pwm:
+                reasons.append(f"calibration_{side}_pwm_not_bracketed")
+            elif outcome == "not-observed" and not math.isclose(
+                terminal_throttle,
+                CALIBRATION_MAX_THROTTLE,
+                rel_tol=0.0,
+                abs_tol=1e-6,
+            ):
+                reasons.append(f"calibration_{side}_maximum_not_reached")
+            summary[side] = {
+                "evidence_class": "operator_observed",
+                "outcome": outcome,
+                "lower_no_rotation": {
+                    "sequence": lower["sequence"],
+                    "throttle": lower_throttle,
+                    "measured": lower["message"]["correlation"]["measured"],
+                },
+                "terminal_observation": {
+                    "sequence": terminal["sequence"],
+                    "throttle": terminal_throttle,
+                    "measured": terminal["message"]["correlation"]["measured"],
+                },
+            }
+        return summary
 
     @staticmethod
     def _final_status(event: Optional[Mapping[str, Any]]) -> Optional[dict[str, Any]]:
@@ -500,6 +815,10 @@ class CaptureSession:
         ):
             reasons.append("t2a_forbidden_status_state")
 
+        calibration = None
+        if self.esc_threshold_calibration:
+            calibration = self._calibration_verdict(reasons)
+
         verdict = {
             "schema": SCHEMA,
             "pass": not reasons,
@@ -517,6 +836,8 @@ class CaptureSession:
             "runtime_error": runtime_error,
             "reasons": reasons,
             "events_file": self.events_path.name,
+            "esc_threshold_calibration": self.esc_threshold_calibration,
+            "calibration": calibration,
         }
         atomic_write_json(self.evidence_dir / "verdict.json", verdict)
         self.finalized = True
@@ -545,7 +866,7 @@ class CaptureNode(Node):
         )
         self.session = session
         self.streams_announced = False
-        for topic, message_type in TOPICS.items():
+        for topic, message_type in session.subscription_topics.items():
             self.create_subscription(
                 message_type,
                 topic,
@@ -557,8 +878,14 @@ class CaptureNode(Node):
         self.session.record_ros_message(topic, message)
         if not self.streams_announced and self.session.streams_ready():
             self.streams_announced = True
+            calibration_suffix = (
+                " rc_in=received rc_out=received esc_threshold_calibration=true"
+                if self.session.esc_threshold_calibration
+                else " esc_threshold_calibration=false"
+            )
             print(
-                "REAL_FCU_CAPTURE_STREAMS=PASS status=received state=received",
+                "REAL_FCU_CAPTURE_STREAMS=PASS status=received state=received"
+                f"{calibration_suffix}",
                 flush=True,
             )
 
@@ -568,13 +895,16 @@ def _append_diagnostic(path: Path, message: str) -> None:
         stream.write(f"received_unix_ns={time.time_ns()} {message}\n")
 
 
-def create_run_dir(output_root: Path, tier: str) -> Path:
+def create_run_dir(
+    output_root: Path, tier: str, esc_threshold_calibration: bool = False
+) -> Path:
     root = output_root.expanduser().resolve()
     if not root.is_absolute():
         raise CaptureError("capture output root must be absolute")
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
     timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime())
-    run_dir = root / f"real_fcu_capture_{tier}_{timestamp}"
+    mode = f"{tier}_esc_threshold" if esc_threshold_calibration else tier
+    run_dir = root / f"real_fcu_capture_{mode}_{timestamp}"
     try:
         run_dir.mkdir(mode=0o700)
     except FileExistsError as exc:
@@ -588,6 +918,7 @@ def write_session_manifest(
     environment: Mapping[str, str],
     repository: Mapping[str, str],
     helper_path: Path,
+    esc_threshold_calibration: bool = False,
 ) -> None:
     atomic_write_json(
         run_dir / "manifest/session.json",
@@ -602,6 +933,19 @@ def write_session_manifest(
                 "sha256": sha256_file(helper_path),
             },
             "topics": list(TOPICS),
+            "subscription_topics": list(
+                {
+                    **TOPICS,
+                    **(CALIBRATION_TOPICS if esc_threshold_calibration else {}),
+                }
+            ),
+            "esc_threshold_calibration": esc_threshold_calibration,
+            "calibration_max_throttle": (
+                CALIBRATION_MAX_THROTTLE if esc_threshold_calibration else None
+            ),
+            "operator_observation_interface": (
+                "stdin" if esc_threshold_calibration else None
+            ),
             "writes": "none",
         },
     )
@@ -628,7 +972,9 @@ def close_ros_runtime(node: Optional[Node]) -> Optional[str]:
     return "; ".join(errors) or None
 
 
-def run_capture(tier: str, output_root: Path) -> int:
+def run_capture(
+    tier: str, output_root: Path, esc_threshold_calibration: bool = False
+) -> int:
     helper_path = Path(__file__).resolve()
     repository_root = helper_path.parent.parent
     environment = validate_ros_environment()
@@ -641,10 +987,23 @@ def run_capture(tier: str, output_root: Path) -> int:
     else:
         raise CaptureError("capture output root must be outside the repository")
 
-    run_dir = create_run_dir(resolved_output_root, tier)
-    session = CaptureSession(run_dir, tier)
+    run_dir = create_run_dir(
+        resolved_output_root,
+        tier,
+        esc_threshold_calibration=esc_threshold_calibration,
+    )
+    session = CaptureSession(
+        run_dir, tier, esc_threshold_calibration=esc_threshold_calibration
+    )
     diagnostic_path = session.log_dir / "capture.log"
-    write_session_manifest(run_dir, tier, environment, repository, helper_path)
+    write_session_manifest(
+        run_dir,
+        tier,
+        environment,
+        repository,
+        helper_path,
+        esc_threshold_calibration=esc_threshold_calibration,
+    )
     _append_diagnostic(diagnostic_path, f"capture_start tier={tier}")
 
     node: Optional[CaptureNode] = None
@@ -654,11 +1013,45 @@ def run_capture(tier: str, output_root: Path) -> int:
         rclpy.init(args=[], signal_handler_options=SignalHandlerOptions.NO)
         node = CaptureNode(session)
         print(
-            f"REAL_FCU_CAPTURE_READY=PASS tier={tier.upper()} subscriptions=3 "
+            f"REAL_FCU_CAPTURE_READY=PASS tier={tier.upper()} "
+            f"subscriptions={len(session.subscription_topics)} "
+            f"esc_threshold_calibration={str(esc_threshold_calibration).lower()} "
             f"run_dir={run_dir}",
             flush=True,
         )
-        rclpy.spin(node)
+        if esc_threshold_calibration:
+            print(
+                "REAL_FCU_ESC_THRESHOLD_INPUT=READY commands='<left|right> "
+                "<stopped|started|not-observed>' steering=0 required",
+                flush=True,
+            )
+            while rclpy.ok():
+                rclpy.spin_once(node, timeout_sec=0.1)
+                readable, _, _ = select.select((sys.stdin,), (), (), 0)
+                if not readable:
+                    continue
+                line = sys.stdin.readline()
+                if line == "":
+                    raise CaptureError("calibration operator input closed")
+                try:
+                    side, motion = parse_operator_observation(line)
+                    event = session.record_operator_observation(side, motion)
+                except CaptureError as exc:
+                    print(
+                        f"REAL_FCU_ESC_THRESHOLD_OBSERVATION=REJECTED reason={exc}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    continue
+                throttle = event["message"]["correlation"]["command"]["throttle"]
+                print(
+                    "REAL_FCU_ESC_THRESHOLD_OBSERVATION=RECORDED "
+                    f"side={side} motion={motion} throttle={throttle:.6f} "
+                    f"sequence={event['sequence']}",
+                    flush=True,
+                )
+        else:
+            rclpy.spin(node)
         runtime_error = "capture spin returned without operator stop"
     except KeyboardInterrupt:
         operator_stop = True
@@ -687,13 +1080,16 @@ def run_capture(tier: str, output_root: Path) -> int:
     if verdict["pass"] and operator_stop:
         print(
             f"REAL_FCU_CAPTURE_FINAL=PASS tier={tier.upper()} final=disarmed "
-            f"events={verdict['event_count']} run_dir={run_dir}",
+            f"events={verdict['event_count']} "
+            f"esc_threshold_calibration={str(esc_threshold_calibration).lower()} "
+            f"run_dir={run_dir}",
             flush=True,
         )
         return 0
     reasons = ",".join(verdict["reasons"]) or "operator_stop_missing"
     print(
         f"REAL_FCU_CAPTURE_FINAL=FAIL tier={tier.upper()} reasons={reasons} "
+        f"esc_threshold_calibration={str(esc_threshold_calibration).lower()} "
         f"run_dir={run_dir}",
         file=sys.stderr,
         flush=True,
@@ -713,13 +1109,25 @@ def parse_args(arguments: Optional[Sequence[str]] = None) -> argparse.Namespace:
             os.environ.get("REAL_FCU_CAPTURE_LOG_ROOT", str(Path.home() / "Desktop"))
         ),
     )
-    return parser.parse_args(arguments)
+    parser.add_argument(
+        "--esc-threshold-calibration",
+        action="store_true",
+        help="capture raw RC/PWM plus interactive straight-throttle observations",
+    )
+    options = parser.parse_args(arguments)
+    if options.esc_threshold_calibration and options.tier != "t2b":
+        parser.error("--esc-threshold-calibration requires tier t2b")
+    return options
 
 
 def main(arguments: Optional[Sequence[str]] = None) -> int:
     options = parse_args(arguments)
     try:
-        return run_capture(options.tier, options.output_root)
+        return run_capture(
+            options.tier,
+            options.output_root,
+            esc_threshold_calibration=options.esc_threshold_calibration,
+        )
     except (CaptureError, OSError) as exc:
         print(f"real_fcu_command_feedback_capture: {exc}", file=sys.stderr)
         return 2

@@ -3,8 +3,10 @@
 
 from __future__ import annotations
 
+from contextlib import redirect_stderr
 import importlib.util
 import inspect
+import io
 import json
 from pathlib import Path
 import sys
@@ -27,7 +29,18 @@ sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 
 
-def status_message(state: str, armed: bool, neutral_only: bool) -> dict[str, str]:
+def status_message(
+    state: str,
+    armed: bool,
+    neutral_only: bool,
+    *,
+    steering: float = 0.0,
+    throttle: float = 0.0,
+    rc_steering_pwm: int = 1515,
+    rc_throttle_pwm: int = 1515,
+    left_servo_pwm: int = 800,
+    right_servo_pwm: int = 800,
+) -> dict[str, str]:
     return {
         "data": json.dumps(
             {
@@ -38,7 +51,7 @@ def status_message(state: str, armed: bool, neutral_only: bool) -> dict[str, str
                 "armed": armed,
                 "mode": "MANUAL",
                 "neutral_only": neutral_only,
-                "command": {"steering": 0.0, "throttle": 0.0},
+                "command": {"steering": steering, "throttle": throttle},
                 "feedback_fresh": True,
                 "rc_in_age_ms": 10,
                 "rc_out_age_ms": 20,
@@ -49,10 +62,10 @@ def status_message(state: str, armed: bool, neutral_only: bool) -> dict[str, str
                     "right_servo": 1,
                 },
                 "measured": {
-                    "rc_steering_pwm": 1500,
-                    "rc_throttle_pwm": 1500,
-                    "left_servo_pwm": 800,
-                    "right_servo_pwm": 800,
+                    "rc_steering_pwm": rc_steering_pwm,
+                    "rc_throttle_pwm": rc_throttle_pwm,
+                    "left_servo_pwm": left_servo_pwm,
+                    "right_servo_pwm": right_servo_pwm,
                 },
                 "separator_probe": "---",
             },
@@ -72,6 +85,72 @@ def state_message(armed: bool) -> dict[str, object]:
         "mode": "MANUAL",
         "system_status": 4,
     }
+
+
+def feedback_message(channels: list[int]) -> dict[str, object]:
+    return {
+        "header": {"stamp": {"sec": 12, "nanosec": 34}, "frame_id": ""},
+        "rssi": 0,
+        "channels": channels,
+    }
+
+
+def begin_calibration_lifecycle(session) -> None:
+    session.record(
+        "/command_ingress/status",
+        status_message("READY_DISARMED", False, False),
+    )
+    session.record("/mavros/state", state_message(False))
+    session.record("/mavros/rc/in", feedback_message([1515, 0, 1515]))
+    session.record("/mavros/rc/out", feedback_message([800, 0, 800]))
+    session.record(
+        "/command_ingress/status",
+        status_message("ARMED_NEUTRAL", True, False),
+    )
+    session.record("/mavros/state", state_message(True))
+
+
+def record_active_calibration_sample(
+    session,
+    throttle: float,
+    pwm: int,
+    *,
+    left_pwm: int | None = None,
+    right_pwm: int | None = None,
+) -> None:
+    left_pwm = pwm if left_pwm is None else left_pwm
+    right_pwm = pwm if right_pwm is None else right_pwm
+    session.record("/mavros/state", state_message(True))
+    session.record(
+        "/command_ingress/rc_axes",
+        {"header": {}, "axes": [0.0, throttle], "buttons": [1]},
+    )
+    session.record("/mavros/rc/in", feedback_message([1515, 0, pwm]))
+    session.record("/mavros/rc/out", feedback_message([right_pwm, 0, left_pwm]))
+    session.record(
+        "/command_ingress/status",
+        status_message(
+            "ACTIVE",
+            True,
+            False,
+            throttle=throttle,
+            rc_throttle_pwm=pwm,
+            left_servo_pwm=left_pwm,
+            right_servo_pwm=right_pwm,
+        ),
+    )
+
+
+def finish_calibration_lifecycle(session) -> None:
+    session.record(
+        "/command_ingress/status",
+        status_message("EMERGENCY_STOP", True, False),
+    )
+    session.record(
+        "/command_ingress/status",
+        status_message("EMERGENCY_STOP", False, False),
+    )
+    session.record("/mavros/state", state_message(False))
 
 
 class CaptureContractTest(unittest.TestCase):
@@ -114,6 +193,60 @@ class CaptureContractTest(unittest.TestCase):
             state_qos.reliability, MODULE.ReliabilityPolicy.BEST_EFFORT
         )
         self.assertEqual(state_qos.depth, 10)
+
+    def test_calibration_adds_raw_feedback_without_changing_normal_capture(self):
+        with tempfile.TemporaryDirectory() as directory:
+            normal = MODULE.CaptureSession(Path(directory) / "normal", "t2b")
+            calibration = MODULE.CaptureSession(
+                Path(directory) / "calibration",
+                "t2b",
+                esc_threshold_calibration=True,
+            )
+            self.assertEqual(set(normal.subscription_topics), set(MODULE.TOPICS))
+            self.assertEqual(
+                set(calibration.subscription_topics),
+                {
+                    *MODULE.TOPICS,
+                    "/mavros/rc/in",
+                    "/mavros/rc/out",
+                },
+            )
+            self.assertIn(MODULE.OPERATOR_OBSERVATION_TOPIC, calibration.counts)
+            self.assertNotIn(MODULE.OPERATOR_OBSERVATION_TOPIC, normal.counts)
+            calibration.record(
+                "/command_ingress/status",
+                status_message("READY_DISARMED", False, False),
+            )
+            calibration.record("/mavros/state", state_message(False))
+            self.assertFalse(calibration.streams_ready())
+            calibration.record(
+                "/mavros/rc/in", feedback_message([1515, 0, 1515])
+            )
+            calibration.record(
+                "/mavros/rc/out", feedback_message([800, 0, 800])
+            )
+            self.assertTrue(calibration.streams_ready())
+            normal.close()
+            calibration.close()
+
+        for topic in ("/mavros/rc/in", "/mavros/rc/out"):
+            qos = MODULE.capture_qos(topic)
+            self.assertEqual(qos.reliability, MODULE.ReliabilityPolicy.BEST_EFFORT)
+            self.assertEqual(qos.depth, 10)
+
+        with self.assertRaisesRegex(
+            MODULE.CaptureError, "requires the t2b capture tier"
+        ):
+            MODULE.CaptureSession(
+                Path("/tmp/not-created"),
+                "t2a",
+                esc_threshold_calibration=True,
+            )
+
+        options = MODULE.parse_args(("t2b", "--esc-threshold-calibration"))
+        self.assertTrue(options.esc_threshold_calibration)
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            MODULE.parse_args(("t2a", "--esc-threshold-calibration"))
 
     def test_events_use_one_global_order_and_uniform_receipt_timestamps(self):
         receipts = iter(((1000, 100), (2000, 200), (3000, 300)))
@@ -397,6 +530,378 @@ class CaptureContractTest(unittest.TestCase):
             verdict["states_seen"],
             ["READY_DISARMED", "ARMED_NEUTRAL", "ACTIVE", "EMERGENCY_STOP"],
         )
+
+    def test_calibration_requires_raw_feedback_and_both_side_observations(self):
+        with tempfile.TemporaryDirectory() as directory:
+            receipts = iter((index * 1000, index * 100) for index in range(1, 10))
+            session = MODULE.CaptureSession(
+                Path(directory),
+                "t2b",
+                esc_threshold_calibration=True,
+                receipt_clock=lambda: next(receipts),
+            )
+            session.record(
+                "/command_ingress/status",
+                status_message("READY_DISARMED", False, False),
+            )
+            session.record("/mavros/state", state_message(False))
+            session.record(
+                "/command_ingress/status",
+                status_message("ARMED_NEUTRAL", True, False),
+            )
+            session.record("/mavros/state", state_message(True))
+            session.record(
+                "/command_ingress/rc_axes",
+                {"header": {}, "axes": [0.0, 0.04], "buttons": [1]},
+            )
+            session.record(
+                "/command_ingress/status",
+                status_message("ACTIVE", True, False, throttle=0.04),
+            )
+            session.record(
+                "/command_ingress/status",
+                status_message("EMERGENCY_STOP", False, False),
+            )
+            session.record("/mavros/state", state_message(False))
+            verdict = session.finalize()
+
+        self.assertFalse(verdict["pass"])
+        self.assertIn("calibration_rc_in_missing", verdict["reasons"])
+        self.assertIn("calibration_rc_out_missing", verdict["reasons"])
+        self.assertIn("calibration_left_observation_incomplete", verdict["reasons"])
+        self.assertIn("calibration_right_observation_incomplete", verdict["reasons"])
+
+    def test_complete_correlated_calibration_observations_can_pass(self):
+        receipts = iter(
+            (index * 1_000_000, index * 100_000_000) for index in range(1, 30)
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            run_dir = Path(directory)
+            session = MODULE.CaptureSession(
+                run_dir,
+                "t2b",
+                esc_threshold_calibration=True,
+                receipt_clock=lambda: next(receipts),
+            )
+            begin_calibration_lifecycle(session)
+            record_active_calibration_sample(session, 0.03, 830)
+            session.record_operator_observation("left", "stopped")
+            session.record_operator_observation("right", "stopped")
+            record_active_calibration_sample(session, 0.04, 850)
+            session.record_operator_observation("left", "started")
+            record_active_calibration_sample(session, 0.05, 870)
+            session.record_operator_observation("right", "started")
+            finish_calibration_lifecycle(session)
+            verdict = session.finalize()
+            retained = json.loads(
+                (run_dir / "evidence/verdict.json").read_text(encoding="utf-8")
+            )
+
+        self.assertTrue(verdict["pass"])
+        self.assertEqual(verdict, retained)
+        self.assertEqual(verdict["calibration"]["left"]["outcome"], "started")
+        self.assertEqual(verdict["calibration"]["right"]["outcome"], "started")
+        self.assertEqual(
+            verdict["calibration"]["left"]["lower_no_rotation"]["throttle"],
+            0.03,
+        )
+        self.assertEqual(
+            verdict["calibration"]["left"]["terminal_observation"]["throttle"],
+            0.04,
+        )
+
+    def test_calibration_observation_rejects_non_straight_or_stale_evidence(self):
+        receipts = iter(
+            (index * 1_000_000, index * 100_000_000) for index in range(1, 10)
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            session = MODULE.CaptureSession(
+                Path(directory),
+                "t2b",
+                esc_threshold_calibration=True,
+                receipt_clock=lambda: next(receipts),
+            )
+            session.record("/mavros/state", state_message(True))
+            session.record(
+                "/command_ingress/rc_axes",
+                {"header": {}, "axes": [0.01, 0.04], "buttons": [1]},
+            )
+            session.record(
+                "/mavros/rc/in", feedback_message([1525, 0, 1550])
+            )
+            session.record(
+                "/mavros/rc/out", feedback_message([850, 0, 850])
+            )
+            session.record(
+                "/command_ingress/status",
+                status_message(
+                    "ACTIVE",
+                    True,
+                    False,
+                    steering=0.01,
+                    throttle=0.04,
+                    rc_steering_pwm=1525,
+                    rc_throttle_pwm=1550,
+                    left_servo_pwm=850,
+                    right_servo_pwm=850,
+                ),
+            )
+            with self.assertRaisesRegex(
+                MODULE.CaptureError, "straight steering"
+            ):
+                session.record_operator_observation("left", "stopped")
+            session.close()
+
+        stale_receipts = iter(
+            (
+                (1_000_000, 100_000_000),
+                (2_000_000, 200_000_000),
+                (3_000_000, 300_000_000),
+                (4_000_000, 400_000_000),
+                (5_000_000, 500_000_000),
+                (6_000_000, 2_000_000_000),
+            )
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            session = MODULE.CaptureSession(
+                Path(directory),
+                "t2b",
+                esc_threshold_calibration=True,
+                receipt_clock=lambda: next(stale_receipts),
+            )
+            session.record("/mavros/state", state_message(True))
+            session.record(
+                "/command_ingress/rc_axes",
+                {"header": {}, "axes": [0.0, 0.04], "buttons": [1]},
+            )
+            session.record(
+                "/mavros/rc/in", feedback_message([1515, 0, 1550])
+            )
+            session.record(
+                "/mavros/rc/out", feedback_message([850, 0, 850])
+            )
+            session.record(
+                "/command_ingress/status",
+                status_message(
+                    "ACTIVE",
+                    True,
+                    False,
+                    throttle=0.04,
+                    rc_throttle_pwm=1550,
+                    left_servo_pwm=850,
+                    right_servo_pwm=850,
+                ),
+            )
+            with self.assertRaisesRegex(MODULE.CaptureError, "stale"):
+                session.record_operator_observation("left", "stopped")
+            session.close()
+
+        self.assertEqual(
+            MODULE.parse_operator_observation("left stopped"),
+            ("left", "stopped"),
+        )
+        with self.assertRaises(MODULE.CaptureError):
+            MODULE.parse_operator_observation("left spinning")
+
+    def test_calibration_state_age_matches_bridge_guard(self):
+        accepted_receipts = iter(
+            (
+                (1_000_000, 100_000_000),
+                (2_000_000, 1_300_000_000),
+                (3_000_000, 1_400_000_000),
+                (4_000_000, 1_500_000_000),
+                (5_000_000, 1_600_000_000),
+                (6_000_000, 2_200_000_000),
+            )
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            session = MODULE.CaptureSession(
+                Path(directory),
+                "t2b",
+                esc_threshold_calibration=True,
+                receipt_clock=lambda: next(accepted_receipts),
+            )
+            session.record("/mavros/state", state_message(True))
+            session.record(
+                "/command_ingress/rc_axes",
+                {"header": {}, "axes": [0.0, 0.04], "buttons": [1]},
+            )
+            session.record("/mavros/rc/in", feedback_message([1515, 0, 850]))
+            session.record("/mavros/rc/out", feedback_message([850, 0, 850]))
+            session.record(
+                "/command_ingress/status",
+                status_message(
+                    "ACTIVE",
+                    True,
+                    False,
+                    throttle=0.04,
+                    rc_throttle_pwm=850,
+                    left_servo_pwm=850,
+                    right_servo_pwm=850,
+                ),
+            )
+            event = session.record_operator_observation("left", "stopped")
+            self.assertEqual(
+                event["message"]["correlation"]["ages_ms"]["/mavros/state"],
+                2100,
+            )
+            session.close()
+
+        rejected_receipts = iter(
+            (
+                (1_000_000, 100_000_000),
+                (2_000_000, 2_700_000_000),
+                (3_000_000, 2_800_000_000),
+                (4_000_000, 2_900_000_000),
+                (5_000_000, 3_000_000_000),
+                (6_000_000, 3_100_000_000),
+            )
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            session = MODULE.CaptureSession(
+                Path(directory),
+                "t2b",
+                esc_threshold_calibration=True,
+                receipt_clock=lambda: next(rejected_receipts),
+            )
+            session.record("/mavros/state", state_message(True))
+            session.record(
+                "/command_ingress/rc_axes",
+                {"header": {}, "axes": [0.0, 0.04], "buttons": [1]},
+            )
+            session.record("/mavros/rc/in", feedback_message([1515, 0, 850]))
+            session.record("/mavros/rc/out", feedback_message([850, 0, 850]))
+            session.record(
+                "/command_ingress/status",
+                status_message(
+                    "ACTIVE",
+                    True,
+                    False,
+                    throttle=0.04,
+                    rc_throttle_pwm=850,
+                    left_servo_pwm=850,
+                    right_servo_pwm=850,
+                ),
+            )
+            with self.assertRaisesRegex(
+                MODULE.CaptureError, "stale for /mavros/state"
+            ):
+                session.record_operator_observation("left", "stopped")
+            session.close()
+
+    def test_not_observed_requires_the_governed_maximum_throttle(self):
+        with tempfile.TemporaryDirectory() as directory:
+            receipts = iter(
+                (index * 1_000_000, index * 100_000_000)
+                for index in range(1, 60)
+            )
+            session = MODULE.CaptureSession(
+                Path(directory),
+                "t2b",
+                esc_threshold_calibration=True,
+                receipt_clock=lambda: next(receipts),
+            )
+            begin_calibration_lifecycle(session)
+            record_active_calibration_sample(session, 0.03, 830)
+            session.record_operator_observation("left", "stopped")
+            session.record_operator_observation("right", "stopped")
+            record_active_calibration_sample(session, 0.04, 850)
+            session.record_operator_observation("left", "not-observed")
+            session.record_operator_observation("right", "not-observed")
+            finish_calibration_lifecycle(session)
+            verdict = session.finalize()
+
+        self.assertFalse(verdict["pass"])
+        self.assertIn("calibration_left_maximum_not_reached", verdict["reasons"])
+        self.assertIn("calibration_right_maximum_not_reached", verdict["reasons"])
+
+        with tempfile.TemporaryDirectory() as directory:
+            receipts = iter(
+                (index * 1_000_000, index * 100_000_000)
+                for index in range(1, 60)
+            )
+            session = MODULE.CaptureSession(
+                Path(directory),
+                "t2b",
+                esc_threshold_calibration=True,
+                receipt_clock=lambda: next(receipts),
+            )
+            begin_calibration_lifecycle(session)
+            record_active_calibration_sample(session, 0.03, 830)
+            session.record_operator_observation("left", "stopped")
+            session.record_operator_observation("right", "stopped")
+            record_active_calibration_sample(
+                session, MODULE.CALIBRATION_MAX_THROTTLE, 900
+            )
+            session.record_operator_observation("left", "not-observed")
+            session.record_operator_observation("right", "not-observed")
+            finish_calibration_lifecycle(session)
+            verdict = session.finalize()
+
+        self.assertTrue(verdict["pass"])
+        self.assertEqual(verdict["calibration"]["left"]["outcome"], "not-observed")
+        self.assertEqual(verdict["calibration"]["right"]["outcome"], "not-observed")
+
+    def test_highest_stopped_point_cannot_be_hidden_by_a_lower_repeat(self):
+        receipts = iter(
+            (index * 1_000_000, index * 100_000_000) for index in range(1, 70)
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            session = MODULE.CaptureSession(
+                Path(directory),
+                "t2b",
+                esc_threshold_calibration=True,
+                receipt_clock=lambda: next(receipts),
+            )
+            begin_calibration_lifecycle(session)
+            record_active_calibration_sample(session, 0.05, 870)
+            session.record_operator_observation("left", "stopped")
+            record_active_calibration_sample(session, 0.03, 830)
+            session.record_operator_observation("left", "stopped")
+            session.record_operator_observation("right", "stopped")
+            record_active_calibration_sample(session, 0.04, 850)
+            session.record_operator_observation("left", "started")
+            session.record_operator_observation("right", "started")
+            finish_calibration_lifecycle(session)
+            verdict = session.finalize()
+
+        self.assertFalse(verdict["pass"])
+        self.assertIn("calibration_left_observation_order_invalid", verdict["reasons"])
+        self.assertEqual(
+            verdict["calibration"]["left"]["lower_no_rotation"]["throttle"],
+            0.05,
+        )
+
+    def test_started_observation_requires_higher_delivered_pwm_per_side(self):
+        receipts = iter(
+            (index * 1_000_000, index * 100_000_000) for index in range(1, 70)
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            session = MODULE.CaptureSession(
+                Path(directory),
+                "t2b",
+                esc_threshold_calibration=True,
+                receipt_clock=lambda: next(receipts),
+            )
+            begin_calibration_lifecycle(session)
+            record_active_calibration_sample(session, 0.03, 900)
+            session.record_operator_observation("left", "stopped")
+            session.record_operator_observation("right", "stopped")
+            record_active_calibration_sample(
+                session,
+                0.04,
+                850,
+                left_pwm=850,
+                right_pwm=920,
+            )
+            session.record_operator_observation("left", "started")
+            session.record_operator_observation("right", "started")
+            finish_calibration_lifecycle(session)
+            verdict = session.finalize()
+
+        self.assertFalse(verdict["pass"])
+        self.assertIn("calibration_left_pwm_not_bracketed", verdict["reasons"])
+        self.assertNotIn("calibration_right_pwm_not_bracketed", verdict["reasons"])
 
 
 if __name__ == "__main__":

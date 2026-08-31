@@ -423,6 +423,47 @@ live. Any later demand-enabled Test A requires a separate approval to set
 `0.5`, confirm its readback and pin a fresh snapshot before either helper
 starts.
 
+### Prepared ESC-onset capture component - not a runnable hardware test
+
+The workstation recorder now has an opt-in evidence mode:
+
+```bash
+tools/real_fcu_command_feedback_capture.py \
+  t2b \
+  --esc-threshold-calibration \
+  --output-root /home/ghostzero/Desktop
+```
+
+This is a subscriber-only capture command, not a complete test pipeline. It
+adds `/mavros/rc/in` and `/mavros/rc/out` to the normal command, bridge-status
+and FCU-state evidence. While a separately supported physical runtime holds a
+stable straight positive demand in `ACTIVE`, the local recorder accepts:
+
+```text
+left stopped
+right stopped
+left started
+right started
+```
+
+Each observation is accepted only with fresh five-stream evidence, exact raw
+channel/status agreement, armed `MANUAL` state and straight steering. The
+verdict selects the highest stopped-output PWM per side and requires a later
+higher request plus strictly higher delivered servo PWM. If a side does not
+start within the bounded range, `left not-observed` or `right not-observed` is
+valid only at the governed maximum throttle `0.12`. Release to neutral between
+test levels. The full T2b state sequence, E-Stop, external disarm and final
+connected/disarmed `MANUAL` evidence remain required.
+
+Classification: **OFFLINE CAPTURE PREPARATION / NOT RUN**. The current Pi
+`run-t2a` and `run` paths require `REAL_FCU_PROPULSION_ISOLATED=1`; with ESCs
+unpowered they cannot measure physical motor onset. The current repository
+also has no honest T3a props-fitted runtime, fitted-propeller declaration,
+dedicated guarding evidence or exclusion-zone evidence. Do not combine this
+recorder with false T2b declarations. It establishes neither physical thrust,
+ESC calibration acceptance nor a loaded-propeller threshold until a dedicated
+runtime mode and its separate gates exist.
+
 ### Isolated FCU-to-VRX workstation half
 
 `tools/fcu_to_vrx_workstation.sh` is the workstation-only owner for the VRX

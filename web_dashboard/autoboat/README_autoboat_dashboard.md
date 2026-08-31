@@ -331,10 +331,11 @@ stopping them.
 The separately started workstation capture helper is:
 
 ```text
-tools/real_fcu_command_feedback_capture.py t2a|t2b [--output-root PATH]
+tools/real_fcu_command_feedback_capture.py t2a|t2b \
+  [--esc-threshold-calibration] [--output-root PATH]
 ```
 
-Its application surface consists only of subscriptions for
+Normal capture consists only of subscriptions for
 `/command_ingress/rc_axes`, `/command_ingress/status` and `/mavros/state`;
 ROS logging and parameter services are disabled. One global JSONL stream gives
 every message a sequence number plus uniform Unix and monotonic receipt times;
@@ -351,6 +352,29 @@ status and FCU state. T2a fails if any command frame was observed; T2b fails if
 none was observed, and any ROS cleanup error fails the retained verdict. The
 helper creates no application publisher, service client or controller-write
 path and is not a member of the four-file Pi deployment bundle.
+
+The opt-in `--esc-threshold-calibration` flag is valid only for T2b. It adds
+best-effort subscriptions to `/mavros/rc/in` and `/mavros/rc/out` and accepts
+local stdin annotations in the form
+`left|right stopped|started|not-observed`. These annotations are retained as
+operator-observed evidence; they are not ROS publications and cannot command
+the controller. Each accepted annotation correlates the latest command, bridge
+status, FCU state, raw mapped RC input and raw mapped servo output. The fast
+streams must be no more than `1 s` old and `/mavros/state` no more than `2.5 s`
+old. Raw channel values must exactly match the bridge's measured fields.
+
+For each side, the verdict selects the highest stopped-output PWM and requires
+a later terminal observation at higher requested throttle and strictly higher
+delivered per-side PWM. `not-observed` is accepted only at the governed
+`max_throttle=0.12`; it means no onset was observed within that bounded range,
+not a measured start threshold. The ordinary T2a/T2b verdict behavior is
+unchanged, and calibration still requires the complete T2b bridge-state
+sequence, E-Stop and final connected/disarmed `MANUAL` evidence.
+
+This calibration interface is prepared but has not run on hardware. Current Pi
+runtime modes require propulsion isolated, so the recorder alone cannot produce
+an honest physical motor-onset observation. Current helpers also contain no
+T3a props-fitted runtime or machine-retained guarding and exclusion-zone gates.
 
 Deploy the Pi helper, command bridge and both physical MAVROS allowlists with
 their `tools/` and `config/` layout intact. The exact four-file set is pinned by
@@ -620,7 +644,7 @@ direct E-Stop topic.
 | `style_merged.css`            | Unified stylesheet                         |
 | `README_autoboat_dashboard.md` | This file                                  |
 | `../../tools/real_fcu_rc_command_bridge.py` | Default-inhibited MAVROS RC bridge and measured-output status |
-| `../../tools/real_fcu_command_feedback_capture.py` | Subscriber-only ordered evidence capture for the physical bench tiers |
+| `../../tools/real_fcu_command_feedback_capture.py` | Subscriber-only ordered bench evidence with optional T2b ESC-onset correlation |
 | `../../tools/real_fcu_digital_twin_workstation.sh` | Loopback rosbridge/dashboard supervisor for the guarded physical loop |
 | `../../tools/real_fcu_digital_twin_pi.sh` | Direct-serial T0b probe and separately gated physical-loop supervisor |
 | `../../tools/test_real_fcu_digital_twin_helpers.sh` | Focused static contract suite for both physical helpers |
