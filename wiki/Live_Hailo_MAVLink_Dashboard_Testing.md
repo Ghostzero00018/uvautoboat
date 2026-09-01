@@ -259,7 +259,7 @@ Installing the matching kernel headers triggered the DKMS build for
 ### Hash-pinned parameter snapshot guard
 
 The real-FCU dashboard bridge still defaults to live MAVROS parameter pulls.
-An explicit snapshot mode is available only for `run-t2a` or `run` when a
+An explicit snapshot mode is available only for `run-t2a`, `run` or `run-t3a` when a
 MAVProxy `param save` artifact, its exact lowercase SHA-256 and
 `REAL_FCU_GUARD_SNAPSHOT_APPROVED=1` are supplied together. The parser rejects
 malformed lines, duplicate names, non-finite values, an incomplete guard and
@@ -403,6 +403,11 @@ separate, freshly approved, propellers-removed calibration with correlated
 requested demand, RC input, both servo outputs and operator-observed start
 points.
 
+**01/09/2026 forward supersession:** the preceding propellers-removed sentence
+records the 31/08 restriction. T2b remains the isolated props-removed evidence
+path. A physical fitted-propeller ESC-onset measurement now belongs only to the
+separately approved and guarded T3a path documented below.
+
 Classification: **ENHANCED TEST A - PROPS-FITTED FUNCTIONAL OBSERVATION; NOT
 T2B ACCEPTANCE, T3A ACCEPTANCE OR APPROVAL FOR ROUTINE OR REPEATED
 PROPS-FITTED OPERATION.** This does not carry forward as approval for another
@@ -463,6 +468,70 @@ dedicated guarding evidence or exclusion-zone evidence. Do not combine this
 recorder with false T2b declarations. It establishes neither physical thrust,
 ESC calibration acceptance nor a loaded-propeller threshold until a dedicated
 runtime mode and its separate gates exist.
+
+### T3a props-fitted runtime source - 01/09/2026, not run
+
+The preceding capture section records the 31/08/2026 state. The current source
+adds a distinct subscriber command for the props-fitted tier:
+
+```bash
+tools/real_fcu_command_feedback_capture.py \
+  t3a \
+  --esc-threshold-calibration \
+  --output-root /home/ghostzero/Desktop
+```
+
+T3a always requires calibration. The recorder still creates only five ROS
+subscriptions: command, bridge status, FCU state, raw RC input and raw servo
+output. Typed `left|right stopped|started|not-observed` lines enter through
+local stdin and are retained as operator observations, not a sixth ROS stream.
+It publishes nothing, creates no service client and cannot enable propulsion or
+command the controller. Calibration fails unless the observed bridge-status
+publisher-node identity set contains only
+`/real_fcu_rc_command_bridge_t3a`; the expected and observed publisher
+identities are retained in the manifest and verdict.
+
+Pi `run-t3a` is separate and demand-enabled. It keeps the existing `0.20`
+steering and `0.12` throttle bounds while requiring exact `1` declarations for
+T0a complete, T0b approved, separate T3a approval, disarmed start, hardware
+safety ON, propellers fitted, hull restraint, installed mechanical guarding, a
+clear exclusion zone and propulsion isolated at launch. T2a/T2b approvals and a
+propellers-removed declaration must all be exact `0`. The supervisor resolves
+the guard and starts the T3a-named command bridge before it asks the operator to
+enable propulsion while still disarmed, safe and guarded. The exact retained
+enable phrase is
+`PROPULSION_ENABLED_FCU_DISARMED_SAFETY_ON_GUARDING_INSTALLED_EXCLUSION_CLEAR`.
+Only after that confirmation does it request manual hardware-safety release.
+READY additionally requires the generic
+`/real_fcu_command_feedback_capture` node to be visible; the separately
+launched recorder must be `t3a --esc-threshold-calibration`, and its verdict
+binds the T3a bridge identity. Expected markers are:
+
+```text
+REAL_FCU_T3A_START=PASS propellers=fitted hull=restrained mechanical_guarding=installed exclusion_zone=clear propulsion=isolated safety=ON state=disarmed
+REAL_FCU_T3A_PROPULSION_ENABLE=CONFIRMED state=disarmed safety=ON guarding=installed exclusion_zone=clear source=operator-confirmation
+REAL_FCU_T3A_READY=PASS authority=demand-enabled propellers=fitted guarding=installed exclusion_zone=clear propulsion=enabled bridge=READY_DISARMED workstation=visible capture=visible
+REAL_FCU_T3A_SAFE_CLOSEOUT=PASS neutral=true estop=true disarmed=true safety=ON propulsion=isolated source=operator-confirmation
+```
+
+Once the enable prompt has appeared, every normal or abnormal exit owes safe
+closeout. Cleanup presents the neutral-demand, E-Stop, external-disarm,
+hardware-safety-ON and physical-propulsion-isolation confirmation before
+final-state capture and child teardown. The exact closeout phrase is
+`NEUTRAL_ESTOP_FCU_DISARMED_SAFETY_ON_PROPULSION_ISOLATED`; its input timeout is
+`REAL_FCU_T3A_CLOSEOUT_TIMEOUT_SECONDS`, default `300 s`. `INT` and `TERM`
+remain trapped throughout that window. A missing, invalid, timed-out or
+interrupted response fails the closeout, while cleanup still performs
+final-state capture and all child stops before the failure or signal status is
+returned.
+
+Classification: **OFFLINE IMPLEMENTATION / NOT RUN / NOT DEPLOYED**. The flags
+and confirmation records are operator declarations, not machine proof of
+installed guarding or a clear exclusion zone. No Tuesday hardware declaration,
+serial session, parameter change, FCU arm, ESC action, motor rotation, threshold
+or T3a acceptance exists. The 31/08/2026 `bba195b` Pi bundle predates this mode
+and must not be used for it; a new commit-named deployment and non-actuating
+certification are required before any separate Block E proposal.
 
 ### Isolated FCU-to-VRX workstation half
 

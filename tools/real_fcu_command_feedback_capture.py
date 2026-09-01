@@ -42,6 +42,7 @@ CALIBRATION_TOPICS = {
     "/mavros/rc/out": RCOut,
 }
 OPERATOR_OBSERVATION_TOPIC = "operator/esc_threshold"
+STATUS_TOPIC = "/command_ingress/status"
 CALIBRATION_CORRELATION_MAX_AGE_NS = {
     "/command_ingress/rc_axes": 1_000_000_000,
     "/command_ingress/status": 1_000_000_000,
@@ -52,11 +53,61 @@ CALIBRATION_CORRELATION_MAX_AGE_NS = {
 CALIBRATION_MAX_THROTTLE = 0.12
 CALIBRATION_SIDES = ("left", "right")
 CALIBRATION_MOTIONS = ("stopped", "started", "not-observed")
-TIERS = ("t2a", "t2b")
+TIERS = ("t2a", "t2b", "t3a")
+CALIBRATION_TIERS = ("t2b", "t3a")
+CALIBRATION_STATUS_PUBLISHERS = {
+    "t2b": "/real_fcu_rc_command_bridge",
+    "t3a": "/real_fcu_rc_command_bridge_t3a",
+}
 
 
 class CaptureError(RuntimeError):
     """Raised when capture setup or retained evidence violates the contract."""
+
+
+def validate_capture_mode(tier: str, esc_threshold_calibration: bool) -> None:
+    if tier not in TIERS:
+        raise CaptureError(f"unsupported capture tier: {tier}")
+    if tier == "t3a" and not esc_threshold_calibration:
+        raise CaptureError("t3a capture tier requires ESC-threshold calibration")
+    if esc_threshold_calibration and tier not in CALIBRATION_TIERS:
+        raise CaptureError(
+            "ESC-threshold calibration requires the t2b capture tier "
+            "or the t3a capture tier"
+        )
+
+
+def publisher_node_paths(endpoint_infos: Sequence[Any]) -> tuple[str, ...]:
+    paths: set[str] = set()
+    for endpoint in endpoint_infos:
+        namespace = getattr(endpoint, "node_namespace", None)
+        name = getattr(endpoint, "node_name", None)
+        if not isinstance(namespace, str) or not isinstance(name, str):
+            continue
+        normalized_name = name.strip("/")
+        if not normalized_name:
+            continue
+        normalized_namespace = namespace.strip("/")
+        paths.add(
+            f"/{normalized_namespace}/{normalized_name}"
+            if normalized_namespace
+            else f"/{normalized_name}"
+        )
+    return tuple(sorted(paths))
+
+
+def initial_status_publisher_binding(
+    tier: str, esc_threshold_calibration: bool
+) -> dict[str, Any]:
+    expected = (
+        CALIBRATION_STATUS_PUBLISHERS[tier] if esc_threshold_calibration else None
+    )
+    return {
+        "required": esc_threshold_calibration,
+        "expected": expected,
+        "observed": [],
+        "pass": not esc_threshold_calibration,
+    }
 
 
 def atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
@@ -284,14 +335,17 @@ class CaptureSession:
         receipt_clock: Callable[[], tuple[int, int]] = _receipt_clock,
         esc_threshold_calibration: bool = False,
     ) -> None:
-        if tier not in TIERS:
-            raise CaptureError(f"unsupported capture tier: {tier}")
-        if esc_threshold_calibration and tier != "t2b":
-            raise CaptureError("ESC-threshold calibration requires the t2b capture tier")
+        validate_capture_mode(tier, esc_threshold_calibration)
         self.run_dir = run_dir
         self.tier = tier
         self.receipt_clock = receipt_clock
         self.esc_threshold_calibration = esc_threshold_calibration
+        self.expected_status_publisher = (
+            CALIBRATION_STATUS_PUBLISHERS[tier]
+            if esc_threshold_calibration
+            else None
+        )
+        self.observed_status_publishers: set[str] = set()
         self.subscription_topics = dict(TOPICS)
         if esc_threshold_calibration:
             self.subscription_topics.update(CALIBRATION_TOPICS)
@@ -319,6 +373,21 @@ class CaptureSession:
         self.last_received_monotonic_ns: Optional[int] = None
         self.closed = False
         self.finalized = False
+
+    def observe_status_publishers(self, publishers: Sequence[str]) -> None:
+        for publisher in publishers:
+            if isinstance(publisher, str) and publisher.startswith("/"):
+                self.observed_status_publishers.add(publisher)
+
+    def status_publisher_binding(self) -> dict[str, Any]:
+        observed = sorted(self.observed_status_publishers)
+        required = self.expected_status_publisher is not None
+        return {
+            "required": required,
+            "expected": self.expected_status_publisher,
+            "observed": observed,
+            "pass": not required or observed == [self.expected_status_publisher],
+        }
 
     def record(
         self,
@@ -659,7 +728,9 @@ class CaptureSession:
         )
         if not base_ready or not self.esc_threshold_calibration:
             return base_ready
-        return all(topic in self.latest for topic in CALIBRATION_TOPICS)
+        return all(
+            topic in self.latest for topic in CALIBRATION_TOPICS
+        ) and self.status_publisher_binding()["pass"]
 
     def _calibration_verdict(self, reasons: list[str]) -> dict[str, Any]:
         summary: dict[str, Any] = {}
@@ -799,8 +870,8 @@ class CaptureSession:
         axes_count = self.counts["/command_ingress/rc_axes"]
         if self.tier == "t2a" and axes_count:
             reasons.append("t2a_rc_axes_observed")
-        if self.tier == "t2b" and not axes_count:
-            reasons.append("t2b_rc_axes_missing")
+        if self.tier in ("t2b", "t3a") and not axes_count:
+            reasons.append(f"{self.tier}_rc_axes_missing")
         expected_status_sequence = (
             ("READY_DISARMED", "ARMED_NEUTRAL", "READY_DISARMED")
             if self.tier == "t2a"
@@ -816,7 +887,12 @@ class CaptureSession:
             reasons.append("t2a_forbidden_status_state")
 
         calibration = None
+        status_publisher_binding = self.status_publisher_binding()
         if self.esc_threshold_calibration:
+            if not status_publisher_binding["observed"]:
+                reasons.append("status_publisher_binding_missing")
+            elif not status_publisher_binding["pass"]:
+                reasons.append("status_publisher_binding_mismatch")
             calibration = self._calibration_verdict(reasons)
 
         verdict = {
@@ -837,8 +913,15 @@ class CaptureSession:
             "reasons": reasons,
             "events_file": self.events_path.name,
             "esc_threshold_calibration": self.esc_threshold_calibration,
+            **(
+                {"status_publisher_binding": status_publisher_binding}
+                if self.esc_threshold_calibration
+                else {}
+            ),
             "calibration": calibration,
         }
+        if self.esc_threshold_calibration:
+            update_session_manifest_binding(self.run_dir, status_publisher_binding)
         atomic_write_json(self.evidence_dir / "verdict.json", verdict)
         self.finalized = True
         self.close()
@@ -875,6 +958,8 @@ class CaptureNode(Node):
             )
 
     def _capture(self, topic: str, message: Any) -> None:
+        if topic == STATUS_TOPIC and self.session.esc_threshold_calibration:
+            self._capture_status_publisher_binding()
         self.session.record_ros_message(topic, message)
         if not self.streams_announced and self.session.streams_ready():
             self.streams_announced = True
@@ -888,6 +973,13 @@ class CaptureNode(Node):
                 f"{calibration_suffix}",
                 flush=True,
             )
+
+    def _capture_status_publisher_binding(self) -> None:
+        try:
+            endpoints = self.get_publishers_info_by_topic(STATUS_TOPIC)
+        except Exception:
+            endpoints = ()
+        self.session.observe_status_publishers(publisher_node_paths(endpoints))
 
 
 def _append_diagnostic(path: Path, message: str) -> None:
@@ -940,6 +1032,15 @@ def write_session_manifest(
                 }
             ),
             "esc_threshold_calibration": esc_threshold_calibration,
+            **(
+                {
+                    "status_publisher_binding": initial_status_publisher_binding(
+                        tier, esc_threshold_calibration
+                    )
+                }
+                if esc_threshold_calibration
+                else {}
+            ),
             "calibration_max_throttle": (
                 CALIBRATION_MAX_THROTTLE if esc_threshold_calibration else None
             ),
@@ -949,6 +1050,19 @@ def write_session_manifest(
             "writes": "none",
         },
     )
+
+
+def update_session_manifest_binding(
+    run_dir: Path, status_publisher_binding: Mapping[str, Any]
+) -> None:
+    manifest_path = run_dir / "manifest/session.json"
+    if not manifest_path.is_file():
+        return
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict):
+        raise CaptureError("capture session manifest is not a JSON object")
+    manifest["status_publisher_binding"] = dict(status_publisher_binding)
+    atomic_write_json(manifest_path, manifest)
 
 
 def close_ros_runtime(node: Optional[Node]) -> Optional[str]:
@@ -975,6 +1089,7 @@ def close_ros_runtime(node: Optional[Node]) -> Optional[str]:
 def run_capture(
     tier: str, output_root: Path, esc_threshold_calibration: bool = False
 ) -> int:
+    validate_capture_mode(tier, esc_threshold_calibration)
     helper_path = Path(__file__).resolve()
     repository_root = helper_path.parent.parent
     environment = validate_ros_environment()
@@ -1115,8 +1230,10 @@ def parse_args(arguments: Optional[Sequence[str]] = None) -> argparse.Namespace:
         help="capture raw RC/PWM plus interactive straight-throttle observations",
     )
     options = parser.parse_args(arguments)
-    if options.esc_threshold_calibration and options.tier != "t2b":
-        parser.error("--esc-threshold-calibration requires tier t2b")
+    try:
+        validate_capture_mode(options.tier, options.esc_threshold_calibration)
+    except CaptureError as exc:
+        parser.error(str(exc))
     return options
 
 

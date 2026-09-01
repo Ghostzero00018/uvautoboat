@@ -223,3 +223,50 @@ teardown, copied evidence and verified parameter rollback to `3.0`.
 If time is insufficient after Block D, stop there. A certified but unrun T3a
 bundle is a valid outcome; an improvised or falsely declared T2b props-on run
 is not.
+
+## Blocks B-C outcome - source prepared, not run
+
+The approved workstation-only implementation added a distinct Pi `run-t3a`
+mode and a distinct `t3a --esc-threshold-calibration` capture tier. The Pi mode
+is demand-enabled within the unchanged `0.20` steering and `0.12` throttle
+limits; the capture helper remains subscriber-only with five ROS subscriptions,
+typed stdin observations and no write path. T2/T3 approvals and
+removed/fitted-propeller declarations are mutually exclusive. Propulsion enable
+creates a safe-closeout obligation before the operator input is read. Bounded
+closeout handling remains fail-closed under missing, invalid, timed-out, `INT`
+or `TERM` input while still reaching final-state capture and child stops; the
+recorded default timeout is `300 s`.
+
+Focused red/green verification ended green:
+
+- command-feedback capture: `26` tests;
+- Pi helper: `PASS cases=42`;
+- Python, Bash and dashboard JavaScript syntax: pass;
+- tier-neutral dashboard safety wording: pass;
+- regenerated bundle manifest: `4/4`; and
+- whitespace validation: pass.
+
+The source/test/dashboard/manifest change covers seven files. The Pi helper
+SHA-256 is
+`9096536b9150bb7e2a369c4eb0203701cc80af0b9eb96d3866e9aaaa626b1f89`.
+No SITL acceptance was repeated because the dashboard edits changed only
+tier-policy copy; command logic, topic identifiers, bounds, the command bridge,
+runner, operator, evidence and adjudicator code were untouched. W1, W2 and the
+Pi dashboard lifecycle were not repeated because their own source surfaces were
+untouched. No broad full-suite test was repeated.
+
+Classification at this point is **OFFLINE T3A IMPLEMENTATION / NOT RUN / NOT
+DEPLOYED**. No serial endpoint, FCU, parameter, MAVROS/bridge runtime, arm, ESC,
+motor or propeller action occurred. The existing
+`uvautoboat_real_fcu_bundle_20260831_bba195b` deployment remains exact evidence
+for its own bytes and does not contain this T3a runtime.
+
+## Block D status - publication and certification pending
+
+Block D is approved. Adjacent documentation is updated without rewriting the
+31/08 historical rows. The next actions are the focused publication checks,
+one source/documentation commit and push, then a new commit-named Pi deployment,
+exact inventory and manifest verification, executable-bit check, non-actuating
+`check`, and workstation copy-back. This status grants no Block E authority;
+the live props-fitted window still requires a fresh physical declaration and a
+separate T3a approval after certification.

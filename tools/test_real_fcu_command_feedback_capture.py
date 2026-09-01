@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 import importlib.util
 import inspect
 import io
@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest import mock
 
@@ -96,6 +97,7 @@ def feedback_message(channels: list[int]) -> dict[str, object]:
 
 
 def begin_calibration_lifecycle(session) -> None:
+    session.observe_status_publishers((session.expected_status_publisher,))
     session.record(
         "/command_ingress/status",
         status_message("READY_DISARMED", False, False),
@@ -180,6 +182,7 @@ class CaptureContractTest(unittest.TestCase):
         self.assertIn("create_subscription", source)
         self.assertNotIn("create_publisher", source)
         self.assertNotIn("create_client", source)
+        self.assertIn("get_publishers_info_by_topic", source)
         self.assertIn("enable_rosout=False", source)
         self.assertIn("start_parameter_services=False", source)
         command_qos = MODULE.capture_qos("/command_ingress/rc_axes")
@@ -193,6 +196,134 @@ class CaptureContractTest(unittest.TestCase):
             state_qos.reliability, MODULE.ReliabilityPolicy.BEST_EFFORT
         )
         self.assertEqual(state_qos.depth, 10)
+
+    def test_calibration_status_publisher_binding_is_tier_specific(self):
+        expected_publishers = {
+            "t2b": "/real_fcu_rc_command_bridge",
+            "t3a": "/real_fcu_rc_command_bridge_t3a",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            for tier, expected in expected_publishers.items():
+                session = MODULE.CaptureSession(
+                    Path(directory) / tier,
+                    tier,
+                    esc_threshold_calibration=True,
+                )
+                self.assertEqual(session.expected_status_publisher, expected)
+                self.assertEqual(
+                    session.status_publisher_binding(),
+                    {
+                        "required": True,
+                        "expected": expected,
+                        "observed": [],
+                        "pass": False,
+                    },
+                )
+                session.close()
+
+            normal = MODULE.CaptureSession(Path(directory) / "normal", "t2b")
+            self.assertEqual(
+                normal.status_publisher_binding(),
+                {
+                    "required": False,
+                    "expected": None,
+                    "observed": [],
+                    "pass": True,
+                },
+            )
+            MODULE.write_session_manifest(
+                normal.run_dir,
+                "t2b",
+                MODULE.EXPECTED_ENVIRONMENT,
+                {"head": "a", "main": "a", "origin_main": "a"},
+                MODULE_PATH,
+            )
+            normal_manifest = json.loads(
+                (normal.run_dir / "manifest/session.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertNotIn("status_publisher_binding", normal_manifest)
+            normal.close()
+
+    def test_capture_node_records_the_status_publisher_endpoint_identity(self):
+        endpoints = [
+            SimpleNamespace(
+                node_namespace="/", node_name="real_fcu_rc_command_bridge_t3a"
+            )
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            session = MODULE.CaptureSession(
+                Path(directory),
+                "t3a",
+                esc_threshold_calibration=True,
+            )
+            node = SimpleNamespace(
+                session=session,
+                get_publishers_info_by_topic=mock.Mock(return_value=endpoints),
+            )
+            MODULE.CaptureNode._capture_status_publisher_binding(node)
+
+            node.get_publishers_info_by_topic.assert_called_once_with(
+                "/command_ingress/status"
+            )
+            self.assertEqual(
+                session.status_publisher_binding()["observed"],
+                ["/real_fcu_rc_command_bridge_t3a"],
+            )
+            session.close()
+
+    def test_calibration_status_binding_fails_missing_and_cross_tier(self):
+        cases = (
+            (
+                "t2b",
+                None,
+                "status_publisher_binding_missing",
+            ),
+            (
+                "t2b",
+                "/real_fcu_rc_command_bridge_t3a",
+                "status_publisher_binding_mismatch",
+            ),
+            (
+                "t3a",
+                "/real_fcu_rc_command_bridge",
+                "status_publisher_binding_mismatch",
+            ),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            for index, (tier, observed, expected_reason) in enumerate(cases):
+                run_dir = Path(directory) / f"case-{index}"
+                session = MODULE.CaptureSession(
+                    run_dir,
+                    tier,
+                    esc_threshold_calibration=True,
+                )
+                MODULE.write_session_manifest(
+                    run_dir,
+                    tier,
+                    MODULE.EXPECTED_ENVIRONMENT,
+                    {"head": "a", "main": "a", "origin_main": "a"},
+                    MODULE_PATH,
+                    esc_threshold_calibration=True,
+                )
+                if observed is not None:
+                    session.observe_status_publishers((observed,))
+                verdict = session.finalize()
+                manifest = json.loads(
+                    (run_dir / "manifest/session.json").read_text(encoding="utf-8")
+                )
+
+                self.assertFalse(verdict["pass"])
+                self.assertIn(expected_reason, verdict["reasons"])
+                self.assertEqual(
+                    verdict["status_publisher_binding"]["observed"],
+                    [] if observed is None else [observed],
+                )
+                self.assertEqual(
+                    manifest["status_publisher_binding"],
+                    verdict["status_publisher_binding"],
+                )
 
     def test_calibration_adds_raw_feedback_without_changing_normal_capture(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -225,6 +356,10 @@ class CaptureContractTest(unittest.TestCase):
             calibration.record(
                 "/mavros/rc/out", feedback_message([800, 0, 800])
             )
+            self.assertFalse(calibration.streams_ready())
+            calibration.observe_status_publishers(
+                (calibration.expected_status_publisher,)
+            )
             self.assertTrue(calibration.streams_ready())
             normal.close()
             calibration.close()
@@ -247,6 +382,127 @@ class CaptureContractTest(unittest.TestCase):
         self.assertTrue(options.esc_threshold_calibration)
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             MODULE.parse_args(("t2a", "--esc-threshold-calibration"))
+
+    def test_t3a_requires_calibration_and_retains_demand_lifecycle(self):
+        self.assertIn("t3a", MODULE.TIERS)
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            MODULE.parse_args(("t3a",))
+        options = MODULE.parse_args(("t3a", "--esc-threshold-calibration"))
+        self.assertEqual(options.tier, "t3a")
+        self.assertTrue(options.esc_threshold_calibration)
+
+        with self.assertRaisesRegex(
+            MODULE.CaptureError, "t3a capture tier requires ESC-threshold calibration"
+        ):
+            MODULE.CaptureSession(Path("/tmp/not-created"), "t3a")
+
+        receipts = iter(
+            (index * 1_000_000, index * 100_000_000) for index in range(1, 40)
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run_dir = MODULE.create_run_dir(
+                root, "t3a", esc_threshold_calibration=True
+            )
+            session = MODULE.CaptureSession(
+                run_dir,
+                "t3a",
+                esc_threshold_calibration=True,
+                receipt_clock=lambda: next(receipts),
+            )
+            self.assertEqual(
+                set(session.subscription_topics),
+                {*MODULE.TOPICS, *MODULE.CALIBRATION_TOPICS},
+            )
+            MODULE.write_session_manifest(
+                run_dir,
+                "t3a",
+                MODULE.EXPECTED_ENVIRONMENT,
+                {"head": "a", "main": "a", "origin_main": "a"},
+                MODULE_PATH,
+                esc_threshold_calibration=True,
+            )
+            begin_calibration_lifecycle(session)
+            record_active_calibration_sample(session, 0.03, 830)
+            session.record_operator_observation("left", "stopped")
+            session.record_operator_observation("right", "stopped")
+            record_active_calibration_sample(session, 0.04, 850)
+            session.record_operator_observation("left", "started")
+            session.record_operator_observation("right", "started")
+            finish_calibration_lifecycle(session)
+            verdict = session.finalize()
+            manifest = json.loads(
+                (run_dir / "manifest/session.json").read_text(encoding="utf-8")
+            )
+
+        self.assertTrue(verdict["pass"])
+        self.assertEqual(verdict["tier"], "t3a")
+        self.assertEqual(verdict["final_status"]["state"], "EMERGENCY_STOP")
+        self.assertFalse(verdict["final_state"]["armed"])
+        self.assertTrue(
+            run_dir.name.startswith("real_fcu_capture_t3a_esc_threshold_")
+        )
+        self.assertEqual(manifest["tier"], "t3a")
+        self.assertTrue(manifest["esc_threshold_calibration"])
+        self.assertEqual(len(manifest["subscription_topics"]), 5)
+        expected_binding = {
+            "required": True,
+            "expected": "/real_fcu_rc_command_bridge_t3a",
+            "observed": ["/real_fcu_rc_command_bridge_t3a"],
+            "pass": True,
+        }
+        self.assertEqual(verdict["status_publisher_binding"], expected_binding)
+        self.assertEqual(manifest["status_publisher_binding"], expected_binding)
+
+    def test_t3a_runtime_markers_keep_the_distinct_tier(self):
+        class FakeSession:
+            def __init__(
+                self,
+                run_dir,
+                tier,
+                receipt_clock=MODULE._receipt_clock,
+                esc_threshold_calibration=False,
+            ):
+                self.log_dir = run_dir / "logs"
+                self.log_dir.mkdir(mode=0o700, parents=True)
+                self.subscription_topics = {
+                    **MODULE.TOPICS,
+                    **MODULE.CALIBRATION_TOPICS,
+                }
+
+            def finalize(self, runtime_error=None):
+                return {"pass": True, "event_count": 12, "reasons": []}
+
+        with tempfile.TemporaryDirectory() as directory:
+            run_dir = Path(directory) / "real_fcu_capture_t3a_esc_threshold_test"
+            run_dir.mkdir(mode=0o700)
+            output = io.StringIO()
+            with (
+                mock.patch.object(
+                    MODULE, "validate_ros_environment", return_value={}
+                ),
+                mock.patch.object(MODULE, "repository_snapshot", return_value={}),
+                mock.patch.object(MODULE, "create_run_dir", return_value=run_dir),
+                mock.patch.object(MODULE, "CaptureSession", FakeSession),
+                mock.patch.object(MODULE, "write_session_manifest"),
+                mock.patch.object(MODULE, "_append_diagnostic"),
+                mock.patch.object(MODULE, "CaptureNode", return_value=object()),
+                mock.patch.object(MODULE.rclpy, "init"),
+                mock.patch.object(MODULE.rclpy, "ok", return_value=True),
+                mock.patch.object(
+                    MODULE.rclpy, "spin_once", side_effect=KeyboardInterrupt
+                ),
+                mock.patch.object(MODULE, "close_ros_runtime", return_value=None),
+                redirect_stdout(output),
+            ):
+                result = MODULE.run_capture(
+                    "t3a", Path(directory), esc_threshold_calibration=True
+                )
+
+        self.assertEqual(result, 0)
+        markers = output.getvalue()
+        self.assertIn("REAL_FCU_CAPTURE_READY=PASS tier=T3A", markers)
+        self.assertIn("REAL_FCU_CAPTURE_FINAL=PASS tier=T3A", markers)
 
     def test_events_use_one_global_order_and_uniform_receipt_timestamps(self):
         receipts = iter(((1000, 100), (2000, 200), (3000, 300)))
@@ -526,6 +782,7 @@ class CaptureContractTest(unittest.TestCase):
             session.record("/mavros/state", state_message(False))
             verdict = session.finalize()
         self.assertTrue(verdict["pass"])
+        self.assertNotIn("status_publisher_binding", verdict)
         self.assertEqual(
             verdict["states_seen"],
             ["READY_DISARMED", "ARMED_NEUTRAL", "ACTIVE", "EMERGENCY_STOP"],

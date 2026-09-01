@@ -689,7 +689,7 @@ function refreshFcuBenchControls() {
     const policy = document.getElementById('fcu-loop-policy');
     if (!policy) return;
     if (!requested) {
-        policy.textContent = 'INHIBITED — append ?enable_fcu_bench_control=1 only for an approved propellers-removed bench test.';
+        policy.textContent = 'INHIBITED — append ?enable_fcu_bench_control=1 only for a separately approved active tier after confirming its required physical conditions; fitted propellers require installed mechanical guarding and a clear exclusion zone.';
     } else if (!resolved) {
         policy.textContent = 'WAITING — guarded bridge has not supplied a live mapping and rail resolution.';
     } else if (!confirmation?.checked) {

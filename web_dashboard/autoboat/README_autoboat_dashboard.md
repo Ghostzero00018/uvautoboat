@@ -138,9 +138,9 @@ helper is not the runner for this path because its MAVROS plugin allowlist omits
 The guarded physical-FCU path is now prepared as two separate entry points:
 `tools/real_fcu_digital_twin_workstation.sh` and
 `tools/real_fcu_digital_twin_pi.sh`. Both use ROS domain `43`, separate from the
-domain `42` localhost-only SITL graph. The workstation and Pi `check`, `run-t2a`
-and `run` paths retain subnet discovery for the cross-machine contract; the
-standalone Pi `probe` path selects localhost-only discovery. The Pi owns
+domain `42` localhost-only SITL graph. The workstation `check|run` and Pi
+`check|run-t2a|run|run-t3a` paths retain subnet discovery for the cross-machine
+contract; the standalone Pi `probe` path selects localhost-only discovery. The Pi owns
 `/dev/ttyAMA0:57600` directly, without MAVProxy or UDP fan-out. Its `probe` mode
 loads only `sys_status` and `param` to verify a connected, disarmed,
 hardware-safe T0b state and read the safety, mapping and rail parameters. Those
@@ -301,13 +301,13 @@ workstation and require `WORKSTATION_TEARDOWN=PASS`. Treat any MAVROS topic mark
 
 The physical command/feedback loop is deliberately separate from the Hailo
 view-only helper and from the domain `42` localhost-only SITL graph. Both
-physical halves use domain `43`. The workstation and Pi `check`, `run-t2a` and
-`run` paths use subnet discovery; only the standalone Pi `probe` path uses
-localhost discovery. The two entry points are:
+physical halves use domain `43`. The workstation `check|run` and Pi
+`check|run-t2a|run|run-t3a` paths use subnet discovery; only the standalone Pi
+`probe` path uses localhost discovery. The two entry points are:
 
 ```text
 tools/real_fcu_digital_twin_workstation.sh check|run
-tools/real_fcu_digital_twin_pi.sh check|probe|run-t2a|run
+tools/real_fcu_digital_twin_pi.sh check|probe|run-t2a|run|run-t3a
 ```
 
 `check` performs bounded preflight and static verification without starting the
@@ -323,15 +323,26 @@ browser demand, accepts no non-neutral demand and publishes the resolved live RC
 trims while armed. T2a acceptance must separately compare the observed output
 values against the live servo trims retained by T0b; the capture verdict does
 not perform that equality check by itself. `run` requires both T2 approvals and
-enables the separately approved closed-loop demand path. Neither mode arms,
-disarms, changes mode, writes parameters or issues a software safety release.
+enables the separately approved closed-loop demand path. `run-t3a` is a
+distinct demand-enabled props-fitted authority. It rejects every T2 approval
+and a propellers-removed declaration, and requires T0a complete, T0b approved,
+separate T3a approval, disarmed start, hardware safety ON, propellers fitted,
+restrained hull, installed mechanical guarding, a clear exclusion zone and
+propulsion isolated at launch. It keeps the same `0.20` steering and `0.12`
+throttle bounds. After guard and bridge resolution it asks the operator to
+enable propulsion while disarmed, safe and guarded, then requires the exact
+retained confirmation before proceeding to manual safety release. READY also
+requires `/real_fcu_command_feedback_capture` to be visible; the separately
+started recorder must use `t3a --esc-threshold-calibration`, whose verdict binds
+the T3a bridge identity. None of these modes arms, disarms, changes mode, writes
+parameters or issues a software safety release.
 Those actions remain outside the helpers, and external disarm is required before
 stopping them.
 
 The separately started workstation capture helper is:
 
 ```text
-tools/real_fcu_command_feedback_capture.py t2a|t2b \
+tools/real_fcu_command_feedback_capture.py t2a|t2b|t3a \
   [--esc-threshold-calibration] [--output-root PATH]
 ```
 
@@ -348,12 +359,13 @@ publisher. Diagnostics are written to a separate log and never merged into the
 evidence stream. On operator stop, an atomic verdict requires an armed FCU
 sample, structurally valid phase evidence, the tier's ordered bridge-state
 sequence, tier-matched authority and a final connected, disarmed `MANUAL`
-status and FCU state. T2a fails if any command frame was observed; T2b fails if
-none was observed, and any ROS cleanup error fails the retained verdict. The
+status and FCU state. T2a fails if any command frame was observed; T2b and T3a
+fail if none was observed, and any ROS cleanup error fails the retained verdict. The
 helper creates no application publisher, service client or controller-write
 path and is not a member of the four-file Pi deployment bundle.
 
-The opt-in `--esc-threshold-calibration` flag is valid only for T2b. It adds
+The opt-in `--esc-threshold-calibration` flag is valid for T2b and mandatory
+for T3a. It adds
 best-effort subscriptions to `/mavros/rc/in` and `/mavros/rc/out` and accepts
 local stdin annotations in the form
 `left|right stopped|started|not-observed`. These annotations are retained as
@@ -362,23 +374,41 @@ the controller. Each accepted annotation correlates the latest command, bridge
 status, FCU state, raw mapped RC input and raw mapped servo output. The fast
 streams must be no more than `1 s` old and `/mavros/state` no more than `2.5 s`
 old. Raw channel values must exactly match the bridge's measured fields.
+Calibration also binds the observed `/command_ingress/status` publisher-node
+identity set to only the expected node: `/real_fcu_rc_command_bridge` for T2b
+or `/real_fcu_rc_command_bridge_t3a` for T3a. A missing or different node
+identity fails the verdict; expected and observed identities are retained in
+the session manifest and verdict.
 
 For each side, the verdict selects the highest stopped-output PWM and requires
 a later terminal observation at higher requested throttle and strictly higher
 delivered per-side PWM. `not-observed` is accepted only at the governed
 `max_throttle=0.12`; it means no onset was observed within that bounded range,
 not a measured start threshold. The ordinary T2a/T2b verdict behavior is
-unchanged, and calibration still requires the complete T2b bridge-state
-sequence, E-Stop and final connected/disarmed `MANUAL` evidence.
+unchanged, and calibration still requires the complete demand-enabled
+bridge-state sequence, E-Stop and final connected/disarmed `MANUAL` evidence.
 
-This calibration interface is prepared but has not run on hardware. Current Pi
-runtime modes require propulsion isolated, so the recorder alone cannot produce
-an honest physical motor-onset observation. Current helpers also contain no
-T3a props-fitted runtime or machine-retained guarding and exclusion-zone gates.
+The 31/08/2026 calibration interface was prepared but had not run on hardware,
+and no honest T3a runtime existed then. The 01/09/2026 source now adds distinct
+`run-t3a` and `t3a --esc-threshold-calibration` paths, still offline and unrun.
+The recorder remains subscriber-only and has no authority to enable propulsion
+or command the controller. Pi `run-t3a` is the separate demand-enabled
+authority and owns the T3a declarations, propulsion-enable confirmation and
+safe closeout. Once propulsion enable has been prompted, cleanup first presents
+the exact neutral, E-Stop, external-disarm, safety-ON and propulsion-isolated
+confirmation. A matching phrase is required for a passing closeout. The prompt
+is bounded by
+`REAL_FCU_T3A_CLOSEOUT_TIMEOUT_SECONDS`, default `300 s`; a missing, invalid,
+timed-out or interrupted response fails closed. Cleanup then still attempts
+final-state capture and child teardown. No hardware declaration,
+approval, parameter action, FCU session, ESC threshold or T3a acceptance is
+created by this source preparation.
 
 Deploy the Pi helper, command bridge and both physical MAVROS allowlists with
-their `tools/` and `config/` layout intact. The exact four-file set is pinned by
-`config/real_fcu_digital_twin_bundle.sha256`. Do not add the physical command
+their `tools/` and `config/` layout intact. The four governed members are pinned
+by `config/real_fcu_digital_twin_bundle.sha256`; a deployed root contains that
+manifest plus the four members. The 31/08/2026 `bba195b` root predates
+`run-t3a` and must not be used for it. Do not add the physical command
 bridge or any FCU write path to `tools/pi_live_hailo_mavlink_dashboard.sh`; it
 remains the established view-only Hailo/telemetry path. Its default-off
 FCU-to-VRX option copies received raw MAVLink datagrams outward only and does
@@ -462,8 +492,9 @@ http://127.0.0.1:8002/?enable_fcu_bench_control=1
 Without the query value, the page subscribes to status but creates no command
 publisher. This URL is not approval to run a physical test. A physical run also
 requires a disarmed startup, a working bidirectional serial path, complete live
-parameter responses, propellers removed, restrained hull, controlled propulsion
-power, and the separately approved arm and input phases.
+parameter responses and the physical conditions of its separately approved
+active tier. Fitted propellers additionally require installed mechanical
+guarding and a clear exclusion zone.
 
 ## Dashboard Panels
 
@@ -644,9 +675,9 @@ direct E-Stop topic.
 | `style_merged.css`            | Unified stylesheet                         |
 | `README_autoboat_dashboard.md` | This file                                  |
 | `../../tools/real_fcu_rc_command_bridge.py` | Default-inhibited MAVROS RC bridge and measured-output status |
-| `../../tools/real_fcu_command_feedback_capture.py` | Subscriber-only ordered bench evidence with optional T2b ESC-onset correlation |
+| `../../tools/real_fcu_command_feedback_capture.py` | Subscriber-only ordered bench evidence with T2b/T3a ESC-onset correlation |
 | `../../tools/real_fcu_digital_twin_workstation.sh` | Loopback rosbridge/dashboard supervisor for the guarded physical loop |
-| `../../tools/real_fcu_digital_twin_pi.sh` | Direct-serial T0b probe and separately gated physical-loop supervisor |
+| `../../tools/real_fcu_digital_twin_pi.sh` | Direct-serial T0b probe and distinct T2a/T2b/T3a physical-loop supervisor |
 | `../../tools/test_real_fcu_digital_twin_helpers.sh` | Focused static contract suite for both physical helpers |
 | `../../config/mavros_real_fcu_digital_twin_plugins.yaml` | Minimal MAVROS plugin allowlist for the SITL runner |
 | `../../config/mavros_real_fcu_t0b_plugins.yaml` | Two-plugin read-only T0b MAVROS allowlist |
@@ -718,4 +749,4 @@ Part of the uvautoboat project — Apache License 2.0.
 
 Built with [roslibjs](http://robotwebtools.org/), [Leaflet.js](https://leafletjs.com/), [OpenStreetMap](https://www.openstreetmap.org/).
 
-Last updated: 31/08/2026
+Last updated: 01/09/2026

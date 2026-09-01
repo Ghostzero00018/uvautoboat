@@ -76,10 +76,15 @@ grep -Fq 'check|run' <<<"$WORKSTATION_USAGE" \
   || fail_test 'workstation usage does not expose check and run'
 [ "$PI_USAGE_RC" -eq 2 ] \
   || fail_test "Pi helper returned $PI_USAGE_RC instead of 2"
-grep -Fq 'check|probe|probe-snapshot SNAPSHOT SHA256|run-t2a|run' <<<"$PI_USAGE" \
-  || fail_test 'Pi usage does not expose the distinct T2a-only run'
+grep -Fq 'check|probe|probe-snapshot SNAPSHOT SHA256|run-t2a|run|run-t3a' \
+  <<<"$PI_USAGE" \
+  || fail_test 'Pi usage does not expose the distinct T2a and T3a runs'
 grep -Fq '1:run-t2a) rfcu_pi_run run-t2a' "$PI_HELPER" \
   || fail_test 'Pi main does not dispatch the T2a-only run'
+grep -Fq '1:run) rfcu_pi_run run' "$PI_HELPER" \
+  || fail_test 'Pi main does not dispatch the T2b run'
+grep -Fq '1:run-t3a) rfcu_pi_run run-t3a' "$PI_HELPER" \
+  || fail_test 'Pi main does not dispatch the props-fitted T3a run'
 grep -Fq '3:probe-snapshot) rfcu_pi_probe_snapshot "$2" "$3"' "$PI_HELPER" \
   || fail_test 'Pi main does not dispatch the snapshot-backed T0b probe'
 pass_case
@@ -159,7 +164,7 @@ PI_PROBE_ENV="$(bash -c '
 PI_RUN_ENV="$(bash -c '
   source "$1"
   RFCU_PI_ROS_SETUP="$2"
-  for RFCU_PI_RUN_MODE in run-t2a run; do
+  for RFCU_PI_RUN_MODE in run-t2a run run-t3a; do
     ROS_DOMAIN_ID=12
     ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
     ROS_LOCALHOST_ONLY=1
@@ -174,8 +179,58 @@ PI_RUN_ENV="$(bash -c '
       "$ROS_DOMAIN_ID" "$ROS_AUTOMATIC_DISCOVERY_RANGE" "$ROS_LOCALHOST_ONLY"
   done
 ' _ "$PI_HELPER" "$ROS_FIXTURE")"
-[ "$PI_RUN_ENV" = $'run-t2a=43|SUBNET|0\nrun=43|SUBNET|0' ] \
+[ "$PI_RUN_ENV" = \
+    $'run-t2a=43|SUBNET|0\nrun=43|SUBNET|0\nrun-t3a=43|SUBNET|0' ] \
   || fail_test "Pi run ROS boundary lost subnet discovery: $PI_RUN_ENV"
+
+for t2_mode in run-t2a run; do
+  bash -c '
+    set -euo pipefail
+    source "$1"
+    RFCU_PI_RUN_MODE="$2"
+    RFCU_PI_READY_TIMEOUT_SECONDS=1
+    RFCU_PI_POLL_SECONDS=1
+    rfcu_pi_active_children_alive() { return 0; }
+    ros2() { printf "/rosbridge_websocket\n/rosapi\n"; }
+    rfcu_pi_wait_workstation_nodes
+  ' _ "$PI_HELPER" "$t2_mode" \
+    || fail_test "$t2_mode readiness started requiring the T3a capture node"
+done
+if bash -c '
+    set -euo pipefail
+    source "$1"
+    RFCU_PI_RUN_MODE=run-t3a
+    RFCU_PI_READY_TIMEOUT_SECONDS=1
+    RFCU_PI_POLL_SECONDS=1
+    rfcu_pi_active_children_alive() { return 0; }
+    ros2() { printf "/rosbridge_websocket\n/rosapi\n"; }
+    sleep() { SECONDS=$((SECONDS + 2)); }
+    rfcu_pi_wait_workstation_nodes
+  ' _ "$PI_HELPER"; then
+  fail_test 'T3a readiness passed without its correlated capture node'
+fi
+bash -c '
+  set -euo pipefail
+  source "$1"
+  RFCU_PI_RUN_MODE=run-t3a
+  RFCU_PI_READY_TIMEOUT_SECONDS=1
+  RFCU_PI_POLL_SECONDS=1
+  rfcu_pi_active_children_alive() { return 0; }
+  ros2() {
+    printf "/rosbridge_websocket\n/rosapi\n/real_fcu_command_feedback_capture\n"
+  }
+  rfcu_pi_wait_workstation_nodes
+' _ "$PI_HELPER" \
+  || fail_test 'T3a readiness rejected rosbridge, rosapi and capture together'
+PI_RUN_FUNCTION="$(extract_function "$PI_HELPER" rfcu_pi_run)"
+grep -Fq 'workstation rosbridge/rosapi/capture nodes were not discovered' \
+  <<<"$PI_RUN_FUNCTION" \
+  || fail_test 'T3a readiness failure does not identify the required capture node'
+grep -Fq \
+  'REAL_FCU_T3A_READY=PASS authority=demand-enabled propellers=fitted guarding=installed exclusion_zone=clear propulsion=enabled bridge=READY_DISARMED workstation=visible capture=visible' \
+  <<<"$PI_RUN_FUNCTION" \
+  || fail_test 'T3a readiness marker does not retain capture visibility'
+pass_case
 
 PI_PROBE_FUNCTION="$(extract_function "$PI_HELPER" rfcu_pi_probe)"
 PI_PROBE_MODE_LINE="$(line_number_once "$PI_PROBE_FUNCTION" \
@@ -216,6 +271,19 @@ grep -Fq "guard_snapshot_file:=\"$GUARD_SNAPSHOT_FILE\"" \
 grep -Fq "guard_snapshot_sha256:=\"$GUARD_SNAPSHOT_SHA256\"" \
   <<<"$GUARD_SNAPSHOT_OUTPUT" \
   || fail_test 'bridge command omitted the approved guard snapshot hash'
+pass_case
+
+T3A_GUARD_SNAPSHOT_OUTPUT="$(bash -c '
+  source "$1"
+  RFCU_PI_RUN_MODE=run-t3a
+  RFCU_PI_GUARD_SNAPSHOT_FILE="$2"
+  RFCU_PI_GUARD_SNAPSHOT_SHA256="$3"
+  RFCU_PI_GUARD_SNAPSHOT_APPROVED=1
+  rfcu_pi_validate_guard_snapshot_selector
+  printf "source=%s\n" "$RFCU_PI_GUARD_SOURCE"
+' _ "$PI_HELPER" "$GUARD_SNAPSHOT_FILE" "$GUARD_SNAPSHOT_SHA256")"
+[ "$T3A_GUARD_SNAPSHOT_OUTPUT" = 'source=snapshot' ] \
+  || fail_test 'T3a rejected an approved hash-pinned guard snapshot'
 pass_case
 
 for failure_case in partial unauthorized probe hash-drift; do
@@ -278,11 +346,14 @@ COMMAND_OUTPUT="$(bash -c '
   printf "PI_T2A_BRIDGE=%s\n" "${RFCU_PI_BRIDGE_COMMAND[*]}"
   RFCU_PI_RUN_MODE=run
   rfcu_pi_build_commands
+  printf "PI_T2B_BRIDGE=%s\n" "${RFCU_PI_BRIDGE_COMMAND[*]}"
+  RFCU_PI_RUN_MODE=run-t3a
+  rfcu_pi_build_commands
   printf "WS_ROSBRIDGE=%s\n" "${RFCU_WS_ROSBRIDGE_COMMAND[*]}"
   printf "WS_DASHBOARD=%s\n" "${RFCU_WS_DASHBOARD_COMMAND[*]}"
   printf "PI_MAVROS=%s\n" "${RFCU_PI_MAVROS_COMMAND[*]}"
   printf "PI_PROBE_MAVROS=%s\n" "${RFCU_PI_PROBE_MAVROS_COMMAND[*]}"
-  printf "PI_T2B_BRIDGE=%s\n" "${RFCU_PI_BRIDGE_COMMAND[*]}"
+  printf "PI_T3A_BRIDGE=%s\n" "${RFCU_PI_BRIDGE_COMMAND[*]}"
 ' _ "$WORKSTATION_HELPER" "$PI_HELPER" "$TEST_TMP")"
 grep -Fq 'address:=127.0.0.1' <<<"$COMMAND_OUTPUT" \
   || fail_test 'rosbridge is not loopback-only'
@@ -320,6 +391,19 @@ grep -Fq 'PI_T2B_BRIDGE=' <<<"$COMMAND_OUTPUT" \
   && grep -Fq 'neutral_only:=false' \
     <<<"$(grep -F 'PI_T2B_BRIDGE=' <<<"$COMMAND_OUTPUT")" \
   || fail_test 'T2b bridge command lost demand-enabled authority'
+grep -Fq 'PI_T3A_BRIDGE=' <<<"$COMMAND_OUTPUT" \
+  && grep -Fq 'neutral_only:=false' \
+    <<<"$(grep -F 'PI_T3A_BRIDGE=' <<<"$COMMAND_OUTPUT")" \
+  || fail_test 'T3a bridge command lost the unchanged demand-enabled authority'
+grep -Fq '__node:=real_fcu_rc_command_bridge_t3a' \
+  <<<"$(grep -F 'PI_T3A_BRIDGE=' <<<"$COMMAND_OUTPUT")" \
+  || fail_test 'T3a bridge command lacks its distinct node-name remap'
+! grep -Fq '__node:=real_fcu_rc_command_bridge_t3a' \
+  <<<"$(grep -F 'PI_T2A_BRIDGE=' <<<"$COMMAND_OUTPUT")" \
+  || fail_test 'T3a node-name remap leaked into the T2a bridge command'
+! grep -Fq '__node:=real_fcu_rc_command_bridge_t3a' \
+  <<<"$(grep -F 'PI_T2B_BRIDGE=' <<<"$COMMAND_OUTPUT")" \
+  || fail_test 'T3a node-name remap leaked into the T2b bridge command'
 ! grep -Eiq 'mavproxy|udp(out)?://|--out=' <<<"$COMMAND_OUTPUT" \
   || fail_test 'physical command path still contains a relay or UDP fanout'
 pass_case
@@ -418,11 +502,87 @@ for approval_pair in '0 0' '0 1' '1 1'; do
     REAL_FCU_PROPELLERS_REMOVED=1 \
     REAL_FCU_HULL_RESTRAINED=1 \
     REAL_FCU_PROPULSION_ISOLATED=1 \
-    bash -c 'source "$1"; rfcu_pi_require_t2a_run_gates' _ "$PI_HELPER" 2>&1)"
+    bash -c '
+      source "$1"
+      caller() { rfcu_pi_require_t2a_run_gates || return 1; }
+      caller
+    ' _ "$PI_HELPER" 2>&1)"
   T2A_GATE_RC=$?
   set -e
   [ "$T2A_GATE_RC" -ne 0 ] \
     || fail_test "T2a gate accepted approvals $t2a_approved/$t2b_approved"
+done
+pass_case
+
+T3A_BASE_ENV=(
+  REAL_FCU_T0A_COMPLETE=1
+  REAL_FCU_T0B_APPROVED=1
+  REAL_FCU_T2A_APPROVED=0
+  REAL_FCU_T2B_APPROVED=0
+  REAL_FCU_T3A_APPROVED=1
+  REAL_FCU_START_DISARMED=1
+  REAL_FCU_SAFETY_ON=1
+  REAL_FCU_PROPELLERS_REMOVED=0
+  REAL_FCU_PROPELLERS_FITTED=1
+  REAL_FCU_HULL_RESTRAINED=1
+  REAL_FCU_MECHANICAL_GUARDING_INSTALLED=1
+  REAL_FCU_EXCLUSION_ZONE_CLEAR=1
+  REAL_FCU_PROPULSION_ISOLATED=1
+)
+env "${T3A_BASE_ENV[@]}" \
+  bash -c 'source "$1"; rfcu_pi_require_t3a_run_gates' _ "$PI_HELPER" \
+  || fail_test 'complete T3a gate was rejected'
+for variable in \
+  REAL_FCU_T0A_COMPLETE \
+  REAL_FCU_T0B_APPROVED \
+  REAL_FCU_T3A_APPROVED \
+  REAL_FCU_START_DISARMED \
+  REAL_FCU_SAFETY_ON \
+  REAL_FCU_PROPELLERS_FITTED \
+  REAL_FCU_HULL_RESTRAINED \
+  REAL_FCU_MECHANICAL_GUARDING_INSTALLED \
+  REAL_FCU_EXCLUSION_ZONE_CLEAR \
+  REAL_FCU_PROPULSION_ISOLATED; do
+  set +e
+  T3A_GATE_OUTPUT="$(env "${T3A_BASE_ENV[@]}" "$variable"=0 \
+    bash -c 'source "$1"; rfcu_pi_require_t3a_run_gates' _ \
+      "$PI_HELPER" 2>&1)"
+  T3A_GATE_RC=$?
+  set -e
+  [ "$T3A_GATE_RC" -ne 0 ] || fail_test "T3a gate accepted $variable=0"
+  grep -Fq "$variable must be 1" <<<"$T3A_GATE_OUTPUT" \
+    || fail_test "T3a gate did not name $variable"
+done
+for contradiction in t2a-approved t2b-approved propellers-removed; do
+  contradiction_env=()
+  case "$contradiction" in
+    t2a-approved) contradiction_env=(REAL_FCU_T2A_APPROVED=1) ;;
+    t2b-approved) contradiction_env=(REAL_FCU_T2B_APPROVED=1) ;;
+    propellers-removed) contradiction_env=(REAL_FCU_PROPELLERS_REMOVED=1) ;;
+  esac
+  if env "${T3A_BASE_ENV[@]}" "${contradiction_env[@]}" \
+      bash -c 'source "$1"; rfcu_pi_require_t3a_run_gates' _ \
+        "$PI_HELPER" >/dev/null 2>&1; then
+    fail_test "T3a gate accepted contradictory declaration: $contradiction"
+  fi
+done
+for t2_gate in rfcu_pi_require_t2a_run_gates rfcu_pi_require_run_gates; do
+  if env \
+      REAL_FCU_T0A_COMPLETE=1 \
+      REAL_FCU_T0B_APPROVED=1 \
+      REAL_FCU_T2A_APPROVED=1 \
+      REAL_FCU_T2B_APPROVED="$([ "$t2_gate" = rfcu_pi_require_run_gates ] && printf 1 || printf 0)" \
+      REAL_FCU_T3A_APPROVED=1 \
+      REAL_FCU_START_DISARMED=1 \
+      REAL_FCU_SAFETY_ON=1 \
+      REAL_FCU_PROPELLERS_REMOVED=1 \
+      REAL_FCU_PROPELLERS_FITTED=0 \
+      REAL_FCU_HULL_RESTRAINED=1 \
+      REAL_FCU_PROPULSION_ISOLATED=1 \
+      bash -c 'source "$1"; "$2"' _ "$PI_HELPER" "$t2_gate" \
+        >/dev/null 2>&1; then
+    fail_test "$t2_gate accepted simultaneous T3a approval"
+  fi
 done
 pass_case
 
@@ -739,6 +899,32 @@ assert payload["servo_rails"]["right"]["trim"] == 800
 pass_case
 
 RUN_FUNCTION="$(extract_function "$PI_HELPER" rfcu_pi_run)"
+for mode_and_gate in \
+  'run-t2a t2a' \
+  'run t2b' \
+  'run-t3a t3a'; do
+  read -r run_mode expected_gate <<<"$mode_and_gate"
+  set +e
+  RUN_GATE_OUTPUT="$(bash -c '
+    source "$1"
+    rfcu_pi_require_t2a_run_gates() { echo gate=t2a; return 1; }
+    rfcu_pi_require_run_gates() { echo gate=t2b; return 1; }
+    rfcu_pi_require_t3a_run_gates() { echo gate=t3a; return 1; }
+    rfcu_pi_static_preflight() { echo preflight-reached; return 0; }
+    rfcu_pi_run "$2"
+  ' _ "$PI_HELPER" "$run_mode" 2>&1)"
+  RUN_GATE_RC=$?
+  set -e
+  [ "$RUN_GATE_RC" -eq 1 ] \
+    || fail_test "$run_mode gate failure returned $RUN_GATE_RC"
+  [ "$(grep -Ec '^gate=' <<<"$RUN_GATE_OUTPUT")" -eq 1 ] \
+    && grep -Fxq "gate=$expected_gate" <<<"$RUN_GATE_OUTPUT" \
+    || fail_test "$run_mode did not invoke only its $expected_gate gate: $RUN_GATE_OUTPUT"
+  ! grep -Fq 'preflight-reached' <<<"$RUN_GATE_OUTPUT" \
+    || fail_test "$run_mode continued after its gate failed"
+done
+pass_case
+
 PROBE_START_LINE="$(line_number_once "$RUN_FUNCTION" \
   'rfcu_pi_start_child mavros-probe' 'Pi probe start')"
 RUNTIME_GUARD_LINE="$(line_number_once "$RUN_FUNCTION" \
@@ -831,10 +1017,12 @@ TIMEOUT_DEFAULTS="$(bash -c '
   || fail_test "workstation timeout defaults are not readiness=600 status=15: $TIMEOUT_DEFAULTS"
 PI_TIMEOUT_DEFAULTS="$(bash -c '
   source "$1"
-  printf "%s %s\n" "$RFCU_PI_READY_TIMEOUT_SECONDS" "$RFCU_PI_STATUS_TIMEOUT_SECONDS"
+  printf "%s %s %s\n" "$RFCU_PI_READY_TIMEOUT_SECONDS" \
+    "$RFCU_PI_STATUS_TIMEOUT_SECONDS" \
+    "$RFCU_PI_T3A_CLOSEOUT_TIMEOUT_SECONDS"
 ' _ "$PI_HELPER")"
-[ "$PI_TIMEOUT_DEFAULTS" = '600 15' ] \
-  || fail_test "Pi timeout defaults are not readiness=600 status=15: $PI_TIMEOUT_DEFAULTS"
+[ "$PI_TIMEOUT_DEFAULTS" = '600 15 300' ] \
+  || fail_test "Pi timeout defaults are not readiness=600 status=15 T3a-closeout=300: $PI_TIMEOUT_DEFAULTS"
 pass_case
 
 STATUS_JSON='{"state":"READY_DISARMED","ready":true,"connected":true,"armed":false}'
@@ -892,6 +1080,195 @@ PI_READY_WAIT_LINE="$(line_number_once "$RUN_FUNCTION" \
   'rfcu_pi_wait_bridge_ready' 'Pi bridge ready wait')"
 [ "$PI_CONFIRM_LINE" -lt "$PI_READY_WAIT_LINE" ] \
   || fail_test 'Pi readiness timer starts before manual safety confirmation'
+pass_case
+
+T3A_PROPULSION_CONFIRM_FUNCTION="$(extract_function "$PI_HELPER" \
+  rfcu_pi_confirm_t3a_propulsion_enable)"
+T3A_CLOSEOUT_CONFIRM_FUNCTION="$(extract_function "$PI_HELPER" \
+  rfcu_pi_confirm_t3a_safe_closeout)"
+T3A_INTERRUPT_FUNCTION="$(extract_function "$PI_HELPER" rfcu_pi_on_interrupt)"
+T3A_TERM_FUNCTION="$(extract_function "$PI_HELPER" rfcu_pi_on_term)"
+T3A_CLEANUP_FUNCTION="$(extract_function "$PI_HELPER" rfcu_pi_cleanup)"
+grep -Fq 'read -r -t "$RFCU_PI_T3A_CLOSEOUT_TIMEOUT_SECONDS"' \
+  <<<"$T3A_CLOSEOUT_CONFIRM_FUNCTION" \
+  || fail_test 'T3a safe-closeout input is not time-bounded'
+! grep -Fq 'trap - EXIT INT TERM' <<<"$T3A_CLEANUP_FUNCTION" \
+  || fail_test 'T3a cleanup clears its signal traps before safe closeout'
+grep -Fq 'trap - EXIT' <<<"$T3A_CLEANUP_FUNCTION" \
+  || fail_test 'T3a cleanup does not clear only its recursive EXIT trap'
+! grep -Fq "trap 'rfcu_pi_on_cleanup_signal" <<<"$T3A_CLEANUP_FUNCTION" \
+  || fail_test 'T3a cleanup replaces its installed signal handlers'
+for handler_and_signal in interrupt:INT term:TERM; do
+  handler_name="${handler_and_signal%%:*}"
+  expected_signal="${handler_and_signal##*:}"
+  handler_variable="T3A_${handler_name^^}_FUNCTION"
+  handler_function="${!handler_variable}"
+  grep -Fq 'RFCU_PI_CLEANING' <<<"$handler_function" \
+    && grep -Fq "rfcu_pi_on_cleanup_signal $expected_signal" \
+      <<<"$handler_function" \
+    || fail_test "Pi $handler_name handler is not cleanup-aware"
+done
+for literal in \
+  'PROPULSION_ENABLED_FCU_DISARMED_SAFETY_ON_GUARDING_INSTALLED_EXCLUSION_CLEAR' \
+  'evidence/t3a_propulsion_enable.txt'; do
+  grep -Fq "$literal" <<<"$T3A_PROPULSION_CONFIRM_FUNCTION" \
+    || fail_test "T3a propulsion-enable confirmation is missing: $literal"
+done
+for literal in \
+  'NEUTRAL_ESTOP_FCU_DISARMED_SAFETY_ON_PROPULSION_ISOLATED' \
+  'evidence/t3a_safe_closeout.txt'; do
+  grep -Fq "$literal" <<<"$T3A_CLOSEOUT_CONFIRM_FUNCTION" \
+    || fail_test "T3a safe-closeout confirmation is missing: $literal"
+done
+! grep -Fq 'rfcu_pi_confirm_t3a_safe_closeout' <<<"$T3A_INTERRUPT_FUNCTION" \
+  || fail_test 'T3a interrupt handler still duplicates the centralized closeout prompt'
+grep -Fq 'rfcu_pi_confirm_t3a_safe_closeout' <<<"$T3A_CLEANUP_FUNCTION" \
+  || fail_test 'T3a cleanup does not centralize the explicit safe closeout'
+T3A_CLEANUP_CONFIRM_LINE="$(line_number_once "$T3A_CLEANUP_FUNCTION" \
+  'rfcu_pi_confirm_t3a_safe_closeout' 'Pi T3a cleanup confirmation')"
+T3A_CLEANUP_FINAL_STATE_LINE="$(line_number_once "$T3A_CLEANUP_FUNCTION" \
+  'final_state="$RFCU_PI_RUN_DIR/evidence/final_state.yaml"' \
+  'Pi T3a machine final-state capture')"
+[ "$T3A_CLEANUP_CONFIRM_LINE" -lt "$T3A_CLEANUP_FINAL_STATE_LINE" ] \
+  || fail_test 'T3a safe-closeout phrase is not required before final-state/teardown work'
+T3A_PROPULSION_CONFIRM_LINE="$(line_number_once "$RUN_FUNCTION" \
+  'rfcu_pi_confirm_t3a_propulsion_enable' \
+  'Pi T3a propulsion-enable confirmation')"
+[ "$T3A_PROPULSION_CONFIRM_LINE" -lt "$PI_CONFIRM_LINE" ] \
+  || fail_test 'T3a propulsion is not enabled while safety remains ON'
+pass_case
+
+T3A_CONFIRM_DIR="$TEST_TMP/t3a-confirmations"
+mkdir -p "$T3A_CONFIRM_DIR/evidence"
+T3A_PROPULSION_CONFIRM_OUTPUT="$(bash -c '
+  set -euo pipefail
+  source "$1"
+  RFCU_PI_RUN_DIR="$2"
+  RFCU_PI_T3A_PROPULSION_ENABLE_PROMPTED=0
+  RFCU_PI_T3A_PROPULSION_ENABLED_CONFIRMED=0
+  rfcu_pi_confirm_t3a_propulsion_enable
+  printf "prompted=%s\n" "$RFCU_PI_T3A_PROPULSION_ENABLE_PROMPTED"
+  printf "confirmed=%s\n" "$RFCU_PI_T3A_PROPULSION_ENABLED_CONFIRMED"
+  cat "$RFCU_PI_RUN_DIR/evidence/t3a_propulsion_enable.txt"
+' _ "$PI_HELPER" "$T3A_CONFIRM_DIR" \
+  <<< 'PROPULSION_ENABLED_FCU_DISARMED_SAFETY_ON_GUARDING_INSTALLED_EXCLUSION_CLEAR')"
+grep -Fxq 'prompted=1' <<<"$T3A_PROPULSION_CONFIRM_OUTPUT" \
+  || fail_test 'T3a propulsion-enable prompt did not create a closeout obligation'
+grep -Fxq 'confirmed=1' <<<"$T3A_PROPULSION_CONFIRM_OUTPUT" \
+  || fail_test 'T3a propulsion-enable confirmation did not set its state'
+grep -Fxq \
+  'PROPULSION_ENABLED_FCU_DISARMED_SAFETY_ON_GUARDING_INSTALLED_EXCLUSION_CLEAR' \
+  "$T3A_CONFIRM_DIR/evidence/t3a_propulsion_enable.txt" \
+  || fail_test 'T3a propulsion-enable evidence did not retain the exact phrase'
+T3A_PROPULSION_MISMATCH_OUTPUT="$(bash -c '
+  source "$1"
+  RFCU_PI_RUN_DIR="$2"
+  RFCU_PI_T3A_PROPULSION_ENABLE_PROMPTED=0
+  RFCU_PI_T3A_PROPULSION_ENABLED_CONFIRMED=0
+  set +e
+  rfcu_pi_confirm_t3a_propulsion_enable
+  rc=$?
+  set -e
+  printf "rc=%s prompted=%s confirmed=%s\n" "$rc" \
+    "$RFCU_PI_T3A_PROPULSION_ENABLE_PROMPTED" \
+    "$RFCU_PI_T3A_PROPULSION_ENABLED_CONFIRMED"
+' _ "$PI_HELPER" "$T3A_CONFIRM_DIR" <<< 'WRONG' 2>/dev/null)"
+[ "$T3A_PROPULSION_MISMATCH_OUTPUT" = 'rc=1 prompted=1 confirmed=0' ] \
+  || fail_test "T3a propulsion-enable mismatch did not preserve its closeout obligation: $T3A_PROPULSION_MISMATCH_OUTPUT"
+T3A_CLOSEOUT_CONFIRM_OUTPUT="$(bash -c '
+  set -euo pipefail
+  source "$1"
+  RFCU_PI_RUN_DIR="$2"
+  RFCU_PI_T3A_SAFE_CLOSEOUT_CONFIRMED=0
+  rfcu_pi_confirm_t3a_safe_closeout
+  printf "confirmed=%s\n" "$RFCU_PI_T3A_SAFE_CLOSEOUT_CONFIRMED"
+  cat "$RFCU_PI_RUN_DIR/evidence/t3a_safe_closeout.txt"
+' _ "$PI_HELPER" "$T3A_CONFIRM_DIR" \
+  <<< 'NEUTRAL_ESTOP_FCU_DISARMED_SAFETY_ON_PROPULSION_ISOLATED')"
+grep -Fxq 'confirmed=1' <<<"$T3A_CLOSEOUT_CONFIRM_OUTPUT" \
+  || fail_test 'T3a safe-closeout confirmation did not set its state'
+grep -Fxq 'NEUTRAL_ESTOP_FCU_DISARMED_SAFETY_ON_PROPULSION_ISOLATED' \
+  "$T3A_CONFIRM_DIR/evidence/t3a_safe_closeout.txt" \
+  || fail_test 'T3a closeout evidence did not retain the exact phrase'
+T3A_CLOSEOUT_TIMEOUT_FIFO="$TEST_TMP/t3a-closeout-timeout.fifo"
+mkfifo "$T3A_CLOSEOUT_TIMEOUT_FIFO"
+( exec 9>"$T3A_CLOSEOUT_TIMEOUT_FIFO"; sleep 5 ) &
+T3A_CLOSEOUT_HOLDER_PID=$!
+set +e
+timeout 3 bash -c '
+  source "$1"
+  RFCU_PI_T3A_CLOSEOUT_TIMEOUT_SECONDS=1
+  RFCU_PI_RUN_DIR="$2"
+  rfcu_pi_confirm_t3a_safe_closeout
+' _ "$PI_HELPER" "$T3A_CONFIRM_DIR" \
+  <"$T3A_CLOSEOUT_TIMEOUT_FIFO" >/dev/null 2>&1
+T3A_CLOSEOUT_TIMEOUT_RC=$?
+kill "$T3A_CLOSEOUT_HOLDER_PID" 2>/dev/null || true
+wait "$T3A_CLOSEOUT_HOLDER_PID" 2>/dev/null || true
+set -e
+[ "$T3A_CLOSEOUT_TIMEOUT_RC" -eq 1 ] \
+  || fail_test "T3a closeout input was not bounded by its timeout: rc=$T3A_CLOSEOUT_TIMEOUT_RC"
+pass_case
+
+T3A_INIT_ROOT="$TEST_TMP/t3a-init"
+mkdir -p "$T3A_INIT_ROOT"
+T3A_INIT_OUTPUT="$(bash -c '
+  set -euo pipefail
+  source "$1"
+  RFCU_PI_LOG_ROOT="$2"
+  RFCU_PI_RUN_MODE=run-t3a
+  RFCU_PI_T3A_PROPULSION_ENABLE_PROMPTED=1
+  RFCU_PI_T3A_PROPULSION_ENABLED_CONFIRMED=1
+  RFCU_PI_T3A_SAFE_CLOSEOUT_CONFIRMED=1
+  RFCU_PI_CLEANUP_SIGNAL=TERM
+  date() { printf "20260901_123456\n"; }
+  rfcu_pi_init_state
+  printf "%s\n" "$RFCU_PI_RUN_DIR"
+  printf "states=%s/%s/%s/%s\n" \
+    "$RFCU_PI_T3A_PROPULSION_ENABLE_PROMPTED" \
+    "$RFCU_PI_T3A_PROPULSION_ENABLED_CONFIRMED" \
+    "$RFCU_PI_T3A_SAFE_CLOSEOUT_CONFIRMED" \
+    "$RFCU_PI_CLEANUP_SIGNAL"
+' _ "$PI_HELPER" "$T3A_INIT_ROOT")"
+T3A_RUN_DIR="$(sed -n '1p' <<<"$T3A_INIT_OUTPUT")"
+[ "$T3A_RUN_DIR" = "$T3A_INIT_ROOT/real_fcu_t3a_pi_20260901_123456" ] \
+  || fail_test "T3a run directory is not distinct: $T3A_RUN_DIR"
+grep -Fxq 'states=0/0/0/none' <<<"$T3A_INIT_OUTPUT" \
+  || fail_test "T3a init did not reset safety state: $T3A_INIT_OUTPUT"
+pass_case
+
+T3A_MANIFEST_DIR="$TEST_TMP/t3a-manifest"
+mkdir -p "$T3A_MANIFEST_DIR/manifest"
+bash -c '
+  set -euo pipefail
+  source "$1"
+  RFCU_PI_RUN_MODE=run-t3a
+  RFCU_PI_RUN_DIR="$2"
+  ROS_DOMAIN_ID=43
+  ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET
+  ROS_LOCALHOST_ONLY=0
+  REAL_FCU_T3A_APPROVED=1
+  REAL_FCU_PROPELLERS_REMOVED=0
+  REAL_FCU_PROPELLERS_FITTED=1
+  REAL_FCU_MECHANICAL_GUARDING_INSTALLED=1
+  REAL_FCU_EXCLUSION_ZONE_CLEAR=1
+  REAL_FCU_PROPULSION_ISOLATED=1
+  rfcu_pi_build_commands
+  rfcu_pi_write_manifest
+' _ "$PI_HELPER" "$T3A_MANIFEST_DIR"
+for manifest_fact in \
+  'mode=run-t3a' \
+  'tier=T3a' \
+  'authority=demand-enabled' \
+  'propellers_removed=0' \
+  'propellers_fitted=1' \
+  't3a_closeout_timeout_seconds=300' \
+  'mechanical_guarding_installed=1' \
+  'exclusion_zone_clear=1' \
+  'propulsion_isolated_at_launch=1'; do
+  grep -Fxq "$manifest_fact" "$T3A_MANIFEST_DIR/manifest/environment.txt" \
+    || fail_test "T3a manifest omitted: $manifest_fact"
+done
 pass_case
 
 WS_READY_WAIT_LINE="$(line_number_once "$WS_RUN_FUNCTION" \
@@ -1089,6 +1466,13 @@ run_pi_operator_stop_case() {
     RFCU_PI_READY_REACHED="$3"
     RFCU_PI_BRIDGE_STARTED="$4"
     RFCU_PI_OPERATOR_STOP_REQUESTED=0
+    RFCU_PI_T3A_PROPULSION_ENABLE_PROMPTED=0
+    RFCU_PI_T3A_PROPULSION_ENABLED_CONFIRMED=0
+    RFCU_PI_T3A_SAFE_CLOSEOUT_CONFIRMED=0
+    if [ "$RFCU_PI_RUN_MODE" = run-t3a ]; then
+      RFCU_PI_T3A_PROPULSION_ENABLE_PROMPTED=1
+      RFCU_PI_T3A_PROPULSION_ENABLED_CONFIRMED=1
+    fi
     RFCU_PI_TEST_FINAL_DISARMED="$5"
     RFCU_PI_TEST_CLEANUP_OK="$6"
     RFCU_PI_TEST_WORKSTATION_MARKER="$7"
@@ -1128,6 +1512,137 @@ run_pi_operator_stop_case() {
     "$final_disarmed" "$cleanup_ok" "$workstation_marker" "$run_mode"
 }
 
+run_pi_t3a_abnormal_exit_case() {
+  local case_dir="$1" trigger="$2" propulsion_enabled="${3:-1}"
+  bash -c '
+    set -euo pipefail
+    source "$1"
+    RFCU_PI_RUN_DIR="$2"
+    mkdir -p "$RFCU_PI_RUN_DIR/evidence"
+    RFCU_PI_SUPERVISOR_LOG="$RFCU_PI_RUN_DIR/supervisor.log"
+    : >"$RFCU_PI_SUPERVISOR_LOG"
+    RFCU_PI_RUN_MODE=run-t3a
+    RFCU_PI_CLEANING=0
+    RFCU_PI_READY_REACHED=0
+    RFCU_PI_BRIDGE_STARTED=1
+    RFCU_PI_OPERATOR_STOP_REQUESTED=0
+    RFCU_PI_T3A_PROPULSION_ENABLE_PROMPTED="$4"
+    RFCU_PI_T3A_PROPULSION_ENABLED_CONFIRMED="$4"
+    RFCU_PI_T3A_SAFE_CLOSEOUT_CONFIRMED=0
+    rfcu_pi_capture_topic() {
+      printf "final-state-capture\n" >>"$RFCU_PI_RUN_DIR/closeout.trace"
+      : >"$3"
+      return 0
+    }
+    rfcu_pi_state_file_is_connected_disarmed() { return 0; }
+    rfcu_pi_stop_child() {
+      printf "stop-%s\n" "$1" >>"$RFCU_PI_RUN_DIR/closeout.trace"
+      return 0
+    }
+    rfcu_pi_serial_is_free() { return 0; }
+    rfcu_pi_capture_workstation_stop_marker() { return 1; }
+    trap rfcu_pi_cleanup EXIT
+    trap rfcu_pi_on_term TERM
+    case "$3" in
+      term) kill -TERM "$$" ;;
+      readiness) rfcu_pi_fail "post-enable readiness failure" ;;
+      child) exit 70 ;;
+      *) exit 71 ;;
+    esac
+  ' _ "$PI_HELPER" "$case_dir" "$trigger" "$propulsion_enabled"
+}
+
+run_pi_t3a_propulsion_evidence_failure_case() {
+  local case_dir="$1"
+  bash -c '
+    set -euo pipefail
+    source "$1"
+    RFCU_PI_RUN_DIR="$2"
+    mkdir -p "$RFCU_PI_RUN_DIR"
+    : >"$RFCU_PI_RUN_DIR/evidence"
+    RFCU_PI_SUPERVISOR_LOG="$RFCU_PI_RUN_DIR/supervisor.log"
+    : >"$RFCU_PI_SUPERVISOR_LOG"
+    RFCU_PI_RUN_MODE=run-t3a
+    RFCU_PI_CLEANING=0
+    RFCU_PI_READY_REACHED=0
+    RFCU_PI_BRIDGE_STARTED=1
+    RFCU_PI_OPERATOR_STOP_REQUESTED=0
+    RFCU_PI_T3A_PROPULSION_ENABLE_PROMPTED=0
+    RFCU_PI_T3A_PROPULSION_ENABLED_CONFIRMED=0
+    RFCU_PI_T3A_SAFE_CLOSEOUT_CONFIRMED=0
+    rfcu_pi_capture_topic() {
+      : >"$3"
+      return 0
+    }
+    rfcu_pi_state_file_is_connected_disarmed() { return 0; }
+    rfcu_pi_stop_child() { return 0; }
+    rfcu_pi_serial_is_free() { return 0; }
+    trap rfcu_pi_cleanup EXIT
+    set +e
+    rfcu_pi_confirm_t3a_propulsion_enable
+    confirm_rc=$?
+    set -e
+    [ "$confirm_rc" -ne 0 ] || exit 99
+    rm -f "$RFCU_PI_RUN_DIR/evidence"
+    mkdir -p "$RFCU_PI_RUN_DIR/evidence"
+    exit 72
+  ' _ "$PI_HELPER" "$case_dir"
+}
+
+run_pi_t3a_cleanup_signal_case() {
+  local case_dir="$1" signal="$2" stage="${3:-closeout}"
+  bash -c '
+    set -euo pipefail
+    source "$1"
+    RFCU_PI_RUN_DIR="$2"
+    mkdir -p "$RFCU_PI_RUN_DIR/evidence"
+    RFCU_PI_SUPERVISOR_LOG="$RFCU_PI_RUN_DIR/supervisor.log"
+    : >"$RFCU_PI_SUPERVISOR_LOG"
+    RFCU_PI_RUN_MODE=run-t3a
+    RFCU_PI_CLEANING=0
+    RFCU_PI_READY_REACHED=0
+    RFCU_PI_BRIDGE_STARTED=1
+    RFCU_PI_OPERATOR_STOP_REQUESTED=0
+    RFCU_PI_T3A_PROPULSION_ENABLE_PROMPTED=1
+    RFCU_PI_T3A_PROPULSION_ENABLED_CONFIRMED=1
+    RFCU_PI_T3A_SAFE_CLOSEOUT_CONFIRMED=0
+    RFCU_PI_CLEANUP_SIGNAL=none
+    RFCU_PI_TEST_CLEANUP_SIGNAL="$3"
+    RFCU_PI_TEST_CLEANUP_STAGE="$4"
+    rfcu_pi_confirm_t3a_safe_closeout() {
+      if [ "$RFCU_PI_TEST_CLEANUP_STAGE" = closeout ]; then
+        kill -"$RFCU_PI_TEST_CLEANUP_SIGNAL" "$BASHPID"
+      fi
+      return 1
+    }
+    rfcu_pi_capture_topic() {
+      printf "final-state-capture\n" >>"$RFCU_PI_RUN_DIR/closeout.trace"
+      : >"$3"
+      return 0
+    }
+    rfcu_pi_state_file_is_connected_disarmed() { return 0; }
+    rfcu_pi_stop_child() {
+      printf "stop-%s\n" "$1" >>"$RFCU_PI_RUN_DIR/closeout.trace"
+      return 0
+    }
+    rfcu_pi_serial_is_free() { return 0; }
+    builtin trap rfcu_pi_cleanup EXIT
+    builtin trap rfcu_pi_on_interrupt INT
+    builtin trap rfcu_pi_on_term TERM
+    if [ "$RFCU_PI_TEST_CLEANUP_STAGE" = transition ]; then
+      trap() {
+        if [ "${1:-}" = - ] && [ "${2:-}" = EXIT ]; then
+          builtin trap - EXIT
+          kill -"$RFCU_PI_TEST_CLEANUP_SIGNAL" "$BASHPID"
+          return 0
+        fi
+        builtin trap "$@"
+      }
+    fi
+    exit 0
+  ' _ "$PI_HELPER" "$case_dir" "$signal" "$stage"
+}
+
 set +e
 WS_EARLY_OUTPUT="$(run_ws_operator_stop_case \
   "$TEST_TMP/ws-operator-early" 0 1 disarmed 2>&1)"
@@ -1159,6 +1674,39 @@ PI_CLEANUP_RC=$?
 PI_COORDINATION_OUTPUT="$(run_pi_operator_stop_case \
   "$TEST_TMP/pi-operator-coordination-fail" 1 1 1 1 0 2>&1)"
 PI_COORDINATION_RC=$?
+PI_T3A_TERM_OUTPUT="$(run_pi_t3a_abnormal_exit_case \
+  "$TEST_TMP/pi-t3a-term" term 1 2>&1 \
+  <<< 'NEUTRAL_ESTOP_FCU_DISARMED_SAFETY_ON_PROPULSION_ISOLATED')"
+PI_T3A_TERM_RC=$?
+PI_T3A_READINESS_OUTPUT="$(run_pi_t3a_abnormal_exit_case \
+  "$TEST_TMP/pi-t3a-readiness" readiness 1 2>&1 \
+  <<< 'NEUTRAL_ESTOP_FCU_DISARMED_SAFETY_ON_PROPULSION_ISOLATED')"
+PI_T3A_READINESS_RC=$?
+PI_T3A_CHILD_OUTPUT="$(run_pi_t3a_abnormal_exit_case \
+  "$TEST_TMP/pi-t3a-child" child 1 2>&1 \
+  <<< 'NEUTRAL_ESTOP_FCU_DISARMED_SAFETY_ON_PROPULSION_ISOLATED')"
+PI_T3A_CHILD_RC=$?
+PI_T3A_PRE_ENABLE_OUTPUT="$(run_pi_t3a_abnormal_exit_case \
+  "$TEST_TMP/pi-t3a-pre-enable" readiness 0 </dev/null 2>&1)"
+PI_T3A_PRE_ENABLE_RC=$?
+PI_T3A_EVIDENCE_FAILURE_OUTPUT="$(run_pi_t3a_propulsion_evidence_failure_case \
+  "$TEST_TMP/pi-t3a-evidence-failure" 2>&1 <<< $'PROPULSION_ENABLED_FCU_DISARMED_SAFETY_ON_GUARDING_INSTALLED_EXCLUSION_CLEAR\nNEUTRAL_ESTOP_FCU_DISARMED_SAFETY_ON_PROPULSION_ISOLATED')"
+PI_T3A_EVIDENCE_FAILURE_RC=$?
+PI_T3A_PHRASE_MISMATCH_OUTPUT="$(run_pi_t3a_propulsion_evidence_failure_case \
+  "$TEST_TMP/pi-t3a-phrase-mismatch" 2>&1 <<< $'WRONG\nNEUTRAL_ESTOP_FCU_DISARMED_SAFETY_ON_PROPULSION_ISOLATED')"
+PI_T3A_PHRASE_MISMATCH_RC=$?
+PI_T3A_CLEANUP_INT_OUTPUT="$(run_pi_t3a_cleanup_signal_case \
+  "$TEST_TMP/pi-t3a-cleanup-int" INT 2>&1)"
+PI_T3A_CLEANUP_INT_RC=$?
+PI_T3A_CLEANUP_TERM_OUTPUT="$(run_pi_t3a_cleanup_signal_case \
+  "$TEST_TMP/pi-t3a-cleanup-term" TERM 2>&1)"
+PI_T3A_CLEANUP_TERM_RC=$?
+PI_T3A_TRANSITION_INT_OUTPUT="$(run_pi_t3a_cleanup_signal_case \
+  "$TEST_TMP/pi-t3a-transition-int" INT transition 2>&1)"
+PI_T3A_TRANSITION_INT_RC=$?
+PI_T3A_TRANSITION_TERM_OUTPUT="$(run_pi_t3a_cleanup_signal_case \
+  "$TEST_TMP/pi-t3a-transition-term" TERM transition 2>&1)"
+PI_T3A_TRANSITION_TERM_RC=$?
 set -e
 [ "$WS_EARLY_RC" -eq 130 ] \
   || fail_test "early workstation operator stop returned $WS_EARLY_RC: $WS_EARLY_OUTPUT"
@@ -1180,6 +1728,26 @@ set -e
   || fail_test "Pi cleanup failure returned $PI_CLEANUP_RC: $PI_CLEANUP_OUTPUT"
 [ "$PI_COORDINATION_RC" -eq 130 ] \
   || fail_test "Pi coordination failure returned $PI_COORDINATION_RC: $PI_COORDINATION_OUTPUT"
+[ "$PI_T3A_TERM_RC" -eq 143 ] \
+  || fail_test "T3a TERM changed status $PI_T3A_TERM_RC: $PI_T3A_TERM_OUTPUT"
+[ "$PI_T3A_READINESS_RC" -eq 1 ] \
+  || fail_test "T3a readiness failure changed status $PI_T3A_READINESS_RC: $PI_T3A_READINESS_OUTPUT"
+[ "$PI_T3A_CHILD_RC" -eq 70 ] \
+  || fail_test "T3a child exit changed status $PI_T3A_CHILD_RC: $PI_T3A_CHILD_OUTPUT"
+[ "$PI_T3A_PRE_ENABLE_RC" -eq 1 ] \
+  || fail_test "pre-enable T3a failure changed status $PI_T3A_PRE_ENABLE_RC: $PI_T3A_PRE_ENABLE_OUTPUT"
+[ "$PI_T3A_EVIDENCE_FAILURE_RC" -eq 72 ] \
+  || fail_test "T3a propulsion-evidence failure changed status $PI_T3A_EVIDENCE_FAILURE_RC: $PI_T3A_EVIDENCE_FAILURE_OUTPUT"
+[ "$PI_T3A_PHRASE_MISMATCH_RC" -eq 72 ] \
+  || fail_test "T3a propulsion-phrase mismatch changed status $PI_T3A_PHRASE_MISMATCH_RC: $PI_T3A_PHRASE_MISMATCH_OUTPUT"
+[ "$PI_T3A_CLEANUP_INT_RC" -eq 130 ] \
+  || fail_test "T3a cleanup INT changed status $PI_T3A_CLEANUP_INT_RC: $PI_T3A_CLEANUP_INT_OUTPUT"
+[ "$PI_T3A_CLEANUP_TERM_RC" -eq 143 ] \
+  || fail_test "T3a cleanup TERM changed status $PI_T3A_CLEANUP_TERM_RC: $PI_T3A_CLEANUP_TERM_OUTPUT"
+[ "$PI_T3A_TRANSITION_INT_RC" -eq 130 ] \
+  || fail_test "T3a cleanup-transition INT changed status $PI_T3A_TRANSITION_INT_RC: $PI_T3A_TRANSITION_INT_OUTPUT"
+[ "$PI_T3A_TRANSITION_TERM_RC" -eq 143 ] \
+  || fail_test "T3a cleanup-transition TERM changed status $PI_T3A_TRANSITION_TERM_RC: $PI_T3A_TRANSITION_TERM_OUTPUT"
 grep -Fq 'REAL_FCU_WORKSTATION_EXIT status=130 cleanup_rc=0' \
   <<<"$WS_EARLY_OUTPUT" || fail_test 'early workstation stop lost status 130'
 grep -Fq 'REAL_FCU_WORKSTATION_FINAL_STATE=FAIL expected=connected,disarmed' \
@@ -1214,6 +1782,71 @@ grep -Fq 'REAL_FCU_WORKSTATION_STOP=FAIL marker=missing-or-invalid' \
   <<<"$PI_COORDINATION_OUTPUT" || fail_test 'Pi coordination failure was not reported'
 [ ! -e "$TEST_TMP/pi-operator-coordination-fail/graph.trace" ] \
   || fail_test 'Pi coordination still queried graph absence during cleanup'
+for abnormal_case in term readiness child; do
+  case_dir="$TEST_TMP/pi-t3a-$abnormal_case"
+  output_variable="PI_T3A_${abnormal_case^^}_OUTPUT"
+  abnormal_output="${!output_variable}"
+  [ "$(grep -Fc 'REAL_FCU_T3A_MANUAL_GATE=safe-closeout' \
+      <<<"$abnormal_output")" -eq 1 ] \
+    || fail_test "T3a $abnormal_case did not prompt for safe closeout exactly once"
+  [ "$(grep -Fc 'REAL_FCU_T3A_SAFE_CLOSEOUT=PASS' \
+      <<<"$abnormal_output")" -eq 1 ] \
+    || fail_test "T3a $abnormal_case did not retain exactly one closeout pass"
+  grep -Fq 'REAL_FCU_FINAL_STATE=PASS connected=true armed=false' \
+    <<<"$abnormal_output" \
+    || fail_test "T3a $abnormal_case lost machine final-disarm evidence"
+  grep -Fxq 'NEUTRAL_ESTOP_FCU_DISARMED_SAFETY_ON_PROPULSION_ISOLATED' \
+    "$case_dir/evidence/t3a_safe_closeout.txt" \
+    || fail_test "T3a $abnormal_case lost its exact closeout phrase"
+  [ "$(cat "$case_dir/closeout.trace")" = \
+      $'final-state-capture\nstop-bridge\nstop-mavros\nstop-mavros-probe' ] \
+    || fail_test "T3a $abnormal_case changed closeout order"
+done
+! grep -Fq 'REAL_FCU_T3A_MANUAL_GATE=safe-closeout' \
+  <<<"$PI_T3A_PRE_ENABLE_OUTPUT" \
+  || fail_test 'T3a prompted for safe closeout before propulsion was enabled'
+[ ! -e "$TEST_TMP/pi-t3a-pre-enable/evidence/t3a_safe_closeout.txt" ] \
+  || fail_test 'pre-enable T3a failure created false closeout evidence'
+[ "$(grep -Fc 'REAL_FCU_T3A_MANUAL_GATE=safe-closeout' \
+    <<<"$PI_T3A_EVIDENCE_FAILURE_OUTPUT")" -eq 1 ] \
+  || fail_test 'T3a propulsion-evidence failure did not prompt for safe closeout exactly once'
+grep -Fxq 'NEUTRAL_ESTOP_FCU_DISARMED_SAFETY_ON_PROPULSION_ISOLATED' \
+  "$TEST_TMP/pi-t3a-evidence-failure/evidence/t3a_safe_closeout.txt" \
+  || fail_test 'T3a propulsion-evidence failure lost its exact closeout phrase'
+[ "$(grep -Fc 'REAL_FCU_T3A_MANUAL_GATE=safe-closeout' \
+    <<<"$PI_T3A_PHRASE_MISMATCH_OUTPUT")" -eq 1 ] \
+  || fail_test 'T3a propulsion-phrase mismatch did not prompt for safe closeout exactly once'
+grep -Fxq 'NEUTRAL_ESTOP_FCU_DISARMED_SAFETY_ON_PROPULSION_ISOLATED' \
+  "$TEST_TMP/pi-t3a-phrase-mismatch/evidence/t3a_safe_closeout.txt" \
+  || fail_test 'T3a propulsion-phrase mismatch lost its exact closeout phrase'
+for cleanup_signal in int term; do
+  signal_output_variable="PI_T3A_CLEANUP_${cleanup_signal^^}_OUTPUT"
+  cleanup_signal_output="${!signal_output_variable}"
+  grep -Fq \
+    "cleanup signal=${cleanup_signal^^} received; continuing fail-closed teardown" \
+    <<<"$cleanup_signal_output" \
+    || fail_test "T3a cleanup ${cleanup_signal^^} was not retained"
+  grep -Fq 'REAL_FCU_T3A_SAFE_CLOSEOUT=FAIL confirmation=missing-or-invalid' \
+    <<<"$cleanup_signal_output" \
+    || fail_test "T3a cleanup ${cleanup_signal^^} did not fail closeout"
+  [ "$(cat "$TEST_TMP/pi-t3a-cleanup-$cleanup_signal/closeout.trace")" = \
+      $'final-state-capture\nstop-bridge\nstop-mavros\nstop-mavros-probe' ] \
+    || fail_test "T3a cleanup ${cleanup_signal^^} did not reach every child stop"
+done
+for cleanup_signal in int term; do
+  signal_output_variable="PI_T3A_TRANSITION_${cleanup_signal^^}_OUTPUT"
+  cleanup_signal_output="${!signal_output_variable}"
+  grep -Fq \
+    "cleanup signal=${cleanup_signal^^} received; continuing fail-closed teardown" \
+    <<<"$cleanup_signal_output" \
+    || fail_test "T3a cleanup-transition ${cleanup_signal^^} was not retained"
+  grep -Fq 'REAL_FCU_T3A_SAFE_CLOSEOUT=FAIL confirmation=missing-or-invalid' \
+    <<<"$cleanup_signal_output" \
+    || fail_test "T3a cleanup-transition ${cleanup_signal^^} did not fail closeout"
+  [ "$(cat "$TEST_TMP/pi-t3a-transition-$cleanup_signal/closeout.trace")" = \
+      $'final-state-capture\nstop-bridge\nstop-mavros\nstop-mavros-probe' ] \
+    || fail_test "T3a cleanup-transition ${cleanup_signal^^} did not reach every child stop"
+done
 pass_case
 
 set +e
@@ -1226,11 +1859,23 @@ PI_OPERATOR_RC=$?
 PI_T2A_OPERATOR_OUTPUT="$(run_pi_operator_stop_case \
   "$TEST_TMP/pi-t2a-operator-success" 1 1 1 1 1 run-t2a 2>&1)"
 PI_T2A_OPERATOR_RC=$?
+PI_T3A_OPERATOR_OUTPUT="$(run_pi_operator_stop_case \
+  "$TEST_TMP/pi-t3a-operator-success" 1 1 1 1 1 run-t3a 2>&1 \
+  <<< 'NEUTRAL_ESTOP_FCU_DISARMED_SAFETY_ON_PROPULSION_ISOLATED')"
+PI_T3A_OPERATOR_RC=$?
+PI_T3A_UNCONFIRMED_OUTPUT="$(run_pi_operator_stop_case \
+  "$TEST_TMP/pi-t3a-operator-unconfirmed" 1 1 1 1 1 run-t3a \
+  </dev/null 2>&1)"
+PI_T3A_UNCONFIRMED_RC=$?
 set -e
 [ "$WS_OPERATOR_RC" -eq 0 ] && [ "$PI_OPERATOR_RC" -eq 0 ] \
   || fail_test "normal operator stop remained non-zero: workstation=$WS_OPERATOR_RC Pi=$PI_OPERATOR_RC workstation_output=[$WS_OPERATOR_OUTPUT] Pi_output=[$PI_OPERATOR_OUTPUT]"
 [ "$PI_T2A_OPERATOR_RC" -eq 0 ] \
   || fail_test "T2a operator stop remained non-zero: $PI_T2A_OPERATOR_OUTPUT"
+[ "$PI_T3A_OPERATOR_RC" -eq 0 ] \
+  || fail_test "T3a safe operator stop remained non-zero: $PI_T3A_OPERATOR_OUTPUT"
+[ "$PI_T3A_UNCONFIRMED_RC" -ne 0 ] \
+  || fail_test 'T3a operator stop passed without the safe-closeout phrase'
 grep -Fq 'operator stop requested' <<<"$WS_OPERATOR_OUTPUT" \
   || fail_test 'workstation operator-stop handler did not run'
 grep -Fq 'operator stop requested' <<<"$PI_OPERATOR_OUTPUT" \
@@ -1247,6 +1892,26 @@ grep -Fq 'REAL_FCU_PI_EXIT status=0 cleanup_rc=0' \
   <<<"$PI_OPERATOR_OUTPUT" || fail_test 'Pi operator stop did not pass'
 grep -Fq 'REAL_FCU_PI_EXIT status=0 cleanup_rc=0' \
   <<<"$PI_T2A_OPERATOR_OUTPUT" || fail_test 'T2a operator stop did not pass'
+grep -Fq 'REAL_FCU_T3A_SAFE_CLOSEOUT=PASS neutral=true estop=true disarmed=true safety=ON propulsion=isolated' \
+  <<<"$PI_T3A_OPERATOR_OUTPUT" \
+  || fail_test 'T3a operator stop omitted the safe-closeout marker'
+[ "$(grep -Fc 'REAL_FCU_T3A_MANUAL_GATE=safe-closeout' \
+    <<<"$PI_T3A_OPERATOR_OUTPUT")" -eq 1 ] \
+  || fail_test 'T3a normal operator stop prompted for safe closeout more than once'
+T3A_OPERATOR_CLOSEOUT_LINE="$(line_number_once "$PI_T3A_OPERATOR_OUTPUT" \
+  'REAL_FCU_T3A_SAFE_CLOSEOUT=PASS' 'T3a operator closeout pass')"
+T3A_OPERATOR_FINAL_STATE_LINE="$(line_number_once "$PI_T3A_OPERATOR_OUTPUT" \
+  'REAL_FCU_FINAL_STATE=PASS' 'T3a operator final-state pass')"
+[ "$T3A_OPERATOR_CLOSEOUT_LINE" -lt "$T3A_OPERATOR_FINAL_STATE_LINE" ] \
+  || fail_test 'T3a operator closeout phrase was not retained before final-state capture'
+grep -Fq 'REAL_FCU_PI_EXIT status=0 cleanup_rc=0' \
+  <<<"$PI_T3A_OPERATOR_OUTPUT" || fail_test 'T3a operator stop did not pass'
+[ "$(grep -Fc 'REAL_FCU_T3A_SAFE_CLOSEOUT=FAIL confirmation=missing-or-invalid' \
+    <<<"$PI_T3A_UNCONFIRMED_OUTPUT")" -eq 1 ] \
+  || fail_test 'T3a missing safe-closeout phrase was not reported'
+[ "$(grep -Fc 'REAL_FCU_T3A_MANUAL_GATE=safe-closeout' \
+    <<<"$PI_T3A_UNCONFIRMED_OUTPUT")" -eq 1 ] \
+  || fail_test 'T3a missing safe-closeout phrase was prompted more than once'
 grep -Fq 'REAL_FCU_WORKSTATION_STOP=PASS marker=received topic=/real_fcu/workstation_stop' \
   <<<"$PI_OPERATOR_OUTPUT" || fail_test 'Pi did not retain workstation shutdown'
 grep -Fq 'REAL_FCU_WORKSTATION_STOPPED final=disarmed children=stopped ports=free' \
@@ -1260,6 +1925,12 @@ grep -Fq '"armed":false' \
 [ "$(cat "$TEST_TMP/pi-operator-success/stop.trace")" = \
     $'bridge\nmavros\nmavros-probe' ] \
   || fail_test 'Pi operator-stop order changed'
+grep -Fxq 'NEUTRAL_ESTOP_FCU_DISARMED_SAFETY_ON_PROPULSION_ISOLATED' \
+  "$TEST_TMP/pi-t3a-operator-success/evidence/t3a_safe_closeout.txt" \
+  || fail_test 'T3a safe-closeout evidence is missing'
+[ "$(cat "$TEST_TMP/pi-t3a-operator-success/stop.trace")" = \
+    $'bridge\nmavros\nmavros-probe' ] \
+  || fail_test 'T3a changed the established Pi child stop order'
 pass_case
 
 printf '%s  %s\n' "$EXPECTED_VIEW_ONLY_SHA256" "$VIEW_ONLY_HELPER" | sha256sum -c - \

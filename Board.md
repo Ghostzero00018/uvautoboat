@@ -8,7 +8,7 @@
 |---|---|
 | **Project** | AutoBoat Navigation System |
 | **Repository** | [Ghostzero00018/uvautoboat](https://github.com/Ghostzero00018/uvautoboat) |
-| **Last Updated** | 31/08/2026 |
+| **Last Updated** | 01/09/2026 |
 | **Status** | 🟢 Simulation ready (A\* path planning + one-click launcher + wiki docs + dashboard config system + MP/QGC install). First wet test completed 07/05/2026: boat survived float/manual-control bring-up, Herelink manual control works, QGC/MP MAVLink arm/disarm works. Herelink video A/B campus side verified 11/05/2026 — Linux QGC video works via the `Source = Herelink Hotspot` preset and `ffplay rtsp://<herelink-ip>:8554/fpv_stream` independently confirms the underlying LIVE555 H.264 stream; Linux MP video + arm/disarm also working after a host-local SkiaSharp 2.88.8 NuGet swap + `~/MissionPlanner/libdl.so` → `libdl.so.2` symlink (11/05/2026 late-day fix, reversible — see `wiki/Common_Issues.md` MP-Linux entry); GDAL/OGR/OSR Mono gaps from 24/04 remain (terrain / advanced geo-ref still degraded) but no longer block the video panel. Second-site (lake) retest deferred to next field session. **22/06/2026 update:** workstation on `IMT-Aquatic-drone` again reached the Herelink RTSP endpoint (`rtsp://192.168.43.1:8554/fpv_stream`, LIVE555 H.264 1920×1080@30); TCP was clean while UDP showed packet loss, but the current video source was a Pi desktop / `rqt_image_view` screen capture after starting the Pi camera node, not a direct camera feed. Treat this as transport reachability plus a current source-regression finding, not dashboard-camera integration evidence. Pi 5 MAVLink telemetry path proven 04/06/2026 (`/mavros/state connected: true` via MAVProxy → MAVROS on the reconfigured ArduPilot endpoint; GPS fix / EKF config still open). Pi 5 RealSense camera display in the workstation dashboard was proven 18/06/2026 over `IoT IMT Nord Europe` using a camera-only `424x240x15` profile; this is camera display only, not command/write validation. Local dashboard/planner → QGC visual mission bridge accepted 10-11/06/2026 (`tools/qgc_live_mission_bridge.py` over `127.0.0.1:14550`) and observed under a Herelink-hotspot mixed-topology setup 17/06/2026; visual-only — real-FCU upload, bidirectional sync, and command/write validation remain open. |
 
 > **15/07/2026 live update:** the workstation dashboard simultaneously displayed
@@ -173,6 +173,27 @@
 > | **T2b** | Minimal bounded input on the bench, propellers removed | Separate approval again. Short, low amplitude, asymmetric so it can actually evidence the mapping; dead-man defined; explicit neutral, disarm and power-down order |
 > | **T3a** | Static test with propellers fitted | Separate approval, dedicated mechanical guarding and an exclusion zone |
 > | **T3b** | On-water test | Separate day, separate plan, separate approval |
+>
+> **01/09/2026 T3a implementation addendum.** The source now implements T3a
+> as a distinct `run-t3a` mode instead of weakening either T2 bench tier. It is
+> demand-enabled with the unchanged `0.20` steering and `0.12` throttle bounds,
+> and fails closed unless T0a is complete, T0b is approved, and separate T3a
+> approval, disarmed start, hardware safety ON, propellers fitted, hull
+> restraint, installed mechanical guarding, a clear exclusion zone and
+> propulsion isolation at launch are all declared. T2/T3 approvals and
+> removed/fitted-propeller declarations are mutually exclusive. After guard
+> resolution, the operator enables propulsion while disarmed, safe and guarded,
+> then enters an exact retained confirmation. READY requires the generic capture
+> node to be visible; the separately launched T3a recorder's verdict binds the
+> T3a bridge identity. Safe closeout is owed from the moment that
+> enable prompt appears. Its bounded prompt precedes final-state capture and
+> teardown; an exact neutral, E-Stop, external-disarm, safety-ON and
+> propulsion-isolated confirmation is required to pass. Missing, invalid,
+> timed-out, `INT` or `TERM` input fails closed while cleanup still captures the
+> final state and stops every child. The default timeout is `300 s`. The helper does not automatically
+> enable power, release safety, arm, disarm, change mode or write parameters.
+> This is an offline source contract, not evidence that any physical declaration
+> is true and not authorization or acceptance of a hardware run.
 >
 > **10/08/2026 later authorization addendum.** Subsequent operator instructions
 > brought the default-inhibited prototype implementation and a future
@@ -815,6 +836,7 @@ The whole repo is expected to run on the Pi 5. Long-term (Phase 5.2+): QGC and t
 | 28/08/2026 | Test B demonstrated functional Herelink-to-VRX motion on the repaired W1/W2/P1 path but was externally interrupted and remains not formally accepted. A later real-FCU dashboard run used a fresh `986`-parameter snapshot (`61406eee10c253daabfef4462ce0b3661be30b599bd7736909c5bff4e4b4943d`), reached both READY markers and ended connected/disarmed with ordered `status=0 cleanup_rc=0` teardown. The operator corrected the active-interval state to propellers fitted and propulsion available, making the launch assertion `REAL_FCU_PROPELLERS_REMOVED=1` inaccurate for that interval. The helpers reported nominal `tier=T2b authority=demand-enabled` software markers and clean teardown, but the run did not satisfy T2b's propellers-removed gate and had no separate T3a approval, dedicated guarding or exclusion-zone evidence. The operator reported one-sided rotation for some steering-heavy requests plus no rotation at `0.00/0.12`, exact steering `+/-0.20`, or `0.05/0.04`. The retained files contain only neutral `1515/1515` RC and `800/800` output, so those active observations are not machine-correlated and establish no ESC threshold. Exact `+/-0.20` is independently invalid because `float32` transport places it just outside the bridge's exact bound; that code defect remains open. Classification: **ENHANCED TEST A - PROPS-FITTED FUNCTIONAL OBSERVATION; NOT T2B OR T3A ACCEPTANCE**. The approved rollback captured live `RC_OVERRIDE_TIME` readbacks `0.5 -> 3.0`, retained a `986`-parameter snapshot with SHA-256 `a50fe5d313dd7ef2f2ab93f86dc2b6f7c800182eb603a1e4559580339aa1555b`, copied it to `/home/ghostzero/Desktop/pi_run_evidence/rc_override_rollback_20260828`, and left `/dev/ttyAMA0` free. | 🟡 |
 | 31/08/2026 | The full supervised SITL acceptance and independent adjudication passed on clean revision `3ca4c9bd16414d37506b62ce9fa5b8dad55a3719` in `/home/ghostzero/Desktop/sitl_digital_twin_20260831_150946`. Adjudication checked ten hashes, the control cross-check, exact stop order, teardown and free host ports/processes. Afterward, the bridge's exact `+/-0.20` float32 steering defect and the equivalent defect at legal tunable throttle maxima were reproduced red. The repair normalizes only the exact float32 encoding of each configured command endpoint without raising the configured `0.20` steering or `0.12` throttle authority; adjacent and materially over-limit values plus negative throttle remain rejected. The focused suite passes `36` tests and the bundle manifest is regenerated. Source tracing confirms one paired dashboard command and one paired RC override, while ArduRover's skid mixer uses throttle plus/minus steering. The measured `0.05/0.04 -> 911/800 us` result is consistent with a steering-heavy mixed request, not a missing second command. The straight-throttle ESC start threshold remains unmeasured, so no throttle-authority or `MOT_THR_MIN` change was made. Because the bridge changed after the pass, `3ca4c9b` remains valid exact-revision evidence but current-source SITL was reopened for the repaired bytes. **Current-source closure:** the complete supervised acceptance and independent adjudication then passed again on clean revision `bba195b19a0f06a874bfbcbcbbd1621524cbce60` in `/home/ghostzero/Desktop/sitl_digital_twin_20260831_161839`; the retained adjudication log is `/home/ghostzero/Desktop/sitl_digital_twin_20260831_161839_adjudication.log`. It checked all ten hashes, the control cross-check, exact stop order, teardown, governed ports free and governed process patterns absent before ending `SITL_ADJUDICATION=PASS`. This closes current-source SITL for the repaired runtime path. No Pi, real FCU or propulsion hardware participated and no hardware approval carries forward; the regenerated bundle still requires a separately verified transfer and checksum before Pi use. **Pi deployment closure:** the regenerated bundle was then installed at `/home/imt-aqua-drone/uvautoboat_real_fcu_bundle_20260831_bba195b`. Its exact five-file inventory, manifest digest and all four governed member hashes passed, and the non-actuating helper check ended `REAL_FCU_PI_CHECK=PASS serial=/dev/ttyAMA0 runtime=not-started`. The verified copy-back is `/home/ghostzero/Desktop/pi_run_evidence/pi_bundle_certification_20260831_bba195b`. This closes only bundle transfer/checksum certification; no probe, MAVROS or bridge runtime, parameter write, arm, propulsion action or hardware approval occurred. | 🟡 |
 | 31/08/2026 | A separately approved workstation-only change prepared opt-in ESC-onset evidence capture without starting hardware. Normal T2a/T2b recording remains the original three-topic subscriber contract; `t2b --esc-threshold-calibration` adds raw `/mavros/rc/in` and `/mavros/rc/out` plus typed per-side `stopped`, `started` or terminal `not-observed` observations. Each annotation requires five correlated streams, an enabled straight positive demand, `ACTIVE` fresh bridge feedback, armed `MANUAL` FCU state, raw/status channel agreement, fast-stream age no more than `1 s` and state age no more than `2.5 s`. A passing per-side bracket requires a later higher request and strictly higher delivered servo PWM than the highest stopped-output PWM; `not-observed` is valid only at the governed `0.12` maximum. The full T2b phase sequence, E-Stop and final connected/disarmed state remain mandatory, and the helper remains subscriber-only. Focused coverage passes `21` tests and the complete offline gate passes. Classification: **OFFLINE CAPTURE PREPARATION / NOT RUN**. Current Pi modes still require propulsion isolated and no T3a props-fitted runtime, fitted-propeller gate, guarding evidence or exclusion-zone evidence exists. No threshold, parameter, FCU, ESC, motor or propeller action occurred; `RC_OVERRIDE_TIME` remains `3.0`; no Pi bundle member changed; and the certified `bba195b` deployment and exact-revision SITL evidence remain valid. | 🟡 |
+| 01/09/2026 | A separately approved workstation-only change implemented a distinct props-fitted T3a contract without starting hardware. Pi mode `run-t3a` remains demand-enabled at the existing `0.20` steering and `0.12` throttle bounds and fails closed unless T0a is complete, T0b is approved, and T3a approval, propellers fitted, hull restraint, mechanical guarding, a clear exclusion zone, propulsion isolation at launch, disarmed start and hardware safety ON are declared; T2/T3 approvals and removed/fitted-propeller declarations are mutually exclusive. The operator enables propulsion under those conditions and enters an exact retained confirmation; the resulting closeout obligation survives confirmation errors and evidence-write failures. Bounded closeout handling remains fail-closed under missing, invalid, timed-out, `INT` or `TERM` input while still proceeding to final-state capture and child stops; the recorded default timeout is `300 s`. The workstation `t3a --esc-threshold-calibration` helper is a separate subscriber-only recorder with five ROS subscriptions, typed operator observations from stdin and no write path. It binds evidence to the T3a bridge identity and preserves the existing five-stream freshness, per-side PWM bracket, E-Stop and final-disarm requirements. Focused verification passes `26` recorder tests, `42` Pi-helper cases and the regenerated `4/4` bundle manifest. Classification: **OFFLINE T3A IMPLEMENTATION / NOT RUN / NOT DEPLOYED**. No serial endpoint, FCU, parameter, bridge runtime, arm, ESC, motor or propeller action occurred; declarations are operator attestations rather than machine proof of guarding; and the certified `20260831_bba195b` Pi root does not contain these bytes. | 🟡 |
 | TBD | Complete real-hardware deployment acceptance (Pi 5 target; bounded read-only Hailo/MAVROS dashboard proven 17/07/2026; lifecycle, endurance, low-level CCU, and write-path gates remain open) | 🔜 |
 | TBD | Coverage Planning | ⏸️ |
 
@@ -1082,6 +1104,19 @@ The whole repo is expected to run on the Pi 5. Long-term (Phase 5.2+): QGC and t
    or bridge runtime, parameter write, arm or propulsion action ran; complete
    real-hardware acceptance and the ESC-threshold calibration remain open.
 
+   **01/09/2026 T3a source supersession:** the former propellers-removed
+   calibration path remains available only for its T2b tier. The source now
+   provides a separate `run-t3a` demand-enabled Pi mode for a freshly approved,
+   guarded props-fitted window and a separate
+   `t3a --esc-threshold-calibration` subscriber-only recorder with no write
+   path. The existing command authority, E-Stop, neutral, disarm and teardown
+   contracts remain unchanged. Focused verification passes `26` recorder tests,
+   `42` helper cases and the regenerated `4/4` manifest. This is
+   **OFFLINE IMPLEMENTATION / NOT RUN / NOT DEPLOYED**: the earlier
+   `20260831_bba195b` Pi root remains valid for its own bytes but does not contain
+   the T3a runtime. A new commit-named deployment and non-actuating
+   certification are required before any live approval can be requested.
+
 3. **Detector recovery before Hailo accuracy gates**: the Hailo six-output decode
    contract is proven on saved frames (07/07/2026, `fb308f9`), and the 08/07 Pi
    runtime smoke proved single-process RealSense -> Hailo -> decode-summary
@@ -1161,7 +1196,7 @@ Current position ──────>│  (in Planner)       │
 
 ## 📜 Acknowledgments
 
-**Document Version**: 9.59 | **Last Updated**: 31/08/2026
+**Document Version**: 9.60 | **Last Updated**: 01/09/2026
 
 **Maintained By**: AutoBoat Development Team
 
