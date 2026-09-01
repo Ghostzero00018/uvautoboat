@@ -270,3 +270,38 @@ exact inventory and manifest verification, executable-bit check, non-actuating
 `check`, and workstation copy-back. This status grants no Block E authority;
 the live props-fitted window still requires a fresh physical declaration and a
 separate T3a approval after certification.
+
+## Block D outcome - published and certified, not run
+
+Block D completed on clean published revision
+`025f48c1fb97dd4bf939c7fd3b3fd44a064e89ba`, with `HEAD`, `main` and
+`origin/main` equal before transfer. Four checksum-pinned one-shot helpers
+prepared the new Pi root, transferred the governed bundle, certified it on the
+Pi and copied the evidence back. Their failure paths were reviewed fail-closed,
+including fresh `origin` fetch before workstation parity and explicit
+propagation of any copied-bundle hash failure.
+
+The new deployment is
+`/home/imt-aqua-drone/uvautoboat_real_fcu_bundle_20260901_025f48c`. Its exact
+five-file inventory, executable helpers, manifest digest
+`11a892667767ce74f162d4a5b58e88762ec66e6fceba346784dc775cfd80748d`
+and all four governed member hashes passed. The Pi then ran only
+`tools/real_fcu_digital_twin_pi.sh check`, which emitted:
+
+```text
+[real-fcu-pi] REAL_FCU_PI_CHECK=PASS serial=/dev/ttyAMA0 runtime=not-started
+PI_BUNDLE_CERTIFICATION=PASS path=/home/imt-aqua-drone/uvautoboat_real_fcu_bundle_20260901_025f48c manifest_sha256=11a892667767ce74f162d4a5b58e88762ec66e6fceba346784dc775cfd80748d log=/home/imt-aqua-drone/Desktop/real_fcu_bundle_check_20260901_025f48c.log
+```
+
+The retained copy-back is
+`/home/ghostzero/Desktop/pi_run_evidence/pi_bundle_certification_20260901_025f48c`.
+It independently passed the manifest digest, all four governed hashes,
+executable-bit checks and exact log-marker check before ending
+`PI_BUNDLE_COPYBACK=PASS`.
+
+Classification is now **DEPLOYED / CERTIFIED / NOT RUN**. The certification
+inspected serial availability but did not run a probe, MAVROS, the command
+bridge or the T3a supervisor. It performed no parameter write, safety release,
+arm, propulsion action, ESC or motor operation and created no threshold or T3a
+acceptance result. Block E remains closed pending a fresh physical declaration
+and separate explicit live approval.

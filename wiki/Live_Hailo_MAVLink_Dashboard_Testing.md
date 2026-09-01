@@ -533,6 +533,25 @@ or T3a acceptance exists. The 31/08/2026 `bba195b` Pi bundle predates this mode
 and must not be used for it; a new commit-named deployment and non-actuating
 certification are required before any separate Block E proposal.
 
+#### T3a deployment certification - 01/09/2026
+
+The preceding source classification is retained as the pre-deployment state.
+Clean published revision `025f48c1fb97dd4bf939c7fd3b3fd44a064e89ba` was later
+deployed to
+`/home/imt-aqua-drone/uvautoboat_real_fcu_bundle_20260901_025f48c`. The exact
+five-file inventory, executable helpers, manifest digest
+`11a892667767ce74f162d4a5b58e88762ec66e6fceba346784dc775cfd80748d`
+and all four governed member hashes passed. The helper ran only its
+non-actuating `check` and emitted
+`REAL_FCU_PI_CHECK=PASS serial=/dev/ttyAMA0 runtime=not-started`. The copied
+bundle and log were independently reverified at
+`/home/ghostzero/Desktop/pi_run_evidence/pi_bundle_certification_20260901_025f48c`.
+
+Current classification: **DEPLOYED / CERTIFIED / NOT RUN**. This certification
+did not start a probe, MAVROS, the command bridge or a T3a runtime; it produced
+no parameter write, arm, propulsion action, threshold or acceptance result and
+grants no Block E authority.
+
 ### Isolated FCU-to-VRX workstation half
 
 `tools/fcu_to_vrx_workstation.sh` is the workstation-only owner for the VRX

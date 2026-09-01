@@ -415,6 +415,19 @@ FCU-to-VRX option copies received raw MAVLink datagrams outward only and does
 not filter message classes. Its enforced boundary is outbound-only direction
 with local-only ingress; it does not change the FCU command boundary.
 
+The later 01/09/2026 Block D deployment installed clean published revision
+`025f48c1fb97dd4bf939c7fd3b3fd44a064e89ba` at
+`/home/imt-aqua-drone/uvautoboat_real_fcu_bundle_20260901_025f48c`. Exact
+five-file inventory, executable helpers, manifest digest
+`11a892667767ce74f162d4a5b58e88762ec66e6fceba346784dc775cfd80748d`
+and all four governed hashes passed. Its non-actuating `check` emitted
+`REAL_FCU_PI_CHECK=PASS serial=/dev/ttyAMA0 runtime=not-started`; the copied
+bundle and log reverified at
+`/home/ghostzero/Desktop/pi_run_evidence/pi_bundle_certification_20260901_025f48c`.
+This changes the classification only to **DEPLOYED / CERTIFIED / NOT RUN** and
+does not grant Block E authority or establish any probe, command runtime,
+parameter action, arm, propulsion action, threshold or T3a acceptance.
+
 No physical mode is currently accepted for routine use. The guarded one-off
 Test A path was operator-accepted on 26/08/2026 after a hash-pinned parameter
 snapshot resolved `RC1`/`RC3`, left `SERVO3`, right `SERVO1` and both
