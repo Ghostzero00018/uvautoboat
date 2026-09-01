@@ -181,6 +181,36 @@ CORRELATED_OUTPUT="$(env "${VALID_ENV[@]}" \
   || fail_test "valid Block E observer configuration changed: $CORRELATED_OUTPUT"
 pass_case
 
+set +e
+REAL_FCU_RECORD_ONLY_OUTPUT="$(env "${VALID_ENV[@]}" \
+  FCU_VRX_CORRELATED_OBSERVATION=0 bash -c '
+    source "$1"
+    FCUVRX_RUN_MODE=run-real-fcu
+    fcuvrx_validate_configuration
+  ' _ "$SUPERVISOR" 2>&1)"
+REAL_FCU_RECORD_ONLY_RC=$?
+set -e
+[ "$REAL_FCU_RECORD_ONLY_RC" -ne 0 ] \
+  || fail_test 'run-real-fcu accepted a record-only observer configuration'
+require_text "$REAL_FCU_RECORD_ONLY_OUTPUT" \
+  'run-real-fcu requires FCU_VRX_CORRELATED_OBSERVATION=1' \
+  'run-real-fcu did not identify the missing fail-closed observer mode'
+set +e
+REAL_FCU_ZERO_STALE_OUTPUT="$(env "${VALID_ENV[@]}" \
+  FCU_VRX_CORRELATED_OBSERVATION=1 FCU_VRX_OBSERVER_STALE_SECONDS=0 bash -c '
+    source "$1"
+    FCUVRX_RUN_MODE=run-real-fcu
+    fcuvrx_validate_configuration
+  ' _ "$SUPERVISOR" 2>&1)"
+REAL_FCU_ZERO_STALE_RC=$?
+set -e
+[ "$REAL_FCU_ZERO_STALE_RC" -ne 0 ] \
+  || fail_test 'run-real-fcu accepted a zero observer staleness limit'
+require_text "$REAL_FCU_ZERO_STALE_OUTPUT" \
+  'FCU_VRX_OBSERVER_STALE_SECONDS must be a positive integer' \
+  'run-real-fcu did not reject its zero observer staleness limit'
+pass_case
+
 COMMAND_OUTPUT="$(env "${VALID_ENV[@]}" bash -c '
   source "$1"
   fcuvrx_validate_configuration
@@ -191,6 +221,7 @@ COMMAND_OUTPUT="$(env "${VALID_ENV[@]}" bash -c '
   printf "\t%q" "${FCUVRX_BRIDGE_COMMAND[@]}"
   printf "\nOBSERVER"
   printf "\t%q" "${FCUVRX_OBSERVER_COMMAND[@]}"
+  printf "\nRELAY_COUNT=%s" "${#FCUVRX_RELAY_COMMAND[@]}"
   printf "\n"
 ' _ "$SUPERVISOR")"
 for literal in \
@@ -215,6 +246,47 @@ for forbidden in ttyAMA0 mavros MAVProxy sim_vehicle.py ardupilot; do
   ! grep -Fq -- "$forbidden" <<<"$COMMAND_OUTPUT" \
     || fail_test "built command unexpectedly owns $forbidden"
 done
+require_text "$COMMAND_OUTPUT" 'RELAY_COUNT=0' \
+  'default run unexpectedly builds the real-FCU RCOut relay'
+! grep -Fq -- 'twin_telemetry_role:=' <<<"$COMMAND_OUTPUT" \
+  || fail_test 'default run unexpectedly enables the twin telemetry leg'
+pass_case
+
+RELAY_COMMAND_OUTPUT="$(env "${VALID_ENV[@]}" \
+  FCU_VRX_CORRELATED_OBSERVATION=1 FCU_VRX_OBSERVER_STALE_SECONDS=5 bash -c '
+  source "$1"
+  FCUVRX_RUN_MODE=run-real-fcu
+  fcuvrx_validate_configuration
+  fcuvrx_build_commands
+  printf "BRIDGE"
+  printf "\t%q" "${FCUVRX_BRIDGE_COMMAND[@]}"
+  printf "\n"
+  printf "RELAY"
+  printf "\t%q" "${FCUVRX_RELAY_COMMAND[@]}"
+  printf "\n"
+' _ "$SUPERVISOR")"
+for literal in \
+  'ROS_DOMAIN_ID=43' 'ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET' \
+  'ROS_LOCALHOST_ONLY=0' 'servo_command_bridge.py' \
+  '__node:=fcu_to_vrx_rc_out_relay' 'input_mode:=ros_rc_out_relay' \
+  'rc_out_topic:=/mavros/rc/out' 'rc_out_publisher:=/mavros/rc' \
+  'target_ip:=127.0.0.1' \
+  'udp_send_port:=14555' 'left_servo_channel:=3' \
+  'right_servo_channel:=1' 'pwm_min:=800' 'pwm_neutral:=800' \
+  'pwm_max:=2200' 'max_thrust:=800.0' \
+  'publish_sensors:=false' 'publish_cmd_vel:=false' \
+  'twin_telemetry_role:=sender' 'twin_telemetry_role:=receiver' \
+  'twin_telemetry_udp_port:=14556' \
+  'twin_telemetry_topic:=/fcu_to_vrx/twin_telemetry' \
+  'twin_telemetry_pose_topic:=/wamv/pose' \
+  'twin_telemetry_world_frame:=sydney_regatta' \
+  'twin_telemetry_stale_seconds:=5'; do
+  require_text "$RELAY_COMMAND_OUTPUT" "$literal" \
+    "real-FCU relay command is missing: $literal"
+done
+RELAY_LINE="$(grep '^RELAY' <<<"$RELAY_COMMAND_OUTPUT")"
+! grep -Fq -- 'udp_recv_port:=' <<<"$RELAY_LINE" \
+  || fail_test 'real-FCU relay unexpectedly opens a MAVLink UDP receiver'
 pass_case
 
 CONFLICT_OUTPUT="$(bash -c '
@@ -260,6 +332,7 @@ LIFECYCLE_OUTPUT="$(bash -c '
   FCUVRX_CHILD_PGIDS=()
   FCUVRX_CHILD_INDEX=()
   fcuvrx_udp_listener_present() { return 1; }
+  fcuvrx_twin_telemetry_listener_present() { return 1; }
   fcuvrx_start_child vrx "$2/logs/vrx.log" "$3" vrx "$2/trace"
   fcuvrx_start_child observer "$2/logs/observer.log" "$3" observer "$2/trace"
   fcuvrx_start_child bridge "$2/logs/bridge.log" "$3" bridge "$2/trace"
@@ -276,6 +349,41 @@ require_text "$LIFECYCLE_OUTPUT" \
   'successful lifecycle did not emit the teardown proof'
 [ "$(tail -n 3 "$LIFECYCLE_ROOT/trace")" = $'bridge\nobserver\nvrx' ] \
   || fail_test 'children did not stop in bridge-observer-VRX order'
+pass_case
+
+RELAY_LIFECYCLE_ROOT="$FIXTURE_ROOT/relay_lifecycle"
+mkdir -p "$RELAY_LIFECYCLE_ROOT/logs"
+set +e
+RELAY_LIFECYCLE_OUTPUT="$(bash -c '
+  set -euo pipefail
+  source "$1"
+  FCUVRX_RUN_MODE=run-real-fcu
+  FCUVRX_RUN_DIR="$2"
+  FCUVRX_SUPERVISOR_LOG="$2/supervisor.log"
+  FCUVRX_SUPERVISOR_PGID="$(ps -o pgid= -p $$ | tr -d " ")"
+  FCUVRX_CHILD_NAMES=()
+  FCUVRX_CHILD_PIDS=()
+  FCUVRX_CHILD_PGIDS=()
+  FCUVRX_CHILD_INDEX=()
+  fcuvrx_udp_listener_present() { return 1; }
+  fcuvrx_twin_telemetry_listener_present() { return 1; }
+  fcuvrx_start_child vrx "$2/logs/vrx.log" "$3" vrx "$2/trace"
+  fcuvrx_start_child observer "$2/logs/observer.log" "$3" observer "$2/trace"
+  fcuvrx_start_child bridge "$2/logs/bridge.log" "$3" bridge "$2/trace"
+  fcuvrx_start_child relay "$2/logs/relay.log" "$3" relay "$2/trace"
+  FCUVRX_READY_REACHED=1
+  FCUVRX_OPERATOR_STOP_REQUESTED=1
+  fcuvrx_cleanup 130
+' _ "$SUPERVISOR" "$RELAY_LIFECYCLE_ROOT" "$FAKE_CHILD" 2>&1)"
+RELAY_LIFECYCLE_RC=$?
+set -e
+[ "$RELAY_LIFECYCLE_RC" -eq 0 ] \
+  || fail_test "real-FCU relay lifecycle failed rc=$RELAY_LIFECYCLE_RC: $RELAY_LIFECYCLE_OUTPUT"
+require_text "$RELAY_LIFECYCLE_OUTPUT" \
+  'FCU_TO_VRX_WORKSTATION_TEARDOWN=PASS order=relay,bridge,observer,vrx udp=14555-free twin_telemetry_udp=14556-free' \
+  'real-FCU lifecycle did not emit the relay-first teardown proof'
+[ "$(tail -n 4 "$RELAY_LIFECYCLE_ROOT/trace")" = $'relay\nbridge\nobserver\nvrx' ] \
+  || fail_test 'real-FCU children did not stop in relay-bridge-observer-VRX order'
 pass_case
 
 FAILURE_ROOT="$FIXTURE_ROOT/failure"
@@ -334,7 +442,18 @@ USAGE_OUTPUT="$(bash "$SUPERVISOR" 2>&1)"
 USAGE_RC=$?
 set -e
 [ "$USAGE_RC" -eq 2 ] || fail_test "usage returned $USAGE_RC instead of 2"
-require_text "$USAGE_OUTPUT" 'check|run' 'usage does not expose check and run'
+require_text "$USAGE_OUTPUT" 'check|run|run-real-fcu' \
+  'usage does not expose check, run and run-real-fcu'
+pass_case
+
+MODE_DISPATCH_OUTPUT="$(bash -c '
+  source "$1"
+  fcuvrx_run() { printf "%s\n" "$FCUVRX_RUN_MODE"; }
+  fcuvrx_main run
+  fcuvrx_main run-real-fcu
+' _ "$SUPERVISOR")"
+[ "$MODE_DISPATCH_OUTPUT" = $'run\nrun-real-fcu' ] \
+  || fail_test "run-mode dispatch changed: $MODE_DISPATCH_OUTPUT"
 pass_case
 
 # --- two-stage readiness and world-frame pose selection -------------------
@@ -374,7 +493,11 @@ pass_case
 # retained run, so a later adjudicator can prove which value applied.
 MANIFEST_BODY="$(extract_function fcuvrx_write_manifest)"
 for manifest_key in 'ready_timeout_seconds=' 'observer_ready_timeout_seconds=' \
-  'observer_stale_seconds=' 'correlated_observation='; do
+  'observer_stale_seconds=' 'correlated_observation=' \
+  'twin_telemetry_enabled=' 'twin_telemetry_transport=' \
+  'twin_telemetry_udp=' 'twin_telemetry_topic=' \
+  'twin_telemetry_schema=' 'twin_telemetry_source=' \
+  'twin_telemetry_stale_seconds='; do
   require_text "$MANIFEST_BODY" "$manifest_key" \
     "the run manifest does not record $manifest_key"
 done
@@ -451,6 +574,66 @@ require_text "$(observer_ready_gate)" 'rc=0' \
   'the four-stream READY marker did not satisfy the observer READY gate'
 pass_case
 
+RELAY_READY_ROOT="$FIXTURE_ROOT/relay_ready"
+mkdir -p "$RELAY_READY_ROOT/logs"
+: >"$RELAY_READY_ROOT/logs/relay.log"
+
+relay_ready_gate() {
+  bash -c '
+    set -uo pipefail
+    source "$1"
+    set +e
+    FCUVRX_RUN_DIR="$2"
+    FCUVRX_READY_TIMEOUT_SECONDS=1
+    FCUVRX_POLL_SECONDS=1
+    FCU_VRX_LEFT_SERVO_CHANNEL=3
+    FCU_VRX_RIGHT_SERVO_CHANNEL=1
+    FCU_VRX_PWM_MIN=800
+    FCU_VRX_PWM_NEUTRAL=800
+    FCU_VRX_PWM_MAX=2200
+    fcuvrx_children_alive() { return 0; }
+    fcuvrx_wait_relay_ready
+    printf "rc=%s\n" "$?"
+  ' _ "$SUPERVISOR" "$RELAY_READY_ROOT" 2>&1
+}
+
+require_text "$(relay_ready_gate)" 'rc=1' \
+  'an empty relay log incorrectly satisfied the relay READY gate'
+printf '%s\n' \
+  'FCU_TO_VRX_RC_OUT_RELAY_READY=PASS topic=/mavros/rc/out udp=127.0.0.1:14555 left=SERVO3 right=SERVO1 pwm=800/800/2200' \
+  >"$RELAY_READY_ROOT/logs/relay.log"
+require_text "$(relay_ready_gate)" 'rc=0' \
+  'the exact RCOut relay marker did not satisfy the relay READY gate'
+pass_case
+
+TWIN_READY_ROOT="$FIXTURE_ROOT/twin_ready"
+mkdir -p "$TWIN_READY_ROOT/logs"
+: >"$TWIN_READY_ROOT/logs/relay.log"
+
+twin_ready_gate() {
+  bash -c '
+    set -uo pipefail
+    source "$1"
+    set +e
+    FCUVRX_RUN_DIR="$2"
+    FCUVRX_READY_TIMEOUT_SECONDS=1
+    FCUVRX_POLL_SECONDS=1
+    FCU_VRX_OBSERVER_STALE_SECONDS=5
+    fcuvrx_children_alive() { return 0; }
+    fcuvrx_wait_twin_telemetry_ready
+    printf "rc=%s\n" "$?"
+  ' _ "$SUPERVISOR" "$TWIN_READY_ROOT" 2>&1
+}
+
+require_text "$(twin_ready_gate)" 'rc=1' \
+  'an empty relay log incorrectly satisfied the twin telemetry READY gate'
+printf '%s\n' \
+  'FCU_TO_VRX_TWIN_TELEMETRY_READY=PASS topic=/fcu_to_vrx/twin_telemetry udp=127.0.0.1:14556 schema=uvautoboat.fcu_to_vrx.twin_telemetry.v1 source=fcu_to_vrx_domain77_bridge stale_seconds=5' \
+  >"$TWIN_READY_ROOT/logs/relay.log"
+require_text "$(twin_ready_gate)" 'rc=0' \
+  'the exact twin telemetry marker did not satisfy its READY gate'
+pass_case
+
 # Ordering: the pre-Pi marker must be emitted before the observer READY wait,
 # and the final workstation READY only after it.
 RUN_BODY="$(extract_function fcuvrx_run)"
@@ -471,6 +654,46 @@ require_text "$RUN_BODY" 'observer=ready streams=4' \
 require_text "$RUN_BODY" \
   'after PI_SOURCE_HOLD=ACTIVE, press Ctrl+C here before stopping W1 and the Pi helper' \
   'correlated Test B teardown does not preserve Pi streams until both observers stop'
+pass_case
+
+BRIDGE_WAIT_LINE="$(grep -n 'fcuvrx_wait_bridge_ready' <<<"$RUN_BODY" |
+  head -1 | cut -d: -f1)"
+RELAY_START_LINE="$(grep -n 'fcuvrx_start_child relay' <<<"$RUN_BODY" |
+  head -1 | cut -d: -f1)"
+RELAY_WAIT_LINE="$(grep -n 'fcuvrx_wait_relay_ready' <<<"$RUN_BODY" |
+  head -1 | cut -d: -f1)"
+PI_START_LINE="$(grep -n 'start the approved real-FCU Pi helper now' <<<"$RUN_BODY" |
+  head -1 | cut -d: -f1)"
+RELAY_READY_OUTPUT_LINE="$(grep -n 'FCU_TO_VRX_RC_OUT_RELAY_READY=PASS topic=' <<<"$RUN_BODY" |
+  head -1 | cut -d: -f1)"
+TWIN_WAIT_LINE="$(grep -n 'fcuvrx_wait_twin_telemetry_ready' <<<"$RUN_BODY" |
+  head -1 | cut -d: -f1)"
+TWIN_READY_OUTPUT_LINE="$(grep -n 'FCU_TO_VRX_TWIN_TELEMETRY_READY=PASS topic=' <<<"$RUN_BODY" |
+  head -1 | cut -d: -f1)"
+[ -n "$BRIDGE_WAIT_LINE" ] && [ -n "$RELAY_START_LINE" ] \
+  && [ -n "$PRESTART_LINE" ] && [ -n "$PI_START_LINE" ] \
+  && [ -n "$RELAY_WAIT_LINE" ] && [ -n "$RELAY_READY_OUTPUT_LINE" ] \
+  && [ -n "$TWIN_WAIT_LINE" ] && [ -n "$TWIN_READY_OUTPUT_LINE" ] \
+  || fail_test 'real-FCU relay startup/readiness calls are missing'
+[ "$BRIDGE_WAIT_LINE" -lt "$RELAY_START_LINE" ] \
+  && [ "$RELAY_START_LINE" -lt "$PRESTART_LINE" ] \
+  && [ "$PRESTART_LINE" -lt "$PI_START_LINE" ] \
+  && [ "$PI_START_LINE" -lt "$RELAY_WAIT_LINE" ] \
+  && [ "$RELAY_WAIT_LINE" -lt "$RELAY_READY_OUTPUT_LINE" ] \
+  && [ "$RELAY_READY_OUTPUT_LINE" -lt "$TWIN_WAIT_LINE" ] \
+  && [ "$TWIN_WAIT_LINE" -lt "$TWIN_READY_OUTPUT_LINE" ] \
+  && [ "$TWIN_READY_OUTPUT_LINE" -lt "$WAIT_LINE" ] \
+  || fail_test 'real-FCU ordering is not bridge-ready -> relay-start -> PRESTART/Pi-guidance -> relay-ready -> twin-telemetry-ready -> observer-ready'
+require_text "$RUN_BODY" 'relay=started relay_domain=43' \
+  'run-real-fcu PRESTART does not expose the started-but-not-ready relay state'
+require_text "$RUN_BODY" \
+  'FCU_TO_VRX_RC_OUT_RELAY_READY=PASS topic=/mavros/rc/out udp=127.0.0.1:$FCUVRX_UDP_RECV_PORT' \
+  'run-real-fcu does not expose relay readiness'
+require_text "$RUN_BODY" 'relay=ready relay_domain=43' \
+  'run-real-fcu final readiness does not bind the relay to domain 43'
+require_text "$RUN_BODY" \
+  'externally disarm first; stop W2 here; initiate the real-FCU Pi stop/closeout; then stop W1 so its stop marker lets the Pi finish' \
+  'run-real-fcu does not state the complete W2 -> Pi-closeout -> W1-stop-marker order'
 pass_case
 
 printf 'FCU-to-VRX workstation supervisor tests: PASS cases=%d runtime=not-started\n' \

@@ -116,6 +116,7 @@ function createHarness(search = '') {
         clearInterval(id) {
             if (intervals[id - 1]) intervals[id - 1].active = false;
         },
+        clearTimeout() {},
         setTimeout(callback) {
             callback();
             return 1;
@@ -182,12 +183,18 @@ function createHarness(search = '') {
             fcuBenchCanApply,
             railRelativePercent,
             updateLiveFcuBenchStatus,
+            updateLiveFcuTwinTelemetry,
+            refreshLiveFcuTwinTelemetry,
+            resetLiveFcuTwinTelemetry,
             refreshFcuBenchControls,
             subscribeToLiveFcuBenchLoop,
             initFcuBenchLoop,
             startFcuBenchHold,
             stopFcuBenchHold,
-            publishFcuBenchEmergencyStop
+            publishFcuBenchEmergencyStop,
+            publishFcuBenchEmergencyReset,
+            publishFcuBenchControlOwner,
+            toggleFcuBenchControlOwner
         };`,
         context
     );
@@ -303,11 +310,13 @@ test('bench URL restores the real E-Stop while leaving other live writes blocked
 test('direct-call syntax canary keeps known writes behind the temporary guard', () => {
     const publishCalls = appSource.match(/\.publish\s*\(/g) || [];
     const serviceCalls = appSource.match(/\.callService\s*\(/g) || [];
-    assert.equal(publishCalls.length, 3);
+    assert.equal(publishCalls.length, 5);
     assert.equal(serviceCalls.length, 2);
     assert.match(appSource, /function publishDashboardWrite[\s\S]*?topic\.publish\(message\)/);
     assert.match(appSource, /function publishFcuBenchDemand[\s\S]*?liveFcuBenchCommandPublisher\.publish\(message\)/);
     assert.match(appSource, /function publishFcuBenchEmergencyStop[\s\S]*?liveFcuBenchEmergencyPublisher\.publish/);
+    assert.match(appSource, /function publishFcuBenchEmergencyReset[\s\S]*?liveFcuBenchEmergencyResetPublisher\.publish/);
+    assert.match(appSource, /function publishFcuBenchControlOwner[\s\S]*?liveFcuBenchControlOwnerPublisher\.publish/);
     assert.match(appSource, /enable_fcu_bench_control/);
     assert.match(htmlSource, /Hold to Apply RC Demand/);
     assert.match(appSource, /function callDashboardWriteService[\s\S]*?service\.callService\(request/);
@@ -344,14 +353,20 @@ test('temporary panel DOM contract is complete and camera defaults to Hailo', ()
         'mavlink-last-update',
         'fcu-loop-policy',
         'fcu-loop-state',
+        'fcu-loop-owner',
         'fcu-loop-mapping',
         'fcu-loop-command',
         'fcu-loop-feedback',
+        'fcu-loop-twin-status',
+        'fcu-loop-twin-pose',
+        'fcu-loop-twin-thrust',
         'fcu-loop-steering',
         'fcu-loop-throttle',
         'fcu-loop-physical-confirmation',
         'btn-fcu-loop-neutral',
-        'btn-fcu-loop-hold'
+        'btn-fcu-loop-hold',
+        'btn-fcu-loop-reset-estop',
+        'btn-fcu-loop-control-owner'
     ];
     for (const id of ids) {
         const matches = htmlSource.match(new RegExp(`id=["']${id}["']`, 'g')) || [];
@@ -390,6 +405,85 @@ test('temporary panel DOM contract is complete and camera defaults to Hailo', ()
     assert.match(cssSource, /\.live-mavlink-write-disabled\s*\{/);
     assert.doesNotMatch(cssSource, /live-mavlink-view-only \.health-check-panel (?:button|input)/);
     assert.match(htmlSource, /id="camera-topic" value="\/hailo\/overlay\/image_raw"/);
+});
+
+test('validated W2 twin telemetry renders actual VRX pose and thrust then expires', () => {
+    const harness = createHarness('?enable_fcu_bench_control=1');
+    harness.api.subscribeToLiveFcuBenchLoop();
+    assert.equal(harness.subscriptions.find(
+        (topic) => topic.options.name === '/command_ingress/emergency_reset'
+    ).options.messageType, 'std_msgs/String');
+    assert.equal(harness.subscriptions.find(
+        (topic) => topic.options.name === '/command_ingress/control_owner'
+    ).options.messageType, 'std_msgs/String');
+    const topic = harness.subscriptions.find(
+        (entry) => entry.options.name === '/fcu_to_vrx/twin_telemetry'
+    );
+    assert.ok(topic, 'Expected the validated twin telemetry subscription');
+    topic.callback({ data: JSON.stringify({
+        schema: 'uvautoboat.fcu_to_vrx.twin_telemetry.v1',
+        source: 'fcu_to_vrx_domain77_bridge',
+        sequence: 7,
+        sent_unix_ns: 1788290000000000000,
+        sent_monotonic_ns: 1234567890,
+        pose: {
+            frame_id: 'sydney_regatta',
+            child_frame_id: 'wamv/base_link',
+            position: { x: 12.345, y: -6.789, z: 0.25 },
+            orientation: { x: 0, y: 0, z: 0, w: 1 }
+        },
+        thrust: { left_newtons: 320.5, right_newtons: 280.25 }
+    }) });
+
+    assert.equal(harness.elements.get('fcu-loop-twin-status').textContent, 'Live');
+    assert.equal(
+        harness.elements.get('fcu-loop-twin-pose').textContent,
+        'sydney_regatta | X 12.35 m | Y -6.79 m | Z 0.25 m'
+    );
+    assert.equal(
+        harness.elements.get('fcu-loop-twin-thrust').textContent,
+        'Left 320.5 N | Right 280.3 N'
+    );
+
+    harness.advance(2501);
+    harness.api.refreshLiveFcuTwinTelemetry();
+    assert.match(harness.elements.get('fcu-loop-twin-status').textContent, /^Stale \(/);
+    assert.match(harness.elements.get('fcu-loop-twin-status').className, /critical/);
+});
+
+test('malformed twin telemetry cannot replace or refresh the last valid sample', () => {
+    const harness = createHarness();
+    const valid = {
+        schema: 'uvautoboat.fcu_to_vrx.twin_telemetry.v1',
+        source: 'fcu_to_vrx_domain77_bridge',
+        sequence: 1,
+        sent_unix_ns: 1,
+        sent_monotonic_ns: 1,
+        pose: {
+            frame_id: 'sydney_regatta', child_frame_id: 'wamv/base_link',
+            position: { x: 1, y: 2, z: 3 },
+            orientation: { x: 0, y: 0, z: 0, w: 1 }
+        },
+        thrust: { left_newtons: 10, right_newtons: 20 }
+    };
+    assert.equal(
+        harness.api.updateLiveFcuTwinTelemetry({ data: JSON.stringify(valid) }),
+        true
+    );
+    harness.advance(1000);
+    assert.equal(
+        harness.api.updateLiveFcuTwinTelemetry({
+            data: JSON.stringify({ ...valid, thrust: { left_newtons: '10' } })
+        }),
+        false
+    );
+    assert.equal(
+        harness.elements.get('fcu-loop-twin-thrust').textContent,
+        'Left 10.0 N | Right 20.0 N'
+    );
+    harness.advance(1501);
+    harness.api.refreshLiveFcuTwinTelemetry();
+    assert.match(harness.elements.get('fcu-loop-twin-status').textContent, /^Stale \(/);
 });
 
 test('bench command path is opt-in, bounded, paired, and strictly stamped', () => {
@@ -589,6 +683,241 @@ test('bench emergency stop stops hold and publishes a latched stop topic', () =>
         (entry) => entry.topic === '/command_ingress/rc_axes'
     );
     assert.deepEqual(Array.from(commands.at(-1).message.buttons), [0]);
+});
+
+test('bench reset is fail-closed and only publishes when bridge reports eligibility', () => {
+    const harness = createHarness('?enable_fcu_bench_control=1');
+    harness.api.subscribeToLiveFcuBenchLoop();
+    harness.elements.get('fcu-loop-physical-confirmation').checked = true;
+    const status = {
+        state: 'EMERGENCY_STOP', fault: 'EMERGENCY_STOP', ready: false,
+        connected: true, armed: true, mode: 'MANUAL', feedback_fresh: true,
+        control_owner: 'DASHBOARD', emergency_stop_latched: true,
+        emergency_reset_allowed: false,
+        emergency_reset_block_reason: 'PERSON_HOLD_ACTIVE',
+        resolved: {
+            steering_rc: 1, throttle_rc: 3, left_servo: 3, right_servo: 1
+        },
+        command: {}, measured: {}
+    };
+    harness.api.updateLiveFcuBenchStatus({ data: JSON.stringify(status) });
+    assert.equal(harness.api.publishFcuBenchEmergencyReset(), false);
+    assert.equal(harness.elements.get('btn-fcu-loop-reset-estop').disabled, true);
+
+    harness.api.updateLiveFcuBenchStatus({
+        data: JSON.stringify({
+            ...status,
+            emergency_reset_allowed: true,
+            emergency_reset_block_reason: ''
+        })
+    });
+    assert.equal(harness.elements.get('btn-fcu-loop-reset-estop').disabled, false);
+    const beforeResetCommands = harness.published.filter(
+        (entry) => entry.topic === '/command_ingress/rc_axes'
+    ).length;
+    assert.equal(harness.api.publishFcuBenchEmergencyReset(), true);
+    const resets = harness.published.filter(
+        (entry) => entry.topic === '/command_ingress/emergency_reset'
+    );
+    assert.equal(resets.length, 1);
+    assert.equal(resets[0].message.data, 'DASHBOARD_COMMAND_NEUTRAL');
+    assert.equal(harness.published.filter(
+        (entry) => entry.topic === '/command_ingress/rc_axes'
+    ).length, beforeResetCommands);
+    const beforeClear = harness.published.length;
+    harness.api.updateLiveFcuBenchStatus({
+        data: JSON.stringify({
+            ...status,
+            state: 'ARMED_NEUTRAL', fault: 'DASHBOARD_PRIME_REQUIRED',
+            ready: true,
+            emergency_stop_latched: false,
+            emergency_reset_allowed: false,
+            emergency_reset_block_reason: 'NOT_LATCHED'
+        })
+    });
+    const primeFrames = harness.published.slice(beforeClear).filter(
+        (entry) => entry.topic === '/command_ingress/rc_axes'
+    );
+    assert.equal(primeFrames.length, 0);
+});
+
+test('stale bridge status disables and blocks reset and owner publications', () => {
+    const harness = createHarness('?enable_fcu_bench_control=1');
+    harness.api.subscribeToLiveFcuBenchLoop();
+    harness.elements.get('fcu-loop-physical-confirmation').checked = true;
+    const resolved = {
+        steering_rc: 1, throttle_rc: 3, left_servo: 3, right_servo: 1
+    };
+    harness.api.updateLiveFcuBenchStatus({
+        data: JSON.stringify({
+            state: 'EMERGENCY_STOP', fault: 'EMERGENCY_STOP', ready: false,
+            connected: true, armed: true, mode: 'MANUAL', feedback_fresh: true,
+            control_owner: 'DASHBOARD', emergency_stop_latched: true,
+            emergency_reset_allowed: true, emergency_reset_block_reason: '',
+            resolved, command: {}, measured: {}
+        })
+    });
+    assert.equal(harness.elements.get('btn-fcu-loop-reset-estop').disabled, false);
+
+    harness.advance(5000);
+    harness.api.refreshLiveMavlinkFreshness();
+    assert.equal(harness.elements.get('btn-fcu-loop-reset-estop').disabled, true);
+    assert.equal(harness.api.publishFcuBenchEmergencyReset(), false);
+    assert.equal(harness.published.filter(
+        (entry) => entry.topic === '/command_ingress/emergency_reset'
+    ).length, 0);
+
+    harness.api.updateLiveFcuBenchStatus({
+        data: JSON.stringify({
+            state: 'ARMED_NEUTRAL', fault: 'ARMED_NEUTRAL', ready: true,
+            connected: true, armed: true, mode: 'MANUAL', feedback_fresh: true,
+            control_owner: 'DASHBOARD', emergency_stop_latched: false,
+            emergency_reset_allowed: false,
+            emergency_reset_block_reason: 'NOT_LATCHED',
+            resolved, command: {}, measured: {}
+        })
+    });
+    assert.equal(harness.elements.get('btn-fcu-loop-control-owner').disabled, false);
+
+    harness.advance(5000);
+    harness.api.refreshLiveMavlinkFreshness();
+    assert.equal(harness.elements.get('btn-fcu-loop-control-owner').disabled, true);
+    assert.equal(harness.api.publishFcuBenchControlOwner('HERELINK'), false);
+    assert.equal(harness.published.filter(
+        (entry) => entry.topic === '/command_ingress/control_owner'
+    ).length, 0);
+});
+
+test('bench control-owner toggle hands off to Herelink and inhibits dashboard demand', () => {
+    const harness = createHarness('?enable_fcu_bench_control=1');
+    harness.api.subscribeToLiveFcuBenchLoop();
+    harness.elements.get('fcu-loop-physical-confirmation').checked = true;
+    const ready = {
+        state: 'ARMED_NEUTRAL', fault: 'ARMED_NEUTRAL', ready: true,
+        connected: true, armed: true, mode: 'MANUAL', feedback_fresh: true,
+        control_owner: 'DASHBOARD', emergency_stop_latched: false,
+        emergency_reset_allowed: false,
+        emergency_reset_block_reason: 'NOT_LATCHED',
+        resolved: {
+            steering_rc: 1, throttle_rc: 3, left_servo: 3, right_servo: 1
+        },
+        command: {}, measured: {}
+    };
+    harness.api.updateLiveFcuBenchStatus({ data: JSON.stringify(ready) });
+    assert.equal(harness.api.fcuBenchCanApply(), true);
+    assert.equal(
+        harness.elements.get('btn-fcu-loop-control-owner').textContent,
+        'Confirm Herelink Sticks Neutral & Take Control'
+    );
+    const commandsBeforeHerelink = harness.published.filter(
+        (entry) => entry.topic === '/command_ingress/rc_axes'
+    ).length;
+    assert.equal(harness.api.toggleFcuBenchControlOwner(), true);
+    const owners = harness.published.filter(
+        (entry) => entry.topic === '/command_ingress/control_owner'
+    );
+    assert.equal(owners.at(-1).message.data, 'HERELINK_STICKS_NEUTRAL');
+    assert.ok(harness.published.filter(
+        (entry) => entry.topic === '/command_ingress/rc_axes'
+    ).length > commandsBeforeHerelink);
+
+    harness.api.updateLiveFcuBenchStatus({
+        data: JSON.stringify({
+            ...ready, state: 'HERELINK_CONTROL', control_owner: 'HERELINK'
+        })
+    });
+    assert.equal(harness.api.fcuBenchCanApply(), false);
+    assert.equal(harness.elements.get('fcu-loop-owner').textContent, 'HERELINK');
+    assert.equal(
+        harness.elements.get('btn-fcu-loop-control-owner').textContent,
+        'Switch to Dashboard Control (Neutral Now Required)'
+    );
+    const commandsBeforeDashboard = harness.published.filter(
+        (entry) => entry.topic === '/command_ingress/rc_axes'
+    ).length;
+    assert.equal(harness.api.toggleFcuBenchControlOwner(), true);
+    assert.equal(
+        harness.published.filter(
+            (entry) => entry.topic === '/command_ingress/control_owner'
+        ).at(-1).message.data,
+        'DASHBOARD'
+    );
+    harness.api.updateLiveFcuBenchStatus({ data: JSON.stringify(ready) });
+    assert.equal(harness.published.filter(
+        (entry) => entry.topic === '/command_ingress/rc_axes'
+    ).length, commandsBeforeDashboard);
+
+    harness.api.stopFcuBenchHold();
+    const explicitPrime = harness.published.filter(
+        (entry) => entry.topic === '/command_ingress/rc_axes'
+    ).slice(commandsBeforeDashboard);
+    assert.ok(explicitPrime.length > 0);
+    assert.ok(explicitPrime.every(
+        (entry) => Array.from(entry.message.buttons)[0] === 0
+    ));
+    assert.equal(harness.api.toggleFcuBenchControlOwner(), true);
+    assert.equal(
+        harness.published.filter(
+            (entry) => entry.topic === '/command_ingress/control_owner'
+        ).at(-1).message.data,
+        'HERELINK_STICKS_NEUTRAL'
+    );
+});
+
+test('Herelink E-stop reset carries an explicit physical-stick confirmation', () => {
+    const harness = createHarness('?enable_fcu_bench_control=1');
+    harness.api.subscribeToLiveFcuBenchLoop();
+    harness.elements.get('fcu-loop-physical-confirmation').checked = true;
+    harness.api.updateLiveFcuBenchStatus({
+        data: JSON.stringify({
+            state: 'EMERGENCY_STOP', fault: 'EMERGENCY_STOP', ready: false,
+            connected: true, armed: true, mode: 'MANUAL', feedback_fresh: true,
+            control_owner: 'HERELINK', emergency_stop_latched: true,
+            emergency_reset_allowed: true, emergency_reset_block_reason: '',
+            resolved: {
+                steering_rc: 1, throttle_rc: 3, left_servo: 3, right_servo: 1
+            },
+            command: {}, measured: {}
+        })
+    });
+    assert.equal(
+        harness.elements.get('btn-fcu-loop-reset-estop').textContent,
+        'Confirm Herelink Sticks Neutral & Reset E-Stop'
+    );
+    assert.equal(harness.api.publishFcuBenchEmergencyReset(), true);
+    const resets = harness.published.filter(
+        (entry) => entry.topic === '/command_ingress/emergency_reset'
+    );
+    assert.equal(resets.length, 1);
+    assert.equal(resets[0].message.data, 'HERELINK_STICKS_NEUTRAL');
+});
+
+test('returning from Herelink to dashboard does not auto-prime', () => {
+    const harness = createHarness('?enable_fcu_bench_control=1');
+    harness.api.subscribeToLiveFcuBenchLoop();
+    const base = {
+        state: 'HERELINK_CONTROL', fault: 'HERELINK_CONTROL', ready: true,
+        connected: true, armed: true, mode: 'MANUAL', feedback_fresh: true,
+        control_owner: 'HERELINK', emergency_stop_latched: false,
+        emergency_reset_allowed: false,
+        emergency_reset_block_reason: 'NOT_LATCHED',
+        resolved: {
+            steering_rc: 1, throttle_rc: 3, left_servo: 3, right_servo: 1
+        },
+        command: {}, measured: {}
+    };
+    harness.api.updateLiveFcuBenchStatus({ data: JSON.stringify(base) });
+    const before = harness.published.length;
+    harness.api.updateLiveFcuBenchStatus({
+        data: JSON.stringify({
+            ...base, state: 'ARMED_NEUTRAL', fault: 'ARMED_NEUTRAL',
+            control_owner: 'DASHBOARD'
+        })
+    });
+    const commands = harness.published.slice(before).filter(
+        (entry) => entry.topic === '/command_ingress/rc_axes'
+    );
+    assert.equal(commands.length, 0);
 });
 
 test('bench keyboard hold stops when Tab moves focus off the button', () => {

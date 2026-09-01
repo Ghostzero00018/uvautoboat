@@ -17,9 +17,17 @@ FCUVRX_POLL_SECONDS="${FCU_TO_VRX_POLL_SECONDS:-1}"
 FCUVRX_DOMAIN_ID='77'
 FCUVRX_DISCOVERY_RANGE='LOCALHOST'
 FCUVRX_LOCALHOST_ONLY='1'
+FCUVRX_RELAY_DOMAIN_ID='43'
+FCUVRX_RELAY_DISCOVERY_RANGE='SUBNET'
+FCUVRX_RELAY_LOCALHOST_ONLY='0'
 FCUVRX_UDP_RECV_PORT='14555'
 FCUVRX_UDP_SEND_PORT='14551'
+FCUVRX_TWIN_TELEMETRY_UDP_PORT='14556'
+FCUVRX_TWIN_TELEMETRY_TOPIC='/fcu_to_vrx/twin_telemetry'
+FCUVRX_TWIN_TELEMETRY_SCHEMA='uvautoboat.fcu_to_vrx.twin_telemetry.v1'
+FCUVRX_TWIN_TELEMETRY_SOURCE='fcu_to_vrx_domain77_bridge'
 FCUVRX_WORLD='sydney_regatta'
+FCUVRX_RUN_MODE='run'
 FCUVRX_VRX_SHARE=''
 FCUVRX_RUN_DIR=''
 FCUVRX_SUPERVISOR_LOG=''
@@ -51,6 +59,7 @@ declare -A FCUVRX_CHILD_INDEX=()
 declare -a FCUVRX_VRX_COMMAND=()
 declare -a FCUVRX_BRIDGE_COMMAND=()
 declare -a FCUVRX_OBSERVER_COMMAND=()
+declare -a FCUVRX_RELAY_COMMAND=()
 
 FCUVRX_CONFLICT_PATTERNS=(
   'servo_command_bridge.py'
@@ -90,9 +99,9 @@ fcuvrx_fail() {
 
 fcuvrx_usage() {
   cat >&2 <<EOF
-usage: ${0##*/} check|run
+usage: ${0##*/} check|run|run-real-fcu
 
-run requires all values below from the same live FCU parameter read:
+run and run-real-fcu require all values below from the same live FCU parameter read:
   FCU_VRX_LEFT_SERVO_CHANNEL
   FCU_VRX_RIGHT_SERVO_CHANNEL
   FCU_VRX_LEFT_PWM_MIN / FCU_VRX_LEFT_PWM_NEUTRAL / FCU_VRX_LEFT_PWM_MAX
@@ -104,6 +113,10 @@ Block E additionally requires:
   FCU_VRX_OBSERVER_STALE_SECONDS (positive integer measured in Block D)
 EOF
   return 2
+}
+
+fcuvrx_real_fcu_mode() {
+  [ "$FCUVRX_RUN_MODE" = run-real-fcu ]
 }
 
 fcuvrx_require_command() {
@@ -183,6 +196,11 @@ fcuvrx_validate_configuration() {
   [[ "$FCU_VRX_CORRELATED_OBSERVATION" =~ ^[01]$ ]] \
     || fcuvrx_fail 'FCU_VRX_CORRELATED_OBSERVATION must be 0 or 1' \
     || return 1
+  if fcuvrx_real_fcu_mode \
+      && [ "$FCU_VRX_CORRELATED_OBSERVATION" -ne 1 ]; then
+    fcuvrx_fail 'run-real-fcu requires FCU_VRX_CORRELATED_OBSERVATION=1' \
+      || return 1
+  fi
   if [ "$FCU_VRX_CORRELATED_OBSERVATION" -eq 1 ]; then
     fcuvrx_require_value FCU_VRX_OBSERVER_STALE_SECONDS || return 1
     fcuvrx_validate_positive_integer FCU_VRX_OBSERVER_STALE_SECONDS \
@@ -258,10 +276,10 @@ fcuvrx_verify_repository() {
     || fcuvrx_fail 'repository HEAD does not match origin/main'
 }
 
-fcuvrx_udp_listener_present() {
-  local state
+fcuvrx_udp_port_listener_present() {
+  local target="$1" state
   state="$(ss -H -lun)" || return 2
-  awk -v target="$FCUVRX_UDP_RECV_PORT" '
+  awk -v target="$target" '
     {
       local_address = $4
       sub(/^.*:/, "", local_address)
@@ -269,6 +287,14 @@ fcuvrx_udp_listener_present() {
     }
     END { exit found ? 0 : 1 }
   ' <<<"$state"
+}
+
+fcuvrx_udp_listener_present() {
+  fcuvrx_udp_port_listener_present "$FCUVRX_UDP_RECV_PORT"
+}
+
+fcuvrx_twin_telemetry_listener_present() {
+  fcuvrx_udp_port_listener_present "$FCUVRX_TWIN_TELEMETRY_UDP_PORT"
 }
 
 fcuvrx_require_udp_port_free() {
@@ -280,6 +306,19 @@ fcuvrx_require_udp_port_free() {
     rc=$?
   fi
   [ "$rc" -eq 1 ] || fcuvrx_fail 'cannot inspect workstation UDP listeners'
+}
+
+fcuvrx_require_twin_telemetry_port_free() {
+  local rc
+  if fcuvrx_twin_telemetry_listener_present; then
+    fcuvrx_fail \
+      "UDP $FCUVRX_TWIN_TELEMETRY_UDP_PORT is already in use by twin telemetry"
+    return 1
+  else
+    rc=$?
+  fi
+  [ "$rc" -eq 1 ] \
+    || fcuvrx_fail 'cannot inspect twin telemetry UDP listener'
 }
 
 fcuvrx_reject_conflicts() {
@@ -328,9 +367,13 @@ fcuvrx_static_preflight() {
   [ -r "$FCUVRX_BRIDGE" ] || fcuvrx_fail "bridge missing: $FCUVRX_BRIDGE"
   [ -r "$FCUVRX_EVIDENCE" ] \
     || fcuvrx_fail "evidence observer missing: $FCUVRX_EVIDENCE"
+  [ -x /usr/bin/env ] || fcuvrx_fail '/usr/bin/env is unavailable'
   [ -x /usr/bin/python3 ] || fcuvrx_fail '/usr/bin/python3 is unavailable'
   fcuvrx_verify_repository
   fcuvrx_require_udp_port_free
+  if fcuvrx_real_fcu_mode; then
+    fcuvrx_require_twin_telemetry_port_free
+  fi
   fcuvrx_reject_conflicts
   fcuvrx_configure_ros_environment
   fcuvrx_require_command ros2
@@ -350,6 +393,7 @@ fcuvrx_static_preflight() {
 }
 
 fcuvrx_build_commands() {
+  FCUVRX_RELAY_COMMAND=()
   FCUVRX_VRX_COMMAND=(
     ros2 launch vrx_gz competition.launch.py
     "world:=$FCUVRX_WORLD" 'sim_mode:=full'
@@ -388,6 +432,42 @@ fcuvrx_build_commands() {
     --pose-topic /wamv/pose
     --world-frame "$FCUVRX_WORLD"
   )
+  if fcuvrx_real_fcu_mode; then
+    FCUVRX_BRIDGE_COMMAND+=(
+      -p 'twin_telemetry_role:=sender'
+      -p "twin_telemetry_udp_port:=$FCUVRX_TWIN_TELEMETRY_UDP_PORT"
+      -p "twin_telemetry_topic:=$FCUVRX_TWIN_TELEMETRY_TOPIC"
+      -p 'twin_telemetry_pose_topic:=/wamv/pose'
+      -p "twin_telemetry_world_frame:=$FCUVRX_WORLD"
+      -p "twin_telemetry_stale_seconds:=$FCU_VRX_OBSERVER_STALE_SECONDS"
+    )
+    FCUVRX_RELAY_COMMAND=(
+      /usr/bin/env
+      "ROS_DOMAIN_ID=$FCUVRX_RELAY_DOMAIN_ID"
+      "ROS_AUTOMATIC_DISCOVERY_RANGE=$FCUVRX_RELAY_DISCOVERY_RANGE"
+      "ROS_LOCALHOST_ONLY=$FCUVRX_RELAY_LOCALHOST_ONLY"
+      /usr/bin/python3 "$FCUVRX_BRIDGE" --ros-args
+      -r '__node:=fcu_to_vrx_rc_out_relay'
+      -p 'input_mode:=ros_rc_out_relay'
+      -p 'rc_out_topic:=/mavros/rc/out'
+      -p 'rc_out_publisher:=/mavros/rc'
+      -p 'target_ip:=127.0.0.1'
+      -p "udp_send_port:=$FCUVRX_UDP_RECV_PORT"
+      -p "left_servo_channel:=$FCU_VRX_LEFT_SERVO_CHANNEL"
+      -p "right_servo_channel:=$FCU_VRX_RIGHT_SERVO_CHANNEL"
+      -p "pwm_min:=$FCU_VRX_PWM_MIN"
+      -p "pwm_neutral:=$FCU_VRX_PWM_NEUTRAL"
+      -p "pwm_max:=$FCU_VRX_PWM_MAX"
+      -p "max_thrust:=$FCU_VRX_MAX_THRUST"
+      -p 'publish_sensors:=false'
+      -p 'publish_cmd_vel:=false'
+      -p 'twin_telemetry_role:=receiver'
+      -p "twin_telemetry_udp_port:=$FCUVRX_TWIN_TELEMETRY_UDP_PORT"
+      -p "twin_telemetry_topic:=$FCUVRX_TWIN_TELEMETRY_TOPIC"
+      -p "twin_telemetry_world_frame:=$FCUVRX_WORLD"
+      -p "twin_telemetry_stale_seconds:=$FCU_VRX_OBSERVER_STALE_SECONDS"
+    )
+  fi
 }
 
 fcuvrx_init_state() {
@@ -422,6 +502,7 @@ fcuvrx_write_manifest() {
     printf 'revision=%s\n' "$(git -C "$FCUVRX_REPO_ROOT" rev-parse HEAD)"
     printf 'origin_main=%s\n' \
       "$(git -C "$FCUVRX_REPO_ROOT" rev-parse refs/remotes/origin/main)"
+    printf 'run_mode=%s\n' "$FCUVRX_RUN_MODE"
     printf 'ROS_DOMAIN_ID=%s\n' "$ROS_DOMAIN_ID"
     printf 'ROS_AUTOMATIC_DISCOVERY_RANGE=%s\n' \
       "$ROS_AUTOMATIC_DISCOVERY_RANGE"
@@ -443,6 +524,25 @@ fcuvrx_write_manifest() {
       "$FCUVRX_OBSERVER_READY_TIMEOUT_SECONDS"
     printf 'publish_sensors=false\n'
     printf 'publish_cmd_vel=false\n'
+    if fcuvrx_real_fcu_mode; then
+      printf 'twin_telemetry_enabled=true\n'
+      printf 'twin_telemetry_transport=udp-loopback-outbound-only\n'
+      printf 'twin_telemetry_udp=127.0.0.1:%s\n' \
+        "$FCUVRX_TWIN_TELEMETRY_UDP_PORT"
+      printf 'twin_telemetry_topic=%s\n' "$FCUVRX_TWIN_TELEMETRY_TOPIC"
+      printf 'twin_telemetry_schema=%s\n' "$FCUVRX_TWIN_TELEMETRY_SCHEMA"
+      printf 'twin_telemetry_source=%s\n' "$FCUVRX_TWIN_TELEMETRY_SOURCE"
+      printf 'twin_telemetry_stale_seconds=%s\n' \
+        "$FCU_VRX_OBSERVER_STALE_SECONDS"
+      printf 'relay_ROS_DOMAIN_ID=%s\n' "$FCUVRX_RELAY_DOMAIN_ID"
+      printf 'relay_ROS_AUTOMATIC_DISCOVERY_RANGE=%s\n' \
+        "$FCUVRX_RELAY_DISCOVERY_RANGE"
+      printf 'relay_ROS_LOCALHOST_ONLY=%s\n' "$FCUVRX_RELAY_LOCALHOST_ONLY"
+      printf 'relay_rc_out_topic=/mavros/rc/out\n'
+      printf 'relay_udp_target=127.0.0.1:%s\n' "$FCUVRX_UDP_RECV_PORT"
+    else
+      printf 'twin_telemetry_enabled=false\n'
+    fi
   } >"$FCUVRX_RUN_DIR/manifest/environment.txt"
   sha256sum "$FCUVRX_SCRIPT_DIR/fcu_to_vrx_workstation.sh" \
     "$FCUVRX_BRIDGE" "$FCUVRX_EVIDENCE" \
@@ -456,6 +556,10 @@ fcuvrx_write_manifest() {
     printf '\t%q' "${FCUVRX_BRIDGE_COMMAND[@]}"
     printf '\nobserver'
     printf '\t%q' "${FCUVRX_OBSERVER_COMMAND[@]}"
+    if fcuvrx_real_fcu_mode; then
+      printf '\nrelay'
+      printf '\t%q' "${FCUVRX_RELAY_COMMAND[@]}"
+    fi
     printf '\n'
   } >"$FCUVRX_RUN_DIR/manifest/commands.tsv"
 }
@@ -557,6 +661,30 @@ fcuvrx_wait_bridge_ready() {
   return 1
 }
 
+fcuvrx_wait_relay_ready() {
+  local deadline=$((SECONDS + FCUVRX_READY_TIMEOUT_SECONDS))
+  local marker
+  marker="FCU_TO_VRX_RC_OUT_RELAY_READY=PASS topic=/mavros/rc/out udp=127.0.0.1:$FCUVRX_UDP_RECV_PORT left=SERVO$FCU_VRX_LEFT_SERVO_CHANNEL right=SERVO$FCU_VRX_RIGHT_SERVO_CHANNEL pwm=$FCU_VRX_PWM_MIN/$FCU_VRX_PWM_NEUTRAL/$FCU_VRX_PWM_MAX"
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    fcuvrx_children_alive || return 1
+    grep -Fq "$marker" "$FCUVRX_RUN_DIR/logs/relay.log" && return 0
+    sleep "$FCUVRX_POLL_SECONDS" || true
+  done
+  return 1
+}
+
+fcuvrx_wait_twin_telemetry_ready() {
+  local deadline=$((SECONDS + FCUVRX_READY_TIMEOUT_SECONDS))
+  local marker
+  marker="FCU_TO_VRX_TWIN_TELEMETRY_READY=PASS topic=$FCUVRX_TWIN_TELEMETRY_TOPIC udp=127.0.0.1:$FCUVRX_TWIN_TELEMETRY_UDP_PORT schema=$FCUVRX_TWIN_TELEMETRY_SCHEMA source=$FCUVRX_TWIN_TELEMETRY_SOURCE stale_seconds=$FCU_VRX_OBSERVER_STALE_SECONDS"
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    fcuvrx_children_alive || return 1
+    grep -Fq "$marker" "$FCUVRX_RUN_DIR/logs/relay.log" && return 0
+    sleep "$FCUVRX_POLL_SECONDS" || true
+  done
+  return 1
+}
+
 fcuvrx_wait_observer_started() {
   local deadline=$((SECONDS + FCUVRX_READY_TIMEOUT_SECONDS))
   while [ "$SECONDS" -lt "$deadline" ]; do
@@ -587,7 +715,8 @@ fcuvrx_wait_pose_baseline() {
 
 fcuvrx_wait_observer_ready() {
   # Post-Pi gate. servo_output_raw and both thrust streams originate from the
-  # Pi fanout, so this can only be satisfied after the operator starts the Pi.
+  # Pi fanout or the explicit real-FCU RCOut relay, so the observer itself must
+  # prove that all four streams are present before workstation readiness.
   local deadline=$((SECONDS + FCUVRX_OBSERVER_READY_TIMEOUT_SECONDS))
   while [ "$SECONDS" -lt "$deadline" ]; do
     fcuvrx_children_alive || return 1
@@ -600,10 +729,17 @@ fcuvrx_wait_observer_ready() {
 
 fcuvrx_cleanup() {
   local incoming_rc="${1-$?}" cleanup_rc=0 final_rc operator_success=0 rc
+  local teardown_order='bridge,observer,vrx'
+  local teardown_ports='udp=14555-free'
   [ "$FCUVRX_CLEANING" -eq 0 ] || return "$incoming_rc"
   FCUVRX_CLEANING=1
   trap - EXIT INT TERM
   set +e
+  if fcuvrx_real_fcu_mode; then
+    fcuvrx_stop_child relay || cleanup_rc=1
+    teardown_order='relay,bridge,observer,vrx'
+    teardown_ports='udp=14555-free twin_telemetry_udp=14556-free'
+  fi
   fcuvrx_stop_child bridge || cleanup_rc=1
   fcuvrx_stop_child observer || cleanup_rc=1
   fcuvrx_stop_child vrx || cleanup_rc=1
@@ -615,13 +751,23 @@ fcuvrx_cleanup() {
       rc=$?
       [ "$rc" -eq 1 ] || cleanup_rc=1
     fi
+    if fcuvrx_real_fcu_mode; then
+      if fcuvrx_twin_telemetry_listener_present; then
+        fcuvrx_log_error \
+          "UDP $FCUVRX_TWIN_TELEMETRY_UDP_PORT remains in use after teardown"
+        cleanup_rc=1
+      else
+        rc=$?
+        [ "$rc" -eq 1 ] || cleanup_rc=1
+      fi
+    fi
   fi
   if [ "$incoming_rc" -eq 130 ] \
       && [ "$FCUVRX_OPERATOR_STOP_REQUESTED" -eq 1 ] \
       && [ "$FCUVRX_READY_REACHED" -eq 1 ] \
       && [ "$cleanup_rc" -eq 0 ]; then
     fcuvrx_log \
-      'FCU_TO_VRX_WORKSTATION_TEARDOWN=PASS order=bridge,observer,vrx udp=14555-free'
+      "FCU_TO_VRX_WORKSTATION_TEARDOWN=PASS order=$teardown_order $teardown_ports"
     operator_success=1
   fi
   final_rc="$incoming_rc"
@@ -654,7 +800,7 @@ fcuvrx_check() {
   python3 -m unittest "$FCUVRX_SCRIPT_DIR/test_fcu_to_vrx_parameter_contract.py"
   python3 -m unittest "$FCUVRX_SCRIPT_DIR/test_fcu_to_vrx_evidence.py"
   fcuvrx_log \
-    'FCU_TO_VRX_WORKSTATION_CHECK=PASS shell_cases=23 python_tests=35 runtime=not-started'
+    'FCU_TO_VRX_WORKSTATION_CHECK=PASS shell_cases=30 python_tests=48 runtime=not-started'
 }
 
 fcuvrx_run() {
@@ -701,16 +847,39 @@ fcuvrx_run() {
     "${FCUVRX_BRIDGE_COMMAND[@]}"
   fcuvrx_wait_bridge_ready \
     || fcuvrx_fail 'bridge UDP listener did not become ready before the deadline'
-  fcuvrx_log \
-    "FCU_TO_VRX_WORKSTATION_PRESTART=PASS domain=77 udp=14555-listening world=$FCUVRX_WORLD mapping=$FCU_VRX_LEFT_SERVO_CHANNEL/$FCU_VRX_RIGHT_SERVO_CHANNEL rails=$FCU_VRX_PWM_MIN/$FCU_VRX_PWM_NEUTRAL/$FCU_VRX_PWM_MAX observer=started pose=baseline ready_timeout_seconds=$FCUVRX_READY_TIMEOUT_SECONDS observer_ready_timeout_seconds=$FCUVRX_OBSERVER_READY_TIMEOUT_SECONDS publish_sensors=false publish_cmd_vel=false"
-  fcuvrx_log 'start the Pi helper now; this terminal waits for the four-stream observer READY before declaring workstation readiness'
+  if fcuvrx_real_fcu_mode; then
+    fcuvrx_start_child relay "$FCUVRX_RUN_DIR/logs/relay.log" \
+      "${FCUVRX_RELAY_COMMAND[@]}"
+    fcuvrx_log \
+      "FCU_TO_VRX_WORKSTATION_PRESTART=PASS mode=run-real-fcu domain=77 udp=14555-listening world=$FCUVRX_WORLD mapping=$FCU_VRX_LEFT_SERVO_CHANNEL/$FCU_VRX_RIGHT_SERVO_CHANNEL rails=$FCU_VRX_PWM_MIN/$FCU_VRX_PWM_NEUTRAL/$FCU_VRX_PWM_MAX observer=started pose=baseline relay=started relay_domain=43 relay_discovery=SUBNET twin_telemetry=started twin_telemetry_udp=127.0.0.1:$FCUVRX_TWIN_TELEMETRY_UDP_PORT twin_telemetry_topic=$FCUVRX_TWIN_TELEMETRY_TOPIC ready_timeout_seconds=$FCUVRX_READY_TIMEOUT_SECONDS observer_ready_timeout_seconds=$FCUVRX_OBSERVER_READY_TIMEOUT_SECONDS publish_sensors=false publish_cmd_vel=false"
+    fcuvrx_log 'start the approved real-FCU Pi helper now; this terminal waits for relayed RCOut, outbound twin telemetry and four-stream observer READY before declaring workstation readiness'
+    fcuvrx_wait_relay_ready \
+      || fcuvrx_fail 'real-FCU RCOut relay did not become ready before the deadline'
+    fcuvrx_log \
+      "FCU_TO_VRX_RC_OUT_RELAY_READY=PASS topic=/mavros/rc/out udp=127.0.0.1:$FCUVRX_UDP_RECV_PORT left=SERVO$FCU_VRX_LEFT_SERVO_CHANNEL right=SERVO$FCU_VRX_RIGHT_SERVO_CHANNEL pwm=$FCU_VRX_PWM_MIN/$FCU_VRX_PWM_NEUTRAL/$FCU_VRX_PWM_MAX"
+    fcuvrx_wait_twin_telemetry_ready \
+      || fcuvrx_fail 'outbound twin telemetry did not become ready before the deadline'
+    fcuvrx_log \
+      "FCU_TO_VRX_TWIN_TELEMETRY_READY=PASS topic=$FCUVRX_TWIN_TELEMETRY_TOPIC udp=127.0.0.1:$FCUVRX_TWIN_TELEMETRY_UDP_PORT schema=$FCUVRX_TWIN_TELEMETRY_SCHEMA source=$FCUVRX_TWIN_TELEMETRY_SOURCE stale_seconds=$FCU_VRX_OBSERVER_STALE_SECONDS"
+  else
+    fcuvrx_log \
+      "FCU_TO_VRX_WORKSTATION_PRESTART=PASS domain=77 udp=14555-listening world=$FCUVRX_WORLD mapping=$FCU_VRX_LEFT_SERVO_CHANNEL/$FCU_VRX_RIGHT_SERVO_CHANNEL rails=$FCU_VRX_PWM_MIN/$FCU_VRX_PWM_NEUTRAL/$FCU_VRX_PWM_MAX observer=started pose=baseline ready_timeout_seconds=$FCUVRX_READY_TIMEOUT_SECONDS observer_ready_timeout_seconds=$FCUVRX_OBSERVER_READY_TIMEOUT_SECONDS publish_sensors=false publish_cmd_vel=false"
+    fcuvrx_log 'start the Pi helper now; this terminal waits for the four-stream observer READY before declaring workstation readiness'
+  fi
 
   fcuvrx_wait_observer_ready \
     || fcuvrx_fail "VRX observer did not reach four-stream READY within observer_ready_timeout_seconds=$FCUVRX_OBSERVER_READY_TIMEOUT_SECONDS"
   FCUVRX_READY_REACHED=1
-  fcuvrx_log \
-    "FCU_TO_VRX_WORKSTATION_READY=PASS domain=77 udp=14555 world=$FCUVRX_WORLD mapping=$FCU_VRX_LEFT_SERVO_CHANNEL/$FCU_VRX_RIGHT_SERVO_CHANNEL rails=$FCU_VRX_PWM_MIN/$FCU_VRX_PWM_NEUTRAL/$FCU_VRX_PWM_MAX observer=ready streams=4 observer_stale_seconds=${FCU_VRX_OBSERVER_STALE_SECONDS:-0} observer_ready_timeout_seconds=$FCUVRX_OBSERVER_READY_TIMEOUT_SECONDS publish_sensors=false publish_cmd_vel=false"
-  if [ "$FCU_VRX_CORRELATED_OBSERVATION" -eq 1 ]; then
+  if fcuvrx_real_fcu_mode; then
+    fcuvrx_log \
+      "FCU_TO_VRX_WORKSTATION_READY=PASS mode=run-real-fcu domain=77 udp=14555 world=$FCUVRX_WORLD mapping=$FCU_VRX_LEFT_SERVO_CHANNEL/$FCU_VRX_RIGHT_SERVO_CHANNEL rails=$FCU_VRX_PWM_MIN/$FCU_VRX_PWM_NEUTRAL/$FCU_VRX_PWM_MAX observer=ready streams=4 relay=ready relay_domain=43 relay_discovery=SUBNET twin_telemetry=ready twin_telemetry_topic=$FCUVRX_TWIN_TELEMETRY_TOPIC twin_telemetry_stale_seconds=$FCU_VRX_OBSERVER_STALE_SECONDS observer_stale_seconds=${FCU_VRX_OBSERVER_STALE_SECONDS:-0} observer_ready_timeout_seconds=$FCUVRX_OBSERVER_READY_TIMEOUT_SECONDS publish_sensors=false publish_cmd_vel=false"
+  else
+    fcuvrx_log \
+      "FCU_TO_VRX_WORKSTATION_READY=PASS domain=77 udp=14555 world=$FCUVRX_WORLD mapping=$FCU_VRX_LEFT_SERVO_CHANNEL/$FCU_VRX_RIGHT_SERVO_CHANNEL rails=$FCU_VRX_PWM_MIN/$FCU_VRX_PWM_NEUTRAL/$FCU_VRX_PWM_MAX observer=ready streams=4 observer_stale_seconds=${FCU_VRX_OBSERVER_STALE_SECONDS:-0} observer_ready_timeout_seconds=$FCUVRX_OBSERVER_READY_TIMEOUT_SECONDS publish_sensors=false publish_cmd_vel=false"
+  fi
+  if fcuvrx_real_fcu_mode; then
+    fcuvrx_log 'planned stop: externally disarm first; stop W2 here; initiate the real-FCU Pi stop/closeout; then stop W1 so its stop marker lets the Pi finish'
+  elif [ "$FCU_VRX_CORRELATED_OBSERVATION" -eq 1 ]; then
     fcuvrx_log 'no arming before this line; planned stop: after PI_SOURCE_HOLD=ACTIVE, press Ctrl+C here before stopping W1 and the Pi helper'
   else
     fcuvrx_log 'no arming before this line; planned stop: stop the Pi helper first, then press Ctrl+C here'
@@ -725,7 +894,14 @@ fcuvrx_run() {
 fcuvrx_main() {
   case "$#:${1:-}" in
     1:check) fcuvrx_check ;;
-    1:run) fcuvrx_run ;;
+    1:run)
+      FCUVRX_RUN_MODE=run
+      fcuvrx_run
+      ;;
+    1:run-real-fcu)
+      FCUVRX_RUN_MODE=run-real-fcu
+      fcuvrx_run
+      ;;
     *) fcuvrx_usage ;;
   esac
 }

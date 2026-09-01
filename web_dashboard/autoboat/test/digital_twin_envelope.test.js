@@ -79,7 +79,7 @@ function createHarness() {
         'globalThis.__twinApi = { updateThruster, hullThrustClass, ' +
         'applyPersonStopStatus, renderPersonStopBadge, resetPersonStopStatus, ' +
         'refreshPersonStopFreshness, personStatusIsCurrent, readPersonVerdict, ' +
-        'applyControlStatus, isStatusObject, twinState };',
+        'applyControlStatus, applyPersonAlert, isStatusObject, twinState };',
         context
     );
 
@@ -157,7 +157,7 @@ test('a person hold is rendered as a critical badge', () => {
     const held = api.applyPersonStopStatus({ ...HELD, forward_only: true });
     assert.equal(held, true);
     const el = elements.get('person-stop-status');
-    assert.equal(el.textContent, 'PERSON — HOLD');
+    assert.equal(el.textContent, 'PERSON OBSTACLE — STOPPED');
     assert.match(el.className, /critical/);
 });
 
@@ -167,7 +167,8 @@ test('a hold is shown even when nothing corroborates it', () => {
     api.applyPersonStopStatus({
         person_stop: true, person_verdict_known: false, person_feed_fresh: false
     });
-    assert.equal(elements.get('person-stop-status').textContent, 'PERSON — HOLD');
+    assert.equal(elements.get('person-stop-status').textContent,
+        'PERSON OBSTACLE — STOPPED');
 });
 
 test('clearing the hold restores the clear badge when evidenced', () => {
@@ -227,7 +228,8 @@ test('a quiet controller cannot hide an active hold', () => {
     });
     advance(60000);
     api.refreshPersonStopFreshness();
-    assert.equal(elements.get('person-stop-status').textContent, 'PERSON — HOLD');
+    assert.equal(elements.get('person-stop-status').textContent,
+        'PERSON OBSTACLE — STOPPED');
 });
 
 test('a fresh status message revives the reading', () => {
@@ -309,7 +311,8 @@ test('a malformed status message can never release an active hold', () => {
         const { api, elements } = createHarness();
         api.applyPersonStopStatus(HELD);
         assert.equal(api.applyPersonStopStatus(data), true, String(data));
-        assert.equal(elements.get('person-stop-status').textContent, 'PERSON — HOLD',
+        assert.equal(elements.get('person-stop-status').textContent,
+            'PERSON OBSTACLE — STOPPED',
             String(data));
     }
 });
@@ -340,8 +343,57 @@ test('a non-object status message cannot release an active hold', () => {
         assert.doesNotThrow(() => deliver(json), json);
         assert.equal(api.twinState.personStop, true, json);
         assert.equal(elements.get('person-stop-status').textContent,
-            'PERSON — HOLD', json);
+            'PERSON OBSTACLE — STOPPED', json);
     }
+});
+
+test('a direct person alert reports a stopped person obstacle', () => {
+    const { api, elements } = createHarness();
+    assert.equal(api.applyPersonAlert({
+        person_detected: true,
+        feed_fresh: true,
+        reason: 'person_detected',
+        score: 0.91,
+        count: 1
+    }), true);
+    assert.equal(api.twinState.personStop, true);
+    assert.equal(elements.get('person-stop-status').textContent,
+        'PERSON OBSTACLE — STOPPED');
+});
+
+test('a detector feed loss reports a stopped camera fault', () => {
+    const { api, elements } = createHarness();
+    assert.equal(api.applyPersonAlert({
+        person_detected: false,
+        feed_fresh: false,
+        reason: 'detector_feed_lost'
+    }), true);
+    assert.equal(api.twinState.personStop, true);
+    assert.equal(
+        elements.get('person-stop-status').textContent,
+        'CAMERA FEED LOST — STOPPED'
+    );
+});
+
+test('a fresh direct clear is evidenced while malformed alerts change nothing', () => {
+    const { api, elements } = createHarness();
+    api.applyPersonAlert({ person_detected: true, feed_fresh: true });
+    for (const malformed of [null, [], {}, { person_detected: false },
+        { person_detected: 'false', feed_fresh: true }]) {
+        assert.equal(api.applyPersonAlert(malformed), false);
+        assert.equal(api.twinState.personStop, true);
+    }
+    assert.equal(api.applyPersonAlert({
+        person_detected: false,
+        feed_fresh: true,
+        reason: ''
+    }), true);
+    assert.equal(elements.get('person-stop-status').textContent, 'Clear');
+});
+
+test('the dashboard subscribes directly to the person alert topic', () => {
+    assert.match(appSource, /name:\s*'\/perception\/person_alert'/);
+    assert.match(appSource, /applyPersonAlert\(data\)/);
 });
 
 test('a non-object status message does not refresh the staleness clock', () => {

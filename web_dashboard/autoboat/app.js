@@ -257,7 +257,8 @@ function handleCameraViewerKeydown(event) {
 // ========== TEMPORARY LIVE MAVLINK VIEW ==========
 // The normal live build is deliberately display-only. It subscribes directly to
 // MAVROS and blocks mission/config writes at the final send boundary. The separately
-// requested FCU bench component has one narrow RC-demand publisher and one E-Stop.
+// requested FCU bench component has one narrow RC-demand publisher, one E-Stop,
+// and explicit reset/owner handshakes handled by the guarded FCU bridge.
 // The expanded camera viewer contains its own E-Stop so the narrow bench stop
 // path remains reachable while the full-screen overlay owns pointer and focus.
 const LIVE_MAVLINK_VIEW_ONLY = true;
@@ -365,11 +366,19 @@ const THRUST_RIGHT_CHANNEL = LIVE_MAVLINK_THRUST_CHANNELS.right;
 const FCU_BENCH_COMMAND_TOPIC = '/command_ingress/rc_axes';
 const FCU_BENCH_STATUS_TOPIC = '/command_ingress/status';
 const FCU_BENCH_EMERGENCY_TOPIC = '/planning/emergency_stop';
+const FCU_BENCH_EMERGENCY_RESET_TOPIC = '/command_ingress/emergency_reset';
+const FCU_BENCH_CONTROL_OWNER_TOPIC = '/command_ingress/control_owner';
+const FCU_TWIN_TELEMETRY_TOPIC = '/fcu_to_vrx/twin_telemetry';
+const FCU_TWIN_TELEMETRY_SCHEMA = 'uvautoboat.fcu_to_vrx.twin_telemetry.v1';
+const FCU_TWIN_TELEMETRY_SOURCE = 'fcu_to_vrx_domain77_bridge';
+const FCU_TWIN_TELEMETRY_MAX_AGE_MS = 2000;
 const FCU_BENCH_FRAME_ID = 'uvautoboat/rc_axes/v1';
 const FCU_BENCH_PUBLISH_MS = 50;
 const FCU_BENCH_STATUS_MAX_AGE_MS = 500;
 const FCU_BENCH_MAX_STEERING = 0.20;
 const FCU_BENCH_MAX_THROTTLE = 0.12;
+const FCU_BENCH_HERELINK_NEUTRAL_CONFIRMATION = 'HERELINK_STICKS_NEUTRAL';
+const FCU_BENCH_DASHBOARD_RESET_CONFIRMATION = 'DASHBOARD_COMMAND_NEUTRAL';
 
 function liveFcuBenchRequested(search = '') {
     return String(search).replace(/^\?/, '').split('&').some((entry) => {
@@ -385,10 +394,16 @@ let liveFcuBenchStatus = null;
 let liveFcuBenchStatusReceivedAt = 0;
 let liveFcuBenchCommandPublisher = null;
 let liveFcuBenchEmergencyPublisher = null;
+let liveFcuBenchEmergencyResetPublisher = null;
+let liveFcuBenchControlOwnerPublisher = null;
 let liveFcuBenchHoldTimer = null;
+let liveFcuBenchNeutralTimeouts = [];
 let liveFcuBenchLastStampMs = 0;
 let liveFcuBenchLastArmed = false;
 let liveFcuBenchEmergencyLatched = false;
+let liveFcuBenchLastControlOwner = null;
+let liveFcuTwinTelemetry = null;
+let liveFcuTwinTelemetryReceivedAt = 0;
 
 // sensor_msgs/NavSatStatus fix codes and MAV_STATE system-status codes, rendered by
 // name so an operator does not have to decode a bare integer while a run is live.
@@ -485,6 +500,8 @@ function refreshLiveMavlinkFreshness(now = Date.now()) {
 
     const lastUpdate = document.getElementById('mavlink-last-update');
     if (lastUpdate) lastUpdate.textContent = summary.join(' | ');
+    refreshLiveFcuTwinTelemetry(now);
+    refreshFcuBenchControls();
 }
 
 function markLiveMavlinkTopic(key, receivedAt = Date.now()) {
@@ -667,6 +684,7 @@ function fcuBenchCanApply(status = liveFcuBenchStatus, nowMs = Date.now()) {
         && status?.connected === true
         && status?.armed === true
         && status?.mode === 'MANUAL'
+        && (status?.control_owner ?? 'DASHBOARD') === 'DASHBOARD'
         && ['ARMED_NEUTRAL', 'ACTIVE'].includes(status?.state);
 }
 
@@ -678,6 +696,11 @@ function refreshFcuBenchControls() {
     const throttle = document.getElementById('fcu-loop-throttle');
     const neutral = document.getElementById('btn-fcu-loop-neutral');
     const hold = document.getElementById('btn-fcu-loop-hold');
+    const resetEstop = document.getElementById('btn-fcu-loop-reset-estop');
+    const ownerButton = document.getElementById('btn-fcu-loop-control-owner');
+    const owner = liveFcuBenchStatus?.control_owner ?? 'DASHBOARD';
+    const statusFresh = Date.now() - liveFcuBenchStatusReceivedAt
+        < FCU_BENCH_STATUS_MAX_AGE_MS;
     const canApply = fcuBenchCanApply();
     if (liveFcuBenchHoldTimer !== null && !canApply) stopFcuBenchHold();
     if (confirmation) confirmation.disabled = !requested || !resolved;
@@ -685,6 +708,36 @@ function refreshFcuBenchControls() {
     if (throttle) throttle.disabled = !requested || !resolved;
     if (neutral) neutral.disabled = !requested || !resolved || !connected;
     if (hold) hold.disabled = !canApply;
+    if (resetEstop) {
+        resetEstop.disabled = !requested || !resolved || !connected
+            || !statusFresh
+            || confirmation?.checked !== true
+            || liveFcuBenchStatus?.emergency_stop_latched !== true
+            || liveFcuBenchStatus?.emergency_reset_allowed !== true;
+        resetEstop.title = liveFcuBenchStatus?.emergency_reset_block_reason || '';
+        resetEstop.textContent = owner === 'HERELINK'
+            ? 'Confirm Herelink Sticks Neutral & Reset E-Stop'
+            : 'Reset E-Stop';
+    }
+    if (ownerButton) {
+        const ownerKnown = owner === 'DASHBOARD' || owner === 'HERELINK';
+        ownerButton.disabled = !requested || !resolved || !connected
+            || !statusFresh || !ownerKnown
+            || confirmation?.checked !== true
+            || liveFcuBenchStatus?.ready !== true
+            || liveFcuBenchStatus?.feedback_fresh !== true
+            || liveFcuBenchStatus?.emergency_stop_latched === true;
+        ownerButton.textContent = owner === 'HERELINK'
+            ? 'Switch to Dashboard Control (Neutral Now Required)'
+            : 'Confirm Herelink Sticks Neutral & Take Control';
+    }
+    setLiveMavlinkValue(
+        'fcu-loop-owner',
+        owner === 'HERELINK' ? 'HERELINK'
+            : owner === 'DASHBOARD' ? 'DASHBOARD' : 'Unknown',
+        owner === 'HERELINK' ? 'warning'
+            : owner === 'DASHBOARD' ? 'clear' : 'critical'
+    );
 
     const policy = document.getElementById('fcu-loop-policy');
     if (!policy) return;
@@ -694,6 +747,13 @@ function refreshFcuBenchControls() {
         policy.textContent = 'WAITING — guarded bridge has not supplied a live mapping and rail resolution.';
     } else if (!confirmation?.checked) {
         policy.textContent = 'INHIBITED — confirm the physical bench conditions below.';
+    } else if (liveFcuBenchStatus?.emergency_stop_latched === true) {
+        const reason = liveFcuBenchStatus?.emergency_reset_block_reason;
+        policy.textContent = liveFcuBenchStatus?.emergency_reset_allowed === true
+            ? 'E-STOP LATCHED — Reset E-Stop is available; motion still requires a new neutral prime.'
+            : `E-STOP LATCHED — reset blocked${reason ? `: ${reason}` : '.'}`;
+    } else if (owner === 'HERELINK') {
+        policy.textContent = 'HERELINK CONTROL — dashboard demand is inhibited; measured FCU output still drives the VRX twin.';
     } else if (!fcuBenchCanApply()) {
         policy.textContent = 'NEUTRAL ONLY — wait for connected, armed MANUAL state and ARMED_NEUTRAL bridge status.';
     } else {
@@ -745,10 +805,17 @@ function updateLiveFcuBenchStatus(message) {
         return;
     }
     const newlyArmed = status.armed === true && !liveFcuBenchLastArmed;
+    const nextOwner = status.control_owner ?? 'DASHBOARD';
+    const wasEmergencyLatched = liveFcuBenchEmergencyLatched;
     liveFcuBenchStatus = status;
     liveFcuBenchStatusReceivedAt = Date.now();
     liveFcuBenchLastArmed = status.armed === true;
-    if (status.state === 'EMERGENCY_STOP') liveFcuBenchEmergencyLatched = true;
+    liveFcuBenchLastControlOwner = nextOwner;
+    if (typeof status.emergency_stop_latched === 'boolean') {
+        liveFcuBenchEmergencyLatched = status.emergency_stop_latched;
+    } else if (status.state === 'EMERGENCY_STOP') {
+        liveFcuBenchEmergencyLatched = true;
+    }
     setLiveMavlinkValue(
         'fcu-loop-state',
         status.fault && status.fault !== status.state
@@ -810,6 +877,119 @@ function updateLiveFcuBenchStatus(message) {
     if (newlyArmed) publishFcuBenchDemand(0);
 }
 
+function hasExactFields(value, fields) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const actual = Object.keys(value).sort();
+    const expected = [...fields].sort();
+    return actual.length === expected.length
+        && actual.every((field, index) => field === expected[index]);
+}
+
+function validatedLiveFcuTwinTelemetry(message) {
+    let payload;
+    try {
+        payload = JSON.parse(message?.data || '');
+    } catch (error) {
+        return null;
+    }
+    if (!hasExactFields(payload, [
+        'schema', 'source', 'sequence', 'sent_unix_ns', 'sent_monotonic_ns',
+        'pose', 'thrust'
+    ])) return null;
+    if (payload.schema !== FCU_TWIN_TELEMETRY_SCHEMA
+            || payload.source !== FCU_TWIN_TELEMETRY_SOURCE
+            || !Number.isInteger(payload.sequence)
+            || payload.sequence <= 0
+            || !Number.isFinite(payload.sent_unix_ns)
+            || payload.sent_unix_ns <= 0
+            || !Number.isFinite(payload.sent_monotonic_ns)
+            || payload.sent_monotonic_ns <= 0) return null;
+
+    const pose = payload.pose;
+    const thrust = payload.thrust;
+    if (!hasExactFields(pose, [
+        'frame_id', 'child_frame_id', 'position', 'orientation'
+    ]) || pose.frame_id !== 'sydney_regatta'
+            || typeof pose.child_frame_id !== 'string'
+            || pose.child_frame_id.length === 0
+            || !hasExactFields(pose.position, ['x', 'y', 'z'])
+            || !hasExactFields(pose.orientation, ['x', 'y', 'z', 'w'])
+            || !Object.values(pose.position).every(Number.isFinite)
+            || !Object.values(pose.orientation).every(Number.isFinite)
+            || !hasExactFields(thrust, ['left_newtons', 'right_newtons'])
+            || !Object.values(thrust).every(Number.isFinite)) return null;
+    const norm = Math.hypot(
+        pose.orientation.x,
+        pose.orientation.y,
+        pose.orientation.z,
+        pose.orientation.w
+    );
+    return norm >= 0.5 && norm <= 1.5 ? payload : null;
+}
+
+function resetLiveFcuTwinTelemetry() {
+    liveFcuTwinTelemetry = null;
+    liveFcuTwinTelemetryReceivedAt = 0;
+    setLiveMavlinkValue('fcu-loop-twin-status', 'Waiting', 'warning');
+    setLiveMavlinkValue(
+        'fcu-loop-twin-pose', 'Waiting for validated twin telemetry'
+    );
+    setLiveMavlinkValue(
+        'fcu-loop-twin-thrust', 'Waiting for validated twin telemetry'
+    );
+}
+
+function refreshLiveFcuTwinTelemetry(now = Date.now()) {
+    if (!liveFcuTwinTelemetry || !Number.isFinite(liveFcuTwinTelemetryReceivedAt)) {
+        setLiveMavlinkValue('fcu-loop-twin-status', 'Waiting', 'warning');
+        return;
+    }
+    const ageMs = Math.max(0, now - liveFcuTwinTelemetryReceivedAt);
+    if (ageMs >= FCU_TWIN_TELEMETRY_MAX_AGE_MS) {
+        setLiveMavlinkValue(
+            'fcu-loop-twin-status',
+            `Stale (${formatLiveMavlinkAge(ageMs)})`,
+            'critical'
+        );
+        return;
+    }
+    setLiveMavlinkValue(
+        'fcu-loop-twin-status',
+        ageMs === 0 ? 'Live' : `Live (${formatLiveMavlinkAge(ageMs)})`,
+        'clear'
+    );
+}
+
+function updateLiveFcuTwinTelemetry(message) {
+    const payload = validatedLiveFcuTwinTelemetry(message);
+    if (!payload) {
+        setLiveMavlinkValue(
+            'fcu-loop-twin-status', 'Invalid twin telemetry', 'critical'
+        );
+        return false;
+    }
+    liveFcuTwinTelemetry = payload;
+    liveFcuTwinTelemetryReceivedAt = Date.now();
+    const position = payload.pose.position;
+    const thrust = payload.thrust;
+    setLiveMavlinkValue(
+        'fcu-loop-twin-pose',
+        `${payload.pose.frame_id} | X ${position.x.toFixed(2)} m | `
+            + `Y ${position.y.toFixed(2)} m | Z ${position.z.toFixed(2)} m`
+    );
+    setLiveMavlinkValue(
+        'fcu-loop-twin-thrust',
+        `Left ${thrust.left_newtons.toFixed(1)} N | `
+            + `Right ${thrust.right_newtons.toFixed(1)} N`
+    );
+    if (typeof updateThruster === 'function') {
+        updateThruster('left', thrust.left_newtons);
+        updateThruster('right', thrust.right_newtons);
+    }
+    refreshLiveFcuTwinTelemetry(liveFcuTwinTelemetryReceivedAt);
+    return true;
+}
+
 function publishFcuBenchDemand(enable) {
     if (!LIVE_FCU_BENCH_REQUESTED || !liveFcuBenchCommandPublisher || !connected) return false;
     if (enable === 1 && !fcuBenchCanApply()) return false;
@@ -830,9 +1010,22 @@ function stopFcuBenchHold() {
         clearInterval(liveFcuBenchHoldTimer);
         liveFcuBenchHoldTimer = null;
     }
+    liveFcuBenchNeutralTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+    liveFcuBenchNeutralTimeouts = [];
     publishFcuBenchDemand(0);
-    setTimeout(() => publishFcuBenchDemand(0), FCU_BENCH_PUBLISH_MS);
-    setTimeout(() => publishFcuBenchDemand(0), FCU_BENCH_PUBLISH_MS * 2);
+    liveFcuBenchNeutralTimeouts.push(
+        setTimeout(() => publishFcuBenchDemand(0), FCU_BENCH_PUBLISH_MS),
+        setTimeout(() => publishFcuBenchDemand(0), FCU_BENCH_PUBLISH_MS * 2)
+    );
+}
+
+function cancelFcuBenchHoldWithoutPublishing() {
+    if (liveFcuBenchHoldTimer !== null) {
+        clearInterval(liveFcuBenchHoldTimer);
+        liveFcuBenchHoldTimer = null;
+    }
+    liveFcuBenchNeutralTimeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+    liveFcuBenchNeutralTimeouts = [];
 }
 
 function startFcuBenchHold() {
@@ -857,6 +1050,63 @@ function publishFcuBenchEmergencyStop() {
     return true;
 }
 
+function publishFcuBenchEmergencyReset() {
+    const confirmation = document.getElementById('fcu-loop-physical-confirmation');
+    if (!LIVE_FCU_BENCH_REQUESTED || !connected
+            || !liveFcuBenchEmergencyResetPublisher
+            || Date.now() - liveFcuBenchStatusReceivedAt
+                >= FCU_BENCH_STATUS_MAX_AGE_MS
+            || confirmation?.checked !== true
+            || liveFcuBenchStatus?.emergency_stop_latched !== true
+            || liveFcuBenchStatus?.emergency_reset_allowed !== true) return false;
+    cancelFcuBenchHoldWithoutPublishing();
+    const owner = liveFcuBenchStatus?.control_owner ?? 'DASHBOARD';
+    liveFcuBenchEmergencyResetPublisher.publish(
+        new ROSLIB.Message({
+            data: owner === 'HERELINK'
+                ? FCU_BENCH_HERELINK_NEUTRAL_CONFIRMATION
+                : FCU_BENCH_DASHBOARD_RESET_CONFIRMATION
+        })
+    );
+    return true;
+}
+
+function publishFcuBenchControlOwner(targetOwner) {
+    const confirmation = document.getElementById('fcu-loop-physical-confirmation');
+    const currentOwner = liveFcuBenchStatus?.control_owner ?? 'DASHBOARD';
+    if (!LIVE_FCU_BENCH_REQUESTED || !connected
+            || !liveFcuBenchControlOwnerPublisher
+            || Date.now() - liveFcuBenchStatusReceivedAt
+                >= FCU_BENCH_STATUS_MAX_AGE_MS
+            || confirmation?.checked !== true
+            || !['DASHBOARD', 'HERELINK'].includes(targetOwner)
+            || !['DASHBOARD', 'HERELINK'].includes(currentOwner)
+            || liveFcuBenchStatus?.ready !== true
+            || liveFcuBenchStatus?.feedback_fresh !== true
+            || liveFcuBenchStatus?.emergency_stop_latched === true) return false;
+    if (targetOwner === 'HERELINK') {
+        stopFcuBenchHold();
+    } else {
+        cancelFcuBenchHoldWithoutPublishing();
+    }
+    liveFcuBenchControlOwnerPublisher.publish(
+        new ROSLIB.Message({
+            data: targetOwner === 'HERELINK'
+                ? FCU_BENCH_HERELINK_NEUTRAL_CONFIRMATION
+                : targetOwner
+        })
+    );
+    return true;
+}
+
+function toggleFcuBenchControlOwner() {
+    const owner = liveFcuBenchStatus?.control_owner ?? 'DASHBOARD';
+    if (owner !== 'DASHBOARD' && owner !== 'HERELINK') return false;
+    return publishFcuBenchControlOwner(
+        owner === 'HERELINK' ? 'DASHBOARD' : 'HERELINK'
+    );
+}
+
 function subscribeToLiveFcuBenchLoop() {
     const statusTopic = new ROSLIB.Topic({
         ros,
@@ -866,6 +1116,14 @@ function subscribeToLiveFcuBenchLoop() {
         queue_length: 1
     });
     statusTopic.subscribe(updateLiveFcuBenchStatus);
+    const twinTelemetryTopic = new ROSLIB.Topic({
+        ros,
+        name: FCU_TWIN_TELEMETRY_TOPIC,
+        messageType: 'std_msgs/String',
+        throttle_rate: 100,
+        queue_length: 1
+    });
+    twinTelemetryTopic.subscribe(updateLiveFcuTwinTelemetry);
     if (LIVE_FCU_BENCH_REQUESTED) {
         liveFcuBenchCommandPublisher = new ROSLIB.Topic({
             ros,
@@ -879,6 +1137,18 @@ function subscribeToLiveFcuBenchLoop() {
             messageType: 'std_msgs/Bool',
             queue_size: 1
         });
+        liveFcuBenchEmergencyResetPublisher = new ROSLIB.Topic({
+            ros,
+            name: FCU_BENCH_EMERGENCY_RESET_TOPIC,
+            messageType: 'std_msgs/String',
+            queue_size: 1
+        });
+        liveFcuBenchControlOwnerPublisher = new ROSLIB.Topic({
+            ros,
+            name: FCU_BENCH_CONTROL_OWNER_TOPIC,
+            messageType: 'std_msgs/String',
+            queue_size: 1
+        });
     }
     refreshFcuBenchControls();
 }
@@ -889,6 +1159,8 @@ function initFcuBenchLoop() {
     const confirmation = document.getElementById('fcu-loop-physical-confirmation');
     const neutral = document.getElementById('btn-fcu-loop-neutral');
     const hold = document.getElementById('btn-fcu-loop-hold');
+    const resetEstop = document.getElementById('btn-fcu-loop-reset-estop');
+    const ownerButton = document.getElementById('btn-fcu-loop-control-owner');
     const updateLabels = () => {
         setLiveMavlinkValue('fcu-loop-steering-value', Number(steering?.value || 0).toFixed(2));
         setLiveMavlinkValue('fcu-loop-throttle-value', Number(throttle?.value || 0).toFixed(2));
@@ -897,6 +1169,8 @@ function initFcuBenchLoop() {
     throttle?.addEventListener('input', updateLabels);
     confirmation?.addEventListener('change', refreshFcuBenchControls);
     neutral?.addEventListener('click', stopFcuBenchHold);
+    resetEstop?.addEventListener('click', publishFcuBenchEmergencyReset);
+    ownerButton?.addEventListener('click', toggleFcuBenchControlOwner);
     hold?.addEventListener('pointerdown', (event) => {
         event.preventDefault();
         startFcuBenchHold();
@@ -939,6 +1213,7 @@ function resetLiveMavlinkTelemetry() {
     liveMavlinkReceivedAt.clear();
     LIVE_MAVLINK_TOPIC_SPECS.forEach((spec) => clearLiveMavlinkTopicValues(spec.key));
     refreshLiveMavlinkFreshness();
+    resetLiveFcuTwinTelemetry();
 }
 
 function reportBlockedDashboardWrite(action) {
@@ -1006,7 +1281,7 @@ function enableLiveMavlinkViewOnly() {
     const banner = document.getElementById('live-mavlink-safety-banner');
     if (banner) {
         banner.textContent = LIVE_FCU_BENCH_REQUESTED
-            ? 'LIVE MAVLINK VIEW-ONLY — mission/config writes remain blocked; the explicit FCU bench demand and E-Stop paths are enabled.'
+            ? 'LIVE MAVLINK VIEW-ONLY — mission/config writes remain blocked; explicit FCU demand, E-Stop/reset and Dashboard/Herelink handover are enabled.'
             : 'LIVE MAVLINK VIEW-ONLY — dashboard command/config writes are blocked. Use the physical safety controls for the real vehicle.';
     }
     resetLiveMavlinkTelemetry();
@@ -1522,10 +1797,13 @@ function connectToROS() {
         stopFcuBenchHold();
         liveFcuBenchCommandPublisher = null;
         liveFcuBenchEmergencyPublisher = null;
+        liveFcuBenchEmergencyResetPublisher = null;
+        liveFcuBenchControlOwnerPublisher = null;
         liveFcuBenchStatus = null;
         liveFcuBenchStatusReceivedAt = 0;
         liveFcuBenchLastArmed = false;
         liveFcuBenchEmergencyLatched = false;
+        liveFcuBenchLastControlOwner = null;
         refreshFcuBenchControls();
         addLog('Connection closed. Retrying in 5s...', 'warning');
         setTimeout(connectToROS, 5000);
@@ -1974,6 +2252,24 @@ function subscribeToTopics() {
         applyControlStatus(data);
     });
 
+    // The physical showcase does not run the navigation controller, so its
+    // camera verdict reaches the dashboard directly from person_stop_monitor.
+    // The same monitor also raises /planning/emergency_stop; this subscription
+    // is display-only and cannot clear or replace that authoritative stop.
+    const personAlertTopic = new ROSLIB.Topic({
+        ros: ros,
+        name: '/perception/person_alert',
+        messageType: 'std_msgs/String'
+    });
+
+    personAlertTopic.subscribe((message) => {
+        let data;
+        try { data = JSON.parse(message.data); }
+        catch (e) { logBadJson('/perception/person_alert', e); return; }
+        if (DEBUG_MODE) console.log('Person obstacle status:', data);
+        applyPersonAlert(data);
+    });
+
     if (DEBUG_MODE) console.log('Subscribed to all topics (integrated + modular)');
     addLog('Subscribed to topics (AutoBoat + Modular)', 'info');
     
@@ -2165,6 +2461,7 @@ const twinState = {
     personStop: null,
     personVerdictKnown: false,
     personFeedFresh: false,
+    personStopReason: '',
     personStatusAt: 0
 };
 
@@ -2246,6 +2543,9 @@ function applyPersonStopStatus(data) {
         twinState.personStop = verdict.stop;
         twinState.personVerdictKnown = verdict.known;
         twinState.personFeedFresh = verdict.fresh;
+        twinState.personStopReason = typeof data.person_stop_reason === 'string'
+            ? data.person_stop_reason
+            : verdict.stop ? 'person_detected' : '';
         // Only a complete verdict restarts the staleness clock. Otherwise a
         // stream of field-less status messages would keep an old all-clear
         // alive indefinitely without ever confirming it.
@@ -2254,6 +2554,29 @@ function applyPersonStopStatus(data) {
 
     renderPersonStopBadge();
     return twinState.personStop;
+}
+
+// Apply the camera policy's native /perception/person_alert contract. A
+// malformed or partial verdict is no news and must never release an existing
+// hold. A complete alert is translated into the same strict three-boolean
+// shape used by /control/status, keeping one renderer and one freshness clock.
+function applyPersonAlert(data) {
+    if (!isStatusObject(data)
+        || typeof data.person_detected !== 'boolean'
+        || typeof data.feed_fresh !== 'boolean') {
+        renderPersonStopBadge();
+        return false;
+    }
+    const feedLost = data.feed_fresh === false;
+    applyPersonStopStatus({
+        person_stop: data.person_detected || feedLost,
+        person_verdict_known: true,
+        person_feed_fresh: data.feed_fresh,
+        person_stop_reason: feedLost
+            ? 'detector_feed_lost'
+            : data.person_detected ? 'person_detected' : ''
+    });
+    return true;
 }
 
 function nowMs() {
@@ -2284,7 +2607,9 @@ function renderPersonStopBadge() {
     // A hold is always shown, whatever else is unknown — the safe direction
     // never waits for corroboration.
     if (twinState.personStop === true) {
-        el.textContent = 'PERSON — HOLD';
+        el.textContent = twinState.personStopReason === 'detector_feed_lost'
+            ? 'CAMERA FEED LOST — STOPPED'
+            : 'PERSON OBSTACLE — STOPPED';
         el.className = 'value badge critical';
         return;
     }
@@ -2311,6 +2636,7 @@ function resetPersonStopStatus() {
     twinState.personStop = null;
     twinState.personVerdictKnown = false;
     twinState.personFeedFresh = false;
+    twinState.personStopReason = '';
     twinState.personStatusAt = 0;
     renderPersonStopBadge();
 }

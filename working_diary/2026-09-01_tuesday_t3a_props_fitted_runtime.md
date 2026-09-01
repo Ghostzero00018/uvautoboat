@@ -305,3 +305,167 @@ bridge or the T3a supervisor. It performed no parameter write, safety release,
 arm, propulsion action, ESC or motor operation and created no threshold or T3a
 acceptance result. Block E remains closed pending a fresh physical declaration
 and separate explicit live approval.
+
+## Block E live outcome - functional run, threshold verdict failed
+
+The final live runtime used published revision
+`507bfcfa9d1eed0733840188d99905d49c691430`. The retained evidence roots are:
+
+- Pi copy-back:
+  `/home/ghostzero/Desktop/pi_run_evidence/t3a_esc_threshold_20260901_193548`;
+- W1:
+  `/home/ghostzero/Desktop/real_fcu_digital_twin_workstation_20260901_193313`;
+  and
+- workstation capture:
+  `/home/ghostzero/Desktop/real_fcu_capture_t3a_esc_threshold_20260901_193327`.
+
+The Pi and W1 supervisors both reached READY. The operator then completed the
+safe closeout, and the retained Pi record contains
+`REAL_FCU_T3A_SAFE_CLOSEOUT=PASS`. Both supervisors captured final
+connected/disarmed state, exchanged the workstation stop marker and exited
+`status=0 cleanup_rc=0`.
+
+The separate ESC-threshold capture did not pass. Its final verdict is
+`pass:false` over `33,598` events, with reasons
+`invalid_status_evidence`, `status_publisher_binding_mismatch`,
+`calibration_left_observation_incomplete` and
+`calibration_right_observation_incomplete`; zero typed annotations were
+accepted. Therefore this run is not an accepted threshold calibration.
+
+The retained machine stream still bounds the relevant output points:
+
+- straight steering `0.00`, throttle `0.12`: left/right `954/954 us`;
+- steering `+0.03`, throttle `0.12`: left/right `994/913 us`; and
+- steering `-0.03`, throttle `0.12`: left/right `913/994 us`.
+
+The operator reported physical onset near `990 us`, consistent with the
+measured driven-side change from `980 us` at `0.11` throttle to `994 us` at
+`0.12`. This is an operator-observed, machine-bounded interval `(980, 994] us`,
+not a formally adjudicated exact ESC threshold.
+
+Classification: **T3A FUNCTIONAL PROPS-FITTED RUN / CLEAN SUPERVISOR
+LIFECYCLE; ESC-THRESHOLD CALIBRATION FAILED / NOT ACCEPTED**.
+`RC_OVERRIDE_TIME=0.5` remains temporary. No 01/09/2026 rollback-to-`3.0`
+artifact exists, so rollback remains open before unrelated controller use or
+day close.
+
+## After-hours integrated showcase implementation - offline only
+
+The tracked worktree now implements the requested single-path digital-twin
+showcase without adding a second actuator route:
+
+1. dashboard or Herelink demand enters the real FCU;
+2. exact measured `/mavros/rc/out` from `/mavros/rc` is the sole W2 actuator
+   source;
+3. W2 maps that measured output into forward-only VRX thrust; and
+4. VRX pose and left/right thrust return to the dashboard through validated
+   `/fcu_to_vrx/twin_telemetry` evidence.
+
+The Hailo path uses the stock-COCO `person` label as the sole camera obstacle.
+A person or a missing/stale required detection feed raises the stop path for
+both the real-FCU bridge and VRX. Clearing the camera does not resume motion by
+itself. The operator must request Reset E-Stop while commands and measured
+outputs are neutral and the camera supplies fresh-clear evidence, then issue a
+new neutral prime before another demand. This reset is reusable: repeated
+E-Stop -> safe reset -> new prime -> motion cycles do not require restarting
+the stack.
+
+The dashboard ownership button switches between `DASHBOARD` and `HERELINK`.
+Dashboard-to-Herelink handover first publishes neutral, waits for neutral
+physical RC input, then releases MAVROS override so the Herelink directly owns
+the real boat while VRX continues to mirror measured FCU output. Returning to
+dashboard control neutralizes again and requires a new dashboard prime.
+E-Stop has priority in either ownership state, and both transitions are
+repeatable.
+
+The physical Hailo feed is now bound fail-closed to exactly one resolved
+`/hailo_person_stop_bridge` publisher at both W1 readiness and every required
+detection callback. A missing, wrong, duplicate or unresolved publisher cannot
+refresh the clear-water clock. Dashboard Reset and ownership controls also age
+out with bridge status and repeat the freshness/eligibility checks at their
+publish boundaries.
+
+Focused red/green verification currently passes:
+
+- person-stop monitor: `37` tests;
+- real-FCU helper: `PASS cases=55`;
+- dashboard Node suite: `90/90`, including MAVLink/bench control `27/27`;
+- Python, Bash and dashboard JavaScript syntax; and
+- whitespace validation.
+
+The unchanged earlier focused results remain W2 shell `30`, W2 Python `48`,
+command bridge `47`, capture `37` and servo mapping `16`. These are reused only
+because the final source-authentication and stale-status fixes did not touch
+those surfaces.
+
+Classification: **WORKTREE IMPLEMENTATION / NOT COMMITTED / NOT DEPLOYED / NOT
+RUN**. No integrated Hailo-camera, real-FCU, Herelink, W2 or VRX execution has
+used these worktree bytes. Tomorrow must first land and certify one new bundle,
+then run one freshly approved integrated showcase. Unchanged SITL acceptance,
+W1/W2 historical tests and unrelated full suites must not be repeated merely
+for reassurance.
+
+## Forward correction - physical-stick evidence and reusable handover
+
+The earlier statement that the bridge waits for neutral physical RC input is
+withdrawn. ArduPilot applies an active RC override to `radio_in`, and its
+`RC_CHANNELS` telemetry reports that effective value. Consequently,
+`/mavros/rc/in` reads back the bridge override while it is active and cannot
+independently establish the Herelink stick position.
+
+The corrected worktree keeps the existing single-button workflow but makes its
+authority explicit and per-event:
+
+- Dashboard-to-Herelink ownership requires the exact
+  `HERELINK_STICKS_NEUTRAL` string, sent by the button labelled `Confirm
+  Herelink Sticks Neutral & Take Control`; raw `HERELINK` is rejected;
+- the token is accepted only from the bound rosbridge publisher in the current
+  connected, armed, authorized `MANUAL` epoch with fresh valid feedback;
+- three trim frames precede three release frames, and measured
+  `/mavros/rc/out` must remain neutral before and during release or E-Stop is
+  relatched and trim is reasserted;
+- disarm or disconnect returns ownership to `DASHBOARD` and clears any pending
+  handover, preventing reuse in a later armed epoch;
+- owner-matched E-Stop reset uses `std_msgs/String`:
+  `DASHBOARD_COMMAND_NEUTRAL` for Dashboard control or
+  `HERELINK_STICKS_NEUTRAL` for Herelink control; and
+- Reset cancels pending browser Hold-to-Apply timers without emitting delayed
+  Joy frames, so the Reset click cannot silently provide the next Dashboard
+  neutral prime.
+
+`/mavros/rc/in` remains freshness/range evidence; explicit operator
+confirmation plus neutral measured servo output are the two distinct handover
+inputs. Focused verification now passes command bridge `54`, command capture
+`37` and dashboard Node `91/91`. The legacy
+`HERELINK_WAITING_NEUTRAL` status is rejected by the capture validator.
+
+Classification remains **WORKTREE IMPLEMENTATION / NOT COMMITTED / NOT
+DEPLOYED / NOT RUN**. No hardware or integrated runtime used these corrected
+bytes, and the existing live evidence is not transferred to this worktree.
+
+## Forward correction - fresh release evidence and explicit reprime
+
+The first corrected handover still reused one cached neutral
+`/mavros/rc/out` sample across the release sequence. That did not establish the
+documented output-neutral condition during release. The focused tests were
+changed first and reproduced the defect.
+
+The bridge now increments a process-local generation only in the real RCOut
+callback. After the immediate protective trim and three timed trim frames, it
+waits for a newer neutral generation before the first release, between each of
+the three release frames and after the final release before declaring
+`HERELINK_CONTROL`. No new generation leaves the handover pending; a newly
+observed non-neutral output latches E-Stop and reasserts trim. Disarm,
+disconnect, E-Stop and Dashboard reclaim clear the pending generation gate.
+
+Dashboard reclaim also no longer publishes a disabled-neutral Joy frame from
+either the ownership action or the returned status transition. Its button now
+states `Switch to Dashboard Control (Neutral Now Required)`. The returned
+Dashboard session remains unprimed until the operator explicitly clicks
+`Neutral Now`; E-Stop reset remains independently non-priming.
+
+Focused verification remains command bridge `54`, command capture `37` and
+dashboard Node `91/91`, with the release and reclaim cases now exercising the
+correct evidence semantics. Classification remains **WORKTREE IMPLEMENTATION /
+NOT COMMITTED / NOT DEPLOYED / NOT RUN**. No previous bundle or live result
+contains these bytes.

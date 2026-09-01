@@ -8,6 +8,16 @@ MAVProxy snapshot, before it creates any override publisher.  It then publishes
 atomic ``mavros_msgs/OverrideRCIn`` frames at 20 Hz.  Measured ``/mavros/rc/out``
 values are returned in a JSON status stream for the dashboard.
 
+Dashboard control is the default owner.  An explicit
+``HERELINK_STICKS_NEUTRAL`` operator attestation neutralizes the mapped
+channels before releasing both MAVROS overrides, while the shared E-stop
+always regains neutral override authority.  MAVLink ``RC_CHANNELS`` reports
+the override value while an override is active, so it is never treated as
+independent physical-stick evidence during that handover.  E-stop recovery is
+explicit and repeatable: it requires fresh neutral FCU output and, when the
+person-alert policy is enabled, a fresh clear camera verdict, then re-primes
+the selected owner before motion.
+
 This bridge deliberately has no arm, disarm, mode, parameter-write, motor-test
 or raw-servo-command path.  Arming remains an external operator action.  The
 node is inert unless ``allow_real_fcu`` is explicitly true, an explicit
@@ -46,7 +56,13 @@ from std_msgs.msg import Bool, String
 
 COMMAND_TOPIC = "/command_ingress/rc_axes"
 STATUS_TOPIC = "/command_ingress/status"
+EMERGENCY_STOP_TOPIC = "/planning/emergency_stop"
+EMERGENCY_RESET_TOPIC = "/command_ingress/emergency_reset"
+CONTROL_OWNER_TOPIC = "/command_ingress/control_owner"
+PERSON_ALERT_TOPIC = "/perception/person_alert"
 OVERRIDE_TOPIC = "/mavros/rc/override"
+PERSON_ALERT_PUBLISHER = "/person_stop_monitor_node"
+ROSBRIDGE_INPUT_PUBLISHER = "/rosbridge_websocket"
 PARAM_NODE = "/mavros/param"
 PARAM_PULL_SERVICE = "/mavros/param/pull"
 FRAME_ID = "uvautoboat/rc_axes/v1"
@@ -54,10 +70,50 @@ COMMAND_TIMEOUT_SECONDS = 0.150
 PUBLISH_PERIOD_SECONDS = 0.050
 STATE_TIMEOUT_SECONDS = 2.5
 FEEDBACK_TIMEOUT_SECONDS = 1.5
+PERSON_ALERT_TIMEOUT_SECONDS = 1.0
 NO_CHANGE = 65535
 RELEASE_HIGH_CHANNEL = 65534
+CONTROL_OWNER_DASHBOARD = "DASHBOARD"
+CONTROL_OWNER_HERELINK = "HERELINK"
+HERELINK_STICKS_NEUTRAL_CONFIRMATION = "HERELINK_STICKS_NEUTRAL"
+DASHBOARD_NEUTRAL_RESET_CONFIRMATION = "DASHBOARD_COMMAND_NEUTRAL"
 SNAPSHOT_PARAMETER_NAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
 SNAPSHOT_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+RMW_UNKNOWN_NODE_IDENTITIES = frozenset(
+    {"_NODE_NAME_UNKNOWN_", "_NODE_NAMESPACE_UNKNOWN_"}
+)
+
+
+def input_publisher_binding(
+    endpoint_infos: Iterable[object], expected_node_path: str
+) -> tuple[bool, tuple[str, ...], int]:
+    """Require one resolved publisher endpoint from the expected ROS node."""
+    endpoints = tuple(endpoint_infos)
+    paths = set()
+    for endpoint in endpoints:
+        namespace = getattr(endpoint, "node_namespace", None)
+        name = getattr(endpoint, "node_name", None)
+        if not isinstance(namespace, str) or not isinstance(name, str):
+            continue
+        normalized_namespace = namespace.strip("/")
+        normalized_name = name.strip("/")
+        if (
+            not normalized_name
+            or normalized_name in RMW_UNKNOWN_NODE_IDENTITIES
+            or normalized_namespace in RMW_UNKNOWN_NODE_IDENTITIES
+        ):
+            continue
+        paths.add(
+            f"/{normalized_namespace}/{normalized_name}"
+            if normalized_namespace
+            else f"/{normalized_name}"
+        )
+    resolved = tuple(sorted(paths))
+    return (
+        len(endpoints) == 1 and resolved == (expected_node_path,),
+        resolved,
+        len(endpoints),
+    )
 
 
 class GuardError(RuntimeError):
@@ -660,6 +716,19 @@ def rc_input_is_neutral(channels: Sequence[int], guard: LiveGuard) -> bool:
     )
 
 
+def servo_output_is_neutral(channels: Sequence[int], guard: LiveGuard) -> bool:
+    def channel_value(channel: int) -> Optional[int]:
+        index = channel - 1
+        if index < 0 or index >= len(channels):
+            return None
+        return int(channels[index])
+
+    return (
+        channel_value(guard.left_servo) == guard.left_servo_rail.trim
+        and channel_value(guard.right_servo) == guard.right_servo_rail.trim
+    )
+
+
 def feedback_values_valid(
     guard: LiveGuard, rc_in: Sequence[int], rc_out: Sequence[int]
 ) -> bool:
@@ -693,6 +762,9 @@ class RealFcuRcCommandBridge(Node):
         self.neutral_only = bool(
             self.declare_parameter("neutral_only", False).value
         )
+        self.require_person_alert = bool(
+            self.declare_parameter("require_person_alert", False).value
+        )
         self.guard_snapshot_file = str(
             self.declare_parameter("guard_snapshot_file", "").value
         ).strip()
@@ -717,6 +789,7 @@ class RealFcuRcCommandBridge(Node):
         self.latest_rc_in_at = 0.0
         self.latest_rc_out: Sequence[int] = ()
         self.latest_rc_out_at = 0.0
+        self.latest_rc_out_generation = 0
         self.last_command_at = 0.0
         self.last_command_stamp_ns = 0
         self.last_command = (0.0, 0.0, False)
@@ -726,8 +799,16 @@ class RealFcuRcCommandBridge(Node):
         self.has_armed_epoch = False
         self.armed_enable_primed = False
         self.emergency_stop_latched = False
+        self.emergency_neutral_command_seen = False
+        self.control_owner = CONTROL_OWNER_DASHBOARD
+        self.person_alert_valid = False
+        self.person_alert_at = 0.0
+        self.person_hold_clear = False
         self.override_pub = None
         self.release_frames_remaining = 0
+        self.handover_neutral_frames_remaining = 0
+        self.handover_release_frames_remaining = 0
+        self.handover_rc_out_generation: Optional[int] = None
 
         self.create_subscription(State, "/mavros/state", self._state_cb, 10)
         self.create_subscription(RCIn, "/mavros/rc/in", self._rc_in_cb, 10)
@@ -770,8 +851,15 @@ class RealFcuRcCommandBridge(Node):
                 durability=DurabilityPolicy.VOLATILE,
             )
             self.create_subscription(Joy, COMMAND_TOPIC, self._command_cb, command_qos)
+        self.create_subscription(Bool, EMERGENCY_STOP_TOPIC, self._emergency_cb, 10)
         self.create_subscription(
-            Bool, "/planning/emergency_stop", self._emergency_cb, 10
+            String, EMERGENCY_RESET_TOPIC, self._emergency_reset_cb, 10
+        )
+        self.create_subscription(
+            String, CONTROL_OWNER_TOPIC, self._control_owner_cb, 10
+        )
+        self.create_subscription(
+            String, PERSON_ALERT_TOPIC, self._person_alert_cb, 10
         )
         self.fault = "WAITING_DISARMED_MANUAL"
         self.timer = self.create_timer(PUBLISH_PERIOD_SECONDS, self._tick)
@@ -888,10 +976,19 @@ class RealFcuRcCommandBridge(Node):
             self.armed_enable_primed = False
             self.last_command = (0.0, 0.0, False)
             self.last_command_at = 0.0
+            self.control_owner = CONTROL_OWNER_DASHBOARD
+            self.handover_neutral_frames_remaining = 0
+            self.handover_release_frames_remaining = 0
+            self.handover_rc_out_generation = None
             self.release_frames_remaining = 3
         self.latest_state = message
         self.latest_state_at = now
         if not message.connected:
+            self.arm_epoch_authorized = False
+            self.control_owner = CONTROL_OWNER_DASHBOARD
+            self.handover_neutral_frames_remaining = 0
+            self.handover_release_frames_remaining = 0
+            self.handover_rc_out_generation = None
             self.fault = "FCU_DISCONNECTED"
         elif self.startup_armed:
             self.fault = "STARTUP_ARMED"
@@ -910,6 +1007,10 @@ class RealFcuRcCommandBridge(Node):
     def _rc_out_cb(self, message: RCOut) -> None:
         self.latest_rc_out = tuple(message.channels)
         self.latest_rc_out_at = time.monotonic()
+        self.latest_rc_out_generation += 1
+
+    def _reject_command(self, reason: str) -> None:
+        self.fault = "EMERGENCY_STOP" if self.emergency_stop_latched else reason
 
     def _command_cb(self, message: Joy) -> None:
         if self.neutral_only:
@@ -918,40 +1019,51 @@ class RealFcuRcCommandBridge(Node):
             self.last_command_at = 0.0
             self.fault = "NEUTRAL_ONLY"
             return
-        if self.emergency_stop_latched:
-            self.fault = "EMERGENCY_STOP"
-            return
         if message.header.frame_id != FRAME_ID:
-            self.fault = "INVALID_COMMAND_FRAME"
+            self._reject_command("INVALID_COMMAND_FRAME")
             return
         try:
             stamp_ns = command_stamp_ns(
                 message.header.stamp.sec, message.header.stamp.nanosec
             )
         except GuardError:
-            self.fault = "INVALID_COMMAND_TIMESTAMP"
+            self._reject_command("INVALID_COMMAND_TIMESTAMP")
             return
         if stamp_ns <= self.last_command_stamp_ns:
-            self.fault = "NON_MONOTONIC_COMMAND_TIMESTAMP"
+            self._reject_command("NON_MONOTONIC_COMMAND_TIMESTAMP")
             return
         if len(message.axes) != 2 or len(message.buttons) != 1:
-            self.fault = "INVALID_COMMAND_SHAPE"
+            self._reject_command("INVALID_COMMAND_SHAPE")
             return
         steering, throttle = (float(message.axes[0]), float(message.axes[1]))
         enable = message.buttons[0]
         if not (math.isfinite(steering) and math.isfinite(throttle)):
-            self.fault = "INVALID_COMMAND_VALUE"
+            self._reject_command("INVALID_COMMAND_VALUE")
             return
         steering = clamp_float32_axis(
             steering, -self.max_steering, self.max_steering
         )
         throttle = clamp_float32_axis(throttle, 0.0, self.max_throttle)
         if steering is None or throttle is None or enable not in (0, 1):
-            self.fault = "COMMAND_OUT_OF_BOUNDS"
+            self._reject_command("COMMAND_OUT_OF_BOUNDS")
+            return
+        if self.emergency_stop_latched:
+            if steering == 0.0 and throttle == 0.0 and enable == 0:
+                self.last_command_stamp_ns = stamp_ns
+                self.last_command = (0.0, 0.0, False)
+                self.last_command_at = time.monotonic()
+                self.emergency_neutral_command_seen = True
+            self.fault = "EMERGENCY_STOP"
+            return
+        if self.control_owner == CONTROL_OWNER_HERELINK:
+            self.fault = "HERELINK_CONTROL"
             return
         vehicle_armed = bool(self.latest_state and self.latest_state.armed)
-        if vehicle_armed and enable == 0:
+        if vehicle_armed and enable == 0 and steering == 0.0 and throttle == 0.0:
             self.armed_enable_primed = True
+        elif vehicle_armed and enable == 0:
+            self.armed_enable_primed = False
+            self.fault = "NEUTRAL_PRIME_REQUIRED"
         elif enable == 1 and not self.armed_enable_primed:
             self.fault = "ENABLE_RESET_REQUIRED"
             return
@@ -959,16 +1071,236 @@ class RealFcuRcCommandBridge(Node):
         self.last_command = (steering, throttle, enable == 1)
         self.last_command_at = time.monotonic()
 
-    def _emergency_cb(self, message: Bool) -> None:
-        if not message.data:
-            return
+    def _latch_emergency_stop(self) -> None:
         self.emergency_stop_latched = True
+        self.emergency_neutral_command_seen = False
         self.armed_enable_primed = False
         self.last_command = (0.0, 0.0, False)
         self.last_command_at = 0.0
+        self.handover_neutral_frames_remaining = 0
+        self.handover_release_frames_remaining = 0
+        self.handover_rc_out_generation = None
         self.fault = "EMERGENCY_STOP"
         if self.guard is not None and self.latest_state is not None \
                 and self.latest_state.armed:
+            self._publish_pair(
+                self.guard.steering_rail.trim,
+                self.guard.throttle_rail.trim,
+            )
+
+    def _input_source_is_bound(
+        self, input_name: str, topic: str, expected_node_path: str
+    ) -> bool:
+        """Fail neutral unless one resolved expected node publishes the input."""
+        try:
+            endpoint_infos = self.get_publishers_info_by_topic(topic)
+            valid, observed_paths, endpoint_count = input_publisher_binding(
+                endpoint_infos, expected_node_path
+            )
+            query_error = ""
+        except Exception as exc:  # ROS graph failure is not authority evidence.
+            valid = False
+            observed_paths = ()
+            endpoint_count = -1
+            query_error = type(exc).__name__
+        if valid:
+            return True
+        observed = ",".join(observed_paths) if observed_paths else "none"
+        self.get_logger().error(
+            "REAL_FCU_INPUT_SOURCE=REJECTED "
+            f"input={input_name} topic={topic} expected={expected_node_path} "
+            f"endpoint_count={endpoint_count} observed={observed} "
+            f"query_error={query_error or 'none'}"
+        )
+        self._latch_emergency_stop()
+        return False
+
+    def _emergency_cb(self, message: Bool) -> None:
+        if message.data:
+            self._latch_emergency_stop()
+
+    def _person_alert_cb(self, message: String) -> None:
+        now = time.monotonic()
+        self.person_alert_valid = False
+        self.person_alert_at = now
+        self.person_hold_clear = False
+        if self.require_person_alert and not self._input_source_is_bound(
+            "person-alert", PERSON_ALERT_TOPIC, PERSON_ALERT_PUBLISHER
+        ):
+            return
+        try:
+            payload = json.loads(message.data)
+            if not isinstance(payload, dict):
+                return
+            person_detected = payload.get("person_detected")
+            feed_fresh = payload.get("feed_fresh")
+            reason = payload.get("reason")
+            if not isinstance(person_detected, bool) \
+                    or not isinstance(feed_fresh, bool) \
+                    or not isinstance(reason, str):
+                return
+        except (json.JSONDecodeError, TypeError):
+            return
+        self.person_alert_valid = True
+        self.person_hold_clear = bool(
+            not person_detected and feed_fresh and reason == ""
+        )
+        if not self.person_hold_clear:
+            self._latch_emergency_stop()
+
+    def _emergency_reset_eligibility(
+        self, now: Optional[float] = None
+    ) -> tuple[bool, str]:
+        if now is None:
+            now = time.monotonic()
+        if not self.emergency_stop_latched:
+            return False, "NOT_LATCHED"
+        if self.guard is None:
+            return False, "GUARD_UNAVAILABLE"
+        vehicle = self.latest_state
+        if vehicle is None or now - self.latest_state_at >= STATE_TIMEOUT_SECONDS:
+            return False, "STATE_STALE"
+        if not vehicle.connected:
+            return False, "FCU_DISCONNECTED"
+        if not vehicle.armed:
+            return False, "FCU_NOT_ARMED"
+        if vehicle.mode != "MANUAL":
+            return False, "MODE_NOT_MANUAL"
+        if self.control_owner == CONTROL_OWNER_DASHBOARD \
+                and not self.emergency_neutral_command_seen:
+            return False, "COMMAND_NEUTRAL_DISABLED_REQUIRED"
+        if self.latest_rc_in_at <= 0.0 or self.latest_rc_out_at <= 0.0 \
+                or now - self.latest_rc_in_at >= FEEDBACK_TIMEOUT_SECONDS \
+                or now - self.latest_rc_out_at >= FEEDBACK_TIMEOUT_SECONDS:
+            return False, "FEEDBACK_STALE"
+        if not feedback_values_valid(
+            self.guard, self.latest_rc_in, self.latest_rc_out
+        ):
+            return False, "FEEDBACK_INVALID"
+        # RC_CHANNELS reports override_value while MAVROS override is active,
+        # so it can validate feedback shape/freshness but cannot independently
+        # establish the receiver-stick position.  Dashboard reset has an
+        # already-observed disabled-neutral command; Herelink reset carries an
+        # exact physical-stick-neutral operator attestation.
+        if not servo_output_is_neutral(self.latest_rc_out, self.guard):
+            return False, "SERVO_OUTPUT_NOT_NEUTRAL"
+        if self.require_person_alert:
+            if not self.person_alert_valid \
+                    or self.person_alert_at <= 0.0 \
+                    or now - self.person_alert_at >= PERSON_ALERT_TIMEOUT_SECONDS:
+                return False, "PERSON_ALERT_STALE"
+            if not self.person_hold_clear:
+                return False, "PERSON_HOLD_ACTIVE"
+        return True, ""
+
+    def _emergency_reset_cb(self, message: String) -> None:
+        if not self._input_source_is_bound(
+            "emergency-reset", EMERGENCY_RESET_TOPIC, ROSBRIDGE_INPUT_PUBLISHER
+        ):
+            return
+        expected_confirmation = (
+            HERELINK_STICKS_NEUTRAL_CONFIRMATION
+            if self.control_owner == CONTROL_OWNER_HERELINK
+            else DASHBOARD_NEUTRAL_RESET_CONFIRMATION
+        )
+        if message.data != expected_confirmation:
+            self.fault = (
+                "HERELINK_NEUTRAL_CONFIRMATION_REQUIRED"
+                if self.control_owner == CONTROL_OWNER_HERELINK
+                else "DASHBOARD_NEUTRAL_CONFIRMATION_REQUIRED"
+            )
+            return
+        allowed, _ = self._emergency_reset_eligibility()
+        if not allowed:
+            self.fault = "EMERGENCY_STOP"
+            return
+        self.emergency_stop_latched = False
+        self.emergency_neutral_command_seen = False
+        self.armed_enable_primed = False
+        self.last_command = (0.0, 0.0, False)
+        self.last_command_at = 0.0
+        if self.control_owner == CONTROL_OWNER_HERELINK:
+            self.handover_neutral_frames_remaining = 3
+            self.handover_release_frames_remaining = 3
+            self.handover_rc_out_generation = None
+            self.fault = "HERELINK_HANDOVER"
+        else:
+            self.handover_neutral_frames_remaining = 0
+            self.handover_release_frames_remaining = 0
+            self.handover_rc_out_generation = None
+            self.fault = "DASHBOARD_PRIME_REQUIRED"
+        if self.guard is not None:
+            self._publish_pair(
+                self.guard.steering_rail.trim,
+                self.guard.throttle_rail.trim,
+            )
+
+    def _herelink_handover_is_current(self, now: Optional[float] = None) -> bool:
+        if now is None:
+            now = time.monotonic()
+        guard = self.guard
+        vehicle = self.latest_state
+        if guard is None or vehicle is None:
+            return False
+        if now - self.latest_state_at >= STATE_TIMEOUT_SECONDS:
+            return False
+        if not vehicle.connected or not vehicle.armed or vehicle.mode != "MANUAL":
+            return False
+        if not self.arm_epoch_authorized:
+            return False
+        if self.latest_rc_in_at <= 0.0 or self.latest_rc_out_at <= 0.0:
+            return False
+        if now - self.latest_rc_in_at >= FEEDBACK_TIMEOUT_SECONDS \
+                or now - self.latest_rc_out_at >= FEEDBACK_TIMEOUT_SECONDS:
+            return False
+        return bool(feedback_values_valid(
+            guard, self.latest_rc_in, self.latest_rc_out
+        ))
+
+    def _control_owner_cb(self, message: String) -> None:
+        if not self._input_source_is_bound(
+            "control-owner", CONTROL_OWNER_TOPIC, ROSBRIDGE_INPUT_PUBLISHER
+        ):
+            return
+        if message.data == CONTROL_OWNER_DASHBOARD:
+            requested = CONTROL_OWNER_DASHBOARD
+        elif message.data == HERELINK_STICKS_NEUTRAL_CONFIRMATION:
+            requested = CONTROL_OWNER_HERELINK
+        elif message.data == CONTROL_OWNER_HERELINK:
+            self.fault = "HERELINK_NEUTRAL_CONFIRMATION_REQUIRED"
+            return
+        else:
+            self._reject_command("INVALID_CONTROL_OWNER")
+            return
+        if self.neutral_only:
+            self.fault = "NEUTRAL_ONLY"
+            return
+        if self.emergency_stop_latched:
+            self.fault = "EMERGENCY_STOP"
+            return
+        if requested == self.control_owner:
+            return
+        if requested == CONTROL_OWNER_HERELINK \
+                and not self._herelink_handover_is_current():
+            self.fault = "HERELINK_HANDOVER_NOT_READY"
+            return
+        self.control_owner = requested
+        self.armed_enable_primed = False
+        self.last_command = (0.0, 0.0, False)
+        self.last_command_at = 0.0
+        self.handover_neutral_frames_remaining = (
+            3 if requested == CONTROL_OWNER_HERELINK else 0
+        )
+        self.handover_release_frames_remaining = (
+            3 if requested == CONTROL_OWNER_HERELINK else 0
+        )
+        self.handover_rc_out_generation = None
+        self.fault = (
+            "HERELINK_HANDOVER"
+            if requested == CONTROL_OWNER_HERELINK
+            else "DASHBOARD_PRIME_REQUIRED"
+        )
+        if self.guard is not None:
             self._publish_pair(
                 self.guard.steering_rail.trim,
                 self.guard.throttle_rail.trim,
@@ -1003,6 +1335,12 @@ class RealFcuRcCommandBridge(Node):
     def _publish_status(self, state: str, steering: float, throttle: float) -> None:
         guard = self.guard
         now = time.monotonic()
+        reset_allowed, reset_block_reason = self._emergency_reset_eligibility(now)
+        person_alert_fresh = bool(
+            self.person_alert_valid
+            and self.person_alert_at > 0.0
+            and now - self.person_alert_at < PERSON_ALERT_TIMEOUT_SECONDS
+        )
         rc_in_age_ms = (
             round((now - self.latest_rc_in_at) * 1000)
             if self.latest_rc_in_at else None
@@ -1014,11 +1352,25 @@ class RealFcuRcCommandBridge(Node):
         payload = {
             "state": state,
             "fault": self.fault,
-            "ready": state in ("READY_DISARMED", "ARMED_NEUTRAL", "ACTIVE"),
+            "ready": state in (
+                "READY_DISARMED",
+                "ARMED_NEUTRAL",
+                "ACTIVE",
+                "HERELINK_CONTROL",
+            ),
             "connected": bool(self.latest_state and self.latest_state.connected),
             "armed": bool(self.latest_state and self.latest_state.armed),
             "mode": self.latest_state.mode if self.latest_state else "",
             "neutral_only": self.neutral_only,
+            "control_owner": self.control_owner,
+            "emergency_stop_latched": self.emergency_stop_latched,
+            "emergency_reset_allowed": reset_allowed,
+            "emergency_reset_block_reason": reset_block_reason,
+            "person_alert_fresh": person_alert_fresh,
+            "person_alert_required": self.require_person_alert,
+            "person_hold_clear": bool(
+                person_alert_fresh and self.person_hold_clear
+            ),
             "guard_source": self.guard_source,
             "guard_snapshot_sha256": (
                 self.guard_evidence["sha256"] if self.guard_evidence else None
@@ -1093,6 +1445,26 @@ class RealFcuRcCommandBridge(Node):
         if guard is None or not self.allow_real_fcu:
             self._publish_status(state, steering, throttle)
             return
+        person_alert_ready = bool(
+            self.person_alert_valid
+            and self.person_alert_at > 0.0
+            and now - self.person_alert_at < PERSON_ALERT_TIMEOUT_SECONDS
+            and self.person_hold_clear
+        )
+        if self.require_person_alert and not person_alert_ready \
+                and vehicle is not None and vehicle.armed:
+            self._latch_emergency_stop()
+        if self.emergency_stop_latched:
+            self.fault = "EMERGENCY_STOP"
+            if vehicle is not None and vehicle.armed:
+                self._publish_pair(
+                    guard.steering_rail.trim, guard.throttle_rail.trim
+                )
+            elif self.release_frames_remaining > 0:
+                self._publish_release()
+                self.release_frames_remaining -= 1
+            self._publish_status(self.fault, steering, throttle)
+            return
         if vehicle is None or now - self.latest_state_at >= STATE_TIMEOUT_SECONDS:
             self.fault = "STATE_STALE"
             if vehicle is not None and vehicle.armed:
@@ -1105,19 +1477,13 @@ class RealFcuRcCommandBridge(Node):
             self.fault = "STARTUP_ARMED"
             self._publish_status(self.fault, steering, throttle)
             return
-        if self.emergency_stop_latched:
-            self.fault = "EMERGENCY_STOP"
-            if vehicle.armed:
-                self._publish_pair(
-                    guard.steering_rail.trim, guard.throttle_rail.trim
-                )
-            elif self.release_frames_remaining > 0:
-                self._publish_release()
-                self.release_frames_remaining -= 1
-            self._publish_status(self.fault, steering, throttle)
-            return
 
         if not vehicle.armed:
+            if self.require_person_alert and not person_alert_ready:
+                self.disarmed_ready = False
+                self.fault = "WAITING_PERSON_ALERT"
+                self._publish_status(self.fault, steering, throttle)
+                return
             rc_input_ready = (
                 vehicle.mode == "MANUAL"
                 and self.latest_rc_in_at > 0.0
@@ -1157,19 +1523,75 @@ class RealFcuRcCommandBridge(Node):
             requested_steering, requested_throttle, enabled = self.last_command
             if not feedback_fresh:
                 state = "FEEDBACK_INVALID"
+                self._publish_pair(
+                    guard.steering_rail.trim, guard.throttle_rail.trim
+                )
+            elif self.control_owner == CONTROL_OWNER_HERELINK:
+                if self.handover_neutral_frames_remaining > 0:
+                    self._publish_pair(
+                        guard.steering_rail.trim, guard.throttle_rail.trim
+                    )
+                    self.handover_neutral_frames_remaining -= 1
+                    if self.handover_neutral_frames_remaining == 0:
+                        self.handover_rc_out_generation = (
+                            self.latest_rc_out_generation
+                        )
+                    state = "HERELINK_HANDOVER"
+                elif self.handover_release_frames_remaining > 0 \
+                        or self.handover_rc_out_generation is not None:
+                    if self.handover_rc_out_generation is None:
+                        self.handover_rc_out_generation = (
+                            self.latest_rc_out_generation
+                        )
+                    if self.latest_rc_out_generation \
+                            <= self.handover_rc_out_generation:
+                        if self.handover_release_frames_remaining == 3:
+                            self._publish_pair(
+                                guard.steering_rail.trim,
+                                guard.throttle_rail.trim,
+                            )
+                        state = "HERELINK_HANDOVER"
+                    elif not servo_output_is_neutral(self.latest_rc_out, guard):
+                        self._latch_emergency_stop()
+                        state = "EMERGENCY_STOP"
+                    elif self.handover_release_frames_remaining > 0:
+                        self._publish_release()
+                        self.handover_release_frames_remaining -= 1
+                        self.handover_rc_out_generation = (
+                            self.latest_rc_out_generation
+                        )
+                        state = "HERELINK_HANDOVER"
+                    else:
+                        self.handover_rc_out_generation = None
+                        state = "HERELINK_CONTROL"
+                else:
+                    state = "HERELINK_CONTROL"
             elif self.neutral_only:
                 state = "ARMED_NEUTRAL"
-            elif (fresh and enabled and self.armed_enable_primed
-                    and self.count_publishers(COMMAND_TOPIC) == 1):
-                steering = requested_steering
-                throttle = requested_throttle
-                state = "ACTIVE"
+                self._publish_pair(
+                    guard.steering_rail.trim, guard.throttle_rail.trim
+                )
+            elif fresh and enabled and self.armed_enable_primed:
+                if not self._input_source_is_bound(
+                    "command", COMMAND_TOPIC, ROSBRIDGE_INPUT_PUBLISHER
+                ):
+                    state = "EMERGENCY_STOP"
+                    self._publish_pair(
+                        guard.steering_rail.trim, guard.throttle_rail.trim
+                    )
+                else:
+                    steering = requested_steering
+                    throttle = requested_throttle
+                    state = "ACTIVE"
+                    self._publish_pair(
+                        encode_axis(steering, guard.steering_rail),
+                        encode_axis(throttle, guard.throttle_rail),
+                    )
             else:
                 state = "ARMED_NEUTRAL"
-            self._publish_pair(
-                encode_axis(steering, guard.steering_rail),
-                encode_axis(throttle, guard.throttle_rail),
-            )
+                self._publish_pair(
+                    guard.steering_rail.trim, guard.throttle_rail.trim
+                )
         self.fault = state
         self._publish_status(state, steering, throttle)
 

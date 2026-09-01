@@ -18,7 +18,8 @@ Inputs
 
 Outputs
     /perception/person_alert std_msgs/String — JSON hold verdict, consumed by
-        the heading controller and the waypoint planner.
+        navigation and, in the opt-in physical showcase, the guarded command
+        bridge and dashboard.
     /planning/emergency_stop std_msgs/Bool — the existing safety latch, raised
         while a hold is active so every consumer of that channel cuts thrust
         without needing to learn a new contract.
@@ -31,19 +32,16 @@ Design notes
       Latching here would be a dead end: the planner refuses restart commands
       while the hold is up, so a hold that only an operator could clear could
       never be cleared at all.
-    - The simulated boat still does not resume on its own. While held, this
-      node raises `/planning/emergency_stop`; in the simulated stack that latch
-      is cleared by a resume-family mission command, so an operator must act
-      before motion returns. Releasing the hold only restores their ability to.
-
-      This resume path is a property of the SIMULATED heading controller and
-      planner only. `tools/real_fcu_rc_command_bridge.py` also subscribes to
-      `/planning/emergency_stop`, but its latch is set once and never cleared,
-      and it does not subscribe to mission commands at all — so on the physical
-      path a hold ends only when that bridge process is restarted. The real
-      path is not wired to this node today (different ROS domains, and no
-      detections publisher exists), and giving it a recovery route is a
-      separate design question that has not been answered here.
+    - Neither the simulated nor physical boat resumes merely because the
+      camera hold clears. In simulation, a resume-family mission command clears
+      the planner latch. In the opt-in physical showcase,
+      `tools/real_fcu_rc_command_bridge.py` clears its latch only after an
+      explicit `/command_ingress/emergency_reset` request and fresh evidence
+      that the detector feed is clear, commands and mapped feedback are
+      neutral, and the FCU remains connected in the required state. This node
+      must therefore let its descriptive alert clear: that fresh-clear alert is
+      one of the bridge reset prerequisites. A continuing person sighting or a
+      stale detector feed keeps the hold up and blocks the reset.
     - A missing detector feed only stops the boat when `require_detection_feed`
       is set. The default is off so the simulation stack, which has no camera
       at all, behaves exactly as it did before this node existed.
@@ -56,6 +54,45 @@ import rclpy
 from rclpy.node import Node
 
 from std_msgs.msg import Bool, String
+
+
+DETECTIONS_TOPIC = '/perception/detections'
+DETECTIONS_PUBLISHER_NODE = '/hailo_person_stop_bridge'
+RMW_UNKNOWN_NODE_IDENTITIES = frozenset(
+    {'_NODE_NAME_UNKNOWN_', '_NODE_NAMESPACE_UNKNOWN_'}
+)
+
+
+def detection_publisher_binding(
+        endpoint_infos, expected_node_path=DETECTIONS_PUBLISHER_NODE):
+    """Require one resolved detection publisher from the pinned Hailo node."""
+    endpoints = tuple(endpoint_infos)
+    paths = []
+    for endpoint in endpoints:
+        namespace = getattr(endpoint, 'node_namespace', None)
+        name = getattr(endpoint, 'node_name', None)
+        if not isinstance(namespace, str) or not isinstance(name, str):
+            paths.append('<unresolved>')
+            continue
+        normalized_namespace = namespace.strip('/')
+        normalized_name = name.strip('/')
+        if (
+            not normalized_name
+            or normalized_name in RMW_UNKNOWN_NODE_IDENTITIES
+            or normalized_namespace in RMW_UNKNOWN_NODE_IDENTITIES
+        ):
+            paths.append('<unresolved>')
+            continue
+        paths.append(
+            f'/{normalized_namespace}/{normalized_name}'
+            if normalized_namespace else f'/{normalized_name}'
+        )
+    resolved = tuple(sorted(paths))
+    return (
+        len(endpoints) == 1 and resolved == (expected_node_path,),
+        resolved,
+        len(endpoints),
+    )
 
 
 def _read_detection(entry):
@@ -143,7 +180,7 @@ class PersonStopMonitor(Node):
 
         self.create_subscription(
             String,
-            '/perception/detections',
+            DETECTIONS_TOPIC,
             self.detections_callback,
             10
         )
@@ -169,10 +206,39 @@ class PersonStopMonitor(Node):
     def _now_s(self):
         return self.get_clock().now().nanoseconds / 1e9
 
+    def _detection_source_is_bound(self):
+        """Reject missing, ambiguous, unresolved, or impersonating sources."""
+        try:
+            endpoint_infos = self.get_publishers_info_by_topic(DETECTIONS_TOPIC)
+        except Exception as exc:
+            self.get_logger().warn(
+                f'Detection publisher query failed: {exc}',
+                throttle_duration_sec=1.0,
+            )
+            return False
+        bound, paths, count = detection_publisher_binding(endpoint_infos)
+        if not bound:
+            identities = ','.join(paths) if paths else '<none>'
+            self.get_logger().warn(
+                'Rejecting detection source: '
+                f'expected={DETECTIONS_PUBLISHER_NODE} '
+                f'endpoint_count={count} identities={identities}',
+                throttle_duration_sec=1.0,
+            )
+        return bound
+
     def detections_callback(self, msg, now_s=None):
         """Record the newest detection frame, keeping only the stopping class."""
         if now_s is None:
             now_s = self._now_s()
+
+        # The physical path may only accept clear-water evidence from the one
+        # generated Hailo publisher. Check on every frame so a second publisher
+        # appearing after readiness cannot impersonate a live detector or mask
+        # loss of the real feed. Simulation keeps its historical optional-feed
+        # behaviour and performs no graph query.
+        if self.require_detection_feed and not self._detection_source_is_bound():
+            return
 
         try:
             data = json.loads(msg.data)

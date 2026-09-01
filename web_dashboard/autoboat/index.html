@@ -200,6 +200,10 @@
                         <span id="fcu-loop-state" class="value badge warning">Waiting</span>
                     </div>
                     <div class="info-item">
+                        <span class="label">Control Owner:</span>
+                        <span id="fcu-loop-owner" class="value badge warning">Waiting</span>
+                    </div>
+                    <div class="info-item">
                         <span class="label">Resolved Mapping:</span>
                         <span id="fcu-loop-mapping" class="value">-</span>
                     </div>
@@ -210,6 +214,18 @@
                     <div class="info-item full-width">
                         <span class="label">Measured Motor Output (raw PWM + PWM-rail position):</span>
                         <span id="fcu-loop-feedback" class="value telemetry-vector">Waiting for /mavros/rc/out</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">VRX Twin Telemetry:</span>
+                        <span id="fcu-loop-twin-status" class="value badge warning">Waiting</span>
+                    </div>
+                    <div class="info-item full-width">
+                        <span class="label">VRX Actual Pose:</span>
+                        <span id="fcu-loop-twin-pose" class="value telemetry-vector">Waiting for validated twin telemetry</span>
+                    </div>
+                    <div class="info-item full-width">
+                        <span class="label">VRX Actual Thrust:</span>
+                        <span id="fcu-loop-twin-thrust" class="value telemetry-vector">Waiting for validated twin telemetry</span>
                     </div>
                 </div>
                 <div class="fcu-loop-controls">
@@ -230,6 +246,12 @@
                         <button id="btn-fcu-loop-neutral" type="button" disabled>Neutral Now</button>
                         <button id="btn-fcu-loop-hold" type="button" class="mission-btn emergency" disabled>
                             Hold to Apply RC Demand
+                        </button>
+                        <button id="btn-fcu-loop-reset-estop" type="button" class="mission-btn reset" disabled>
+                            Reset E-Stop
+                        </button>
+                        <button id="btn-fcu-loop-control-owner" type="button" class="mission-btn joystick" disabled>
+                            Confirm Herelink Sticks Neutral &amp; Take Control
                         </button>
                     </div>
                 </div>

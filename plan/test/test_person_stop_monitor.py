@@ -14,7 +14,7 @@
 
 import json
 
-from plan.person_stop_monitor import PersonStopMonitor
+from plan.person_stop_monitor import PersonStopMonitor, detection_publisher_binding
 
 
 class _Logger:
@@ -54,6 +54,8 @@ class _MonitorStub:
         self.last_score = 0.0
         self.last_count = 0
         self._last_published_hold = None
+        self.detection_source_bound = True
+        self.detection_source_checks = 0
         self.pub_alert = _Pub()
         self.pub_emergency = _Pub()
         self.now_s = 0.0
@@ -71,6 +73,17 @@ class _MonitorStub:
         # Exercise the real policy body against this stub.
         return PersonStopMonitor.evaluate(self, now_s)
 
+    def _detection_source_is_bound(self):
+        self.detection_source_checks += 1
+        return self.detection_source_bound
+
+
+class _Endpoint:
+
+    def __init__(self, namespace='/', name='hailo_person_stop_bridge'):
+        self.node_namespace = namespace
+        self.node_name = name
+
 
 def _msg(payload):
     return type('Msg', (), {'data': json.dumps(payload)})()
@@ -83,6 +96,53 @@ def _detections(*labels_and_scores):
             for label, score in labels_and_scores
         ]
     }
+
+
+# --- Hailo source binding ----------------------------------------------------
+
+def test_detection_source_requires_exactly_one_expected_publisher():
+    assert detection_publisher_binding([_Endpoint()]) == (
+        True, ('/hailo_person_stop_bridge',), 1)
+
+
+def test_detection_source_rejects_missing_wrong_duplicate_and_unresolved_publishers():
+    cases = (
+        [],
+        [_Endpoint(name='impostor')],
+        [_Endpoint(), _Endpoint()],
+        [_Endpoint(name='_NODE_NAME_UNKNOWN_')],
+        [object()],
+    )
+    for endpoints in cases:
+        bound, _paths, count = detection_publisher_binding(endpoints)
+        assert bound is False
+        assert count == len(endpoints)
+
+
+def test_required_feed_rejects_frames_from_an_unbound_detection_source():
+    stub = _MonitorStub(
+        require_detection_feed=True,
+        detection_source_bound=False,
+        detection_timeout_s=2.0,
+    )
+    PersonStopMonitor.detections_callback(
+        stub, _msg(_detections()), now_s=10.0)
+    assert stub.detection_source_checks == 1
+    assert stub.last_feed_s is None
+    verdict = PersonStopMonitor.evaluate(stub, 10.5)
+    assert verdict['person_detected'] is True
+    assert verdict['reason'] == 'detector_feed_lost'
+
+
+def test_optional_feed_preserves_simulation_without_graph_source_checks():
+    stub = _MonitorStub(
+        require_detection_feed=False,
+        detection_source_bound=False,
+    )
+    PersonStopMonitor.detections_callback(
+        stub, _msg(_detections()), now_s=10.0)
+    assert stub.detection_source_checks == 0
+    assert stub.last_feed_s == 10.0
 
 
 # --- class filtering ---------------------------------------------------------

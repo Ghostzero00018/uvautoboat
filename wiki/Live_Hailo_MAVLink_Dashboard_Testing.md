@@ -19,6 +19,11 @@ full-screen overlay and focus trap cover the current E-Stop button and shortcuts
 reuse it in a write-enabled build until an operational E-Stop remains reachable by
 pointer or keyboard without closing the viewer.
 
+**Forward correction - 01/09/2026:** the expanded camera viewer now contains
+its own `btn-camera-emergency-stop` control. The earlier warning is retained as
+the historical acceptance condition; current source keeps an E-Stop reachable
+inside the full-screen viewer.
+
 Do not use `one_click_launch_all/launch_autoboat_complete.sh` for this test. It starts
 Gazebo and navigation nodes. Do not deploy or run the workstation preflight on the Pi;
 the retained `pi` wrapper mode is not part of this procedure.
@@ -45,8 +50,8 @@ below only for traceability.
 | Supervisor size | `41,001` bytes |
 | Supervisor SHA-256 | `a14da50ba6a2c582ac6ac0de019f31375ff880f1a6f1467212b7630d794fd601` |
 | VRX supervisor | `tools/fcu_to_vrx_workstation.sh` |
-| VRX supervisor size | `26,906` bytes |
-| VRX supervisor SHA-256 | `a5afddc81d59a39d63e7cca77a7b3852e30b5a555f1be2e04f3746f5540bdd5f` |
+| VRX supervisor size | `35,497` bytes |
+| VRX supervisor SHA-256 | `0102f0f1b8b63a0cc678dac4aa5ecef9185e68e6f91ae46a9cec4c30d442b8e8` |
 | Correlation recorder | `tools/fcu_to_vrx_evidence.py` |
 | Correlation recorder size | `43,839` bytes |
 | Correlation recorder SHA-256 | `19df4dae7015cfe3af44512c7a0bf854e1e448df8a3fc0b1f37075e6d62d0126` |
@@ -552,6 +557,115 @@ Current classification: **DEPLOYED / CERTIFIED / NOT RUN**. This certification
 did not start a probe, MAVROS, the command bridge or a T3a runtime; it produced
 no parameter write, arm, propulsion action, threshold or acceptance result and
 grants no Block E authority.
+
+#### Live T3a functional run - 01/09/2026
+
+Published revision `507bfcfa9d1eed0733840188d99905d49c691430` later ran the
+props-fitted T3a path. Pi and W1 both reached READY, retained final
+connected/disarmed state, exchanged the workstation stop marker and exited
+`status=0 cleanup_rc=0`. The Pi also retained
+`REAL_FCU_T3A_SAFE_CLOSEOUT=PASS`. Evidence roots are:
+
+- `/home/ghostzero/Desktop/pi_run_evidence/t3a_esc_threshold_20260901_193548`;
+- `/home/ghostzero/Desktop/real_fcu_digital_twin_workstation_20260901_193313`;
+  and
+- `/home/ghostzero/Desktop/real_fcu_capture_t3a_esc_threshold_20260901_193327`.
+
+The separate capture verdict is `pass:false` over `33,598` events. It records
+`invalid_status_evidence`, `status_publisher_binding_mismatch` and incomplete
+left/right calibration, with no accepted typed annotation. Machine output
+reached `954/954 us` at straight steering and throttle `0.12`, `994/913 us` at
+`+0.03/0.12`, and `913/994 us` at `-0.03/0.12`. The operator-reported physical
+onset near `990 us` is consistent with the driven-side output moving from
+`980 us` at throttle `0.11` to `994 us` at `0.12`. This bounds an
+operator-observed interval `(980, 994] us`; it does not establish an accepted
+exact ESC threshold.
+
+Classification: **FUNCTIONAL PROPS-FITTED RUN / CLEAN SUPERVISOR LIFECYCLE;
+ESC-THRESHOLD CALIBRATION FAILED / NOT ACCEPTED**. The temporary
+`RC_OVERRIDE_TIME=0.5` has no retained 01/09/2026 rollback-to-`3.0` artifact and
+remains open.
+
+### Integrated person-stop real-FCU/VRX showcase - offline worktree
+
+The current tracked worktree prepares one observable digital-twin path:
+
+```text
+Dashboard or Herelink -> real FCU -> measured /mavros/rc/out
+    -> W2 outbound relay -> forward-only VRX motion
+    -> validated VRX pose/thrust telemetry -> dashboard
+```
+
+`tools/fcu_to_vrx_workstation.sh run-real-fcu` binds the actuator source to
+exactly one `/mavros/rc` publisher of `/mavros/rc/out`, forwards it through the
+loopback-only domain bridge into domain `77`, and returns only display telemetry
+over UDP `127.0.0.1:14556`. It never creates a VRX-to-FCU command path. The
+dashboard topic is `/fcu_to_vrx/twin_telemetry`; its envelope requires schema
+`uvautoboat.fcu_to_vrx.twin_telemetry.v1`, source
+`fcu_to_vrx_domain77_bridge`, a monotonic sequence, send timestamps, pose frame,
+child frame, position and orientation, plus `left_newtons` and
+`right_newtons`. Readiness requires the first valid sample. Stale, replayed,
+malformed, wrong-source or non-loopback data fails closed. Default W2 modes and
+sensor injection remain unchanged and off.
+
+The opt-in Hailo path publishes structured stock-COCO detections. Only `person`
+is a camera obstacle. A person sighting or required detection-feed loss/staleness
+raises the stop path; clearing the camera never resumes motion by itself. The
+physical feed must have exactly one resolved publisher named
+`/hailo_person_stop_bridge` both at W1 readiness and whenever a required frame
+would refresh the feed clock. Missing, wrong, duplicate, unresolved or failed
+source evidence remains stopped.
+
+The command bridge keeps E-Stop latched until an explicit owner-matched
+`std_msgs/String` token arrives on `/command_ingress/emergency_reset` with
+armed `MANUAL` state, fresh valid RC input/output, measured neutral servo output
+and a fresh-clear person alert. Dashboard ownership uses
+`DASHBOARD_COMMAND_NEUTRAL` after an independently observed disabled-neutral
+command. Herelink ownership uses `HERELINK_STICKS_NEUTRAL`, which is a one-shot
+operator attestation that the physical sticks are neutral. Reset cancels
+pending Hold-to-Apply timers without publishing or scheduling a neutral command,
+then invalidates the old enable prime; a new deliberate neutral prime is
+required before Dashboard motion. This permits repeated E-Stop -> safe reset ->
+new prime -> motion cycles without restarting the stack.
+
+`/mavros/rc/in` is not independent physical-stick evidence while MAVROS RC
+override is active. ArduPilot reports the active override through
+`RC_CHANNELS`, so the bridge uses RC input only for freshness and valid-range
+evidence during an override. The explicit Herelink token is the human
+attestation; measured `/mavros/rc/out` neutrality is the machine gate.
+
+The dashboard ownership button publishes `/command_ingress/control_owner`:
+
+- `DASHBOARD` safely reclaims ownership without publishing a Joy frame. The
+  operator must click `Neutral Now` after the returned Dashboard status before
+  guarded Hold-to-Apply demand is accepted;
+- `HERELINK_STICKS_NEUTRAL` is accepted only from the single bound rosbridge
+  publisher during the current connected, armed, authorized `MANUAL` epoch with
+  fresh valid feedback. It sends an immediate protective trim plus three timed
+  trim frames. A newly received neutral `/mavros/rc/out` generation is required
+  before the first release, between each of the three release frames and after
+  the final release. Missing new evidence holds the handover; non-neutral
+  evidence latches E-Stop and reasserts trim. Raw `HERELINK` is rejected; and
+- returning to `DASHBOARD` neutralizes again, emits no automatic prime and
+  requires the explicit `Neutral Now` action.
+
+Disarm or disconnect revokes Herelink ownership and any pending handover, so a
+later armed epoch requires a fresh button event and stick-neutral attestation.
+
+VRX continues to mirror measured FCU output in either ownership state. E-Stop
+has priority over both. Reset and owner controls age out when bridge status is
+stale and repeat their freshness/eligibility checks at publication time.
+
+Focused red/green verification passes person monitor `37`, real-FCU helper
+`55`, dashboard Node `91/91`, W2 shell `30`, W2 Python `48`, command
+bridge `54`, command capture `37` and servo mapping `16` for the current affected
+surfaces and unchanged retained results.
+
+Classification: **WORKTREE IMPLEMENTATION / NOT COMMITTED / NOT DEPLOYED / NOT
+RUN**. The deployed `025f48c` bundle does not contain this integrated worktree.
+No Hailo-camera/real-FCU/W2/VRX integrated execution has occurred, so tomorrow
+requires a new landed bundle, transfer/checksum certification and a separately
+approved live showcase before any runtime claim.
 
 ### Isolated FCU-to-VRX workstation half
 

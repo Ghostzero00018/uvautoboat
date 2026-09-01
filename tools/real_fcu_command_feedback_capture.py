@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import select
 import signal
+import struct
 import subprocess
 import sys
 import time
@@ -50,8 +51,14 @@ CALIBRATION_CORRELATION_MAX_AGE_NS = {
     "/mavros/rc/in": 1_000_000_000,
     "/mavros/rc/out": 1_000_000_000,
 }
+CALIBRATION_OBSERVATION_GRACE_NS = 10_000_000_000
+CALIBRATION_MAX_STEERING = 0.20
 CALIBRATION_MAX_THROTTLE = 0.12
 CALIBRATION_SIDES = ("left", "right")
+CALIBRATION_SIDE_MAX_STEERING = {
+    "left": CALIBRATION_MAX_STEERING,
+    "right": -CALIBRATION_MAX_STEERING,
+}
 CALIBRATION_MOTIONS = ("stopped", "started", "not-observed")
 TIERS = ("t2a", "t2b", "t3a")
 CALIBRATION_TIERS = ("t2b", "t3a")
@@ -59,6 +66,9 @@ CALIBRATION_STATUS_PUBLISHERS = {
     "t2b": "/real_fcu_rc_command_bridge",
     "t3a": "/real_fcu_rc_command_bridge_t3a",
 }
+RMW_UNKNOWN_NODE_IDENTITIES = frozenset(
+    {"_NODE_NAME_UNKNOWN_", "_NODE_NAMESPACE_UNKNOWN_"}
+)
 
 
 class CaptureError(RuntimeError):
@@ -77,6 +87,17 @@ def validate_capture_mode(tier: str, esc_threshold_calibration: bool) -> None:
         )
 
 
+def normalize_float32_axis(value: Any, lower: float, upper: float) -> Optional[float]:
+    if not _finite_number(value):
+        return None
+    numeric = float(value)
+    for bound in (lower, upper):
+        encoded = struct.unpack("!f", struct.pack("!f", bound))[0]
+        if numeric == encoded:
+            return bound
+    return numeric if lower <= numeric <= upper else None
+
+
 def publisher_node_paths(endpoint_infos: Sequence[Any]) -> tuple[str, ...]:
     paths: set[str] = set()
     for endpoint in endpoint_infos:
@@ -88,6 +109,11 @@ def publisher_node_paths(endpoint_infos: Sequence[Any]) -> tuple[str, ...]:
         if not normalized_name:
             continue
         normalized_namespace = namespace.strip("/")
+        if (
+            normalized_name in RMW_UNKNOWN_NODE_IDENTITIES
+            or normalized_namespace in RMW_UNKNOWN_NODE_IDENTITIES
+        ):
+            continue
         paths.add(
             f"/{normalized_namespace}/{normalized_name}"
             if normalized_namespace
@@ -235,7 +261,7 @@ def parse_operator_observation(line: str) -> tuple[str, str]:
 
 def status_evidence_error(status: Mapping[str, Any], tier: str) -> Optional[str]:
     """Validate the bridge status shape and phase-bearing state semantics."""
-    string_fields = ("state", "fault", "mode")
+    string_fields = ("state", "fault", "mode", "control_owner")
     boolean_fields = (
         "ready",
         "connected",
@@ -245,6 +271,8 @@ def status_evidence_error(status: Mapping[str, Any], tier: str) -> Optional[str]
     )
     if any(not isinstance(status.get(name), str) for name in string_fields):
         return "invalid_status_string_field"
+    if status["control_owner"] not in ("DASHBOARD", "HERELINK"):
+        return "invalid_status_control_owner"
     if any(not isinstance(status.get(name), bool) for name in boolean_fields):
         return "invalid_status_boolean_field"
 
@@ -261,6 +289,19 @@ def status_evidence_error(status: Mapping[str, Any], tier: str) -> Optional[str]
             isinstance(value, bool) or not isinstance(value, int) or value < 0
         ):
             return "invalid_status_feedback_age"
+
+    state = status["state"]
+    if state == "HERELINK_WAITING_NEUTRAL":
+        return "invalid_status_legacy_herelink_wait"
+    phase_states = {
+        "READY_DISARMED": (True, False),
+        "ARMED_NEUTRAL": (True, True),
+        "ACTIVE": (True, True),
+        "HERELINK_HANDOVER": (False, True),
+        "HERELINK_CONTROL": (True, True),
+        "EMERGENCY_STOP": (False, None),
+    }
+    phase_expectation = phase_states.get(state)
 
     if "resolved" not in status:
         return "invalid_status_resolved_mapping"
@@ -287,26 +328,25 @@ def status_evidence_error(status: Mapping[str, Any], tier: str) -> Optional[str]
     )
     if measured is not None and (
         not isinstance(measured, Mapping)
+        or any(name not in measured for name in measured_names)
         or any(
             isinstance(measured.get(name), bool)
-            or not isinstance(measured.get(name), int)
+            or (
+                measured.get(name) is not None
+                and not isinstance(measured.get(name), int)
+            )
+            or (phase_expectation is not None and measured.get(name) is None)
             for name in measured_names
         )
     ):
         return "invalid_status_measured_feedback"
 
-    state = status["state"]
-    phase_states = {
-        "READY_DISARMED": (True, False),
-        "ARMED_NEUTRAL": (True, True),
-        "ACTIVE": (True, True),
-        "EMERGENCY_STOP": (False, None),
-    }
-    phase_expectation = phase_states.get(state)
     if phase_expectation is None:
         return None
     expected_ready, expected_armed = phase_expectation
     expected_neutral_only = tier == "t2a"
+    if state.startswith("HERELINK_") and status["control_owner"] != "HERELINK":
+        return "invalid_status_control_owner"
     if not (
         status["ready"] is expected_ready
         and (expected_armed is None or status["armed"] is expected_armed)
@@ -365,6 +405,9 @@ class CaptureSession:
         self.operator_observations: dict[str, list[dict[str, Any]]] = {
             side: [] for side in CALIBRATION_SIDES
         }
+        self.recent_active_correlation: Optional[dict[str, Any]] = None
+        self.recent_active_correlation_monotonic_ns: Optional[int] = None
+        self.recent_active_release_monotonic_ns: Optional[int] = None
         self.states_seen: list[str] = []
         self.last_armed_state_sequence: Optional[int] = None
         self.invalid_status_count = 0
@@ -524,6 +567,7 @@ class CaptureSession:
             raise
         finally:
             signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
+        self._refresh_recent_active_correlation(topic, event)
         return event
 
     def record_ros_message(self, topic: str, message: Any) -> dict[str, Any]:
@@ -631,12 +675,43 @@ class CaptureSession:
             for value in (steering, throttle, status_steering, status_throttle)
         ):
             raise CaptureError("calibration observation has invalid command values")
-        if float(steering) != 0.0 or float(status_steering) != 0.0:
-            raise CaptureError("calibration observation requires straight steering")
-        if float(throttle) <= 0.0 or float(status_throttle) <= 0.0:
+        steering_value = float(steering)
+        throttle_value = float(throttle)
+        status_steering_value = float(status_steering)
+        status_throttle_value = float(status_throttle)
+        steering_value = normalize_float32_axis(
+            steering_value, -CALIBRATION_MAX_STEERING, CALIBRATION_MAX_STEERING
+        )
+        status_steering_value = normalize_float32_axis(
+            status_steering_value,
+            -CALIBRATION_MAX_STEERING,
+            CALIBRATION_MAX_STEERING,
+        )
+        if steering_value is None or status_steering_value is None:
+            raise CaptureError("calibration steering is outside calibration bounds")
+        throttle_value = normalize_float32_axis(
+            throttle_value, 0.0, CALIBRATION_MAX_THROTTLE
+        )
+        status_throttle_value = normalize_float32_axis(
+            status_throttle_value, 0.0, CALIBRATION_MAX_THROTTLE
+        )
+        if throttle_value is None or status_throttle_value is None:
+            raise CaptureError("calibration throttle is outside calibration bounds")
+        if throttle_value <= 0.0 or status_throttle_value <= 0.0:
             raise CaptureError("calibration observation requires positive throttle")
-        if not math.isclose(
-            float(throttle), float(status_throttle), rel_tol=0.0, abs_tol=1e-6
+        if not (
+            math.isclose(
+                steering_value,
+                status_steering_value,
+                rel_tol=0.0,
+                abs_tol=1e-6,
+            )
+            and math.isclose(
+                throttle_value,
+                status_throttle_value,
+                rel_tol=0.0,
+                abs_tol=1e-6,
+            )
         ):
             raise CaptureError("calibration command and bridge status do not match")
 
@@ -672,12 +747,115 @@ class CaptureSession:
             "sequences": sequences,
             "ages_ms": ages_ms,
             "command": {
-                "steering": float(status_steering),
-                "throttle": float(status_throttle),
+                "steering": status_steering_value,
+                "throttle": status_throttle_value,
             },
             "measured": measured,
             "resolved": dict(resolved),
         }
+
+    def _clear_recent_active_correlation(self) -> None:
+        self.recent_active_correlation = None
+        self.recent_active_correlation_monotonic_ns = None
+        self.recent_active_release_monotonic_ns = None
+
+    def _refresh_recent_active_correlation(
+        self, topic: str, event: Mapping[str, Any]
+    ) -> None:
+        if not self.esc_threshold_calibration or topic == OPERATOR_OBSERVATION_TOPIC:
+            return
+        if topic == "/mavros/state":
+            state = event.get("message")
+            if not (
+                isinstance(state, Mapping)
+                and state.get("connected") is True
+                and state.get("armed") is True
+                and state.get("mode") == "MANUAL"
+            ):
+                self._clear_recent_active_correlation()
+                return
+        if topic == STATUS_TOPIC:
+            if "status_error" in event:
+                self._clear_recent_active_correlation()
+                return
+            status = event.get("decoded")
+            state = status.get("state") if isinstance(status, Mapping) else None
+            if state not in ("ACTIVE", "ARMED_NEUTRAL") or not (
+                isinstance(status, Mapping)
+                and status.get("connected") is True
+                and status.get("armed") is True
+                and status.get("mode") == "MANUAL"
+                and status.get("feedback_fresh") is True
+            ):
+                self._clear_recent_active_correlation()
+                return
+        if topic == "/command_ingress/rc_axes":
+            axes = event.get("message")
+            buttons = axes.get("buttons") if isinstance(axes, Mapping) else None
+            axis_values = axes.get("axes") if isinstance(axes, Mapping) else None
+            if (
+                isinstance(buttons, Sequence)
+                and not isinstance(buttons, (str, bytes))
+                and list(buttons) == [1]
+            ):
+                self._clear_recent_active_correlation()
+            elif (
+                self.recent_active_correlation is not None
+                and isinstance(axis_values, Sequence)
+                and not isinstance(axis_values, (str, bytes))
+                and len(axis_values) == 2
+                and all(_finite_number(value) and float(value) == 0.0 for value in axis_values)
+                and isinstance(buttons, Sequence)
+                and not isinstance(buttons, (str, bytes))
+                and list(buttons) == [0]
+            ):
+                released_at = event.get("received_monotonic_ns")
+                if isinstance(released_at, int) and not isinstance(released_at, bool):
+                    self.recent_active_release_monotonic_ns = released_at
+                return
+            elif (
+                self.recent_active_correlation is not None
+                and isinstance(buttons, Sequence)
+                and not isinstance(buttons, (str, bytes))
+                and list(buttons) == [0]
+            ):
+                self.recent_active_release_monotonic_ns = None
+                return
+            else:
+                self._clear_recent_active_correlation()
+                return
+
+        received_monotonic_ns = event.get("received_monotonic_ns")
+        if isinstance(received_monotonic_ns, bool) or not isinstance(
+            received_monotonic_ns, int
+        ):
+            return
+        try:
+            correlation = self._calibration_correlation(received_monotonic_ns)
+        except CaptureError:
+            return
+        self.recent_active_correlation = correlation
+        self.recent_active_correlation_monotonic_ns = received_monotonic_ns
+        self.recent_active_release_monotonic_ns = None
+
+    def _operator_correlation(self, observation_monotonic_ns: int) -> dict[str, Any]:
+        cached = self.recent_active_correlation
+        released_at = self.recent_active_release_monotonic_ns
+        if cached is None:
+            raise CaptureError("no recent ACTIVE plateau is available")
+        if released_at is None:
+            raise CaptureError(
+                "a disabled neutral release frame is required before operator input"
+            )
+        age_ns = observation_monotonic_ns - released_at
+        if age_ns < 0 or age_ns >= CALIBRATION_OBSERVATION_GRACE_NS:
+            raise CaptureError(
+                "recent ACTIVE plateau expired before operator observation"
+            )
+        correlation = dict(cached)
+        correlation["source"] = "recent_active_plateau"
+        correlation["operator_delay_ms"] = age_ns // 1_000_000
+        return correlation
 
     def record_operator_observation(self, side: str, motion: str) -> dict[str, Any]:
         if not self.esc_threshold_calibration:
@@ -691,7 +869,7 @@ class CaptureSession:
         ):
             raise CaptureError(f"terminal {side} observation was already recorded")
         receipt = self.receipt_clock()
-        correlation = self._calibration_correlation(receipt[1])
+        correlation = self._operator_correlation(receipt[1])
         return self.record(
             OPERATOR_OBSERVATION_TOPIC,
             {
@@ -767,37 +945,49 @@ class CaptureSession:
                 ),
             )
             lower_throttle = lower["message"]["correlation"]["command"]["throttle"]
+            lower_steering = lower["message"]["correlation"]["command"]["steering"]
             lower_pwm = lower["message"]["correlation"]["measured"][servo_pwm_key]
             terminal_throttle = terminal["message"]["correlation"]["command"][
                 "throttle"
             ]
-            terminal_pwm = terminal["message"]["correlation"]["measured"][
-                servo_pwm_key
+            terminal_steering = terminal["message"]["correlation"]["command"][
+                "steering"
             ]
+            terminal_pwm = terminal["message"]["correlation"]["measured"][servo_pwm_key]
             outcome = terminal["message"]["motion"]
-            if terminal["sequence"] <= lower["sequence"] or terminal_throttle < lower_throttle:
+            if terminal["sequence"] <= lower["sequence"]:
                 reasons.append(f"calibration_{side}_observation_order_invalid")
-            elif outcome == "started" and terminal_throttle <= lower_throttle:
-                reasons.append(f"calibration_{side}_threshold_not_bracketed")
             elif terminal_pwm <= lower_pwm:
                 reasons.append(f"calibration_{side}_pwm_not_bracketed")
-            elif outcome == "not-observed" and not math.isclose(
-                terminal_throttle,
-                CALIBRATION_MAX_THROTTLE,
-                rel_tol=0.0,
-                abs_tol=1e-6,
-            ):
-                reasons.append(f"calibration_{side}_maximum_not_reached")
+            elif outcome == "not-observed":
+                endpoint_steering = CALIBRATION_SIDE_MAX_STEERING[side]
+                if not (
+                    math.isclose(
+                        terminal_throttle,
+                        CALIBRATION_MAX_THROTTLE,
+                        rel_tol=0.0,
+                        abs_tol=1e-6,
+                    )
+                    and math.isclose(
+                        terminal_steering,
+                        endpoint_steering,
+                        rel_tol=0.0,
+                        abs_tol=1e-6,
+                    )
+                ):
+                    reasons.append(f"calibration_{side}_maximum_not_reached")
             summary[side] = {
                 "evidence_class": "operator_observed",
                 "outcome": outcome,
                 "lower_no_rotation": {
                     "sequence": lower["sequence"],
+                    "steering": lower_steering,
                     "throttle": lower_throttle,
                     "measured": lower["message"]["correlation"]["measured"],
                 },
                 "terminal_observation": {
                     "sequence": terminal["sequence"],
+                    "steering": terminal_steering,
                     "throttle": terminal_throttle,
                     "measured": terminal["message"]["correlation"]["measured"],
                 },
@@ -882,7 +1072,13 @@ class CaptureSession:
         if not contains_ordered_subsequence(self.states_seen, expected_status_sequence):
             reasons.append("tier_status_sequence_incomplete")
         if self.tier == "t2a" and any(
-            state in ("ACTIVE", "EMERGENCY_STOP") for state in self.states_seen
+            state in (
+                "ACTIVE",
+                "HERELINK_HANDOVER",
+                "HERELINK_CONTROL",
+                "EMERGENCY_STOP",
+            )
+            for state in self.states_seen
         ):
             reasons.append("t2a_forbidden_status_state")
 
@@ -1044,6 +1240,14 @@ def write_session_manifest(
             "calibration_max_throttle": (
                 CALIBRATION_MAX_THROTTLE if esc_threshold_calibration else None
             ),
+            "calibration_max_steering": (
+                CALIBRATION_MAX_STEERING if esc_threshold_calibration else None
+            ),
+            "operator_observation_grace_seconds": (
+                CALIBRATION_OBSERVATION_GRACE_NS // 1_000_000_000
+                if esc_threshold_calibration
+                else None
+            ),
             "operator_observation_interface": (
                 "stdin" if esc_threshold_calibration else None
             ),
@@ -1137,7 +1341,9 @@ def run_capture(
         if esc_threshold_calibration:
             print(
                 "REAL_FCU_ESC_THRESHOLD_INPUT=READY commands='<left|right> "
-                "<stopped|started|not-observed>' steering=0 required",
+                "<stopped|started|not-observed>' steering=-0.20..0.20 "
+                "bracket=per-side-pwm release-Apply-before-input=true "
+                f"recent-active-grace={CALIBRATION_OBSERVATION_GRACE_NS // 1_000_000_000}s",
                 flush=True,
             )
             while rclpy.ok():
@@ -1159,9 +1365,12 @@ def run_capture(
                     )
                     continue
                 throttle = event["message"]["correlation"]["command"]["throttle"]
+                steering = event["message"]["correlation"]["command"]["steering"]
+                source = event["message"]["correlation"]["source"]
                 print(
                     "REAL_FCU_ESC_THRESHOLD_OBSERVATION=RECORDED "
-                    f"side={side} motion={motion} throttle={throttle:.6f} "
+                    f"side={side} motion={motion} steering={steering:.6f} "
+                    f"throttle={throttle:.6f} source={source} "
                     f"sequence={event['sequence']}",
                     flush=True,
                 )

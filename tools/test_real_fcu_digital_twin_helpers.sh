@@ -94,6 +94,333 @@ trap 'rm -rf "$TEST_TMP"' EXIT
 ROS_FIXTURE="$TEST_TMP/ros_setup.bash"
 : >"$ROS_FIXTURE"
 
+PI_HAILO_WRAPPER="$TEST_TMP/hailo_person_stop_bridge.py"
+bash -c '
+  set -euo pipefail
+  source "$1"
+  RFCU_PI_HAILO_WRAPPER="$2"
+  rfcu_pi_write_hailo_wrapper
+' _ "$PI_HELPER" "$PI_HAILO_WRAPPER" \
+  || fail_test 'Pi helper cannot generate the Hailo person-stop bridge'
+/usr/bin/python3 -m py_compile "$PI_HAILO_WRAPPER" \
+  || fail_test 'generated Hailo person-stop bridge is not valid Python'
+grep -Fq 'postprocess.extract_detections' "$PI_HAILO_WRAPPER" \
+  || fail_test 'Hailo bridge does not use the pinned detector post-process API'
+grep -Fq '"/perception/detections"' "$PI_HAILO_WRAPPER" \
+  || fail_test 'Hailo bridge does not publish structured detections'
+grep -Fq '"/hailo/overlay/image_raw"' "$PI_HAILO_WRAPPER" \
+  || fail_test 'Hailo bridge does not publish its annotated image'
+grep -Fq 'name="hailo-thermal-supervisor"' "$PI_HAILO_WRAPPER" \
+  || fail_test 'Hailo bridge has no frame-independent thermal supervisor'
+grep -Fq 'HAILO_PERSON_STOP_THERMAL_ABORT' "$PI_HAILO_WRAPPER" \
+  || fail_test 'Hailo thermal supervisor has no explicit abort marker'
+! grep -Eiq 'ttyAMA0|mavproxy|serial://|udp(out)?://' "$PI_HAILO_WRAPPER" \
+  || fail_test 'Hailo bridge tries to own or relay the FCU serial path'
+pass_case
+
+PI_HAILO_COMMANDS="$(bash -c '
+  set -euo pipefail
+  source "$1"
+  RFCU_PI_RUN_MODE=run-t3a
+  RFCU_PI_RUN_DIR="$2/pi-hailo-command"
+  RFCU_PI_HAILO_WRAPPER="$RFCU_PI_RUN_DIR/hailo_person_stop_bridge.py"
+  RFCU_PI_HAILO_PERSON_STOP=1
+  rfcu_pi_build_commands
+  printf "bridge\n"
+  printf "%s\n" "${RFCU_PI_BRIDGE_COMMAND[@]}"
+  printf "hailo\n"
+  printf "%s\n" "${RFCU_PI_HAILO_COMMAND[@]}"
+' _ "$PI_HELPER" "$TEST_TMP")" \
+  || fail_test 'Pi helper cannot build the opt-in Hailo command'
+grep -Fxq 'PYTHONUNBUFFERED=1' <<<"$PI_HAILO_COMMANDS" \
+  || fail_test 'Pi Hailo command does not force unbuffered evidence output'
+grep -Fxq 'require_person_alert:=true' <<<"$PI_HAILO_COMMANDS" \
+  || fail_test 'opt-in Pi bridge does not require a fresh person-alert feed'
+grep -Fq 'hailo_person_stop_bridge.py' <<<"$PI_HAILO_COMMANDS" \
+  || fail_test 'Pi Hailo command does not launch its generated wrapper'
+grep -Fxq -- '--no-display' <<<"$PI_HAILO_COMMANDS" \
+  || fail_test 'Pi Hailo command unexpectedly requires a local display'
+! grep -Eiq 'ttyAMA0|mavproxy|serial://|udp(out)?://' <<<"$PI_HAILO_COMMANDS" \
+  || fail_test 'Pi Hailo command duplicates FCU serial or relay ownership'
+pass_case
+
+DEFAULT_PI_HAILO_COMMANDS="$(bash -c '
+  set -euo pipefail
+  source "$1"
+  RFCU_PI_RUN_MODE=run-t3a
+  RFCU_PI_HAILO_PERSON_STOP=0
+  rfcu_pi_build_commands
+  printf "%s\n" "${#RFCU_PI_HAILO_COMMAND[@]}"
+' _ "$PI_HELPER")" \
+  || fail_test 'Pi helper cannot build its default command set'
+[ "$DEFAULT_PI_HAILO_COMMANDS" = 0 ] \
+  || fail_test "default Pi path started Hailo: $DEFAULT_PI_HAILO_COMMANDS"
+DEFAULT_PI_BRIDGE_COMMAND="$(bash -c '
+  set -euo pipefail
+  source "$1"
+  RFCU_PI_RUN_MODE=run-t3a
+  RFCU_PI_HAILO_PERSON_STOP=0
+  rfcu_pi_build_commands
+  printf "%s\n" "${RFCU_PI_BRIDGE_COMMAND[@]}"
+' _ "$PI_HELPER")" \
+  || fail_test 'Pi helper cannot build its default bridge command'
+! grep -Fq 'require_person_alert' <<<"$DEFAULT_PI_BRIDGE_COMMAND" \
+  || fail_test 'default Pi bridge started requiring an unavailable camera feed'
+pass_case
+
+PI_DEFAULT_CONFLICT_TRACE="$TEST_TMP/pi_default_conflicts.txt"
+PI_HAILO_CONFLICT_TRACE="$TEST_TMP/pi_hailo_conflicts.txt"
+bash -c '
+  set -euo pipefail
+  source "$1"
+  RFCU_PI_HAILO_PERSON_STOP="$2"
+  TRACE="$3"
+  pgrep() { printf "%s\n" "$3" >>"$TRACE"; return 1; }
+  rfcu_pi_reject_conflicts
+' _ "$PI_HELPER" 0 "$PI_DEFAULT_CONFLICT_TRACE" \
+  || fail_test 'default Pi conflict guard failed under its focused fixture'
+bash -c '
+  set -euo pipefail
+  source "$1"
+  RFCU_PI_HAILO_PERSON_STOP="$2"
+  TRACE="$3"
+  pgrep() { printf "%s\n" "$3" >>"$TRACE"; return 1; }
+  rfcu_pi_reject_conflicts
+' _ "$PI_HELPER" 1 "$PI_HAILO_CONFLICT_TRACE" \
+  || fail_test 'opt-in Pi conflict guard failed under its focused fixture'
+[ "$(cat "$PI_DEFAULT_CONFLICT_TRACE")" = \
+    $'mavros_node\nreal_fcu_rc_command_bridge.py\npi_live_hailo_mavlink_dashboard.sh' ] \
+  || fail_test 'default Pi conflict guard changed when Hailo is disabled'
+[ "$(cat "$PI_HAILO_CONFLICT_TRACE")" = \
+    $'mavros_node\nreal_fcu_rc_command_bridge.py\npi_live_hailo_mavlink_dashboard.sh\nhailo_person_stop_bridge.py' ] \
+  || fail_test 'opt-in Pi conflict guard omitted its Hailo owner'
+pass_case
+
+PI_STATIC_PREFLIGHT="$(extract_function "$PI_HELPER" rfcu_pi_static_preflight)"
+PI_ROS_SETUP_LINE="$(line_number_once "$PI_STATIC_PREFLIGHT" \
+  'rfcu_pi_configure_ros_environment' 'Pi ROS environment setup')"
+PI_HAILO_PREFLIGHT_LINE="$(line_number_once "$PI_STATIC_PREFLIGHT" \
+  'rfcu_pi_validate_hailo_preflight' 'Pi Hailo preflight')"
+[ "$PI_ROS_SETUP_LINE" -lt "$PI_HAILO_PREFLIGHT_LINE" ] \
+  || fail_test 'Pi validates Hailo ROS imports before sourcing the ROS environment'
+PI_HAILO_PREFLIGHT="$(extract_function "$PI_HELPER" \
+  rfcu_pi_validate_hailo_preflight)"
+grep -Fq 'HAILO_APPS_REPO="$RFCU_PI_HAILO_REPO"' \
+  <<<"$PI_HAILO_PREFLIGHT" \
+  || fail_test 'Pi Hailo provenance check does not export its canonical repo root'
+grep -Fq -- '--ignore-submodules=none' <<<"$PI_HAILO_PREFLIGHT" \
+  || fail_test 'Pi Hailo clean-tree check ignores submodule drift'
+grep -Fq 'run_inference_pipeline.__globals__["visualize"]' \
+  <<<"$PI_HAILO_PREFLIGHT" \
+  || fail_test 'Pi Hailo preflight does not prove the visualization hook is reachable'
+pass_case
+
+HAILO_COMMANDS="$(bash -c '
+  set -euo pipefail
+  source "$1"
+  RFCU_WS_HAILO_PERSON_STOP=1
+  rfcu_ws_build_commands
+  printf "person-monitor"
+  printf "\t%q" "${RFCU_WS_PERSON_MONITOR_COMMAND[@]}"
+  printf "\nweb-video"
+  printf "\t%q" "${RFCU_WS_WEB_VIDEO_COMMAND[@]}"
+' _ "$WORKSTATION_HELPER")" \
+  || fail_test 'workstation cannot build the opt-in Hailo commands'
+grep -Fq 'person_class:=person' <<<"$HAILO_COMMANDS" \
+  || fail_test 'person-stop monitor does not select only the person class'
+grep -Fq 'require_detection_feed:=true' <<<"$HAILO_COMMANDS" \
+  || fail_test 'physical person-stop monitor is not fail-closed on feed loss'
+grep -Fq 'latch_emergency_stop:=true' <<<"$HAILO_COMMANDS" \
+  || fail_test 'person-stop monitor does not raise the authoritative E-stop'
+grep -Fq 'web_video_server' <<<"$HAILO_COMMANDS" \
+  || fail_test 'workstation does not expose the annotated Hailo image'
+grep -Fq 'address:=127.0.0.1' <<<"$HAILO_COMMANDS" \
+  || fail_test 'Hailo video service is not loopback-only'
+pass_case
+
+DEFAULT_HAILO_COMMANDS="$(bash -c '
+  set -euo pipefail
+  source "$1"
+  RFCU_WS_HAILO_PERSON_STOP=0
+  rfcu_ws_build_commands
+  printf "%s|%s\n" "${#RFCU_WS_PERSON_MONITOR_COMMAND[@]}" \
+    "${#RFCU_WS_WEB_VIDEO_COMMAND[@]}"
+' _ "$WORKSTATION_HELPER")" \
+  || fail_test 'workstation cannot build its default commands'
+[ "$DEFAULT_HAILO_COMMANDS" = '0|0' ] \
+  || fail_test "default workstation path started Hailo services: $DEFAULT_HAILO_COMMANDS"
+pass_case
+
+WS_HAILO_SERVICE_TRACE="$TEST_TMP/ws_hailo_service_trace.txt"
+bash -c '
+  set -euo pipefail
+  source "$1"
+  RFCU_WS_HAILO_PERSON_STOP=1
+  RFCU_WS_POLL_SECONDS=1
+  TRACE="$2"
+  rfcu_ws_children_alive() { return 0; }
+  rfcu_ws_loopback_listener_ready() { printf "%s\n" "$1" >>"$TRACE"; }
+  curl() { return 0; }
+  rfcu_ws_wait_local_services
+  printf "%s\n" video >>"$TRACE"
+  rfcu_ws_wait_video_service
+' _ "$WORKSTATION_HELPER" "$WS_HAILO_SERVICE_TRACE" \
+  || fail_test 'workstation Hailo service gates failed under their focused fixture'
+[ "$(cat "$WS_HAILO_SERVICE_TRACE")" = $'9090\n8002\nvideo\n8080' ] \
+  || fail_test 'workstation tried to bind video before the detection gate'
+pass_case
+
+HAILO_VALID_DETECTIONS="$TEST_TMP/hailo_valid_detections.json"
+HAILO_NON_PERSON_DETECTIONS="$TEST_TMP/hailo_non_person_detections.json"
+HAILO_INVALID_SCORE="$TEST_TMP/hailo_invalid_score.json"
+HAILO_CLEAR_ALERT="$TEST_TMP/hailo_clear_alert.json"
+HAILO_PERSON_ALERT="$TEST_TMP/hailo_person_alert.json"
+HAILO_FEED_LOST_ALERT="$TEST_TMP/hailo_feed_lost_alert.json"
+printf '%s\n' '{"stamp":1.0,"detections":[{"label":"person","score":0.75}]}' \
+  >"$HAILO_VALID_DETECTIONS"
+printf '%s\n' '{"stamp":1.0,"detections":[{"label":"boat","score":0.75}]}' \
+  >"$HAILO_NON_PERSON_DETECTIONS"
+printf '%s\n' '{"stamp":1.0,"detections":[{"label":"person","score":true}]}' \
+  >"$HAILO_INVALID_SCORE"
+printf '%s\n' \
+  '{"person_detected":false,"feed_fresh":true,"reason":""}' \
+  >"$HAILO_CLEAR_ALERT"
+printf '%s\n' \
+  '{"person_detected":true,"feed_fresh":true,"reason":"person_detected"}' \
+  >"$HAILO_PERSON_ALERT"
+printf '%s\n' \
+  '{"person_detected":true,"feed_fresh":false,"reason":"detector_feed_lost"}' \
+  >"$HAILO_FEED_LOST_ALERT"
+for helper in "$WORKSTATION_HELPER" "$PI_HELPER"; do
+  case "$helper" in
+    "$WORKSTATION_HELPER") prefix=rfcu_ws ;;
+    "$PI_HELPER") prefix=rfcu_pi ;;
+  esac
+  bash -c 'source "$1"; "$2_hailo_detection_file_is_valid" "$3"' \
+    _ "$helper" "$prefix" "$HAILO_VALID_DETECTIONS" \
+    || fail_test "$prefix rejected a valid person-only detection frame"
+  if bash -c 'source "$1"; "$2_hailo_detection_file_is_valid" "$3"' \
+      _ "$helper" "$prefix" "$HAILO_NON_PERSON_DETECTIONS"; then
+    fail_test "$prefix accepted a non-person detection from the Pi wrapper"
+  fi
+  if bash -c 'source "$1"; "$2_hailo_detection_file_is_valid" "$3"' \
+      _ "$helper" "$prefix" "$HAILO_INVALID_SCORE"; then
+    fail_test "$prefix accepted a boolean detection score"
+  fi
+  bash -c 'source "$1"; "$2_person_alert_file_is_initial_clear" "$3"' \
+    _ "$helper" "$prefix" "$HAILO_CLEAR_ALERT" \
+    || fail_test "$prefix rejected a fresh-clear person alert"
+  if bash -c 'source "$1"; "$2_person_alert_file_is_initial_clear" "$3"' \
+      _ "$helper" "$prefix" "$HAILO_PERSON_ALERT"; then
+    fail_test "$prefix accepted a person obstacle as initial clear"
+  fi
+  if bash -c 'source "$1"; "$2_person_alert_file_is_initial_clear" "$3"' \
+      _ "$helper" "$prefix" "$HAILO_FEED_LOST_ALERT"; then
+    fail_test "$prefix accepted detector feed loss as initial clear"
+  fi
+done
+pass_case
+
+HAILO_SOURCE_EXPECTED="$TEST_TMP/hailo_source_expected.txt"
+HAILO_SOURCE_WRONG="$TEST_TMP/hailo_source_wrong.txt"
+HAILO_SOURCE_DUPLICATE="$TEST_TMP/hailo_source_duplicate.txt"
+HAILO_SOURCE_UNKNOWN="$TEST_TMP/hailo_source_unknown.txt"
+HAILO_SOURCE_ZERO="$TEST_TMP/hailo_source_zero.txt"
+printf '%s\n' \
+  'Type: std_msgs/msg/String' \
+  'Publisher count: 1' \
+  'Node name: hailo_person_stop_bridge' \
+  'Node namespace: /' \
+  'Endpoint type: PUBLISHER' >"$HAILO_SOURCE_EXPECTED"
+printf '%s\n' \
+  'Type: std_msgs/msg/String' \
+  'Publisher count: 1' \
+  'Node name: impostor' \
+  'Node namespace: /' \
+  'Endpoint type: PUBLISHER' >"$HAILO_SOURCE_WRONG"
+printf '%s\n' \
+  'Type: std_msgs/msg/String' \
+  'Publisher count: 2' \
+  'Node name: hailo_person_stop_bridge' \
+  'Node namespace: /' \
+  'Endpoint type: PUBLISHER' \
+  'Node name: hailo_person_stop_bridge' \
+  'Node namespace: /' \
+  'Endpoint type: PUBLISHER' >"$HAILO_SOURCE_DUPLICATE"
+printf '%s\n' \
+  'Type: std_msgs/msg/String' \
+  'Publisher count: 1' \
+  'Node name: _NODE_NAME_UNKNOWN_' \
+  'Node namespace: _NODE_NAMESPACE_UNKNOWN_' \
+  'Endpoint type: PUBLISHER' >"$HAILO_SOURCE_UNKNOWN"
+printf '%s\n' \
+  'Type: std_msgs/msg/String' \
+  'Publisher count: 0' >"$HAILO_SOURCE_ZERO"
+
+bash -c '
+  set -euo pipefail
+  source "$1"
+  fixture="$2"
+  ros2() { cat "$fixture"; }
+  rfcu_ws_hailo_detection_source_is_bound
+' _ "$WORKSTATION_HELPER" "$HAILO_SOURCE_EXPECTED" \
+  || fail_test 'workstation rejected the exact Hailo detection publisher'
+for bad_source in "$HAILO_SOURCE_WRONG" "$HAILO_SOURCE_DUPLICATE" \
+    "$HAILO_SOURCE_UNKNOWN" "$HAILO_SOURCE_ZERO"; do
+  if bash -c '
+      set -euo pipefail
+      source "$1"
+      fixture="$2"
+      ros2() { cat "$fixture"; }
+      rfcu_ws_hailo_detection_source_is_bound
+    ' _ "$WORKSTATION_HELPER" "$bad_source" >/dev/null 2>&1; then
+    fail_test "workstation accepted invalid Hailo source evidence: $bad_source"
+  fi
+done
+if bash -c '
+    set -euo pipefail
+    source "$1"
+    ros2() { return 1; }
+    rfcu_ws_hailo_detection_source_is_bound
+  ' _ "$WORKSTATION_HELPER" >/dev/null 2>&1; then
+  fail_test 'workstation accepted a failed Hailo source query'
+fi
+pass_case
+
+WS_HAILO_WAIT_FUNCTION="$(extract_function "$WORKSTATION_HELPER" \
+  rfcu_ws_wait_hailo_detection)"
+WS_HAILO_SOURCE_LINE="$(line_number_once "$WS_HAILO_WAIT_FUNCTION" \
+  'rfcu_ws_hailo_detection_source_is_bound \' \
+  'workstation Hailo detection source gate')"
+WS_HAILO_PAYLOAD_LINE="$(line_number_once "$WS_HAILO_WAIT_FUNCTION" \
+  'rfcu_ws_json_field_once /perception/detections "$output" \' \
+  'workstation Hailo detection payload gate')"
+[ "$WS_HAILO_SOURCE_LINE" -lt "$WS_HAILO_PAYLOAD_LINE" ] \
+  || fail_test 'workstation validates Hailo payload before publisher identity'
+pass_case
+
+WORKSTATION_RUN_FUNCTION="$(extract_function "$WORKSTATION_HELPER" rfcu_ws_run)"
+WS_WAIT_DETECTION_LINE="$(line_number_once "$WORKSTATION_RUN_FUNCTION" \
+  'rfcu_ws_wait_hailo_detection \' 'workstation Hailo detection gate')"
+WS_START_VIDEO_LINE="$(line_number_once "$WORKSTATION_RUN_FUNCTION" \
+  'rfcu_ws_start_child web-video-server \' 'workstation Hailo video start')"
+WS_WAIT_VIDEO_LINE="$(line_number_once "$WORKSTATION_RUN_FUNCTION" \
+  'rfcu_ws_wait_video_service \' 'workstation Hailo video gate')"
+WS_START_MONITOR_LINE="$(line_number_once "$WORKSTATION_RUN_FUNCTION" \
+  'rfcu_ws_start_child person-stop-monitor \' 'workstation person-stop start')"
+WS_WAIT_CLEAR_LINE="$(line_number_once "$WORKSTATION_RUN_FUNCTION" \
+  'rfcu_ws_wait_person_alert_clear \' 'workstation fresh-clear gate')"
+WS_WAIT_BRIDGE_LINE="$(line_number_once "$WORKSTATION_RUN_FUNCTION" \
+  'rfcu_ws_wait_bridge_ready \' 'workstation bridge gate')"
+[ "$WS_WAIT_DETECTION_LINE" -lt "$WS_START_MONITOR_LINE" ] \
+  && [ "$WS_WAIT_DETECTION_LINE" -lt "$WS_START_VIDEO_LINE" ] \
+  && [ "$WS_START_VIDEO_LINE" -lt "$WS_WAIT_VIDEO_LINE" ] \
+  && [ "$WS_WAIT_VIDEO_LINE" -lt "$WS_START_MONITOR_LINE" ] \
+  && [ "$WS_START_MONITOR_LINE" -lt "$WS_WAIT_CLEAR_LINE" ] \
+  && [ "$WS_WAIT_CLEAR_LINE" -lt "$WS_WAIT_BRIDGE_LINE" ] \
+  || fail_test 'workstation Hailo detection/monitor/clear/bridge ordering changed'
+pass_case
+
 WORKSTATION_ENV="$(bash -c '
   source "$1"
   RFCU_WS_ROS_SETUP="$2"
@@ -222,7 +549,58 @@ bash -c '
   rfcu_pi_wait_workstation_nodes
 ' _ "$PI_HELPER" \
   || fail_test 'T3a readiness rejected rosbridge, rosapi and capture together'
+if bash -c '
+    set -euo pipefail
+    source "$1"
+    RFCU_PI_RUN_MODE=run-t3a
+    RFCU_PI_HAILO_PERSON_STOP=1
+    RFCU_PI_READY_TIMEOUT_SECONDS=1
+    RFCU_PI_POLL_SECONDS=1
+    rfcu_pi_active_children_alive() { return 0; }
+    ros2() { printf "/rosbridge_websocket\n/rosapi\n/real_fcu_command_feedback_capture\n"; }
+    sleep() { SECONDS=$((SECONDS + 2)); }
+    rfcu_pi_wait_workstation_nodes
+  ' _ "$PI_HELPER"; then
+  fail_test 'Hailo showcase readiness accepted the formal capture in place of person-stop/video nodes'
+fi
+bash -c '
+  set -euo pipefail
+  source "$1"
+  RFCU_PI_RUN_MODE=run-t3a
+  RFCU_PI_HAILO_PERSON_STOP=1
+  RFCU_PI_READY_TIMEOUT_SECONDS=1
+  RFCU_PI_POLL_SECONDS=1
+  rfcu_pi_active_children_alive() { return 0; }
+  ros2() {
+    printf "/rosbridge_websocket\n/rosapi\n/person_stop_monitor_node\n/web_video_server\n"
+  }
+  rfcu_pi_wait_workstation_nodes
+' _ "$PI_HELPER" \
+  || fail_test 'Hailo showcase readiness rejected person-stop/video nodes'
+if bash -c '
+    set -euo pipefail
+    source "$1"
+    RFCU_PI_RUN_MODE=run-t2a
+    RFCU_PI_HAILO_PERSON_STOP=1
+    RFCU_PI_READY_TIMEOUT_SECONDS=1
+    RFCU_PI_POLL_SECONDS=1
+    rfcu_pi_active_children_alive() { return 0; }
+    ros2() { printf "/rosbridge_websocket\n/rosapi\n"; }
+    sleep() { SECONDS=$((SECONDS + 2)); }
+    rfcu_pi_wait_workstation_nodes
+  ' _ "$PI_HELPER"; then
+  fail_test 'non-T3a Hailo readiness ignored person-stop/video nodes'
+fi
 PI_RUN_FUNCTION="$(extract_function "$PI_HELPER" rfcu_pi_run)"
+PI_START_HAILO_LINE="$(line_number_once "$PI_RUN_FUNCTION" \
+  'rfcu_pi_start_child hailo-person-stop \' 'Pi Hailo child start')"
+PI_WAIT_HAILO_LINE="$(line_number_once "$PI_RUN_FUNCTION" \
+  'rfcu_pi_wait_hailo_ready \' 'Pi Hailo readiness gate')"
+PI_START_PROBE_LINE="$(line_number_once "$PI_RUN_FUNCTION" \
+  'rfcu_pi_start_child mavros-probe' 'Pi MAVROS probe start')"
+[ "$PI_START_HAILO_LINE" -lt "$PI_WAIT_HAILO_LINE" ] \
+  && [ "$PI_WAIT_HAILO_LINE" -lt "$PI_START_PROBE_LINE" ] \
+  || fail_test 'Pi does not prove the Hailo feed before opening the FCU serial path'
 grep -Fq 'workstation rosbridge/rosapi/capture nodes were not discovered' \
   <<<"$PI_RUN_FUNCTION" \
   || fail_test 'T3a readiness failure does not identify the required capture node'
@@ -332,6 +710,33 @@ WORKSTATION_CONFLICT_OUTPUT="$(bash -c '
 EXPECTED_WORKSTATION_CONFLICTS=$'ardurover\nsim_vehicle.py\nmavproxy.py\nMAVProxy\nmavros_node\nreal_fcu_rc_command_bridge.py\nsitl_digital_twin_evidence.py\nsitl_operator_once.py\nrosbridge\nserve_dashboard.py'
 [ "$WORKSTATION_CONFLICT_OUTPUT" = "$EXPECTED_WORKSTATION_CONFLICTS" ] \
   || fail_test "workstation conflict guard does not mirror SITL ownership: $WORKSTATION_CONFLICT_OUTPUT"
+WORKSTATION_HAILO_CONFLICT_OUTPUT="$(bash -c '
+  source "$1"
+  printf "%s\n" "${RFCU_WS_CONFLICT_PATTERNS[@]}" \
+    "${RFCU_WS_HAILO_CONFLICT_PATTERNS[@]}"
+' _ "$WORKSTATION_HELPER")"
+[ "$WORKSTATION_HAILO_CONFLICT_OUTPUT" = \
+    "$EXPECTED_WORKSTATION_CONFLICTS"$'\nperson_stop_monitor.py\nweb_video_server' ] \
+  || fail_test 'opt-in workstation conflict guard omitted Hailo service owners'
+WS_DEFAULT_CONFLICT_TRACE="$TEST_TMP/ws_default_conflicts.txt"
+WS_HAILO_CONFLICT_TRACE="$TEST_TMP/ws_hailo_conflicts.txt"
+for flag_and_trace in \
+    "0:$WS_DEFAULT_CONFLICT_TRACE" "1:$WS_HAILO_CONFLICT_TRACE"; do
+  bash -c '
+    set -euo pipefail
+    source "$1"
+    RFCU_WS_HAILO_PERSON_STOP="$2"
+    TRACE="$3"
+    pgrep() { printf "%s\n" "$3" >>"$TRACE"; return 1; }
+    rfcu_ws_reject_conflicts
+  ' _ "$WORKSTATION_HELPER" "${flag_and_trace%%:*}" \
+    "${flag_and_trace#*:}" \
+    || fail_test 'workstation conflict guard failed under its focused fixture'
+done
+[ "$(cat "$WS_DEFAULT_CONFLICT_TRACE")" = "$EXPECTED_WORKSTATION_CONFLICTS" ] \
+  || fail_test 'default workstation conflict checks changed while Hailo is disabled'
+[ "$(cat "$WS_HAILO_CONFLICT_TRACE")" = "$WORKSTATION_HAILO_CONFLICT_OUTPUT" ] \
+  || fail_test 'opt-in workstation conflict checks omitted a Hailo service owner'
 pass_case
 
 COMMAND_OUTPUT="$(bash -c '
@@ -998,6 +1403,40 @@ if bash -c 'source "$1"; rfcu_pi_status_is_ready "$2" true' \
     _ "$PI_HELPER" "$READY_STATUS"; then
   fail_test 'T2a accepted demand-enabled bridge readiness'
 fi
+HAILO_READY_STATUS='{"state":"READY_DISARMED","ready":true,"connected":true,"armed":false,"mode":"MANUAL","feedback_fresh":true,"neutral_only":false,"person_alert_required":true,"person_alert_fresh":true,"person_hold_clear":true,"resolved":{"steering_rc":1,"throttle_rc":3,"left_servo":3,"right_servo":1}}'
+HAILO_BENCH_URL="$(bash -c '
+  source "$1"
+  RFCU_WS_HAILO_PERSON_STOP=1
+  rfcu_ws_bench_url_from_status "$2"
+' _ "$WORKSTATION_HELPER" "$HAILO_READY_STATUS")" \
+  || fail_test 'workstation rejected bridge-enforced Hailo readiness'
+[ "$HAILO_BENCH_URL" = "$BENCH_URL" ] \
+  || fail_test "Hailo readiness changed the guarded bench URL: $HAILO_BENCH_URL"
+bash -c '
+  source "$1"
+  RFCU_PI_HAILO_PERSON_STOP=1
+  rfcu_pi_status_is_ready "$2" false
+' _ "$PI_HELPER" "$HAILO_READY_STATUS" \
+  || fail_test 'Pi rejected bridge-enforced Hailo readiness'
+for unsafe_hailo_status in \
+  '{"state":"READY_DISARMED","ready":true,"connected":true,"armed":false,"mode":"MANUAL","feedback_fresh":true,"neutral_only":false,"person_alert_required":false,"person_alert_fresh":true,"person_hold_clear":true,"resolved":{"steering_rc":1,"throttle_rc":3,"left_servo":3,"right_servo":1}}' \
+  '{"state":"READY_DISARMED","ready":true,"connected":true,"armed":false,"mode":"MANUAL","feedback_fresh":true,"neutral_only":false,"person_alert_required":true,"person_alert_fresh":false,"person_hold_clear":true,"resolved":{"steering_rc":1,"throttle_rc":3,"left_servo":3,"right_servo":1}}' \
+  '{"state":"READY_DISARMED","ready":true,"connected":true,"armed":false,"mode":"MANUAL","feedback_fresh":true,"neutral_only":false,"person_alert_required":true,"person_alert_fresh":true,"person_hold_clear":false,"resolved":{"steering_rc":1,"throttle_rc":3,"left_servo":3,"right_servo":1}}'; do
+  if bash -c '
+      source "$1"
+      RFCU_WS_HAILO_PERSON_STOP=1
+      rfcu_ws_bench_url_from_status "$2"
+    ' _ "$WORKSTATION_HELPER" "$unsafe_hailo_status" >/dev/null 2>&1; then
+    fail_test 'workstation accepted a bridge without enforced fresh-clear camera policy'
+  fi
+  if bash -c '
+      source "$1"
+      RFCU_PI_HAILO_PERSON_STOP=1
+      rfcu_pi_status_is_ready "$2" false
+    ' _ "$PI_HELPER" "$unsafe_hailo_status" >/dev/null 2>&1; then
+    fail_test 'Pi accepted a bridge without enforced fresh-clear camera policy'
+  fi
+done
 for invalid_status in \
   '{"state":"STARTUP_ARMED","ready":false,"connected":true,"armed":true,"mode":"MANUAL","feedback_fresh":true,"resolved":{"left_servo":3,"right_servo":1}}' \
   '{"state":"READY_DISARMED","ready":true,"connected":true,"armed":false,"mode":"MANUAL","feedback_fresh":true,"resolved":{"left_servo":3,"right_servo":3}}' \

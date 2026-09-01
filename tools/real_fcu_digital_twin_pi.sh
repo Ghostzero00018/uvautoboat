@@ -19,6 +19,22 @@ RFCU_PI_READY_TIMEOUT_SECONDS="${REAL_FCU_READY_TIMEOUT_SECONDS:-600}"
 RFCU_PI_STATUS_TIMEOUT_SECONDS="${REAL_FCU_STATUS_TIMEOUT_SECONDS:-15}"
 RFCU_PI_T3A_CLOSEOUT_TIMEOUT_SECONDS="${REAL_FCU_T3A_CLOSEOUT_TIMEOUT_SECONDS:-300}"
 RFCU_PI_POLL_SECONDS="${REAL_FCU_POLL_SECONDS:-1}"
+RFCU_PI_HAILO_PERSON_STOP="${REAL_FCU_HAILO_PERSON_STOP:-0}"
+RFCU_PI_HAILO_ROOT="${REAL_FCU_HAILO_ROOT:-$HOME/hailo_coco_overlay_2026-07-10}"
+RFCU_PI_HAILO_REPO="$RFCU_PI_HAILO_ROOT/hailo-apps"
+RFCU_PI_HAILO_VENV="$RFCU_PI_HAILO_ROOT/venv"
+RFCU_PI_HAILO_HEF="${REAL_FCU_HAILO_HEF:-$RFCU_PI_HAILO_ROOT/models/yolov11n-v2.19.0-hailo8l.hef}"
+RFCU_PI_HAILO_CAMERA="${REAL_FCU_HAILO_CAMERA:-/dev/video4}"
+RFCU_PI_HAILO_THERMAL='/sys/class/thermal/thermal_zone0/temp'
+RFCU_PI_HAILO_ABORT_MC="${REAL_FCU_HAILO_ABORT_MC:-80000}"
+RFCU_PI_HAILO_REPO_SHA='891ce701c2ebe239a5d277759eb75a30f76678a9'
+RFCU_PI_HAILO_HEF_SHA='d08e140e61befc4fe3c8e5c2d10969fec258bc411363de6813e8b1778dc7cb8e'
+RFCU_PI_HAILO_OBJECT_REL='hailo_apps/python/standalone_apps/object_detection/object_detection.py'
+RFCU_PI_HAILO_OBJECT_SHA='9f8eca7efc139a423459e87e1715bdf7bc42e1e0a1ecd84b628f62e195e22046'
+RFCU_PI_HAILO_POST_REL='hailo_apps/python/standalone_apps/object_detection/object_detection_post_process.py'
+RFCU_PI_HAILO_POST_SHA='62fdadbeba4ddedc882e311c8b503b21b82c24537afcfe198593112caef3902f'
+RFCU_PI_HAILO_TOOL_REL='hailo_apps/python/core/common/toolbox.py'
+RFCU_PI_HAILO_TOOL_SHA='c796def8fb99c8337b1ecee64011a2ea4fe099dbe5ea40dff2cd45a2ab848e9d'
 RFCU_PI_DOMAIN_ID='43'
 RFCU_PI_DISCOVERY_RANGE='SUBNET'
 RFCU_PI_PROBE_DISCOVERY_RANGE='LOCALHOST'
@@ -47,6 +63,7 @@ RFCU_PI_T3A_PROPULSION_ENABLE_PROMPTED=0
 RFCU_PI_T3A_PROPULSION_ENABLED_CONFIRMED=0
 RFCU_PI_T3A_SAFE_CLOSEOUT_CONFIRMED=0
 RFCU_PI_CLEANUP_SIGNAL='none'
+RFCU_PI_HAILO_WRAPPER=''
 
 declare -a RFCU_PI_CHILD_NAMES=()
 declare -a RFCU_PI_CHILD_PIDS=()
@@ -56,6 +73,7 @@ declare -A RFCU_PI_CHILD_ACTIVE=()
 declare -a RFCU_PI_PROBE_MAVROS_COMMAND=()
 declare -a RFCU_PI_MAVROS_COMMAND=()
 declare -a RFCU_PI_BRIDGE_COMMAND=()
+declare -a RFCU_PI_HAILO_COMMAND=()
 
 rfcu_pi_append_log() {
   local line="$1"
@@ -96,6 +114,11 @@ rfcu_pi_validate_positive_integer() {
   local name="$1" value="$2"
   [[ "$value" =~ ^[1-9][0-9]*$ ]] \
     || rfcu_pi_fail "$name must be a positive integer"
+}
+
+rfcu_pi_validate_binary_flag() {
+  local name="$1" value="$2"
+  [[ "$value" =~ ^[01]$ ]] || rfcu_pi_fail "$name must be 0 or 1"
 }
 
 rfcu_pi_require_flag() {
@@ -272,8 +295,14 @@ rfcu_pi_configure_ros_environment() {
 
 rfcu_pi_reject_conflicts() {
   local pattern output rc found=0
-  for pattern in mavros_node real_fcu_rc_command_bridge.py \
-    pi_live_hailo_mavlink_dashboard.sh; do
+  local -a patterns=(
+    mavros_node
+    real_fcu_rc_command_bridge.py
+    pi_live_hailo_mavlink_dashboard.sh
+  )
+  [ "$RFCU_PI_HAILO_PERSON_STOP" -eq 0 ] \
+    || patterns+=(hailo_person_stop_bridge.py)
+  for pattern in "${patterns[@]}"; do
     if output="$(pgrep -af -- "$pattern")"; then
       printf '%s\n' "$output" >&2
       found=1
@@ -294,6 +323,89 @@ rfcu_pi_serial_is_free() {
     rc=$?
     [ "$rc" -eq 1 ] || return 1
   fi
+}
+
+rfcu_pi_device_is_free() {
+  local path="$1" owners rc
+  if owners="$(fuser "$path" 2>/dev/null)"; then
+    [ -z "$owners" ]
+  else
+    rc=$?
+    [ "$rc" -eq 1 ]
+  fi
+}
+
+rfcu_pi_validate_hailo_preflight() {
+  local actual_sha status
+  [ "$RFCU_PI_HAILO_PERSON_STOP" -eq 1 ] || return 0
+  rfcu_pi_require_command git
+  [[ "$RFCU_PI_RUN_MODE" =~ ^run(-(t2a|t3a))?$ ]] \
+    || rfcu_pi_fail 'REAL_FCU_HAILO_PERSON_STOP=1 is allowed only for a run mode'
+  rfcu_pi_validate_positive_integer REAL_FCU_HAILO_ABORT_MC \
+    "$RFCU_PI_HAILO_ABORT_MC"
+  [ -x "$RFCU_PI_HAILO_VENV/bin/python" ] \
+    || rfcu_pi_fail "Hailo virtualenv Python missing: $RFCU_PI_HAILO_VENV/bin/python"
+  [ -d "$RFCU_PI_HAILO_REPO/.git" ] \
+    || rfcu_pi_fail "Hailo applications checkout missing: $RFCU_PI_HAILO_REPO"
+  actual_sha="$(git -C "$RFCU_PI_HAILO_REPO" rev-parse HEAD)" \
+    || rfcu_pi_fail 'cannot read Hailo checkout revision'
+  [ "$actual_sha" = "$RFCU_PI_HAILO_REPO_SHA" ] \
+    || rfcu_pi_fail \
+      "Hailo checkout SHA mismatch: expected=$RFCU_PI_HAILO_REPO_SHA actual=$actual_sha"
+  status="$(git -C "$RFCU_PI_HAILO_REPO" status --porcelain=v1 \
+    --untracked-files=all --ignore-submodules=none)" \
+    || rfcu_pi_fail 'cannot inspect Hailo checkout state'
+  [ -z "$status" ] || rfcu_pi_fail 'Hailo checkout is not clean'
+  printf '%s  %s\n' "$RFCU_PI_HAILO_OBJECT_SHA" \
+    "$RFCU_PI_HAILO_REPO/$RFCU_PI_HAILO_OBJECT_REL" | sha256sum -c - \
+    || rfcu_pi_fail 'pinned Hailo object-detection entry point changed'
+  printf '%s  %s\n' "$RFCU_PI_HAILO_POST_SHA" \
+    "$RFCU_PI_HAILO_REPO/$RFCU_PI_HAILO_POST_REL" | sha256sum -c - \
+    || rfcu_pi_fail 'pinned Hailo detection post-process changed'
+  printf '%s  %s\n' "$RFCU_PI_HAILO_TOOL_SHA" \
+    "$RFCU_PI_HAILO_REPO/$RFCU_PI_HAILO_TOOL_REL" | sha256sum -c - \
+    || rfcu_pi_fail 'pinned Hailo visualization callback changed'
+  [ -r "$RFCU_PI_HAILO_HEF" ] \
+    || rfcu_pi_fail "Hailo HEF missing: $RFCU_PI_HAILO_HEF"
+  printf '%s  %s\n' "$RFCU_PI_HAILO_HEF_SHA" "$RFCU_PI_HAILO_HEF" \
+    | sha256sum -c - \
+    || rfcu_pi_fail 'pinned Hailo HEF changed'
+  [ -e "$RFCU_PI_HAILO_CAMERA" ] \
+    || rfcu_pi_fail "Hailo camera missing: $RFCU_PI_HAILO_CAMERA"
+  [ -c /dev/hailo0 ] || rfcu_pi_fail '/dev/hailo0 missing'
+  [ -r "$RFCU_PI_HAILO_THERMAL" ] \
+    || rfcu_pi_fail "thermal sensor unreadable: $RFCU_PI_HAILO_THERMAL"
+  rfcu_pi_device_is_free "$RFCU_PI_HAILO_CAMERA" \
+    || rfcu_pi_fail "$RFCU_PI_HAILO_CAMERA already in use"
+  rfcu_pi_device_is_free /dev/hailo0 || rfcu_pi_fail '/dev/hailo0 already in use'
+  env HAILO_APPS_REPO="$RFCU_PI_HAILO_REPO" \
+    PYTHONPATH="$RFCU_PI_HAILO_REPO${PYTHONPATH:+:$PYTHONPATH}" \
+    "$RFCU_PI_HAILO_VENV/bin/python" -c '
+import cv2
+import numpy
+import rclpy
+import sensor_msgs.msg
+import std_msgs.msg
+from hailo_apps.python.standalone_apps.object_detection import object_detection
+from hailo_apps.python.standalone_apps.object_detection import object_detection_post_process
+import os
+assert callable(object_detection.visualize)
+assert callable(object_detection_post_process.extract_detections)
+assert os.path.realpath(object_detection.__file__).startswith(
+    os.path.realpath(os.environ["HAILO_APPS_REPO"]) + os.sep
+)
+assert os.path.realpath(object_detection_post_process.__file__).startswith(
+    os.path.realpath(os.environ["HAILO_APPS_REPO"]) + os.sep
+)
+assert "visualize" in object_detection.run_inference_pipeline.__globals__
+original = object_detection.visualize
+marker = lambda *args, **kwargs: None
+try:
+    object_detection.visualize = marker
+    assert object_detection.run_inference_pipeline.__globals__["visualize"] is marker
+finally:
+    object_detection.visualize = original
+' || rfcu_pi_fail 'Hailo ROS/object-detection imports are unavailable'
 }
 
 rfcu_pi_verify_bundle() {
@@ -319,6 +431,8 @@ rfcu_pi_static_preflight() {
   rfcu_pi_validate_positive_integer REAL_FCU_T3A_CLOSEOUT_TIMEOUT_SECONDS \
     "$RFCU_PI_T3A_CLOSEOUT_TIMEOUT_SECONDS"
   rfcu_pi_validate_positive_integer REAL_FCU_POLL_SECONDS "$RFCU_PI_POLL_SECONDS"
+  rfcu_pi_validate_binary_flag REAL_FCU_HAILO_PERSON_STOP \
+    "$RFCU_PI_HAILO_PERSON_STOP"
   for command in awk bash cp date fuser grep mkdir pgrep ps python3 sed setsid \
     sha256sum sleep tail tee timeout tr; do
     rfcu_pi_require_command "$command"
@@ -349,6 +463,10 @@ rfcu_pi_static_preflight() {
   rfcu_pi_serial_is_free || rfcu_pi_fail "$RFCU_PI_SERIAL already in use"
   rfcu_pi_reject_conflicts
   rfcu_pi_configure_ros_environment
+  # The Hailo virtualenv imports ROS modules through the sourced Jazzy
+  # environment.  Running this check before configure_ros_environment would
+  # reject the canonical deployment whenever stripped rclpy is unavailable.
+  rfcu_pi_validate_hailo_preflight
   rfcu_pi_require_command ros2
   ros2 pkg prefix mavros >/dev/null || rfcu_pi_fail 'mavros package missing'
   /usr/bin/python3 -c 'import json, mavros_msgs, rclpy, sensor_msgs, std_msgs, yaml' \
@@ -392,6 +510,213 @@ rfcu_pi_init_state() {
     "$RFCU_PI_RUN_DIR/evidence"
   RFCU_PI_SUPERVISOR_LOG="$RFCU_PI_RUN_DIR/supervisor.log"
   : >"$RFCU_PI_SUPERVISOR_LOG" || rfcu_pi_fail 'cannot create Pi supervisor log'
+  RFCU_PI_HAILO_WRAPPER="$RFCU_PI_RUN_DIR/manifest/hailo_person_stop_bridge.py"
+}
+
+rfcu_pi_write_hailo_wrapper() {
+  [ -n "$RFCU_PI_HAILO_WRAPPER" ] \
+    || rfcu_pi_fail 'Hailo wrapper path is empty'
+  cat >"$RFCU_PI_HAILO_WRAPPER" <<'PYTHON_HAILO_PERSON_STOP'
+#!/usr/bin/env python3
+import json
+import math
+import os
+import sys
+import threading
+import time
+
+import cv2
+import numpy as np
+import rclpy
+from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
+from rclpy.signals import SignalHandlerOptions
+from sensor_msgs.msg import Image
+from std_msgs.msg import String
+
+repo = os.environ["HAILO_APPS_REPO"]
+sys.path.insert(0, repo)
+
+from hailo_apps.python.standalone_apps.object_detection import object_detection as detector
+from hailo_apps.python.standalone_apps.object_detection import object_detection_post_process as postprocess
+
+stream_height = int(os.environ["HAILO_STREAM_HEIGHT"])
+stream_fps = int(os.environ["HAILO_STREAM_FPS"])
+thermal_path = os.environ["HAILO_THERMAL_PATH"]
+thermal_abort_mc = int(os.environ["HAILO_THERMAL_ABORT_MC"])
+thermal_peak_path = os.environ["HAILO_THERMAL_PEAK_PATH"]
+period_ns = int(1_000_000_000 / stream_fps)
+
+rclpy.init(signal_handler_options=SignalHandlerOptions.NO)
+node = rclpy.create_node("hailo_person_stop_bridge")
+image_publisher = node.create_publisher(
+    Image,
+    "/hailo/overlay/image_raw",
+    QoSProfile(
+        history=HistoryPolicy.KEEP_LAST,
+        depth=1,
+        reliability=ReliabilityPolicy.RELIABLE,
+        durability=DurabilityPolicy.VOLATILE,
+    ),
+)
+detection_publisher = node.create_publisher(
+    String,
+    "/perception/detections",
+    10,
+)
+
+original_visualize = detector.visualize
+state = {"last_image_ns": 0, "frames": 0, "peak_mc": 0}
+thermal_lock = threading.Lock()
+
+
+def check_temperature():
+    try:
+        reading = int(open(thermal_path, encoding="ascii").read().strip())
+    except (OSError, ValueError) as exc:
+        raise RuntimeError("Hailo thermal sensor read failed") from exc
+    with thermal_lock:
+        if reading > state["peak_mc"]:
+            state["peak_mc"] = reading
+            with open(thermal_peak_path, "w", encoding="ascii") as handle:
+                handle.write(f"{reading}\n")
+    if reading >= thermal_abort_mc:
+        raise RuntimeError(
+            f"Hailo thermal limit reached: {reading} >= {thermal_abort_mc} mC"
+        )
+
+
+def supervise_temperature():
+    while True:
+        try:
+            check_temperature()
+        except Exception as exc:
+            print(f"HAILO_PERSON_STOP_THERMAL_ABORT reason={exc}", flush=True)
+            os._exit(70)
+        time.sleep(1.0)
+
+
+def person_detections(original_frame, inference_result, callback):
+    keywords = getattr(callback, "keywords", None)
+    if not isinstance(keywords, dict):
+        raise RuntimeError("Hailo callback does not expose pinned post-process inputs")
+    labels = keywords.get("labels")
+    config_data = keywords.get("config_data")
+    if not isinstance(labels, list) or not isinstance(config_data, dict):
+        raise RuntimeError("Hailo callback labels/config are unavailable")
+    extracted = postprocess.extract_detections(
+        original_frame,
+        inference_result,
+        config_data,
+    )
+    classes = extracted.get("detection_classes")
+    scores = extracted.get("detection_scores")
+    count = extracted.get("num_detections")
+    if not isinstance(classes, list) or not isinstance(scores, list):
+        raise RuntimeError("Hailo post-process returned an invalid detection set")
+    if not isinstance(count, int) or count != len(classes) or count != len(scores):
+        raise RuntimeError("Hailo post-process detection count is inconsistent")
+    detections = []
+    for raw_class, raw_score in zip(classes, scores):
+        class_id = int(raw_class)
+        score = float(raw_score)
+        if not 0 <= class_id < len(labels) or not math.isfinite(score):
+            raise RuntimeError("Hailo post-process returned an invalid class or score")
+        label = str(labels[class_id]).strip().lower()
+        if label == "person":
+            detections.append({"label": "person", "score": score})
+    return detections
+
+
+def publishing_visualize(
+    input_context,
+    visualization_settings,
+    output_queue,
+    callback,
+    fps_tracker=None,
+    stop_event=None,
+):
+    def callback_and_publish(*args, **kwargs):
+        if len(args) < 2:
+            raise RuntimeError("Hailo visualization callback shape changed")
+        check_temperature()
+        detections = person_detections(args[0], args[1], callback)
+        detection_message = String()
+        detection_message.data = json.dumps(
+            {
+                "stamp": node.get_clock().now().nanoseconds / 1_000_000_000.0,
+                "detections": detections,
+            },
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        detection_publisher.publish(detection_message)
+
+        annotated_rgb = callback(*args, **kwargs)
+        now_ns = time.monotonic_ns()
+        if now_ns - state["last_image_ns"] >= period_ns:
+            height, width = annotated_rgb.shape[:2]
+            scale = min(1.0, stream_height / float(height))
+            if scale < 1.0:
+                stream_rgb = cv2.resize(
+                    annotated_rgb,
+                    (int(round(width * scale)), stream_height),
+                    interpolation=cv2.INTER_AREA,
+                )
+            else:
+                stream_rgb = annotated_rgb
+            stream_bgr = np.ascontiguousarray(
+                cv2.cvtColor(stream_rgb, cv2.COLOR_RGB2BGR)
+            )
+            image_message = Image()
+            image_message.header.stamp = node.get_clock().now().to_msg()
+            image_message.header.frame_id = "hailo_overlay"
+            image_message.height, image_message.width = stream_bgr.shape[:2]
+            image_message.encoding = "bgr8"
+            image_message.is_bigendian = 0
+            image_message.step = image_message.width * 3
+            image_message.data = stream_bgr.tobytes()
+            image_publisher.publish(image_message)
+            state["last_image_ns"] = now_ns
+        state["frames"] += 1
+        if state["frames"] == 1 or state["frames"] % 100 == 0:
+            print(
+                f'HAILO_PERSON_STOP_FRAME count={state["frames"]} '
+                f'persons={len(detections)} peak_mc={state["peak_mc"]}',
+                flush=True,
+            )
+        return annotated_rgb
+
+    return original_visualize(
+        input_context,
+        visualization_settings,
+        output_queue,
+        callback_and_publish,
+        fps_tracker,
+        stop_event,
+    )
+
+
+check_temperature()
+threading.Thread(
+    target=supervise_temperature,
+    name="hailo-thermal-supervisor",
+    daemon=True,
+).start()
+detector.visualize = publishing_visualize
+print(
+    "HAILO_PERSON_STOP_BRIDGE_READY "
+    "detections=/perception/detections image=/hailo/overlay/image_raw "
+    "class=person serial_owner=none thermal=supervised",
+    flush=True,
+)
+try:
+    detector.main()
+finally:
+    node.destroy_node()
+    rclpy.try_shutdown()
+PYTHON_HAILO_PERSON_STOP
+  chmod 0600 "$RFCU_PI_HAILO_WRAPPER" \
+    || rfcu_pi_fail 'cannot protect generated Hailo wrapper'
 }
 
 rfcu_pi_build_commands() {
@@ -425,6 +750,31 @@ rfcu_pi_build_commands() {
     -p 'max_steering:=0.20'
     -p 'max_throttle:=0.12'
   )
+  RFCU_PI_HAILO_COMMAND=()
+  if [ "$RFCU_PI_HAILO_PERSON_STOP" -eq 1 ]; then
+    RFCU_PI_BRIDGE_COMMAND+=(
+      -p 'require_person_alert:=true'
+    )
+    RFCU_PI_HAILO_COMMAND=(
+      env
+      'PYTHONUNBUFFERED=1'
+      "PYTHONPATH=$RFCU_PI_HAILO_REPO${PYTHONPATH:+:$PYTHONPATH}"
+      "HAILO_APPS_REPO=$RFCU_PI_HAILO_REPO"
+      'HAILO_STREAM_HEIGHT=240'
+      'HAILO_STREAM_FPS=10'
+      "HAILO_THERMAL_PATH=$RFCU_PI_HAILO_THERMAL"
+      "HAILO_THERMAL_ABORT_MC=$RFCU_PI_HAILO_ABORT_MC"
+      "HAILO_THERMAL_PEAK_PATH=$RFCU_PI_RUN_DIR/evidence/hailo_thermal_peak_mc.txt"
+      "$RFCU_PI_HAILO_VENV/bin/python" "$RFCU_PI_HAILO_WRAPPER"
+      --hef-path "$RFCU_PI_HAILO_HEF"
+      --input "$RFCU_PI_HAILO_CAMERA"
+      --camera-resolution sd
+      --output-resolution sd
+      --frame-rate 15
+      --show-fps
+      --no-display
+    )
+  fi
   if [ "$RFCU_PI_RUN_MODE" = run-t3a ]; then
     RFCU_PI_BRIDGE_COMMAND+=(
       -r '__node:=real_fcu_rc_command_bridge_t3a'
@@ -439,16 +789,21 @@ rfcu_pi_build_commands() {
 }
 
 rfcu_pi_write_manifest() {
-  local tier=none authority=none
+  local tier=none authority=none t3a_capture_required=1
   case "$RFCU_PI_RUN_MODE" in
     run-t2a) tier=T2a; authority=neutral-only ;;
     run) tier=T2b; authority=demand-enabled ;;
     run-t3a) tier=T3a; authority=demand-enabled ;;
   esac
-  printf 'mode=%s\ntier=%s\nauthority=%s\nROS_DOMAIN_ID=%s\nROS_AUTOMATIC_DISCOVERY_RANGE=%s\nROS_LOCALHOST_ONLY=%s\nserial=%s\nbaud=%s\nt3a_closeout_timeout_seconds=%s\nguard_source=%s\nguard_snapshot_file=%s\nguard_snapshot_sha256=%s\nt0b_source=%s\nt0b_snapshot_file=%s\nt0b_snapshot_sha256=%s\nt0b_operator_declaration=%s\nt3a_approved=%s\nstart_disarmed=%s\nsafety_on=%s\npropellers_removed=%s\npropellers_fitted=%s\nhull_restrained=%s\nmechanical_guarding_installed=%s\nexclusion_zone_clear=%s\npropulsion_isolated_at_launch=%s\n' \
+  [ "$RFCU_PI_HAILO_PERSON_STOP" -eq 0 ] || t3a_capture_required=0
+  printf 'mode=%s\ntier=%s\nauthority=%s\nROS_DOMAIN_ID=%s\nROS_AUTOMATIC_DISCOVERY_RANGE=%s\nROS_LOCALHOST_ONLY=%s\nserial=%s\nbaud=%s\nhailo_person_stop=%s\nt3a_capture_required=%s\nhailo_repo_sha=%s\nhailo_hef_sha=%s\nhailo_object_sha=%s\nhailo_post_sha=%s\nhailo_tool_sha=%s\nt3a_closeout_timeout_seconds=%s\nguard_source=%s\nguard_snapshot_file=%s\nguard_snapshot_sha256=%s\nt0b_source=%s\nt0b_snapshot_file=%s\nt0b_snapshot_sha256=%s\nt0b_operator_declaration=%s\nt3a_approved=%s\nstart_disarmed=%s\nsafety_on=%s\npropellers_removed=%s\npropellers_fitted=%s\nhull_restrained=%s\nmechanical_guarding_installed=%s\nexclusion_zone_clear=%s\npropulsion_isolated_at_launch=%s\n' \
     "$RFCU_PI_RUN_MODE" "$tier" "$authority" "$ROS_DOMAIN_ID" \
     "$ROS_AUTOMATIC_DISCOVERY_RANGE" "$ROS_LOCALHOST_ONLY" \
     "$RFCU_PI_SERIAL" "$RFCU_PI_BAUD" \
+    "$RFCU_PI_HAILO_PERSON_STOP" "$t3a_capture_required" \
+    "$RFCU_PI_HAILO_REPO_SHA" \
+    "$RFCU_PI_HAILO_HEF_SHA" "$RFCU_PI_HAILO_OBJECT_SHA" \
+    "$RFCU_PI_HAILO_POST_SHA" "$RFCU_PI_HAILO_TOOL_SHA" \
     "$RFCU_PI_T3A_CLOSEOUT_TIMEOUT_SECONDS" "$RFCU_PI_GUARD_SOURCE" \
     "$RFCU_PI_GUARD_SNAPSHOT_FILE" "$RFCU_PI_GUARD_SNAPSHOT_SHA256" \
     "$RFCU_PI_T0B_SOURCE" "$RFCU_PI_T0B_SNAPSHOT_FILE" \
@@ -468,6 +823,11 @@ rfcu_pi_write_manifest() {
       || sha256sum "$RFCU_PI_GUARD_SNAPSHOT_FILE"
     [ "$RFCU_PI_T0B_SOURCE" != mavproxy-ftp-snapshot ] \
       || sha256sum "$RFCU_PI_T0B_SNAPSHOT_FILE"
+    [ "$RFCU_PI_HAILO_PERSON_STOP" -eq 0 ] \
+      || sha256sum "$RFCU_PI_HAILO_WRAPPER" "$RFCU_PI_HAILO_HEF" \
+        "$RFCU_PI_HAILO_REPO/$RFCU_PI_HAILO_OBJECT_REL" \
+        "$RFCU_PI_HAILO_REPO/$RFCU_PI_HAILO_POST_REL" \
+        "$RFCU_PI_HAILO_REPO/$RFCU_PI_HAILO_TOOL_REL"
   } >"$RFCU_PI_RUN_DIR/manifest/artifacts.sha256"
   printf 'probe_mavros' >"$RFCU_PI_RUN_DIR/manifest/commands.tsv"
   printf '\t%q' "${RFCU_PI_PROBE_MAVROS_COMMAND[@]}" \
@@ -478,6 +838,11 @@ rfcu_pi_write_manifest() {
   printf '\nbridge' >>"$RFCU_PI_RUN_DIR/manifest/commands.tsv"
   printf '\t%q' "${RFCU_PI_BRIDGE_COMMAND[@]}" \
     >>"$RFCU_PI_RUN_DIR/manifest/commands.tsv"
+  if [ "$RFCU_PI_HAILO_PERSON_STOP" -eq 1 ]; then
+    printf '\nhailo_person_stop' >>"$RFCU_PI_RUN_DIR/manifest/commands.tsv"
+    printf '\t%q' "${RFCU_PI_HAILO_COMMAND[@]}" \
+      >>"$RFCU_PI_RUN_DIR/manifest/commands.tsv"
+  fi
   printf '\n' >>"$RFCU_PI_RUN_DIR/manifest/commands.tsv"
   ! grep -Eiq 'mavproxy|udp(out)?://|--out=' \
     "$RFCU_PI_RUN_DIR/manifest/commands.tsv" \
@@ -577,6 +942,102 @@ rfcu_pi_capture_topic() {
     --qos-profile best_available --no-lost-messages "$topic" "$message_type" \
     2>"$diagnostic_output" | tee "$attempt_output" \
     2>>"$diagnostic_output" >"$output"
+}
+
+rfcu_pi_json_field_once() {
+  local topic="$1" output="$2" log="$3" raw
+  raw="$(ros2 topic echo --once --timeout "$RFCU_PI_STATUS_TIMEOUT_SECONDS" \
+    --full-length --field data --no-lost-messages \
+    --qos-profile best_available "$topic" std_msgs/msg/String \
+    2>>"$log")" || return 1
+  printf '%s\n' "$raw" | /usr/bin/python3 -c '
+import json
+import sys
+import yaml
+values = [value for value in yaml.safe_load_all(sys.stdin.read()) if value is not None]
+if len(values) != 1:
+    raise SystemExit(1)
+value = values[0]
+if isinstance(value, str):
+    value = json.loads(value)
+if not isinstance(value, dict):
+    raise SystemExit(1)
+print(json.dumps(value, separators=(",", ":")))
+' >"$output"
+}
+
+rfcu_pi_hailo_detection_file_is_valid() {
+  /usr/bin/python3 -c '
+import json
+import math
+import sys
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+detections = data.get("detections")
+if not isinstance(detections, list):
+    raise SystemExit(1)
+for detection in detections:
+    if not isinstance(detection, dict) or set(detection) != {"label", "score"}:
+        raise SystemExit(1)
+    score = detection["score"]
+    if detection["label"] != "person" or isinstance(score, bool):
+        raise SystemExit(1)
+    if not isinstance(score, (int, float)) or not math.isfinite(score):
+        raise SystemExit(1)
+    if not 0.0 <= float(score) <= 1.0:
+        raise SystemExit(1)
+' "$1"
+}
+
+rfcu_pi_person_alert_file_is_initial_clear() {
+  /usr/bin/python3 -c '
+import json
+import sys
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+if not (
+    data.get("person_detected") is False
+    and data.get("feed_fresh") is True
+    and data.get("reason") == ""
+):
+    raise SystemExit(1)
+' "$1"
+}
+
+rfcu_pi_wait_hailo_ready() {
+  local deadline=$((SECONDS + RFCU_PI_READY_TIMEOUT_SECONDS))
+  local detections="$RFCU_PI_RUN_DIR/evidence/hailo_initial_detections.json"
+  local alert="$RFCU_PI_RUN_DIR/evidence/hailo_initial_person_alert.json"
+  local image_height="$RFCU_PI_RUN_DIR/evidence/hailo_initial_image_height.txt"
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    rfcu_pi_child_alive hailo-person-stop || return 1
+    if grep -Fq \
+        'HAILO_PERSON_STOP_BRIDGE_READY detections=/perception/detections image=/hailo/overlay/image_raw class=person serial_owner=none thermal=supervised' \
+        "$RFCU_PI_RUN_DIR/logs/hailo_person_stop.log" \
+        && rfcu_pi_json_field_once /perception/detections "$detections" \
+          "$RFCU_PI_RUN_DIR/logs/hailo_detection_probe.log" \
+        && rfcu_pi_hailo_detection_file_is_valid "$detections" \
+        && ros2 topic echo --once --timeout "$RFCU_PI_STATUS_TIMEOUT_SECONDS" \
+          --field height --no-lost-messages --qos-profile best_available \
+          /hailo/overlay/image_raw sensor_msgs/msg/Image \
+          >"$image_height" 2>>"$RFCU_PI_RUN_DIR/logs/hailo_image_probe.log" \
+        && grep -Eq '^[1-9][0-9]*$' "$image_height"; then
+      break
+    fi
+    sleep "$RFCU_PI_POLL_SECONDS" || true
+  done
+  [ "$SECONDS" -lt "$deadline" ] || return 1
+
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    rfcu_pi_child_alive hailo-person-stop || return 1
+    if rfcu_pi_json_field_once /perception/person_alert "$alert" \
+        "$RFCU_PI_RUN_DIR/logs/hailo_person_alert_probe.log" \
+        && rfcu_pi_person_alert_file_is_initial_clear "$alert"; then
+      rfcu_pi_log \
+        'REAL_FCU_HAILO_PERSON_STOP=PASS detections=structured class=person image=ready person_alert=fresh-clear serial_owner=none thermal=supervised'
+      return 0
+    fi
+    sleep "$RFCU_PI_POLL_SECONDS" || true
+  done
+  return 1
 }
 
 rfcu_pi_state_file_is_connected_disarmed() {
@@ -885,6 +1346,7 @@ import json
 import sys
 status = json.loads(sys.argv[1])
 expected_neutral_only = sys.argv[2] == "true"
+hailo_person_stop = sys.argv[3] == "1"
 if not (
     status.get("state") == "READY_DISARMED"
     and status.get("ready") is True
@@ -895,13 +1357,19 @@ if not (
     and status.get("neutral_only") is expected_neutral_only
 ):
     raise SystemExit(1)
+if hailo_person_stop and not (
+    status.get("person_alert_required") is True
+    and status.get("person_alert_fresh") is True
+    and status.get("person_hold_clear") is True
+):
+    raise SystemExit(1)
 resolved = status.get("resolved") or {}
 values = [resolved.get(key) for key in ("steering_rc", "throttle_rc", "left_servo", "right_servo")]
 if not all(isinstance(value, int) and 1 <= value <= 16 for value in values):
     raise SystemExit(1)
 if values[0] == values[1] or values[2] == values[3]:
     raise SystemExit(1)
-' "$1" "$2"
+' "$1" "$2" "$RFCU_PI_HAILO_PERSON_STOP"
 }
 
 rfcu_pi_wait_bridge_ready() {
@@ -980,8 +1448,15 @@ rfcu_pi_wait_workstation_nodes() {
     nodes="$(ros2 node list --no-daemon --spin-time 2 2>/dev/null)" || nodes=''
     if grep -Fxq '/rosbridge_websocket' <<<"$nodes" \
         && grep -Fxq '/rosapi' <<<"$nodes"; then
-      if [ "$RFCU_PI_RUN_MODE" != run-t3a ] \
-          || grep -Fxq '/real_fcu_command_feedback_capture' <<<"$nodes"; then
+      if [ "$RFCU_PI_HAILO_PERSON_STOP" -eq 1 ] \
+          && grep -Fxq '/person_stop_monitor_node' <<<"$nodes" \
+          && grep -Fxq '/web_video_server' <<<"$nodes"; then
+        return 0
+      elif [ "$RFCU_PI_HAILO_PERSON_STOP" -eq 0 ] \
+          && [ "$RFCU_PI_RUN_MODE" != run-t3a ]; then
+        return 0
+      elif [ "$RFCU_PI_HAILO_PERSON_STOP" -eq 0 ] \
+          && grep -Fxq '/real_fcu_command_feedback_capture' <<<"$nodes"; then
         return 0
       fi
     fi
@@ -1037,6 +1512,11 @@ rfcu_pi_cleanup() {
         fi
       fi
     fi
+  fi
+  if [ "$RFCU_PI_HAILO_PERSON_STOP" -eq 1 ]; then
+    rfcu_pi_stop_child hailo-person-stop || cleanup_rc=1
+    rfcu_pi_device_is_free "$RFCU_PI_HAILO_CAMERA" || cleanup_rc=1
+    rfcu_pi_device_is_free /dev/hailo0 || cleanup_rc=1
   fi
   rfcu_pi_stop_child bridge || cleanup_rc=1
   rfcu_pi_stop_child mavros || cleanup_rc=1
@@ -1170,6 +1650,9 @@ rfcu_pi_run() {
   esac
   rfcu_pi_static_preflight
   rfcu_pi_init_state
+  if [ "$RFCU_PI_HAILO_PERSON_STOP" -eq 1 ]; then
+    rfcu_pi_write_hailo_wrapper
+  fi
   rfcu_pi_build_commands
   rfcu_pi_write_manifest
   trap rfcu_pi_cleanup EXIT
@@ -1179,6 +1662,15 @@ rfcu_pi_run() {
   if [ "$RFCU_PI_RUN_MODE" = run-t3a ]; then
     rfcu_pi_log \
       'REAL_FCU_T3A_START=PASS propellers=fitted hull=restrained mechanical_guarding=installed exclusion_zone=clear propulsion=isolated safety=ON state=disarmed'
+  fi
+
+  if [ "$RFCU_PI_HAILO_PERSON_STOP" -eq 1 ]; then
+    rfcu_pi_start_child hailo-person-stop \
+      "$RFCU_PI_RUN_DIR/logs/hailo_person_stop.log" \
+      "${RFCU_PI_HAILO_COMMAND[@]}"
+    rfcu_pi_wait_hailo_ready \
+      || rfcu_pi_fail \
+        'Hailo person-stop feed did not reach fresh clear readiness'
   fi
 
   rfcu_pi_start_child mavros-probe "$RFCU_PI_RUN_DIR/logs/mavros_probe.log" \
@@ -1230,17 +1722,25 @@ rfcu_pi_run() {
   rfcu_pi_wait_bridge_ready \
     || rfcu_pi_fail 'bridge did not reach fresh READY_DISARMED after the manual safety gate'
   if ! rfcu_pi_wait_workstation_nodes; then
-    if [ "$RFCU_PI_RUN_MODE" = run-t3a ]; then
+    if [ "$RFCU_PI_HAILO_PERSON_STOP" -eq 1 ]; then
       rfcu_pi_fail \
-        'workstation rosbridge/rosapi/capture nodes were not discovered'
+        'workstation rosbridge/rosapi/person-stop/video nodes were not discovered'
+    fi
+    if [ "$RFCU_PI_RUN_MODE" = run-t3a ]; then
+      rfcu_pi_fail 'workstation rosbridge/rosapi/capture nodes were not discovered'
     fi
     rfcu_pi_fail 'workstation rosbridge/rosapi nodes were not discovered'
   fi
   RFCU_PI_READY_REACHED=1
   rfcu_pi_log "REAL_FCU_PI_READY=PASS tier=$tier authority=$authority bridge=READY_DISARMED workstation=visible"
   if [ "$RFCU_PI_RUN_MODE" = run-t3a ]; then
-    rfcu_pi_log \
-      'REAL_FCU_T3A_READY=PASS authority=demand-enabled propellers=fitted guarding=installed exclusion_zone=clear propulsion=enabled bridge=READY_DISARMED workstation=visible capture=visible'
+    if [ "$RFCU_PI_HAILO_PERSON_STOP" -eq 1 ]; then
+      rfcu_pi_log \
+        'REAL_FCU_T3A_READY=PASS authority=demand-enabled propellers=fitted guarding=installed exclusion_zone=clear propulsion=enabled bridge=READY_DISARMED workstation=visible showcase=person-stop capture=not-required hailo=ready'
+    else
+      rfcu_pi_log \
+        'REAL_FCU_T3A_READY=PASS authority=demand-enabled propellers=fitted guarding=installed exclusion_zone=clear propulsion=enabled bridge=READY_DISARMED workstation=visible capture=visible'
+    fi
   fi
   rfcu_pi_log 'arming remains external; planned stop requires external disarm before Ctrl+C'
 

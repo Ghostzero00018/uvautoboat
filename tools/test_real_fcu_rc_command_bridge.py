@@ -17,10 +17,10 @@ from types import SimpleNamespace
 from unittest import mock
 
 import rclpy
-from mavros_msgs.msg import State
+from mavros_msgs.msg import RCOut, State
 from rcl_interfaces.msg import ParameterType, ParameterValue
 from rclpy.signals import SignalHandlerOptions
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, String
 from sensor_msgs.msg import Joy
 
 
@@ -84,6 +84,42 @@ def valid_parameters():
 
 
 class BridgeFunctionsTest(unittest.TestCase):
+    @staticmethod
+    def endpoint(node_path):
+        namespace, name = node_path.rsplit("/", 1)
+        return SimpleNamespace(
+            node_namespace=namespace or "/",
+            node_name=name,
+        )
+
+    def test_input_publisher_binding_requires_one_resolved_expected_endpoint(self):
+        expected = "/rosbridge_websocket"
+        endpoint = self.endpoint(expected)
+        self.assertEqual(
+            MODULE.input_publisher_binding([endpoint], expected),
+            (True, (expected,), 1),
+        )
+        self.assertEqual(
+            MODULE.input_publisher_binding(
+                [endpoint, self.endpoint(expected)], expected
+            ),
+            (False, (expected,), 2),
+        )
+        self.assertEqual(
+            MODULE.input_publisher_binding(
+                [self.endpoint("/wrong_publisher")], expected
+            ),
+            (False, ("/wrong_publisher",), 1),
+        )
+        unknown = SimpleNamespace(
+            node_namespace="_NODE_NAMESPACE_UNKNOWN_",
+            node_name="_NODE_NAME_UNKNOWN_",
+        )
+        self.assertEqual(
+            MODULE.input_publisher_binding([unknown], expected),
+            (False, (), 1),
+        )
+
     def test_float32_bound_clamp_accepts_only_encoded_endpoint(self):
         def as_float32(value):
             return struct.unpack(">f", struct.pack(">f", value))[0]
@@ -143,6 +179,8 @@ class BridgeFunctionsTest(unittest.TestCase):
             source.index("self.create_subscription(Joy, COMMAND_TOPIC"),
             source.index("if not self.neutral_only:"),
         )
+        self.assertIn("String, EMERGENCY_RESET_TOPIC", source)
+        self.assertNotIn("Bool, EMERGENCY_RESET_TOPIC", source)
 
     def test_decodes_integer_double_and_missing_ros_parameters(self):
         integer = ParameterValue(
@@ -430,6 +468,11 @@ class BridgeFunctionsTest(unittest.TestCase):
         channels[guard.throttle_channel - 1] = 1510
         self.assertFalse(MODULE.rc_input_is_neutral(channels, guard))
 
+        outputs = [800, 0, 800]
+        self.assertTrue(MODULE.servo_output_is_neutral(outputs, guard))
+        outputs[guard.left_servo - 1] = 801
+        self.assertFalse(MODULE.servo_output_is_neutral(outputs, guard))
+
     def test_main_keeps_rclpy_from_taking_signal_ownership(self):
         source = inspect.getsource(MODULE.main)
         self.assertIn("signal_handler_options=SignalHandlerOptions.NO", source)
@@ -515,9 +558,27 @@ class BridgeNodeStateMachineTest(unittest.TestCase):
         self.node.guard = MODULE.resolve_guard(valid_parameters())
         self.node.override_pub = RecordingPublisher()
         self.node.status_pub = RecordingPublisher()
+        self.publisher_info_patch = mock.patch.object(
+            self.node,
+            "get_publishers_info_by_topic",
+            side_effect=self.publishers_for_topic,
+        )
+        self.publisher_info_patch.start()
 
     def tearDown(self):
+        self.publisher_info_patch.stop()
         self.node.destroy_node()
+
+    def publishers_for_topic(self, topic):
+        if topic == MODULE.PERSON_ALERT_TOPIC:
+            return [self.endpoint(MODULE.PERSON_ALERT_PUBLISHER)]
+        if topic in (
+            MODULE.COMMAND_TOPIC,
+            MODULE.EMERGENCY_RESET_TOPIC,
+            MODULE.CONTROL_OWNER_TOPIC,
+        ):
+            return [self.endpoint(MODULE.ROSBRIDGE_INPUT_PUBLISHER)]
+        return []
 
     @staticmethod
     def vehicle(armed, mode="MANUAL"):
@@ -527,11 +588,66 @@ class BridgeNodeStateMachineTest(unittest.TestCase):
         message.mode = mode
         return message
 
+    @staticmethod
+    def command(stamp, steering=0.0, throttle=0.0, enable=0):
+        message = Joy()
+        message.header.frame_id = MODULE.FRAME_ID
+        message.header.stamp.sec = stamp
+        message.axes = [steering, throttle]
+        message.buttons = [enable]
+        return message
+
+    @staticmethod
+    def person_alert(person_detected=False, feed_fresh=True, reason=""):
+        return String(data=json.dumps({
+            "person_detected": person_detected,
+            "feed_fresh": feed_fresh,
+            "reason": reason,
+        }))
+
+    @staticmethod
+    def dashboard_reset_confirmation():
+        return String(data=MODULE.DASHBOARD_NEUTRAL_RESET_CONFIRMATION)
+
+    @staticmethod
+    def herelink_reset_confirmation():
+        return String(data=MODULE.HERELINK_STICKS_NEUTRAL_CONFIRMATION)
+
+    @staticmethod
+    def herelink_owner_confirmation():
+        return String(data=MODULE.HERELINK_STICKS_NEUTRAL_CONFIRMATION)
+
+    @staticmethod
+    def endpoint(node_path):
+        namespace, name = node_path.rsplit("/", 1)
+        return SimpleNamespace(
+            node_namespace=namespace or "/",
+            node_name=name,
+        )
+
     def set_valid_feedback(self, now):
         self.node.latest_rc_in = (1500, 1500, 1500)
         self.node.latest_rc_out = (800, 800, 800)
         self.node.latest_rc_in_at = now - 0.1
         self.node.latest_rc_out_at = now - 0.1
+
+    def publish_rc_out(self, now, channels=(800, 800, 800)):
+        message = RCOut()
+        message.channels = list(channels)
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._rc_out_cb(message)
+
+    def complete_herelink_handover(self, now):
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            for _ in range(3):
+                self.node._tick()
+        for _ in range(3):
+            self.publish_rc_out(now)
+            with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+                self.node._tick()
+        self.publish_rc_out(now)
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._tick()
 
     def test_live_guard_refreshes_then_reads_ros_parameters_twice(self):
         parameter_client = RecordingParameterClient(valid_parameters())
@@ -785,6 +901,647 @@ class BridgeNodeStateMachineTest(unittest.TestCase):
         with mock.patch.object(MODULE.time, "monotonic", return_value=now):
             self.node._tick()
         self.assertEqual(self.node.fault, "EMERGENCY_STOP")
+
+    def test_person_alert_latches_stop_and_clear_does_not_auto_resume(self):
+        now = 100.0
+        self.node.latest_state = self.vehicle(True)
+        self.node.latest_state_at = now
+        self.node.arm_epoch_authorized = True
+        self.set_valid_feedback(now)
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._person_alert_cb(self.person_alert(
+                person_detected=True,
+                feed_fresh=True,
+                reason="person_detected",
+            ))
+        self.assertTrue(self.node.emergency_stop_latched)
+        channels = self.node.override_pub.messages[-1].channels
+        guard = self.node.guard
+        self.assertEqual(
+            channels[guard.steering_channel - 1], guard.steering_rail.trim
+        )
+        self.assertEqual(
+            channels[guard.throttle_channel - 1], guard.throttle_rail.trim
+        )
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._person_alert_cb(self.person_alert())
+        self.assertTrue(self.node.emergency_stop_latched)
+        self.assertTrue(self.node.person_hold_clear)
+
+    def test_required_person_alert_rejects_wrong_or_duplicate_publishers(self):
+        self.node.require_person_alert = True
+        clear = self.person_alert()
+
+        with mock.patch.object(
+            self.node,
+            "get_publishers_info_by_topic",
+            return_value=[self.endpoint(MODULE.PERSON_ALERT_PUBLISHER)],
+        ):
+            self.node._person_alert_cb(clear)
+        self.assertTrue(self.node.person_alert_valid)
+        self.assertTrue(self.node.person_hold_clear)
+        self.assertFalse(self.node.emergency_stop_latched)
+
+        for publishers in (
+            [self.endpoint("/wrong_person_monitor")],
+            [
+                self.endpoint(MODULE.PERSON_ALERT_PUBLISHER),
+                self.endpoint(MODULE.PERSON_ALERT_PUBLISHER),
+            ],
+        ):
+            with self.subTest(publishers=len(publishers)), mock.patch.object(
+                self.node,
+                "get_publishers_info_by_topic",
+                return_value=publishers,
+            ):
+                self.node.emergency_stop_latched = False
+                self.node._person_alert_cb(clear)
+                self.assertFalse(self.node.person_alert_valid)
+                self.assertFalse(self.node.person_hold_clear)
+                self.assertTrue(self.node.emergency_stop_latched)
+
+    def test_reset_and_owner_inputs_require_the_rosbridge_publisher(self):
+        now = 100.0
+        self.node.latest_state = self.vehicle(True)
+        self.node.latest_state_at = now
+        self.node.arm_epoch_authorized = True
+        self.node.emergency_stop_latched = True
+        self.node.emergency_neutral_command_seen = True
+        self.set_valid_feedback(now)
+
+        wrong = [self.endpoint("/wrong_browser_gateway")]
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now), \
+                mock.patch.object(
+                    self.node,
+                    "get_publishers_info_by_topic",
+                    return_value=wrong,
+                ):
+            self.node._emergency_reset_cb(self.dashboard_reset_confirmation())
+        self.assertTrue(self.node.emergency_stop_latched)
+
+        rosbridge = [self.endpoint(MODULE.ROSBRIDGE_INPUT_PUBLISHER)]
+        # The rejected reset re-latches E-stop and deliberately invalidates the
+        # prior neutral command.  Re-establish that independent reset precondition
+        # before proving the expected publisher is accepted.
+        self.node.emergency_neutral_command_seen = True
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now), \
+                mock.patch.object(
+                    self.node,
+                    "get_publishers_info_by_topic",
+                    return_value=rosbridge,
+                ):
+            self.node._emergency_reset_cb(self.dashboard_reset_confirmation())
+        self.assertFalse(self.node.emergency_stop_latched)
+
+        duplicate = [
+            self.endpoint(MODULE.ROSBRIDGE_INPUT_PUBLISHER),
+            self.endpoint(MODULE.ROSBRIDGE_INPUT_PUBLISHER),
+        ]
+        with mock.patch.object(
+            self.node,
+            "get_publishers_info_by_topic",
+            return_value=duplicate,
+        ):
+            self.node._control_owner_cb(self.herelink_owner_confirmation())
+            self.assertEqual(self.node.control_owner, MODULE.CONTROL_OWNER_DASHBOARD)
+        self.assertTrue(self.node.emergency_stop_latched)
+
+        self.node.emergency_stop_latched = False
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now), \
+                mock.patch.object(
+                    self.node,
+                    "get_publishers_info_by_topic",
+                    return_value=rosbridge,
+                ):
+            self.node._control_owner_cb(self.herelink_owner_confirmation())
+        self.assertEqual(
+            self.node.control_owner,
+            MODULE.CONTROL_OWNER_HERELINK,
+            self.node.fault,
+        )
+        self.assertFalse(self.node.emergency_stop_latched)
+
+    def test_active_command_requires_the_single_rosbridge_publisher(self):
+        now = 100.0
+        self.node.latest_state = self.vehicle(True)
+        self.node.latest_state_at = now
+        self.node.arm_epoch_authorized = True
+        self.node.armed_enable_primed = True
+        self.node.last_command = (0.05, 0.04, True)
+        self.node.last_command_at = now
+        self.set_valid_feedback(now)
+
+        for publishers in (
+            [self.endpoint("/wrong_publisher")],
+            [
+                self.endpoint(MODULE.ROSBRIDGE_INPUT_PUBLISHER),
+                self.endpoint(MODULE.ROSBRIDGE_INPUT_PUBLISHER),
+            ],
+        ):
+            with self.subTest(publishers=len(publishers)), mock.patch.object(
+                self.node,
+                "get_publishers_info_by_topic",
+                return_value=publishers,
+            ), mock.patch.object(MODULE.time, "monotonic", return_value=now), \
+                    mock.patch.object(self.node, "count_publishers", return_value=1):
+                self.node.emergency_stop_latched = False
+                self.node.emergency_neutral_command_seen = False
+                self.node.armed_enable_primed = True
+                self.node.last_command = (0.05, 0.04, True)
+                self.node.last_command_at = now
+                self.node._tick()
+            self.assertTrue(self.node.emergency_stop_latched)
+            self.assertEqual(self.node.fault, "EMERGENCY_STOP")
+
+    def test_required_person_alert_staleness_latches_stop(self):
+        now = 100.0
+        self.node.require_person_alert = True
+        self.node.person_alert_required_since = now - 10.0
+        self.node.latest_state = self.vehicle(True)
+        self.node.latest_state_at = now
+        self.node.arm_epoch_authorized = True
+        self.set_valid_feedback(now)
+        self.node.person_alert_valid = True
+        self.node.person_alert_at = now - MODULE.PERSON_ALERT_TIMEOUT_SECONDS
+        self.node.person_hold_clear = True
+
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._tick()
+
+        self.assertTrue(self.node.emergency_stop_latched)
+        self.assertEqual(self.node.fault, "EMERGENCY_STOP")
+
+    def test_manual_estop_reset_does_not_require_unused_person_feed(self):
+        now = 100.0
+        self.node.require_person_alert = False
+        self.node.latest_state = self.vehicle(True)
+        self.node.latest_state_at = now
+        self.node.arm_epoch_authorized = True
+        self.set_valid_feedback(now)
+
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._emergency_cb(Bool(data=True))
+            self.node._command_cb(self.command(1))
+            self.node._emergency_reset_cb(self.dashboard_reset_confirmation())
+
+        self.assertFalse(self.node.emergency_stop_latched)
+        self.assertEqual(self.node.fault, "DASHBOARD_PRIME_REQUIRED")
+
+    def test_person_stop_clear_reset_cycle_is_repeatable(self):
+        now = 100.0
+        self.node.require_person_alert = True
+        self.node.latest_state = self.vehicle(True)
+        self.node.latest_state_at = now
+        self.node.arm_epoch_authorized = True
+        self.set_valid_feedback(now)
+
+        stamp = 1
+        for _ in range(2):
+            with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+                self.node._person_alert_cb(self.person_alert(
+                    person_detected=True,
+                    feed_fresh=True,
+                    reason="person_detected",
+                ))
+                self.node._command_cb(self.command(stamp))
+                stamp += 1
+                self.node._person_alert_cb(self.person_alert())
+                self.node._emergency_reset_cb(self.dashboard_reset_confirmation())
+            self.assertFalse(self.node.emergency_stop_latched)
+            self.assertEqual(self.node.fault, "DASHBOARD_PRIME_REQUIRED")
+
+    def test_emergency_stop_reset_is_fail_closed_repeatable_and_reprimed(self):
+        now = 100.0
+        self.node.require_person_alert = True
+        self.node.latest_state = self.vehicle(True)
+        self.node.latest_state_at = now
+        self.node.arm_epoch_authorized = True
+        self.set_valid_feedback(now)
+
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._person_alert_cb(self.person_alert())
+            self.node._emergency_cb(Bool(data=True))
+            self.node._emergency_reset_cb(self.dashboard_reset_confirmation())
+        self.assertTrue(self.node.emergency_stop_latched)
+        self.assertEqual(
+            self.node._emergency_reset_eligibility(now),
+            (False, "COMMAND_NEUTRAL_DISABLED_REQUIRED"),
+        )
+
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._command_cb(self.command(1))
+        self.assertTrue(self.node.emergency_neutral_command_seen)
+        self.assertEqual(
+            self.node._emergency_reset_eligibility(now + 1.0),
+            (False, "PERSON_ALERT_STALE"),
+        )
+
+        self.node.latest_rc_in = (1510, 1500, 1500)
+        self.assertEqual(
+            self.node._emergency_reset_eligibility(now),
+            (True, ""),
+        )
+        self.node.latest_rc_in = (1500, 1500, 1500)
+
+        self.node.latest_rc_out = (801, 800, 800)
+        self.assertEqual(
+            self.node._emergency_reset_eligibility(now),
+            (False, "SERVO_OUTPUT_NOT_NEUTRAL"),
+        )
+        self.node.latest_rc_out = (800, 800, 800)
+
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._person_alert_cb(self.person_alert(
+                person_detected=True,
+                feed_fresh=False,
+                reason="detector_feed_lost",
+            ))
+        self.assertTrue(self.node.emergency_stop_latched)
+        self.assertEqual(
+            self.node._emergency_reset_eligibility(now),
+            (False, "COMMAND_NEUTRAL_DISABLED_REQUIRED"),
+        )
+
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._command_cb(self.command(2))
+        self.assertEqual(
+            self.node._emergency_reset_eligibility(now),
+            (False, "PERSON_HOLD_ACTIVE"),
+        )
+
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._person_alert_cb(self.person_alert())
+            self.node._emergency_reset_cb(self.dashboard_reset_confirmation())
+        self.assertFalse(self.node.emergency_stop_latched)
+        self.assertFalse(self.node.armed_enable_primed)
+        self.assertEqual(self.node.fault, "DASHBOARD_PRIME_REQUIRED")
+
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._command_cb(self.command(3, 0.05, 0.04, 1))
+        self.assertEqual(self.node.fault, "ENABLE_RESET_REQUIRED")
+        self.assertEqual(self.node.last_command, (0.0, 0.0, False))
+
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now), \
+                mock.patch.object(self.node, "count_publishers", return_value=1):
+            self.node._command_cb(self.command(4))
+            self.node._command_cb(self.command(5, 0.05, 0.04, 1))
+            self.node._tick()
+        self.assertEqual(self.node.fault, "ACTIVE")
+
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._emergency_cb(Bool(data=True))
+            self.node._command_cb(self.command(6))
+            self.node._emergency_reset_cb(self.dashboard_reset_confirmation())
+            self.node._command_cb(self.command(7))
+        self.assertFalse(self.node.emergency_stop_latched)
+        self.assertTrue(self.node.armed_enable_primed)
+
+    def test_herelink_handover_releases_override_and_estop_takes_priority(self):
+        now = 100.0
+        self.node.require_person_alert = True
+        self.node.latest_state = self.vehicle(True)
+        self.node.latest_state_at = now
+        self.node.arm_epoch_authorized = True
+        self.set_valid_feedback(now)
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._person_alert_cb(self.person_alert())
+
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._control_owner_cb(self.herelink_owner_confirmation())
+        self.assertEqual(self.node.control_owner, MODULE.CONTROL_OWNER_HERELINK)
+        guard = self.node.guard
+        handover_start = len(self.node.override_pub.messages)
+        initial = self.node.override_pub.messages[-1].channels
+        self.assertEqual(
+            initial[guard.steering_channel - 1], guard.steering_rail.trim
+        )
+        self.assertEqual(
+            initial[guard.throttle_channel - 1], guard.throttle_rail.trim
+        )
+
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._command_cb(self.command(1, 0.05, 0.04, 1))
+        self.assertEqual(self.node.fault, "HERELINK_CONTROL")
+
+        self.assertEqual(self.node.last_command, (0.0, 0.0, False))
+
+        # RC input is override readback here, not physical-stick evidence.
+        self.node.latest_rc_in = (1510, 1500, 1500)
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            for _ in range(3):
+                self.node._tick()
+            self.node._tick()
+        self.assertEqual(self.node.handover_release_frames_remaining, 3)
+        self.assertEqual(self.node.fault, "HERELINK_HANDOVER")
+
+        for remaining in (2, 1, 0):
+            self.publish_rc_out(now)
+            with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+                self.node._tick()
+            self.assertEqual(
+                self.node.handover_release_frames_remaining, remaining
+            )
+            self.assertEqual(self.node.fault, "HERELINK_HANDOVER")
+
+        published_after_release = len(self.node.override_pub.messages)
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._tick()
+        self.assertEqual(
+            len(self.node.override_pub.messages), published_after_release
+        )
+        self.assertEqual(self.node.fault, "HERELINK_HANDOVER")
+
+        self.publish_rc_out(now)
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._tick()
+        published_after_handover = len(self.node.override_pub.messages)
+        self.assertEqual(self.node.fault, "HERELINK_CONTROL")
+        for message in self.node.override_pub.messages[-3:]:
+            self.assertEqual(
+                message.channels[guard.steering_channel - 1],
+                MODULE.release_value(guard.steering_channel),
+            )
+            self.assertEqual(
+                message.channels[guard.throttle_channel - 1],
+                MODULE.release_value(guard.throttle_channel),
+            )
+
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._emergency_cb(Bool(data=True))
+        stopped = self.node.override_pub.messages[-1].channels
+        self.assertEqual(stopped[guard.steering_channel - 1], guard.steering_rail.trim)
+        self.assertEqual(stopped[guard.throttle_channel - 1], guard.throttle_rail.trim)
+        self.assertTrue(self.node.emergency_stop_latched)
+        self.node._control_owner_cb(String(data=MODULE.CONTROL_OWNER_DASHBOARD))
+        self.assertEqual(self.node.control_owner, MODULE.CONTROL_OWNER_HERELINK)
+        self.assertEqual(self.node.fault, "EMERGENCY_STOP")
+
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._person_alert_cb(self.person_alert())
+            self.node._emergency_reset_cb(self.herelink_reset_confirmation())
+        self.complete_herelink_handover(now)
+        self.assertFalse(self.node.emergency_stop_latched)
+        self.assertEqual(self.node.control_owner, MODULE.CONTROL_OWNER_HERELINK)
+        released = self.node.override_pub.messages[-1].channels
+        self.assertEqual(
+            released[guard.steering_channel - 1],
+            MODULE.release_value(guard.steering_channel),
+        )
+        self.assertEqual(
+            released[guard.throttle_channel - 1],
+            MODULE.release_value(guard.throttle_channel),
+        )
+
+        self.node._control_owner_cb(String(data=MODULE.CONTROL_OWNER_DASHBOARD))
+        self.assertEqual(self.node.control_owner, MODULE.CONTROL_OWNER_DASHBOARD)
+        self.assertFalse(self.node.armed_enable_primed)
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._command_cb(self.command(3, 0.05, 0.04, 1))
+            self.assertEqual(self.node.fault, "ENABLE_RESET_REQUIRED")
+            self.node._command_cb(self.command(4))
+            self.node._command_cb(self.command(5, 0.05, 0.04, 1))
+        self.assertTrue(self.node.armed_enable_primed)
+        self.assertAlmostEqual(self.node.last_command[0], 0.05)
+        self.assertAlmostEqual(self.node.last_command[1], 0.04)
+        self.assertIs(self.node.last_command[2], True)
+
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._control_owner_cb(self.herelink_owner_confirmation())
+        self.complete_herelink_handover(now)
+        self.assertEqual(self.node.control_owner, MODULE.CONTROL_OWNER_HERELINK)
+        self.assertEqual(self.node.fault, "HERELINK_CONTROL")
+
+    def test_herelink_handover_requires_explicit_physical_stick_attestation(self):
+        now = 100.0
+        self.node.latest_state = self.vehicle(True)
+        self.node.latest_state_at = now
+        self.node.arm_epoch_authorized = True
+        self.set_valid_feedback(now)
+        rosbridge = [self.endpoint(MODULE.ROSBRIDGE_INPUT_PUBLISHER)]
+
+        with mock.patch.object(
+            self.node,
+            "get_publishers_info_by_topic",
+            return_value=rosbridge,
+        ):
+            self.node._control_owner_cb(
+                String(data=MODULE.CONTROL_OWNER_HERELINK)
+            )
+        self.assertEqual(self.node.control_owner, MODULE.CONTROL_OWNER_DASHBOARD)
+        self.assertEqual(self.node.fault, "HERELINK_NEUTRAL_CONFIRMATION_REQUIRED")
+
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now), \
+                mock.patch.object(
+                    self.node,
+                    "get_publishers_info_by_topic",
+                    return_value=rosbridge,
+                ):
+            self.node._control_owner_cb(
+                String(data=MODULE.HERELINK_STICKS_NEUTRAL_CONFIRMATION)
+            )
+        self.assertEqual(self.node.control_owner, MODULE.CONTROL_OWNER_HERELINK)
+
+        # RC_CHANNELS reports override_value while override is active, so this
+        # value cannot establish the physical Herelink stick position.  The
+        # explicit confirmation is the authority for the bounded release.
+        self.node.latest_rc_in = (1510, 1500, 1500)
+        self.complete_herelink_handover(now)
+        self.assertEqual(self.node.fault, "HERELINK_CONTROL")
+
+    def test_invalid_owner_message_still_requires_the_bound_rosbridge_source(self):
+        self.node.emergency_stop_latched = False
+        wrong = [self.endpoint("/wrong_browser_gateway")]
+        with mock.patch.object(
+            self.node,
+            "get_publishers_info_by_topic",
+            return_value=wrong,
+        ):
+            self.node._control_owner_cb(
+                String(data=MODULE.CONTROL_OWNER_HERELINK)
+            )
+        self.assertTrue(self.node.emergency_stop_latched)
+        self.assertEqual(self.node.fault, "EMERGENCY_STOP")
+
+    def test_herelink_attestation_cannot_be_reused_from_before_the_armed_epoch(self):
+        now = 100.0
+        self.node.latest_state = self.vehicle(False)
+        self.node.latest_state_at = now
+        self.set_valid_feedback(now)
+        rosbridge = [self.endpoint(MODULE.ROSBRIDGE_INPUT_PUBLISHER)]
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now), \
+                mock.patch.object(
+                    self.node,
+                    "get_publishers_info_by_topic",
+                    return_value=rosbridge,
+                ):
+            self.node._control_owner_cb(self.herelink_owner_confirmation())
+
+        self.assertEqual(self.node.control_owner, MODULE.CONTROL_OWNER_DASHBOARD)
+        self.assertEqual(self.node.fault, "HERELINK_HANDOVER_NOT_READY")
+
+        self.node.latest_state = self.vehicle(True)
+        self.node.arm_epoch_authorized = True
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._tick()
+        self.assertEqual(self.node.control_owner, MODULE.CONTROL_OWNER_DASHBOARD)
+
+    def test_disarm_revokes_herelink_owner_and_pending_handover(self):
+        now = 100.0
+        self.node.latest_state = self.vehicle(True)
+        self.node.latest_state_at = now
+        self.node.arm_epoch_authorized = True
+        self.node.control_owner = MODULE.CONTROL_OWNER_HERELINK
+        self.node.handover_neutral_frames_remaining = 2
+        self.node.handover_release_frames_remaining = 3
+        self.node.handover_rc_out_generation = 7
+
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._state_cb(self.vehicle(False))
+
+        self.assertEqual(self.node.control_owner, MODULE.CONTROL_OWNER_DASHBOARD)
+        self.assertEqual(self.node.handover_neutral_frames_remaining, 0)
+        self.assertEqual(self.node.handover_release_frames_remaining, 0)
+        self.assertIsNone(self.node.handover_rc_out_generation)
+
+        self.node.latest_state = self.vehicle(True)
+        self.node.arm_epoch_authorized = True
+        self.node.control_owner = MODULE.CONTROL_OWNER_HERELINK
+        self.node.handover_release_frames_remaining = 3
+        self.node.handover_rc_out_generation = 8
+        disconnected = self.vehicle(True)
+        disconnected.connected = False
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._state_cb(disconnected)
+        self.assertEqual(self.node.control_owner, MODULE.CONTROL_OWNER_DASHBOARD)
+        self.assertFalse(self.node.arm_epoch_authorized)
+        self.assertEqual(self.node.handover_release_frames_remaining, 0)
+        self.assertIsNone(self.node.handover_rc_out_generation)
+
+    def test_herelink_release_requires_measured_neutral_servo_output(self):
+        now = 100.0
+        self.node.latest_state = self.vehicle(True)
+        self.node.latest_state_at = now
+        self.node.arm_epoch_authorized = True
+        self.set_valid_feedback(now)
+        rosbridge = [self.endpoint(MODULE.ROSBRIDGE_INPUT_PUBLISHER)]
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now), \
+                mock.patch.object(
+                    self.node,
+                    "get_publishers_info_by_topic",
+                    return_value=rosbridge,
+                ):
+            self.node._control_owner_cb(self.herelink_owner_confirmation())
+
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            for _ in range(3):
+                self.node._tick()
+        before_release = len(self.node.override_pub.messages)
+        self.publish_rc_out(now, (900, 800, 800))
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._tick()
+
+        self.assertTrue(self.node.emergency_stop_latched)
+        self.assertEqual(self.node.fault, "EMERGENCY_STOP")
+        self.assertEqual(len(self.node.override_pub.messages), before_release + 1)
+        channels = self.node.override_pub.messages[-1].channels
+        guard = self.node.guard
+        self.assertEqual(
+            channels[guard.steering_channel - 1], guard.steering_rail.trim
+        )
+        self.assertEqual(
+            channels[guard.throttle_channel - 1], guard.throttle_rail.trim
+        )
+
+    def test_herelink_release_rechecks_servo_output_between_release_frames(self):
+        now = 100.0
+        self.node.latest_state = self.vehicle(True)
+        self.node.latest_state_at = now
+        self.node.arm_epoch_authorized = True
+        self.set_valid_feedback(now)
+        rosbridge = [self.endpoint(MODULE.ROSBRIDGE_INPUT_PUBLISHER)]
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now), \
+                mock.patch.object(
+                    self.node,
+                    "get_publishers_info_by_topic",
+                    return_value=rosbridge,
+                ):
+            self.node._control_owner_cb(self.herelink_owner_confirmation())
+
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            for _ in range(3):
+                self.node._tick()
+        self.publish_rc_out(now)
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._tick()
+        self.assertEqual(self.node.handover_release_frames_remaining, 2)
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._tick()
+        self.assertEqual(self.node.handover_release_frames_remaining, 2)
+
+        self.publish_rc_out(now, (800, 800, 900))
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._tick()
+
+        self.assertTrue(self.node.emergency_stop_latched)
+        self.assertEqual(self.node.fault, "EMERGENCY_STOP")
+        self.assertEqual(self.node.handover_release_frames_remaining, 0)
+
+    def test_herelink_estop_reset_requires_matching_stick_confirmation(self):
+        now = 100.0
+        self.node.latest_state = self.vehicle(True)
+        self.node.latest_state_at = now
+        self.node.arm_epoch_authorized = True
+        self.node.control_owner = MODULE.CONTROL_OWNER_HERELINK
+        self.node.emergency_stop_latched = True
+        self.set_valid_feedback(now)
+        # Non-neutral RC input is not used as physical-stick evidence while
+        # the bridge's neutral override is active.
+        self.node.latest_rc_in = (1510, 1500, 1500)
+        rosbridge = [self.endpoint(MODULE.ROSBRIDGE_INPUT_PUBLISHER)]
+
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now), \
+                mock.patch.object(
+                    self.node,
+                    "get_publishers_info_by_topic",
+                    return_value=rosbridge,
+                ):
+            self.node._emergency_reset_cb(
+                String(data=MODULE.DASHBOARD_NEUTRAL_RESET_CONFIRMATION)
+            )
+        self.assertTrue(self.node.emergency_stop_latched)
+        self.assertEqual(self.node.fault, "HERELINK_NEUTRAL_CONFIRMATION_REQUIRED")
+
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now), \
+                mock.patch.object(
+                    self.node,
+                    "get_publishers_info_by_topic",
+                    return_value=rosbridge,
+                ):
+            self.node._emergency_reset_cb(
+                String(data=MODULE.HERELINK_STICKS_NEUTRAL_CONFIRMATION)
+            )
+        self.assertFalse(self.node.emergency_stop_latched)
+        self.assertEqual(self.node.fault, "HERELINK_HANDOVER")
+
+    def test_status_exposes_control_owner_and_reset_eligibility(self):
+        now = 100.0
+        self.node.require_person_alert = True
+        self.node.latest_state = self.vehicle(True)
+        self.node.latest_state_at = now
+        self.node.arm_epoch_authorized = True
+        self.set_valid_feedback(now)
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._person_alert_cb(self.person_alert())
+            self.node._emergency_cb(Bool(data=True))
+            self.node._command_cb(self.command(1))
+            self.node._publish_status("EMERGENCY_STOP", 0.0, 0.0)
+        status = json.loads(self.node.status_pub.messages[-1].data)
+        self.assertEqual(status["control_owner"], "DASHBOARD")
+        self.assertIs(status["emergency_stop_latched"], True)
+        self.assertIs(status["emergency_reset_allowed"], True)
+        self.assertEqual(status["emergency_reset_block_reason"], "")
+        self.assertIs(status["person_alert_fresh"], True)
+        self.assertIs(status["person_hold_clear"], True)
 
     def test_shutdown_neutralizes_before_context_close(self):
         self.node.latest_state = self.vehicle(True)
