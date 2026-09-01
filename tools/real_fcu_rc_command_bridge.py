@@ -43,7 +43,7 @@ from dataclasses import dataclass
 from typing import Dict, Iterable, Mapping, Optional, Sequence
 
 import rclpy
-from mavros_msgs.msg import OverrideRCIn, RCIn, RCOut, State
+from mavros_msgs.msg import OverrideRCIn, RCIn, RCOut, State, SysStatus
 from mavros_msgs.srv import ParamPull
 from rcl_interfaces.msg import ParameterType, ParameterValue
 from rclpy.node import Node
@@ -71,6 +71,31 @@ PUBLISH_PERIOD_SECONDS = 0.050
 STATE_TIMEOUT_SECONDS = 2.5
 FEEDBACK_TIMEOUT_SECONDS = 1.5
 PERSON_ALERT_TIMEOUT_SECONDS = 1.0
+SYS_STATUS_TIMEOUT_SECONDS = 5.0
+# MAV_SYS_STATUS_SENSOR_MOTOR_OUTPUTS. ArduPilot sets this bit in
+# sensors_enabled only when safety_switch_state() != SAFETY_DISARMED, so a
+# CLEAR bit means the hardware safety switch is engaged.
+MOTOR_OUTPUTS_BIT = 32768
+HARDWARE_SAFETY_ENGAGED = "ENGAGED"
+HARDWARE_SAFETY_RELEASED = "RELEASED"
+HARDWARE_SAFETY_UNKNOWN = "UNKNOWN-STALE"
+
+
+def hardware_safety_state(sensors_enabled, age_seconds, timeout_seconds):
+    """Report the hardware safety switch as ENGAGED, RELEASED or UNKNOWN-STALE.
+
+    This is display evidence only. It never gates a command path: a stale or
+    missing SYS_STATUS must read UNKNOWN-STALE rather than defaulting to the
+    reassuring value, so the operator is never shown a safety claim the FCU
+    did not just supply.
+    """
+    if not isinstance(sensors_enabled, int) or isinstance(sensors_enabled, bool):
+        return HARDWARE_SAFETY_UNKNOWN
+    if age_seconds is None or age_seconds < 0.0 or age_seconds > timeout_seconds:
+        return HARDWARE_SAFETY_UNKNOWN
+    if sensors_enabled & MOTOR_OUTPUTS_BIT:
+        return HARDWARE_SAFETY_RELEASED
+    return HARDWARE_SAFETY_ENGAGED
 NO_CHANGE = 65535
 RELEASE_HIGH_CHANNEL = 65534
 CONTROL_OWNER_DASHBOARD = "DASHBOARD"
@@ -789,6 +814,8 @@ class RealFcuRcCommandBridge(Node):
         self.latest_rc_in_at = 0.0
         self.latest_rc_out: Sequence[int] = ()
         self.latest_rc_out_at = 0.0
+        self.latest_sys_status = None
+        self.latest_sys_status_at = 0.0
         self.latest_rc_out_generation = 0
         self.last_command_at = 0.0
         self.last_command_stamp_ns = 0
@@ -813,6 +840,9 @@ class RealFcuRcCommandBridge(Node):
         self.create_subscription(State, "/mavros/state", self._state_cb, 10)
         self.create_subscription(RCIn, "/mavros/rc/in", self._rc_in_cb, 10)
         self.create_subscription(RCOut, "/mavros/rc/out", self._rc_out_cb, 10)
+        self.create_subscription(
+            SysStatus, "/mavros/sys_status", self._sys_status_cb, 10
+        )
 
         if not self.allow_real_fcu:
             self.get_logger().warning("real-FCU output inhibited; set allow_real_fcu:=true explicitly")
@@ -1332,6 +1362,11 @@ class RealFcuRcCommandBridge(Node):
             return None
         return int(channels[index])
 
+    def _sys_status_cb(self, message) -> None:
+        # Display evidence only; nothing in the command path reads this.
+        self.latest_sys_status = message
+        self.latest_sys_status_at = time.monotonic()
+
     def _publish_status(self, state: str, steering: float, throttle: float) -> None:
         guard = self.guard
         now = time.monotonic()
@@ -1349,8 +1384,21 @@ class RealFcuRcCommandBridge(Node):
             round((now - self.latest_rc_out_at) * 1000)
             if self.latest_rc_out_at else None
         )
+        sys_status_age = (
+            now - self.latest_sys_status_at
+            if self.latest_sys_status_at else None
+        )
+        sys_status_age_ms = (
+            round(sys_status_age * 1000) if sys_status_age is not None else None
+        )
         payload = {
             "state": state,
+            "hardware_safety": hardware_safety_state(
+                getattr(self.latest_sys_status, "sensors_enabled", None),
+                sys_status_age,
+                SYS_STATUS_TIMEOUT_SECONDS,
+            ),
+            "sys_status_age_ms": sys_status_age_ms,
             "fault": self.fault,
             "ready": state in (
                 "READY_DISARMED",

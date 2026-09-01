@@ -469,3 +469,94 @@ dashboard Node `91/91`, with the release and reclaim cases now exercising the
 correct evidence semantics. Classification remains **WORKTREE IMPLEMENTATION /
 NOT COMMITTED / NOT DEPLOYED / NOT RUN**. No previous bundle or live result
 contains these bytes.
+
+## Publication status correction - 01/09/2026
+
+The three classifications recorded earlier in this file as **WORKTREE
+IMPLEMENTATION / NOT COMMITTED / NOT DEPLOYED / NOT RUN** are superseded on
+their publication clause only. The showcase, handover-safety and
+fresh-release/explicit-reprime bytes landed together as
+`da6627e21b9019eaff95b36d407f2439da24e156` -
+`feat(showcase): integrate Hailo stop and FCU-VRX handover`, 22 files,
+`+6041/-200`. `HEAD`, `main` and `origin/main` all resolve to that revision
+with divergence `0/0` and a clean worktree.
+
+The corrected classification for all three is **COMMITTED `da6627e` / NOT
+DEPLOYED / NOT RUN**. The deployed-and-certified Pi bundle predates this
+revision, so a new `da6627e`-named transfer and non-actuating certification are
+still required, and no live result is claimed from these bytes.
+
+## Hardware-safety status badge - 01/09/2026 (offline)
+
+The dashboard displayed arming state, connection and mode but never the
+hardware safety switch, so an operator could not see why the boat would or
+would not move. This adds that one read-only indicator and nothing else.
+
+The bridge now subscribes to `/mavros/sys_status` and reports the switch in its
+status payload as `hardware_safety`, with `sys_status_age_ms` beside the
+existing RC age fields. The pure helper `hardware_safety_state` returns
+`ENGAGED`, `RELEASED` or `UNKNOWN-STALE` from `sensors_enabled`, the sample age
+and a `5`-second limit. `MOTOR_OUTPUTS` clear means the switch is engaged:
+ArduPilot sets that bit only when `safety_switch_state() != SAFETY_DISARMED`.
+
+A missing or stale sample reads `UNKNOWN-STALE` rather than defaulting to the
+reassuring value, so the badge never shows a safety claim the flight controller
+did not just supply. The badge is display evidence only; a focused test asserts
+the `/mavros/sys_status` callback contains no publish, release or latch call, so
+it cannot become a command-path input by later edit.
+
+The dashboard renders it beside Control Owner: `ENGAGED (outputs suppressed)`
+in clear, `RELEASED (outputs live)` in critical, `Unknown (stale)` in warning.
+
+This does **not** add arming authority. No arm, disarm, mode or command service
+is introduced, and the MAVROS `command` plugin remains absent from the
+allowlist. Note for any future arming discussion: with the retained
+`ARMING_CHECK=0`, an engaged safety switch does not prevent the logical armed
+state - `Rover/AP_Arming.cpp` returns `mandatory_checks()` when checks are
+disabled - it suppresses motor output. The 13/08/2026 record already shows
+`ARMED` with safety ON and outputs holding `800/800`.
+
+Bridge `61`, capture `37`, helper `55`, W2 `30`, dashboard `91/91`, repository
+Python `187`, bundle `4/4`, whitespace clean. The staleness and type guards
+were confirmed to fail against a staleness-ignoring implementation before being
+accepted. Offline only: nothing was deployed or run.
+
+### Correction - hardware-safety badge review, 01/09/2026
+
+Review of the badge entry above found four claims that overstate or misstate the
+delivered code. All four are corrected here; the entry above is left as written.
+
+The claim that a focused test asserting the `/mavros/sys_status` callback holds
+no publish, release or latch call means the badge "cannot become a command-path
+input by later edit" was too strong. Scanning one callback proves nothing about
+a reader added elsewhere, which is exactly where a gate would appear. The test
+is now a whitelist over the whole module: every function that touches
+`latest_sys_status`, `hardware_safety_state`, `MOTOR_OUTPUTS_BIT`,
+`SYS_STATUS_TIMEOUT_SECONDS` or the `HARDWARE_SAFETY_` constants must be one of
+`hardware_safety_state`, `__init__`, `_sys_status_cb` or `_publish_status`. A
+read added to any command path changes that set and fails the suite. The claim
+that survives is narrower and true: no function outside those four display and
+ingest surfaces reads the safety state today, and adding one breaks a test.
+
+The rendered strings were quoted stale. They are `ENGAGED (motor output
+suppressed)` in clear, `RELEASED (suppression off)` in critical, and
+`Unknown (stale)` in warning. `RELEASED (outputs live)` was rejected because the
+switch reports only that output suppression is off; it does not establish that
+propulsion is powered or that any output is being produced.
+
+The badge was written on receipt only, so bridge silence, malformed status JSON
+or a rosbridge disconnect could leave a stale `ENGAGED` or `RELEASED` on screen
+indefinitely. Rendering is now a single function driven by the existing
+`FCU_BENCH_STATUS_MAX_AGE_MS` freshness window and called from the periodic
+refresh, the receive path, the malformed-JSON handler - which now also clears
+the retained status - and the disconnect reset. Five dashboard tests cover the
+fresh readings, the wording, and the three stale paths.
+
+The deployment revision named in `Board.md`, `wiki/Roadmap.md` and
+`wiki/Live_Hailo_MAVLink_Dashboard_Testing.md` no longer holds. The badge
+changed `tools/real_fcu_rc_command_bridge.py` after `da6627e`, so the bundle
+manifest and the deployed Pi directory must be named for the revision that
+lands this change.
+
+Counts after the corrections: bridge `62`, dashboard `96/96`. Still offline
+only: nothing was deployed or run.

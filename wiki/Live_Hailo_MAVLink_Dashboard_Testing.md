@@ -1909,3 +1909,21 @@ both supervisors exited with status `0`. C2 remained **NOT RUN** at this checkpo
 - [RealSense Dashboard Testing](RealSense_Dashboard_Testing)
 - [Pi 5 Bring-up Smoke Test](Pi5_Bringup_Smoke_Test)
 - [Dashboard Security](Dashboard_Security)
+
+### Publication status correction - 01/09/2026
+
+The integrated showcase classification recorded above as **NOT COMMITTED** is
+superseded. Those bytes landed as
+`da6627e21b9019eaff95b36d407f2439da24e156`, with `HEAD == origin/main`,
+divergence `0/0` and a clean worktree. The corrected classification is
+**COMMITTED `da6627e` / NOT DEPLOYED / NOT RUN**.
+
+The previously certified Pi bundle predates this revision and does not contain
+these bytes, so a new `da6627e`-named bundle transfer and non-actuating
+certification remain required before any run on the boat.
+
+**Revision correction 01/09/2026:** the required bundle is no longer
+`da6627e`-named. The hardware-safety badge changed
+`tools/real_fcu_rc_command_bridge.py` after that commit, so the bundle manifest
+and the deployed Pi directory must both be named for the revision that lands
+that change, not for `da6627e`.

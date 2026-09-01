@@ -1173,3 +1173,64 @@ test('a fresh MAVROS state sample cannot present stale FCU state as current', ()
     assert.equal(harness.elements.get('mavlink-mode').textContent, '-');
     assert.match(harness.elements.get('mavlink-topic-state').textContent, /^State: Live /);
 });
+
+test('hardware safety badge reads ENGAGED and RELEASED from fresh bridge status', () => {
+    const harness = createHarness();
+    const badge = () => harness.elements.get('fcu-loop-hardware-safety').textContent;
+
+    harness.api.updateLiveFcuBenchStatus({
+        data: JSON.stringify({ state: 'READY_DISARMED', hardware_safety: 'ENGAGED' })
+    });
+    assert.match(badge(), /^ENGAGED /);
+
+    harness.api.updateLiveFcuBenchStatus({
+        data: JSON.stringify({ state: 'READY_DISARMED', hardware_safety: 'RELEASED' })
+    });
+    assert.match(badge(), /^RELEASED /);
+});
+
+test('hardware safety badge never claims outputs are live', () => {
+    const harness = createHarness();
+    harness.api.updateLiveFcuBenchStatus({
+        data: JSON.stringify({ state: 'READY_DISARMED', hardware_safety: 'RELEASED' })
+    });
+    // The switch reports suppression state only; it does not establish that
+    // propulsion is powered or that any output is actually being produced.
+    assert.doesNotMatch(harness.elements.get('fcu-loop-hardware-safety').textContent,
+        /outputs live|powered|propulsion/i);
+});
+
+test('bridge silence ages the hardware safety badge to Unknown', () => {
+    const harness = createHarness();
+    harness.api.updateLiveFcuBenchStatus({
+        data: JSON.stringify({ state: 'READY_DISARMED', hardware_safety: 'RELEASED' })
+    });
+    assert.match(harness.elements.get('fcu-loop-hardware-safety').textContent, /^RELEASED /);
+
+    harness.advance(60_000);
+    harness.api.refreshFcuBenchControls();
+    assert.equal(harness.elements.get('fcu-loop-hardware-safety').textContent,
+        'Unknown (stale)');
+});
+
+test('malformed bridge status clears the hardware safety badge', () => {
+    const harness = createHarness();
+    harness.api.updateLiveFcuBenchStatus({
+        data: JSON.stringify({ state: 'READY_DISARMED', hardware_safety: 'ENGAGED' })
+    });
+    assert.match(harness.elements.get('fcu-loop-hardware-safety').textContent, /^ENGAGED /);
+
+    harness.api.updateLiveFcuBenchStatus({ data: '{not json' });
+    assert.equal(harness.elements.get('fcu-loop-hardware-safety').textContent,
+        'Unknown (stale)');
+});
+
+test('a status without hardware_safety does not leave a stale safety claim', () => {
+    const harness = createHarness();
+    harness.api.updateLiveFcuBenchStatus({
+        data: JSON.stringify({ state: 'READY_DISARMED', hardware_safety: 'ENGAGED' })
+    });
+    harness.api.updateLiveFcuBenchStatus({ data: JSON.stringify({ state: 'READY_DISARMED' }) });
+    assert.equal(harness.elements.get('fcu-loop-hardware-safety').textContent,
+        'Unknown (stale)');
+});

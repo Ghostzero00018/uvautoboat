@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ast
 import importlib.util
 import hashlib
 import inspect
@@ -1558,6 +1559,98 @@ class BridgeNodeStateMachineTest(unittest.TestCase):
                 message.channels[guard.throttle_channel - 1],
                 guard.throttle_rail.trim,
             )
+
+
+class HardwareSafetyBadgeTests(unittest.TestCase):
+    """The badge is display evidence: it must never invent a safety claim."""
+
+    def state(self, sensors_enabled, age):
+        return MODULE.hardware_safety_state(
+            sensors_enabled, age, MODULE.SYS_STATUS_TIMEOUT_SECONDS
+        )
+
+    def test_clear_motor_outputs_bit_reads_engaged(self):
+        # ArduPilot sets the bit only when safety_switch_state() != SAFETY_DISARMED,
+        # so a clear bit means the switch is engaged and outputs are suppressed.
+        self.assertEqual(self.state(0, 0.1), MODULE.HARDWARE_SAFETY_ENGAGED)
+
+    def test_set_motor_outputs_bit_reads_released(self):
+        self.assertEqual(
+            self.state(MODULE.MOTOR_OUTPUTS_BIT, 0.1),
+            MODULE.HARDWARE_SAFETY_RELEASED,
+        )
+
+    def test_other_sensor_bits_do_not_imply_released(self):
+        self.assertEqual(self.state(0b1111, 0.1), MODULE.HARDWARE_SAFETY_ENGAGED)
+
+    def test_a_stale_sample_is_unknown_not_reassuring(self):
+        stale = MODULE.SYS_STATUS_TIMEOUT_SECONDS + 0.001
+        self.assertEqual(
+            self.state(MODULE.MOTOR_OUTPUTS_BIT, stale),
+            MODULE.HARDWARE_SAFETY_UNKNOWN,
+        )
+        self.assertEqual(self.state(0, stale), MODULE.HARDWARE_SAFETY_UNKNOWN)
+
+    def test_no_sample_yet_is_unknown(self):
+        self.assertEqual(
+            self.state(MODULE.MOTOR_OUTPUTS_BIT, None),
+            MODULE.HARDWARE_SAFETY_UNKNOWN,
+        )
+        self.assertEqual(self.state(None, 0.1), MODULE.HARDWARE_SAFETY_UNKNOWN)
+
+    def test_a_bool_is_not_accepted_as_a_bitfield(self):
+        self.assertEqual(self.state(True, 0.1), MODULE.HARDWARE_SAFETY_UNKNOWN)
+
+    # The safety switch is display evidence. It must not become a gate: neither
+    # an enable (a released switch must not unlock anything) nor an interlock
+    # (an engaged or stale switch must not suppress a stop). This is enforced
+    # by whitelisting every function allowed to read the safety state at all,
+    # so a future reader inside a command path fails the suite rather than
+    # silently changing the actuation contract.
+    SAFETY_STATE_READERS = {
+        "hardware_safety_state",  # the pure classifier itself
+        "__init__",               # declares the two state attributes
+        "_sys_status_cb",         # ingest
+        "_publish_status",        # display payload
+    }
+
+    def _functions_reading_safety_state(self):
+        tree = ast.parse(MODULE_PATH.read_text(encoding="utf-8"))
+        markers = (
+            "latest_sys_status",
+            "hardware_safety_state",
+            "MOTOR_OUTPUTS_BIT",
+            "SYS_STATUS_TIMEOUT_SECONDS",
+            "HARDWARE_SAFETY_",
+        )
+        readers = set()
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            dumped = ast.dump(node)
+            if any(marker in dumped for marker in markers):
+                readers.add(node.name)
+        return readers
+
+    def test_only_display_surfaces_read_the_safety_state(self):
+        self.assertEqual(self._functions_reading_safety_state(), self.SAFETY_STATE_READERS)
+
+    def test_the_whitelisted_readers_touch_no_command_path(self):
+        tree = ast.parse(MODULE_PATH.read_text(encoding="utf-8"))
+        commands = ("_publish_pair", "_publish_release", "_latch_emergency_stop")
+        defined = {node.name for node in ast.walk(tree)
+                   if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
+        # Guard against the assertions rotting into vacuous truths after a rename.
+        for command in commands:
+            self.assertIn(command, defined)
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if node.name not in ("_sys_status_cb", "_publish_status"):
+                continue
+            dumped = ast.dump(node)
+            for command in commands:
+                self.assertNotIn(command, dumped, f"{node.name} reaches {command}")
 
 
 if __name__ == "__main__":

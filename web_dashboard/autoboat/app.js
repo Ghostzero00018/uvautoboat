@@ -689,6 +689,7 @@ function fcuBenchCanApply(status = liveFcuBenchStatus, nowMs = Date.now()) {
 }
 
 function refreshFcuBenchControls() {
+    renderHardwareSafetyBadge();
     const requested = LIVE_FCU_BENCH_REQUESTED;
     const resolved = liveFcuBenchStatus?.resolved;
     const confirmation = document.getElementById('fcu-loop-physical-confirmation');
@@ -796,12 +797,35 @@ function formatRailRelativePercent(value) {
     return `${value > 0 ? '+' : ''}${rounded}% PWM rail`;
 }
 
+// Hardware safety is display evidence only. It is rendered from the bridge
+// status AND its age, so bridge silence, malformed JSON or a rosbridge
+// disconnect fall back to Unknown rather than leaving a stale reassuring value
+// on screen.
+function renderHardwareSafetyBadge() {
+    const fresh = liveFcuBenchStatusReceivedAt > 0
+        && Date.now() - liveFcuBenchStatusReceivedAt < FCU_BENCH_STATUS_MAX_AGE_MS;
+    const safety = fresh ? liveFcuBenchStatus?.hardware_safety : undefined;
+    if (safety === 'ENGAGED') {
+        setLiveMavlinkValue(
+            'fcu-loop-hardware-safety', 'ENGAGED (motor output suppressed)', 'clear');
+    } else if (safety === 'RELEASED') {
+        setLiveMavlinkValue(
+            'fcu-loop-hardware-safety', 'RELEASED (suppression off)', 'critical');
+    } else {
+        setLiveMavlinkValue(
+            'fcu-loop-hardware-safety', 'Unknown (stale)', 'warning');
+    }
+}
+
 function updateLiveFcuBenchStatus(message) {
     let status;
     try {
         status = JSON.parse(message?.data || '');
     } catch (error) {
         setLiveMavlinkValue('fcu-loop-state', 'Invalid bridge status', 'critical');
+        liveFcuBenchStatus = null;
+        liveFcuBenchStatusReceivedAt = 0;
+        renderHardwareSafetyBadge();
         return;
     }
     const newlyArmed = status.armed === true && !liveFcuBenchLastArmed;
@@ -823,6 +847,7 @@ function updateLiveFcuBenchStatus(message) {
             : status.state || 'Unknown',
         status.state === 'ACTIVE' ? 'warning' : status.ready ? 'clear' : 'critical'
     );
+    renderHardwareSafetyBadge();
     const resolved = status.resolved;
     setLiveMavlinkValue(
         'fcu-loop-mapping',
