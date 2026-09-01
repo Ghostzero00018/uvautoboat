@@ -4,6 +4,52 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+
+# The Pi and workstation helpers take their operator contract from REAL_FCU_*
+# environment variables, read at source time for the selectors and at gate
+# execution for the physical declarations, so an ambient value in the caller's
+# shell silently reconfigures a fixture here. Preflight runs this suite from the
+# operator's own shell, where REAL_FCU_HAILO_PERSON_STOP=1 is an ordinary
+# showcase setting, so the family is scrubbed once before any case runs. Cases
+# that exercise a flag set it explicitly instead of inheriting it.
+rfcu_test_scrub_ambient_operator_env() {
+  local name
+  for name in ${!REAL_FCU_@}; do
+    unset "$name"
+  done
+}
+
+rfcu_test_scrub_ambient_operator_env
+
+# Internal re-entry modes for the suite-entry scrub call above. Both are
+# reserved arguments, never environment variables: an environment trigger would
+# itself be an ambient bypass, able to end this suite before any case ran while
+# still handing the preflight a success exit code. Arguments cannot leak in from
+# the operator's shell, and preflight invokes this file with none.
+#
+#   --rfcu-internal-entry-scrub-probe  report any REAL_FCU_* that survived the
+#                                      entry call above, then exit. A case below
+#                                      re-executes this file with that argument
+#                                      and a polluted environment, so the
+#                                      assertion is bound to the real entry call
+#                                      rather than to a separate invocation of
+#                                      the function. Deleting that call makes
+#                                      the probe report residue and the case
+#                                      fail even in a clean environment.
+#   --rfcu-internal-nested-run         mark a nested full run so the case that
+#                                      re-executes this suite does not recurse.
+RFCU_TEST_NESTED_RUN=0
+case "${1:-}" in
+  --rfcu-internal-entry-scrub-probe)
+    printf '%s\n' ${!REAL_FCU_@}
+    exit 0
+    ;;
+  --rfcu-internal-nested-run)
+    RFCU_TEST_NESTED_RUN=1
+    shift
+    ;;
+esac
+
 WORKSTATION_HELPER="${1:-$SCRIPT_DIR/real_fcu_digital_twin_workstation.sh}"
 PI_HELPER="${2:-$SCRIPT_DIR/real_fcu_digital_twin_pi.sh}"
 PLUGIN_YAML="${3:-$REPO_ROOT/config/mavros_real_fcu_closed_loop_plugins.yaml}"
@@ -523,6 +569,74 @@ for t2_mode in run-t2a run; do
   ' _ "$PI_HELPER" "$t2_mode" \
     || fail_test "$t2_mode readiness started requiring the T3a capture node"
 done
+
+# Hermeticity of this suite against the operator's own shell. The five cases
+# below are ordered suite-entry-scrub-ran, scrub-clears-the-family,
+# fixture-survives-a-polluted-shell, a control proving the pollution really does
+# reach a sourced helper, and no-ambient-name-can-suppress-the-marker.
+ENTRY_SCRUB_RESIDUE="$(REAL_FCU_HAILO_PERSON_STOP=1 REAL_FCU_PROPELLERS_FITTED=true \
+  REAL_FCU_T3A_APPROVED=yes REAL_FCU_SAFETY_ON=true \
+  bash "${BASH_SOURCE[0]}" --rfcu-internal-entry-scrub-probe)"
+[ -z "$ENTRY_SCRUB_RESIDUE" ] \
+  || fail_test "the suite-entry scrub call did not run: $ENTRY_SCRUB_RESIDUE"
+pass_case
+
+SCRUB_RESIDUE="$(REAL_FCU_HAILO_PERSON_STOP=1 REAL_FCU_PROPELLERS_FITTED=true \
+  REAL_FCU_T3A_APPROVED=yes REAL_FCU_SAFETY_ON=true \
+  bash -c "$(declare -f rfcu_test_scrub_ambient_operator_env)"'
+    set -euo pipefail
+    rfcu_test_scrub_ambient_operator_env
+    printf "%s\n" ${!REAL_FCU_@}
+  ')"
+[ -z "$SCRUB_RESIDUE" ] \
+  || fail_test "ambient operator flags survived the scrub: $SCRUB_RESIDUE"
+pass_case
+
+REAL_FCU_HAILO_PERSON_STOP=1 bash -c "$(declare -f rfcu_test_scrub_ambient_operator_env)"'
+    set -euo pipefail
+    rfcu_test_scrub_ambient_operator_env
+    source "$1"
+    RFCU_PI_RUN_MODE=run-t2a
+    RFCU_PI_READY_TIMEOUT_SECONDS=1
+    RFCU_PI_POLL_SECONDS=1
+    rfcu_pi_active_children_alive() { return 0; }
+    ros2() { printf "/rosbridge_websocket\n/rosapi\n"; }
+    rfcu_pi_wait_workstation_nodes
+  ' _ "$PI_HELPER" \
+  || fail_test 'an ambient showcase flag reconfigured the ordinary T2a fixture'
+pass_case
+
+# Control: without the scrub the same fixture must fail, otherwise the case
+# above is vacuous and would keep passing after the isolation is removed.
+if REAL_FCU_HAILO_PERSON_STOP=1 bash -c '
+    set -euo pipefail
+    source "$1"
+    RFCU_PI_RUN_MODE=run-t2a
+    RFCU_PI_READY_TIMEOUT_SECONDS=1
+    RFCU_PI_POLL_SECONDS=1
+    rfcu_pi_active_children_alive() { return 0; }
+    ros2() { printf "/rosbridge_websocket\n/rosapi\n"; }
+    sleep() { SECONDS=$((SECONDS + 2)); }
+    rfcu_pi_wait_workstation_nodes
+  ' _ "$PI_HELPER"; then
+  fail_test 'ambient REAL_FCU_HAILO_PERSON_STOP no longer reaches a sourced helper; the isolation cases are vacuous'
+fi
+pass_case
+
+# rfcu_ws_check trusts this file's exit code alone, so any environment name that
+# could end the run early would report success while skipping every case. A
+# nested full run proves that no such name exists: the suite still reaches its
+# final marker with the historical probe names and a showcase flag exported. The
+# reserved argument suppresses only this case in the nested run, so it cannot
+# recurse; the nested marker therefore reports one case fewer than the outer run.
+if [ "$RFCU_TEST_NESTED_RUN" -eq 0 ]; then
+  NESTED_MARKER="$(RFCU_TEST_ENTRY_SCRUB_PROBE=1 RFCU_TEST_ENTRY_PROBE=1 \
+    RFCU_TEST_PROBE=1 REAL_FCU_HAILO_PERSON_STOP=1 \
+    bash "${BASH_SOURCE[0]}" --rfcu-internal-nested-run "$@" 2>&1 | tail -1)"
+  grep -qE '^PASS cases=[0-9]+$' <<<"$NESTED_MARKER" \
+    || fail_test "an ambient name suppressed the suite marker: $NESTED_MARKER"
+  pass_case
+fi
 if bash -c '
     set -euo pipefail
     source "$1"
