@@ -574,7 +574,7 @@ rfcu_pi_capture_topic() {
     attempt=$((attempt + 1))
   done
   ros2 topic echo --once --timeout "$timeout_seconds" --full-length \
-    --qos-profile best_available "$topic" "$message_type" \
+    --qos-profile best_available --no-lost-messages "$topic" "$message_type" \
     2>"$diagnostic_output" | tee "$attempt_output" \
     2>>"$diagnostic_output" >"$output"
 }
@@ -923,6 +923,9 @@ rfcu_pi_wait_bridge_ready() {
 
 rfcu_pi_confirm_manual_safety_release() {
   local confirmation=''
+  if [ "${RFCU_PI_RUN_MODE:-}" = run-t3a ]; then
+    return 0
+  fi
   read -r -p \
     'Release hardware safety while DISARMED, then type RELEASED_DISARMED and press Enter: ' \
     confirmation || return 1
@@ -933,6 +936,12 @@ rfcu_pi_confirm_t3a_propulsion_enable() {
   local confirmation=''
   local expected='PROPULSION_ENABLED_FCU_DISARMED_SAFETY_ON_GUARDING_INSTALLED_EXCLUSION_CLEAR'
   RFCU_PI_T3A_PROPULSION_ENABLE_PROMPTED=1
+  if [ "${RFCU_PI_RUN_MODE:-}" = run-t3a ]; then
+    printf '%s\n' 'source=approved-run-t3a-runtime-flags' \
+      >"$RFCU_PI_RUN_DIR/evidence/t3a_propulsion_enable.txt" || return 1
+    RFCU_PI_T3A_PROPULSION_ENABLED_CONFIRMED=1
+    return 0
+  fi
   read -r -p \
     "Enable propulsion power only while the FCU is DISARMED, hardware safety is ON, mechanical guarding is installed and the exclusion zone is clear. Then type $expected and press Enter: " \
     confirmation || return 1
@@ -1202,12 +1211,22 @@ rfcu_pi_run() {
       || rfcu_pi_fail \
         'T3a propulsion enable was not confirmed while disarmed, safe and guarded'
     rfcu_pi_log \
-      'REAL_FCU_T3A_PROPULSION_ENABLE=CONFIRMED state=disarmed safety=ON guarding=installed exclusion_zone=clear source=operator-confirmation'
+      'REAL_FCU_T3A_PROPULSION_ENABLE=AUTHORIZED state=disarmed safety=ON guarding=installed exclusion_zone=clear source=approved-runtime-flags operator_action=external'
   fi
-  rfcu_pi_log 'REAL_FCU_MANUAL_GATE=release hardware safety physically while disarmed; no software safety command exists here'
+  if [ "$RFCU_PI_RUN_MODE" = run-t3a ]; then
+    rfcu_pi_log \
+      'REAL_FCU_T3A_SAFETY_RELEASE=AUTHORIZED state=disarmed source=approved-runtime-flags operator_action=external'
+  else
+    rfcu_pi_log 'REAL_FCU_MANUAL_GATE=release hardware safety physically while disarmed; no software safety command exists here'
+  fi
   rfcu_pi_confirm_manual_safety_release \
     || rfcu_pi_fail 'manual hardware-safety release was not confirmed while disarmed'
-  rfcu_pi_log 'REAL_FCU_MANUAL_GATE=CONFIRMED state=disarmed safety=released'
+  if [ "$RFCU_PI_RUN_MODE" = run-t3a ]; then
+    rfcu_pi_log \
+      'REAL_FCU_T3A_SAFETY_RELEASE=WAITING state=disarmed readiness=bridge-READY_DISARMED'
+  else
+    rfcu_pi_log 'REAL_FCU_MANUAL_GATE=CONFIRMED state=disarmed safety=released'
+  fi
   rfcu_pi_wait_bridge_ready \
     || rfcu_pi_fail 'bridge did not reach fresh READY_DISARMED after the manual safety gate'
   if ! rfcu_pi_wait_workstation_nodes; then

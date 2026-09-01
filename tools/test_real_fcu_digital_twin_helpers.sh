@@ -796,6 +796,35 @@ fi
 [ "$CAPTURE_TOPIC_REGRESSION_FAILURES" -eq 0 ] \
   || fail_test "$CAPTURE_TOPIC_REGRESSION_FAILURES capture-topic behavioural regressions failed"
 
+CAPTURE_TOPIC_LOST_DIR="$TEST_TMP/capture-topic-lost-message"
+mkdir -p "$CAPTURE_TOPIC_LOST_DIR/evidence"
+set +e
+CAPTURE_TOPIC_LOST_OUTPUT="$(bash -c '
+  set -euo pipefail
+  source "$1"
+  ros2() {
+    case " $* " in
+      *" --no-lost-messages "*) ;;
+      *)
+        printf "A message was lost!!!\n\ttotal count change:1\n\ttotal count: 1---\n"
+        ;;
+    esac
+    printf "sensors_enabled: 0\n---\n"
+  }
+  rfcu_pi_capture_topic /mavros/sys_status mavros_msgs/msg/SysStatus \
+    "$2/evidence/sys_status.yaml" 3
+' _ "$PI_HELPER" "$CAPTURE_TOPIC_LOST_DIR" 2>&1)"
+CAPTURE_TOPIC_LOST_RC=$?
+set -e
+[ "$CAPTURE_TOPIC_LOST_RC" -eq 0 ] \
+  && [ -z "$CAPTURE_TOPIC_LOST_OUTPUT" ] \
+  && [ "$(cat "$CAPTURE_TOPIC_LOST_DIR/evidence/sys_status.yaml")" = \
+    $'sensors_enabled: 0\n---' ] \
+  && [ "$(cat "$CAPTURE_TOPIC_LOST_DIR/evidence/sys_status.attempt-001.yaml")" = \
+    $'sensors_enabled: 0\n---' ] \
+  || fail_test "capture-topic lost-message callback contaminated YAML: rc=$CAPTURE_TOPIC_LOST_RC output=[$CAPTURE_TOPIC_LOST_OUTPUT]"
+pass_case
+
 T0B_READ_FAIL_DIR="$TEST_TMP/t0b-read-failure"
 mkdir -p "$T0B_READ_FAIL_DIR/evidence"
 : >"$T0B_READ_FAIL_DIR/evidence/t0b_parameters.txt"
@@ -1175,6 +1204,24 @@ T3A_PROPULSION_MISMATCH_OUTPUT="$(bash -c '
 ' _ "$PI_HELPER" "$T3A_CONFIRM_DIR" <<< 'WRONG' 2>/dev/null)"
 [ "$T3A_PROPULSION_MISMATCH_OUTPUT" = 'rc=1 prompted=1 confirmed=0' ] \
   || fail_test "T3a propulsion-enable mismatch did not preserve its closeout obligation: $T3A_PROPULSION_MISMATCH_OUTPUT"
+T3A_PROMPTLESS_OUTPUT="$(bash -c '
+  set -euo pipefail
+  source "$1"
+  RFCU_PI_RUN_DIR="$2"
+  RFCU_PI_RUN_MODE=run-t3a
+  RFCU_PI_T3A_PROPULSION_ENABLE_PROMPTED=0
+  RFCU_PI_T3A_PROPULSION_ENABLED_CONFIRMED=0
+  rfcu_pi_confirm_t3a_propulsion_enable </dev/null
+  rfcu_pi_confirm_manual_safety_release </dev/null
+  printf "prompted=%s confirmed=%s\n" \
+    "$RFCU_PI_T3A_PROPULSION_ENABLE_PROMPTED" \
+    "$RFCU_PI_T3A_PROPULSION_ENABLED_CONFIRMED"
+' _ "$PI_HELPER" "$T3A_CONFIRM_DIR")"
+[ "$T3A_PROMPTLESS_OUTPUT" = 'prompted=1 confirmed=1' ] \
+  || fail_test "T3a approved runtime still required terminal confirmation: $T3A_PROMPTLESS_OUTPUT"
+grep -Fxq 'source=approved-run-t3a-runtime-flags' \
+  "$T3A_CONFIRM_DIR/evidence/t3a_propulsion_enable.txt" \
+  || fail_test 'T3a promptless runtime evidence did not record its approval source'
 T3A_CLOSEOUT_CONFIRM_OUTPUT="$(bash -c '
   set -euo pipefail
   source "$1"
@@ -1690,11 +1737,9 @@ PI_T3A_PRE_ENABLE_OUTPUT="$(run_pi_t3a_abnormal_exit_case \
   "$TEST_TMP/pi-t3a-pre-enable" readiness 0 </dev/null 2>&1)"
 PI_T3A_PRE_ENABLE_RC=$?
 PI_T3A_EVIDENCE_FAILURE_OUTPUT="$(run_pi_t3a_propulsion_evidence_failure_case \
-  "$TEST_TMP/pi-t3a-evidence-failure" 2>&1 <<< $'PROPULSION_ENABLED_FCU_DISARMED_SAFETY_ON_GUARDING_INSTALLED_EXCLUSION_CLEAR\nNEUTRAL_ESTOP_FCU_DISARMED_SAFETY_ON_PROPULSION_ISOLATED')"
+  "$TEST_TMP/pi-t3a-evidence-failure" 2>&1 \
+  <<< 'NEUTRAL_ESTOP_FCU_DISARMED_SAFETY_ON_PROPULSION_ISOLATED')"
 PI_T3A_EVIDENCE_FAILURE_RC=$?
-PI_T3A_PHRASE_MISMATCH_OUTPUT="$(run_pi_t3a_propulsion_evidence_failure_case \
-  "$TEST_TMP/pi-t3a-phrase-mismatch" 2>&1 <<< $'WRONG\nNEUTRAL_ESTOP_FCU_DISARMED_SAFETY_ON_PROPULSION_ISOLATED')"
-PI_T3A_PHRASE_MISMATCH_RC=$?
 PI_T3A_CLEANUP_INT_OUTPUT="$(run_pi_t3a_cleanup_signal_case \
   "$TEST_TMP/pi-t3a-cleanup-int" INT 2>&1)"
 PI_T3A_CLEANUP_INT_RC=$?
@@ -1738,8 +1783,6 @@ set -e
   || fail_test "pre-enable T3a failure changed status $PI_T3A_PRE_ENABLE_RC: $PI_T3A_PRE_ENABLE_OUTPUT"
 [ "$PI_T3A_EVIDENCE_FAILURE_RC" -eq 72 ] \
   || fail_test "T3a propulsion-evidence failure changed status $PI_T3A_EVIDENCE_FAILURE_RC: $PI_T3A_EVIDENCE_FAILURE_OUTPUT"
-[ "$PI_T3A_PHRASE_MISMATCH_RC" -eq 72 ] \
-  || fail_test "T3a propulsion-phrase mismatch changed status $PI_T3A_PHRASE_MISMATCH_RC: $PI_T3A_PHRASE_MISMATCH_OUTPUT"
 [ "$PI_T3A_CLEANUP_INT_RC" -eq 130 ] \
   || fail_test "T3a cleanup INT changed status $PI_T3A_CLEANUP_INT_RC: $PI_T3A_CLEANUP_INT_OUTPUT"
 [ "$PI_T3A_CLEANUP_TERM_RC" -eq 143 ] \
@@ -1813,12 +1856,6 @@ done
 grep -Fxq 'NEUTRAL_ESTOP_FCU_DISARMED_SAFETY_ON_PROPULSION_ISOLATED' \
   "$TEST_TMP/pi-t3a-evidence-failure/evidence/t3a_safe_closeout.txt" \
   || fail_test 'T3a propulsion-evidence failure lost its exact closeout phrase'
-[ "$(grep -Fc 'REAL_FCU_T3A_MANUAL_GATE=safe-closeout' \
-    <<<"$PI_T3A_PHRASE_MISMATCH_OUTPUT")" -eq 1 ] \
-  || fail_test 'T3a propulsion-phrase mismatch did not prompt for safe closeout exactly once'
-grep -Fxq 'NEUTRAL_ESTOP_FCU_DISARMED_SAFETY_ON_PROPULSION_ISOLATED' \
-  "$TEST_TMP/pi-t3a-phrase-mismatch/evidence/t3a_safe_closeout.txt" \
-  || fail_test 'T3a propulsion-phrase mismatch lost its exact closeout phrase'
 for cleanup_signal in int term; do
   signal_output_variable="PI_T3A_CLEANUP_${cleanup_signal^^}_OUTPUT"
   cleanup_signal_output="${!signal_output_variable}"

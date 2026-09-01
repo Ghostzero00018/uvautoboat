@@ -498,10 +498,10 @@ safety ON, propellers fitted, hull restraint, installed mechanical guarding, a
 clear exclusion zone and propulsion isolated at launch. T2a/T2b approvals and a
 propellers-removed declaration must all be exact `0`. The supervisor resolves
 the guard and starts the T3a-named command bridge before it asks the operator to
-enable propulsion while still disarmed, safe and guarded. The exact retained
-enable phrase is
-`PROPULSION_ENABLED_FCU_DISARMED_SAFETY_ON_GUARDING_INSTALLED_EXCLUSION_CLEAR`.
-Only after that confirmation does it request manual hardware-safety release.
+enable propulsion and release hardware safety externally while the FCU remains
+disarmed. Those two start actions use the already-required T3a approval and
+physical-state flags; `run-t3a` does not request additional typed start
+phrases. The supervisor then waits fail-closed for bridge `READY_DISARMED`.
 READY additionally requires the generic
 `/real_fcu_command_feedback_capture` node to be visible; the separately
 launched recorder must be `t3a --esc-threshold-calibration`, and its verdict
@@ -509,13 +509,14 @@ binds the T3a bridge identity. Expected markers are:
 
 ```text
 REAL_FCU_T3A_START=PASS propellers=fitted hull=restrained mechanical_guarding=installed exclusion_zone=clear propulsion=isolated safety=ON state=disarmed
-REAL_FCU_T3A_PROPULSION_ENABLE=CONFIRMED state=disarmed safety=ON guarding=installed exclusion_zone=clear source=operator-confirmation
+REAL_FCU_T3A_PROPULSION_ENABLE=AUTHORIZED state=disarmed safety=ON guarding=installed exclusion_zone=clear source=approved-runtime-flags operator_action=external
+REAL_FCU_T3A_SAFETY_RELEASE=WAITING state=disarmed readiness=bridge-READY_DISARMED
 REAL_FCU_T3A_READY=PASS authority=demand-enabled propellers=fitted guarding=installed exclusion_zone=clear propulsion=enabled bridge=READY_DISARMED workstation=visible capture=visible
 REAL_FCU_T3A_SAFE_CLOSEOUT=PASS neutral=true estop=true disarmed=true safety=ON propulsion=isolated source=operator-confirmation
 ```
 
-Once the enable prompt has appeared, every normal or abnormal exit owes safe
-closeout. Cleanup presents the neutral-demand, E-Stop, external-disarm,
+Once the approved T3a propulsion stage begins, every normal or abnormal exit
+owes safe closeout. Cleanup presents the neutral-demand, E-Stop, external-disarm,
 hardware-safety-ON and physical-propulsion-isolation confirmation before
 final-state capture and child teardown. The exact closeout phrase is
 `NEUTRAL_ESTOP_FCU_DISARMED_SAFETY_ON_PROPULSION_ISOLATED`; its input timeout is
