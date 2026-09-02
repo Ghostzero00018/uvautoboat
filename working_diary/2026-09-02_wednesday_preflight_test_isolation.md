@@ -927,6 +927,37 @@ so it must not be set by hand for W1, W2 or the Pi.
   `1704`.
 - The rest of the parameter contract in the section above.
 
+### Step zero, on the Pi - prove the FCU link before spending the stack
+
+Added after the 02/09/2026 attempt stopped at gate `1688` five minutes in. An
+isolated MAVROS run answers in about `1.5` seconds what that gate takes up to
+`600` to report, and it uses the same allowlist and arguments the helper builds:
+
+```bash
+source /opt/ros/jazzy/setup.bash && export ROS_DOMAIN_ID=43 ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET ROS_LOCALHOST_ONLY=0 && ros2 run mavros mavros_node --ros-args --params-file /opt/ros/jazzy/share/mavros/launch/apm_config.yaml --params-file /home/imt-aqua-drone/uvautoboat_real_fcu_bundle_20260902_778e069/config/mavros_real_fcu_t0b_plugins.yaml -p fcu_url:=serial:///dev/ttyAMA0:57600 -p 'gcs_url:=""' -p system_id:=255 -p component_id:=191 -p target_system_id:=1 -p target_component_id:=1
+```
+
+`CON: Got HEARTBEAT, connected` with `link[1000] detected remote address 1.1`
+within a few seconds means the link is good: Ctrl+C and continue to terminal 1.
+Nothing within about ten seconds means do not start the stack.
+
+Two details that cost time when missed. The `'gcs_url:=""'` must be
+single-quoted, because an unquoted `""` collapses to a bare `gcs_url:=` that the
+rcl parser rejects. And this check holds `/dev/ttyAMA0`, so it must be stopped
+before the run or the Pi preflight fails on `already in use`.
+
+Reading the raw bytes is the other cheap instrument, when the port is free:
+
+```bash
+timeout 3 cat /dev/ttyAMA0 | xxd | head -8
+```
+
+A healthy stream shows MAVLink2 magic `fd` at frame starts with a constant
+`sysid=1 compid=1` two bytes after the sequence, for example
+`fd 1c 00 00 fb 01 01`. Occasional implausible addresses in the MAVROS router
+log are **not** a fault signature; they appear on a healthy link too. The
+failure signature is the absence of `1.1`, not the presence of others.
+
 ### Terminal 1, workstation - W2, the VRX supervisor
 
 Slowest to come up, so it goes first.
@@ -1261,6 +1292,123 @@ The Hailo branch of W1 was not exercised: with `REAL_FCU_HAILO_PERSON_STOP=1`
 the supervisor blocks in `rfcu_ws_wait_hailo_detection` on
 `/perception/detections`, which is Pi-sourced. Nothing on the Pi side, and
 nothing requiring the flight controller, was exercised.
+
+## First full-stack T3a attempt - 02/09/2026, stopped at gate 1688
+
+The full stack was started at revision `600303e` with the Pi bundle
+`778e069` and propellers fitted. It reached the T0b probe and stopped there.
+No arm, no propulsion command, no actuation. Two workstation supervisors and
+the capture terminal timed out and cleaned themselves up.
+
+### What passed, and it is the larger part
+
+- **The Hailo preflight executed on hardware for the first time.** Four
+  additional `OK` lines - `object_detection.py`,
+  `object_detection_post_process.py`, `toolbox.py` and the
+  `yolov11n-v2.19.0-hailo8l.hef` - are `rfcu_pi_validate_hailo_preflight`, `17`
+  of the guards that had only ever been verified offline. Hardware-verified
+  guards go from `12` to about `29`.
+- **All thirteen T3a flag gates passed**, giving
+  `REAL_FCU_T3A_START=PASS propellers=fitted hull=restrained
+  mechanical_guarding=installed exclusion_zone=clear propulsion=isolated
+  safety=ON state=disarmed`.
+- **The entire unrehearsed Hailo handshake worked end to end.** The Pi's Hailo
+  child reached `REAL_FCU_HAILO_PERSON_STOP=PASS detections=structured
+  class=person image=ready person_alert=fresh-clear serial_owner=none
+  thermal=supervised`; W1 consumed those detections, started
+  `web-video-server` and `person-stop-monitor`, and reached
+  `REAL_FCU_WORKSTATION_SERVICES=PASS ports=8002,8080,9090 ...
+  hailo=structured-person-detections person_stop=fresh-clear` before waiting for
+  the Pi. That was the largest remaining software unknown and it is now
+  verified.
+- W2 reached `PRESTART=PASS` with `mapping=3/1 rails=800/800/2200` and
+  `ready_timeout_seconds=600`, confirming the timeout override takes effect.
+
+### Where it stopped
+
+`rfcu_pi_wait_connected_disarmed mavros-probe`, gate line `1688`. `/mavros/state`
+carried `connected: false` with a stamp roughly `280` seconds stale, and the
+router logged a churn of implausible remote addresses rather than the vehicle's
+`1.1`.
+
+### The link is not at fault - three wrong diagnoses, corrected
+
+The address churn was read as floating-line noise and an electrical or wiring
+fault was proposed. That was wrong, as were two follow-ups. Correcting them in
+order, because each was disproved by a cheaper test that should have come
+first:
+
+1. **"Floating or unwired UART, or a baud mismatch."** Disproved by reading the
+   bytes. `timeout 3 cat /dev/ttyAMA0 | xxd` showed `fd 0e 00 00 f2 01 01`,
+   `fd 1c 00 00 fb 01 01`, `fd 0c 00 00 fc 01 01`, `fd 1c 00 00 fd 01 01` -
+   MAVLink2 magic `0xFD`, incrementing sequence `f2, fb, fc, fd`, and a constant
+   `sysid=1 compid=1`. A clean stream at the configured baud. **The hex dump
+   should have been the first test, not the fourth.**
+2. **"FCU serial parameters drifted."** Disproved by operator readback in
+   QGroundControl: `SERIAL1_BAUD=57600`, `SERIAL1_PROTOCOL=MAVLink2`,
+   `SERIAL1_OPTIONS=0`, `BRD_SER1_RTSCTS=Auto (2)` - all matching the
+   03/08/2026 recorded baseline exactly.
+3. **"The T0b allowlist cannot publish `/mavros/state`."** Disproved by reading
+   `config/mavros_real_fcu_t0b_plugins.yaml`: `sys_status` is present.
+
+An isolated MAVROS run against the same device, with the same T0b allowlist and
+arguments the helper builds, then connected in about `1.5` seconds:
+
+```text
+link[1000] detected remote address 1.1
+CON: Got HEARTBEAT, connected. FCU: ArduPilot
+FCU: ArduRover V4.6.3 (3fc7011a)
+FCU: CubeOrangePlus 0037004F 31335106 34343730
+PR: parameters list received
+```
+
+### Two corrections to the retained record
+
+**The Pi-to-FCU request/response defect is not present.** `PR: parameters list
+received` is a complete `986`-parameter pull, so the Pi both sends and is
+answered. The defect recorded open on 03/08/2026 and still described as open on
+25/08/2026 does not reproduce today. Earlier entries stay as written; this is
+the forward correction.
+
+**Spurious router addresses are not a fault signature.** The successful isolated
+run logged `42.100`, `255.190`, `42.236`, `42.250` and `10.250` alongside the
+correct `1.1`. Occasional framing hiccups are normal on this link. The
+distinguishing feature of the failure was not that garbage appeared, but that
+`1.1` never did.
+
+The `VER: autopilot version service timeout` errors are also benign: the T0b
+allowlist has no `command` plugin, so MAVROS cannot issue that request, falls
+back to default capabilities and reads the version from the heartbeat stream
+regardless.
+
+### Most likely cause, and the cheap guard against it
+
+The link is healthy now and was not healthy when the probe opened the port. The
+flight controller's transmitting state at probe-start is the remaining
+difference; it was confirmed powered several minutes into the failure rather
+than before the stack was started.
+
+That is worth a pre-flight check rather than a theory. An isolated MAVROS run
+answers in about `1.5` seconds what gate `1688` takes up to `600` to report,
+and it costs nothing:
+
+```bash
+source /opt/ros/jazzy/setup.bash && export ROS_DOMAIN_ID=43 ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET ROS_LOCALHOST_ONLY=0 && ros2 run mavros mavros_node --ros-args --params-file /opt/ros/jazzy/share/mavros/launch/apm_config.yaml --params-file /home/imt-aqua-drone/uvautoboat_real_fcu_bundle_20260902_778e069/config/mavros_real_fcu_t0b_plugins.yaml -p fcu_url:=serial:///dev/ttyAMA0:57600 -p 'gcs_url:=""' -p system_id:=255 -p component_id:=191 -p target_system_id:=1 -p target_component_id:=1
+```
+
+`CON: Got HEARTBEAT, connected` plus `detected remote address 1.1` within a few
+seconds means the link is good; Ctrl+C and start the stack. Nothing within about
+ten seconds means do not start it. Note the single-quoted `'gcs_url:=""'`: the
+rcl parser rejects the bare `gcs_url:=` that an unquoted `""` collapses to.
+
+This check must release `/dev/ttyAMA0` before the run, or the Pi preflight stops
+on `already in use`.
+
+### Gate 1688 behaved correctly
+
+It refused to advance a props-fitted run whose telemetry link was not
+established. No propulsion was enabled, no safety released, nothing armed. The
+run cost time, not safety.
 
 ## Open
 
