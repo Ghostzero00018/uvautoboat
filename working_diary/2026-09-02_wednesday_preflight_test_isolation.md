@@ -144,6 +144,10 @@ now gives `rc=0` with `PASS cases=60`. `RFCU_TEST_ENTRY_PROBE=1`,
 | dashboard Node | `96/96` | `96/96` |
 | person-stop monitor | `37` | `37` |
 
+These counts are the state of the first change, committed as `3c57fa0`. The
+second change below takes the helper suite to `66`; the other suites are
+unaffected by it.
+
 The polluted shell exported `REAL_FCU_HAILO_PERSON_STOP=1`,
 `REAL_FCU_PROPELLERS_FITTED=true`, `REAL_FCU_T3A_APPROVED=yes`,
 `REAL_FCU_SAFETY_ON=true`, `REAL_FCU_PROPELLERS_REMOVED=true` and
@@ -190,10 +194,9 @@ REAL_FCU_HAILO_PERSON_STOP=1 bash tools/real_fcu_digital_twin_workstation.sh che
 Runs the helper suite, the RC bridge and capture suites, `node --check` on the
 dashboard and the full dashboard Node suite. Both commands end with
 `REAL_FCU_WORKSTATION_CHECK=PASS tests=helper,bridge,capture,dashboard
-runtime=not-started ports=8002,9090`. That marker is a fixed string: showcase
-mode also requires port `8080` to be free but does not say so, which is the
-second open defect below. So ports `8002` and `9090` must be free for the first
-command, and `8080` as well for the second.
+runtime=not-started ports=8002,9090`, and the showcase command ends
+`ports=8002,8080,9090`. The marker lists exactly the ports inspected, so those
+are the ports that must be free for each command.
 
 ### Pipeline 2 - FCU-to-VRX workstation preflight
 
@@ -216,7 +219,7 @@ python3 tools/test_real_fcu_command_feedback_capture.py
 ( cd plan && python3 -m pytest -q test/test_person_stop_monitor.py )
 ```
 
-Expect `PASS cases=60`, `PASS cases=30`, `Ran 62 tests ... OK`,
+Expect `PASS cases=66`, `PASS cases=30`, `Ran 62 tests ... OK`,
 `Ran 37 tests ... OK`, `pass 96` with `fail 0`, and `37 passed`. The
 `plan` suite must be run from `plan/`; from the repository root its import
 fails. A whole-repository `pytest` run cannot collect at all, because
@@ -231,7 +234,7 @@ REAL_FCU_HAILO_PERSON_STOP=1 REAL_FCU_PROPELLERS_FITTED=true \
   bash tools/test_real_fcu_digital_twin_helpers.sh
 ```
 
-Expect `PASS cases=60`, identical to the clean-shell run. A different count, or
+Expect `PASS cases=66`, identical to the clean-shell run. A different count, or
 any output that is not the marker, means the isolation regressed.
 
 ### Pipeline 5 - integrity
@@ -248,7 +251,7 @@ intended files listed. `git diff --check` skips untracked files; check a new
 file with `git diff --no-index --check /dev/null <path>`, where exit `1` means
 the files differ and exit `2` means a real whitespace error.
 
-## Open - separate pre-existing defect, not repaired here
+## Second change - the two workstation-helper defects, now repaired
 
 `tools/real_fcu_digital_twin_workstation.sh:155` reads
 
@@ -270,14 +273,98 @@ The `REAL_FCU_WORKSTATION_CHECK=PASS` marker also hardcodes
 `ports=8002,9090`. Port `8080` is added to the checked list when Hailo mode is
 enabled, so in showcase mode the marker under-reports what it covered.
 
-Both are pre-existing faults in the production helper, outside the
-environment-isolation scope authorised for today, and neither is repaired by
-this change. The workstation preflight should not be described as structurally
-fail-closed until the first is fixed.
+Both were separately authorised after the isolation fix landed at `3c57fa0`,
+and both are repaired here.
+
+### Guards no longer depend on `set -e`
+
+The fix is at the definition, not the one call site. `rfcu_ws_fail` now exits
+instead of returning, so all `48` guards of the form
+`... || rfcu_ws_fail '...'` are fail-closed regardless of how their enclosing
+function is called. Patching only line `155` would have left the other `47`
+carrying the same latent fault.
+
+The definition-level change was checked for blast radius first. Eleven
+functions call `rfcu_ws_fail`; none of them is consumed conditionally anywhere
+in the helper, the EXIT trap `rfcu_ws_cleanup` never calls it, and the three
+other files that mention `real_fcu_digital_twin_workstation.sh` name it only in
+conflict patterns and manifest lists - none sources it or calls an `rfcu_ws_`
+function. Every call site of the eleven is a plain statement.
+
+Stubbing `ss` to fail and calling `rfcu_ws_reject_listening_ports` from an `if`
+now prints only `STOP: cannot inspect workstation TCP ports`. Neither
+`PORT_CHECK_FAIL_OPEN` nor `CONTINUED_PAST_GUARD` appears.
+
+### The marker reports the ports it checked
+
+`rfcu_ws_checked_ports` is now the single source of truth, emitting `8002`,
+then `8080` when Hailo mode is enabled, then `9090`. The rejection loop reads
+it through `mapfile`, and the PASS marker reads it through
+`rfcu_ws_checked_ports_csv`, so the two cannot drift apart again. The order
+matches the existing `REAL_FCU_WORKSTATION_SERVICES=PASS` markers, which were
+already mode-correct and are unchanged.
+
+Verified with the worktree gate stubbed:
+
+```text
+REAL_FCU_WORKSTATION_CHECK=PASS ... ports=8002,9090
+REAL_FCU_WORKSTATION_CHECK=PASS ... ports=8002,8080,9090
+```
+
+### Coverage
+
+Six cases were added, `60` to `66`: a failed `ss` cannot be continued past from
+a suppressing context; `rfcu_ws_fail` does not return to its caller; the checked
+list is `8002,9090` and `8002,8080,9090` by mode; the check marker derives its
+list and hardcodes no port; an empty checked-port list is rejected rather than
+inspected as clean; and a listener on `8080` blocks showcase mode while being
+ignored otherwise. The last of those is what makes the extra marker entry
+meaningful rather than decorative.
+
+The empty-list case covers a hole introduced by the fix itself. `mapfile -t
+ports < <(rfcu_ws_checked_ports)` reads through a process substitution, whose
+exit status is invisible to the caller, so a failing producer would have left
+the loop inspecting nothing and reporting a clean port check - a new instance of
+the very class being repaired. The list is now required to hold at least the two
+ports that are always checked.
+
+Four mutants of the workstation helper were each caught:
+
+| Mutant | Reported |
+| --- | --- |
+| `rfcu_ws_fail` returns instead of exiting | `a failed ss inspection did not stop the preflight: PORT_CHECK_FAIL_OPEN` |
+| marker port list hardcoded again | `the check marker no longer derives its port list` |
+| `8080` dropped from the checked list | `checked ports for Hailo=1 were 8002,9090, expected 8002,8080,9090` |
+| empty-list guard removed | `an empty checked-port list was accepted as a clean port check` |
+
+### Two harness faults found while writing this
+
+Making `rfcu_ws_fail` exit turned three command substitutions in the test suite
+into silent aborts: `X="$(bash -c '...')"` where the inner shell now exits `1`
+fails the assignment, and `set -e` ends the suite with no output at all. One
+new assertion was also written as `grep -q ... && fail_test`, which aborts when
+the grep correctly finds nothing - the same `set -e` and-or shape this day is
+about, written into the fix for it. All four are corrected: the capture sites
+end in `|| true` so the assertion runs and reports, and the assertion is an
+`if`.
+
+The nested-marker case also mislabelled every one of these as an ambient
+suppression, because it ran early and reported the nested run's last line as
+its own cause. It now runs last, so a real defect is reported by the outer
+run's own case first, and it distinguishes an empty nested run - the genuine
+suppression signature - from a nested run that failed for some other reason.
 
 ## Open
 
 A current-revision SITL acceptance remains meaningful. The last accepted SITL
-revision predates both `da6627e` and the hardware-safety badge commit
-`12236b5`, so no accepted SITL result covers the current bytes. Not started,
-and not authorised by this entry.
+revision predates `da6627e`, the hardware-safety badge commit `12236b5`, the
+isolation fix `3c57fa0` and this change, so no accepted SITL result covers the
+current bytes. Not started, and not authorised by this entry.
+
+A pre-existing flake8 failure also remains open and untouched:
+`plan/test/test_person_stop_monitor.py:17` reports `I101 Imported names are in
+the wrong order`. It is unrelated to any change made today.
+
+The deployed Pi bundle is still named for `da6627e` and predates the badge, the
+isolation fix and this change. A new bundle transfer and non-actuating
+certification remain required before any run.

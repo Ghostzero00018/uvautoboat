@@ -72,9 +72,14 @@ rfcu_ws_log_error() {
   printf '%s\n' "$line" >&2
 }
 
+# Terminates. Returning here would make every guard that ends in
+# `... || rfcu_ws_fail '...'` fail-closed only while set -e is in force: reached
+# from an if, && or ||, the enclosing function would continue past the failed
+# check and return success to its caller. Exiting keeps the guards fail-closed
+# regardless of how they are called.
 rfcu_ws_fail() {
   rfcu_ws_log_error "STOP: $*"
-  return 1
+  exit 1
 }
 
 rfcu_ws_usage() {
@@ -150,11 +155,31 @@ rfcu_ws_verify_repository() {
     || rfcu_ws_fail 'repository HEAD does not match origin/main'
 }
 
+# The ports the preflight refuses to start against, one per line. Both the
+# rejection loop and the PASS marker read this, so the marker cannot claim a
+# different set from the one actually inspected. Showcase mode adds the video
+# stream port.
+rfcu_ws_checked_ports() {
+  printf '%s\n' 8002
+  [ "$RFCU_WS_HAILO_PERSON_STOP" -eq 0 ] || printf '%s\n' 8080
+  printf '%s\n' 9090
+}
+
+rfcu_ws_checked_ports_csv() {
+  local csv
+  csv="$(rfcu_ws_checked_ports | tr '\n' ',')"
+  printf '%s' "${csv%,}"
+}
+
 rfcu_ws_reject_listening_ports() {
   local state port matches found=0
   state="$(ss -H -ltn)" || rfcu_ws_fail 'cannot inspect workstation TCP ports'
-  local -a ports=(8002 9090)
-  [ "$RFCU_WS_HAILO_PERSON_STOP" -eq 0 ] || ports+=(8080)
+  local -a ports
+  # Process substitution hides the producer's exit status, so an empty list
+  # would silently inspect nothing. Two ports are always expected.
+  mapfile -t ports < <(rfcu_ws_checked_ports)
+  [ "${#ports[@]}" -ge 2 ] \
+    || rfcu_ws_fail 'could not determine which ports to inspect'
   for port in "${ports[@]}"; do
     matches="$(awk -v target="$port" '
       {
@@ -722,7 +747,7 @@ rfcu_ws_check() {
     "$RFCU_WS_SCRIPT_DIR/test_real_fcu_command_feedback_capture.py"
   node --check "$RFCU_WS_DASHBOARD_DIR/app.js"
   node --test --test-isolation=none "$RFCU_WS_DASHBOARD_DIR"/test/*.test.js
-  rfcu_ws_log 'REAL_FCU_WORKSTATION_CHECK=PASS tests=helper,bridge,capture,dashboard runtime=not-started ports=8002,9090'
+  rfcu_ws_log "REAL_FCU_WORKSTATION_CHECK=PASS tests=helper,bridge,capture,dashboard runtime=not-started ports=$(rfcu_ws_checked_ports_csv)"
 }
 
 rfcu_ws_run() {

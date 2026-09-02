@@ -570,10 +570,10 @@ for t2_mode in run-t2a run; do
     || fail_test "$t2_mode readiness started requiring the T3a capture node"
 done
 
-# Hermeticity of this suite against the operator's own shell. The five cases
-# below are ordered suite-entry-scrub-ran, scrub-clears-the-family,
-# fixture-survives-a-polluted-shell, a control proving the pollution really does
-# reach a sourced helper, and no-ambient-name-can-suppress-the-marker.
+# Hermeticity of this suite against the operator's own shell: suite-entry-scrub-
+# ran, scrub-clears-the-family, fixture-survives-a-polluted-shell, and a control
+# proving the pollution really does reach a sourced helper. The fifth case, that
+# no ambient name can suppress the final marker, runs at the end of the file.
 ENTRY_SCRUB_RESIDUE="$(REAL_FCU_HAILO_PERSON_STOP=1 REAL_FCU_PROPELLERS_FITTED=true \
   REAL_FCU_T3A_APPROVED=yes REAL_FCU_SAFETY_ON=true \
   bash "${BASH_SOURCE[0]}" --rfcu-internal-entry-scrub-probe)"
@@ -622,21 +622,6 @@ if REAL_FCU_HAILO_PERSON_STOP=1 bash -c '
   fail_test 'ambient REAL_FCU_HAILO_PERSON_STOP no longer reaches a sourced helper; the isolation cases are vacuous'
 fi
 pass_case
-
-# rfcu_ws_check trusts this file's exit code alone, so any environment name that
-# could end the run early would report success while skipping every case. A
-# nested full run proves that no such name exists: the suite still reaches its
-# final marker with the historical probe names and a showcase flag exported. The
-# reserved argument suppresses only this case in the nested run, so it cannot
-# recurse; the nested marker therefore reports one case fewer than the outer run.
-if [ "$RFCU_TEST_NESTED_RUN" -eq 0 ]; then
-  NESTED_MARKER="$(RFCU_TEST_ENTRY_SCRUB_PROBE=1 RFCU_TEST_ENTRY_PROBE=1 \
-    RFCU_TEST_PROBE=1 REAL_FCU_HAILO_PERSON_STOP=1 \
-    bash "${BASH_SOURCE[0]}" --rfcu-internal-nested-run "$@" 2>&1 | tail -1)"
-  grep -qE '^PASS cases=[0-9]+$' <<<"$NESTED_MARKER" \
-    || fail_test "an ambient name suppressed the suite marker: $NESTED_MARKER"
-  pass_case
-fi
 if bash -c '
     set -euo pipefail
     source "$1"
@@ -2551,5 +2536,99 @@ bash -c 'source "$1"; rfcu_pi_verify_bundle' \
   _ "$DEPLOYED_BUNDLE/tools/real_fcu_digital_twin_pi.sh" >/dev/null \
   || fail_test 'copied Pi bundle did not validate from its deployed layout'
 pass_case
+
+# The workstation guards must be fail-closed by construction, not by the
+# caller's shell options. rfcu_ws_fail exits, so a guard ending in
+# `... || rfcu_ws_fail '...'` cannot be continued past even from an if, && or ||.
+GUARD_OUTPUT="$(bash -c '
+  source "$1"
+  ss() { return 1; }
+  if rfcu_ws_reject_listening_ports; then printf "PORT_CHECK_FAIL_OPEN\n"; fi
+  printf "CONTINUED_PAST_GUARD\n"
+' _ "$WORKSTATION_HELPER" 2>/dev/null || true)"
+[ -z "$GUARD_OUTPUT" ] \
+  || fail_test "a failed ss inspection did not stop the preflight: $GUARD_OUTPUT"
+pass_case
+
+if bash -c 'source "$1"; rfcu_ws_fail probe; printf "RETURNED\n"' \
+    _ "$WORKSTATION_HELPER" 2>/dev/null | grep -q RETURNED; then
+  fail_test 'rfcu_ws_fail returned to its caller instead of terminating'
+fi
+pass_case
+
+# The PASS marker must report the ports actually inspected. Both read one list.
+for ws_mode in '0:8002,9090' '1:8002,8080,9090'; do
+  ws_flag="${ws_mode%%:*}"
+  ws_expected="${ws_mode#*:}"
+  WS_PORTS="$(bash -c '
+    source "$1"
+    RFCU_WS_HAILO_PERSON_STOP="$2"
+    rfcu_ws_checked_ports_csv
+  ' _ "$WORKSTATION_HELPER" "$ws_flag" || true)"
+  [ "$WS_PORTS" = "$ws_expected" ] \
+    || fail_test "checked ports for Hailo=$ws_flag were $WS_PORTS, expected $ws_expected"
+done
+pass_case
+
+WS_CHECK_BODY="$(extract_function "$WORKSTATION_HELPER" rfcu_ws_check)"
+grep -q 'ports=\$(rfcu_ws_checked_ports_csv)' <<<"$WS_CHECK_BODY" \
+  || fail_test 'the check marker no longer derives its port list'
+if grep -qE 'ports=[0-9]' <<<"$WS_CHECK_BODY"; then
+  fail_test 'the check marker hardcodes a port list again'
+fi
+pass_case
+
+# mapfile reads the port list through a process substitution, whose exit status
+# is invisible to the caller, so an empty list must be rejected rather than
+# silently inspecting nothing.
+if bash -c '
+    source "$1"
+    rfcu_ws_checked_ports() { :; }
+    ss() { printf "LISTEN 0 4096 0.0.0.0:9090 0.0.0.0:*\n"; }
+    rfcu_ws_reject_listening_ports
+  ' _ "$WORKSTATION_HELPER" >/dev/null 2>&1; then
+  fail_test 'an empty checked-port list was accepted as a clean port check'
+fi
+pass_case
+
+# A listener on 8080 must block showcase mode and be ignored otherwise, which is
+# what makes the extra entry in the marker meaningful rather than decorative.
+bash -c '
+  source "$1"
+  RFCU_WS_HAILO_PERSON_STOP=0
+  ss() { printf "LISTEN 0 4096 0.0.0.0:8080 0.0.0.0:*\n"; }
+  rfcu_ws_reject_listening_ports
+' _ "$WORKSTATION_HELPER" 2>/dev/null \
+  || fail_test 'a listener on 8080 blocked the non-showcase preflight'
+if bash -c '
+    source "$1"
+    RFCU_WS_HAILO_PERSON_STOP=1
+    ss() { printf "LISTEN 0 4096 0.0.0.0:8080 0.0.0.0:*\n"; }
+    rfcu_ws_reject_listening_ports
+  ' _ "$WORKSTATION_HELPER" >/dev/null 2>&1; then
+  fail_test 'showcase preflight accepted a listener on 8080'
+fi
+pass_case
+
+# rfcu_ws_check trusts this file's exit code alone, so any environment name that
+# could end the run early would report success while skipping every case. A
+# nested full run proves that no such name exists: the suite still reaches its
+# final marker with the historical probe names and a showcase flag exported. The
+# reserved argument suppresses only this case in the nested run, so it cannot
+# recurse; the nested marker therefore reports one case fewer than the outer run.
+# This runs last so that a real defect is reported by the outer run's own case
+# rather than surfacing here as a second-hand nested failure.
+if [ "$RFCU_TEST_NESTED_RUN" -eq 0 ]; then
+  NESTED_OUTPUT="$(RFCU_TEST_ENTRY_SCRUB_PROBE=1 RFCU_TEST_ENTRY_PROBE=1 \
+    RFCU_TEST_PROBE=1 REAL_FCU_HAILO_PERSON_STOP=1 \
+    bash "${BASH_SOURCE[0]}" --rfcu-internal-nested-run "$@" 2>&1 || true)"
+  NESTED_MARKER="$(printf '%s\n' "$NESTED_OUTPUT" | tail -1)"
+  if [ -z "$NESTED_OUTPUT" ]; then
+    fail_test 'an ambient name ended the nested run before any case: no output at all'
+  elif ! grep -qE '^PASS cases=[0-9]+$' <<<"$NESTED_MARKER"; then
+    fail_test "the nested run did not reach its marker; last line: $NESTED_MARKER"
+  fi
+  pass_case
+fi
 
 printf 'PASS cases=%d\n' "$CASE_COUNT"
