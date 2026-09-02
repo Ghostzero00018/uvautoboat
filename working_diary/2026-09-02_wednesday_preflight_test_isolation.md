@@ -1525,15 +1525,110 @@ The bundle manifest was regenerated. `tools/real_fcu_digital_twin_pi.sh` moved t
 `0e7395f5` and `tools/real_fcu_rc_command_bridge.py` to `14944a50`; the two YAML
 members are unchanged.
 
+## Person-alert advisory mode
+
+Requested so a detection warns on the dashboard instead of stopping the run.
+Built as an explicit opt-in rather than a change of default: with it on, a
+detected person no longer stops the propellers. The operator specified this
+after the consequence was stated.
+
+### Contract
+
+`REAL_FCU_PERSON_ALERT_ADVISORY=1` on the Pi, defaulting to `0`, and refused
+unless `REAL_FCU_HAILO_PERSON_STOP=1` since it is meaningless without the
+detector. It reaches the bridge as `-p person_alert_advisory:=true`.
+
+What it removes is the **hold**: no emergency stop is latched on a detection and
+readiness is not withheld. What it deliberately keeps is the **freshness
+requirement**: a stale or dead detector feed still latches a stop in either
+mode. Advisory means "a person is present and we are continuing", not "the
+detector is optional".
+
+### The second stop path
+
+The first implementation only changed `_person_alert_cb`, which handles the
+message as it arrives. That was incomplete and would have failed in the field
+while passing its own tests.
+
+The primary stop mechanism is in `_tick`, which runs every cycle and latches
+whenever the alert is not "ready" while the vehicle is armed:
+
+```python
+person_alert_ready = bool(
+    self.person_alert_valid
+    and self.person_alert_at > 0.0
+    and now - self.person_alert_at < PERSON_ALERT_TIMEOUT_SECONDS
+    and self.person_hold_clear
+)
+if self.require_person_alert and not person_alert_ready \
+        and vehicle is not None and vehicle.armed:
+    self._latch_emergency_stop()
+```
+
+That is now split so freshness and the hold are separate terms, and only the
+hold is bypassed under advisory. A dedicated test covers it, and reverting only
+that gate fails only that test.
+
+The same pass found a duplicate `person_hold_clear` key introduced into the
+status payload, which Python resolves silently by keeping the last one. The
+duplicate is removed and a test now asserts each of the two person fields
+appears exactly once.
+
+### The dashboard would otherwise have lied
+
+The badge read `PERSON OBSTACLE — STOPPED`. Under advisory nothing stops, so
+that claim would be false in the most dangerous direction: an operator reading
+"stopped" while the propellers still turn.
+
+It now reads `PERSON OBSTACLE — ADVISORY, NOT STOPPED`, still styled critical,
+because a person near live propellers is critical whether or not the boat
+stopped. The advisory wording is used only on an **affirmative and fresh**
+`person_alert_advisory` from the bridge. No bridge at all, as in simulation, a
+stale status, or a missing field all keep the original stop wording, so the
+simulation path is untouched. A first attempt dropped the stop claim whenever
+bench status was absent and broke ten existing tests; that was the wrong
+default and was corrected.
+
+`personAlertIsAdvisory` guards its bench-scope reads with `typeof`, because the
+badge renderer is also evaluated by a harness that does not load that scope.
+
+### Evidence
+
+The T3a READY marker now ends `person_alert=advisory-no-stop` or
+`person_alert=stop-enabled`, so any run record states which behaviour was
+active.
+
+### Coverage
+
+Bridge `63` to `67`: a detection under advisory latches nothing, the control
+that default mode still stops, the tick path while armed, a stale feed still
+stopping under advisory, and the payload field assertions. Helper `69` to `73`:
+defaults off, refused without the detector, passed through only when asked, and
+recorded in the marker. Dashboard `96` to `101`: advisory wording, the
+non-advisory control, a stale advisory report, a missing field, and detector
+feed loss.
+
+One test defect was found and fixed while writing them: the envelope harness
+mocks `Date` to its own clock, so a timestamp taken from the real `Date.now()`
+was incomparable and made a stale sample look fresh.
+
+### Deployment
+
+Both bundle members changed again. `tools/real_fcu_digital_twin_pi.sh` is now
+`fd9d0250` and `tools/real_fcu_rc_command_bridge.py` is `50e2eac3`, with the
+manifest at `f0a91bb4`. The bundle certified earlier today as `65e1fb8` no
+longer matches and needs a fresh transfer before advisory mode can be used.
+
 ## Open
 
 ### The deployed Pi bundle is stale
 
-The throttle change altered two governed members, so `778e069` no longer matches
-the repository. `tools/real_fcu_digital_twin_pi.sh` is now `0e7395f5` and
-`tools/real_fcu_rc_command_bridge.py` is `14944a50`. A fresh transfer and
-non-actuating certification are required before any further run, and the first
-run on the new bundle is also the first at a `0.20` throttle ceiling.
+The `65e1fb8` bundle was transferred and certified this afternoon, then advisory
+mode changed both governed members again. `tools/real_fcu_digital_twin_pi.sh` is
+now `fd9d0250` and `tools/real_fcu_rc_command_bridge.py` is `50e2eac3`, with the
+manifest at `f0a91bb4`. A fresh transfer and non-actuating certification are
+required before any further run. That run is also the first at a `0.20` throttle
+ceiling and the first able to use advisory mode.
 
 ### The Hailo and flight-controller interaction is unexplained
 

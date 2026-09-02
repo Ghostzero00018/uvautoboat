@@ -787,6 +787,14 @@ class RealFcuRcCommandBridge(Node):
         self.neutral_only = bool(
             self.declare_parameter("neutral_only", False).value
         )
+        # Advisory mode reports person detections without acting on them: no
+        # emergency stop is latched and readiness is not withheld. It is an
+        # explicit opt-in and defaults off, because with it on a detected person
+        # does not stop the propellers. The freshness requirement is kept, so a
+        # dead detector feed still blocks readiness in either mode.
+        self.person_alert_advisory = bool(
+            self.declare_parameter("person_alert_advisory", False).value
+        )
         self.require_person_alert = bool(
             self.declare_parameter("require_person_alert", False).value
         )
@@ -1175,7 +1183,7 @@ class RealFcuRcCommandBridge(Node):
         self.person_hold_clear = bool(
             not person_detected and feed_fresh and reason == ""
         )
-        if not self.person_hold_clear:
+        if not self.person_hold_clear and not self.person_alert_advisory:
             self._latch_emergency_stop()
 
     def _emergency_reset_eligibility(
@@ -1219,7 +1227,7 @@ class RealFcuRcCommandBridge(Node):
                     or self.person_alert_at <= 0.0 \
                     or now - self.person_alert_at >= PERSON_ALERT_TIMEOUT_SECONDS:
                 return False, "PERSON_ALERT_STALE"
-            if not self.person_hold_clear:
+            if not self.person_hold_clear and not self.person_alert_advisory:
                 return False, "PERSON_HOLD_ACTIVE"
         return True, ""
 
@@ -1415,6 +1423,7 @@ class RealFcuRcCommandBridge(Node):
             "emergency_reset_allowed": reset_allowed,
             "emergency_reset_block_reason": reset_block_reason,
             "person_alert_fresh": person_alert_fresh,
+            "person_alert_advisory": self.person_alert_advisory,
             "person_alert_required": self.require_person_alert,
             "person_hold_clear": bool(
                 person_alert_fresh and self.person_hold_clear
@@ -1493,11 +1502,17 @@ class RealFcuRcCommandBridge(Node):
         if guard is None or not self.allow_real_fcu:
             self._publish_status(state, steering, throttle)
             return
-        person_alert_ready = bool(
+        # Advisory mode drops only the hold, never the freshness requirement:
+        # a detected person no longer latches a stop, but a dead detector feed
+        # still does.
+        person_alert_fresh_now = bool(
             self.person_alert_valid
             and self.person_alert_at > 0.0
             and now - self.person_alert_at < PERSON_ALERT_TIMEOUT_SECONDS
-            and self.person_hold_clear
+        )
+        person_alert_ready = bool(
+            person_alert_fresh_now
+            and (self.person_alert_advisory or self.person_hold_clear)
         )
         if self.require_person_alert and not person_alert_ready \
                 and vehicle is not None and vehicle.armed:

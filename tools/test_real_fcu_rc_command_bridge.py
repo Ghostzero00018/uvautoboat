@@ -961,6 +961,82 @@ class BridgeNodeStateMachineTest(unittest.TestCase):
                 self.assertFalse(self.node.person_hold_clear)
                 self.assertTrue(self.node.emergency_stop_latched)
 
+    def test_advisory_mode_reports_a_detection_without_stopping(self):
+        # The whole point of advisory mode: a detection is published but no
+        # emergency stop is latched and readiness is not withheld.
+        self.node.require_person_alert = True
+        self.node.person_alert_advisory = True
+        with mock.patch.object(
+            self.node,
+            "get_publishers_info_by_topic",
+            return_value=[self.endpoint(MODULE.PERSON_ALERT_PUBLISHER)],
+        ):
+            self.node._person_alert_cb(self.person_alert(person_detected=True))
+        self.assertTrue(self.node.person_alert_valid)
+        self.assertFalse(self.node.person_hold_clear)
+        self.assertFalse(self.node.emergency_stop_latched)
+
+    def test_default_mode_still_stops_on_a_detection(self):
+        # The control for the case above: without the opt-in, the same
+        # detection must latch a stop. Advisory defaults off.
+        self.assertFalse(self.node.person_alert_advisory)
+        self.node.require_person_alert = True
+        with mock.patch.object(
+            self.node,
+            "get_publishers_info_by_topic",
+            return_value=[self.endpoint(MODULE.PERSON_ALERT_PUBLISHER)],
+        ):
+            self.node._person_alert_cb(self.person_alert(person_detected=True))
+        self.assertFalse(self.node.person_hold_clear)
+        self.assertTrue(self.node.emergency_stop_latched)
+
+    def test_advisory_mode_still_stops_on_a_dead_detector_feed(self):
+        # Advisory removes the hold, not the requirement that the detector is
+        # reporting. A stale feed must still latch a stop while armed.
+        now = 100.0
+        self.node.require_person_alert = True
+        self.node.person_alert_advisory = True
+        self.node.person_alert_required_since = now - 10.0
+        self.node.latest_state = self.vehicle(True)
+        self.node.latest_state_at = now
+        self.node.arm_epoch_authorized = True
+        self.set_valid_feedback(now)
+        self.node.person_alert_valid = True
+        self.node.person_alert_at = now - MODULE.PERSON_ALERT_TIMEOUT_SECONDS
+        self.node.person_hold_clear = True
+
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._tick()
+        self.assertTrue(self.node.emergency_stop_latched)
+
+    def test_advisory_mode_does_not_stop_on_a_detection_while_armed(self):
+        # The tick path is the primary stop mechanism, not just the callback:
+        # a fresh detection while armed must not latch under advisory.
+        now = 100.0
+        self.node.require_person_alert = True
+        self.node.person_alert_advisory = True
+        self.node.person_alert_required_since = now - 10.0
+        self.node.latest_state = self.vehicle(True)
+        self.node.latest_state_at = now
+        self.node.arm_epoch_authorized = True
+        self.set_valid_feedback(now)
+        self.node.person_alert_valid = True
+        self.node.person_alert_at = now
+        self.node.person_hold_clear = False
+
+        with mock.patch.object(MODULE.time, "monotonic", return_value=now):
+            self.node._tick()
+        self.assertFalse(self.node.emergency_stop_latched)
+
+    def test_status_payload_declares_the_advisory_mode(self):
+        # The dashboard must be able to tell the modes apart, or it would claim
+        # the boat stopped when it did not.
+        source = MODULE_PATH.read_text(encoding="utf-8")
+        body = source.split("def _publish_status", 1)[1].split("\n    def ", 1)[0]
+        self.assertIn('"person_alert_advisory": self.person_alert_advisory', body)
+        self.assertEqual(body.count('"person_alert_advisory"'), 1)
+        self.assertEqual(body.count('"person_hold_clear"'), 1)
+
     def test_reset_and_owner_inputs_require_the_rosbridge_publisher(self):
         now = 100.0
         self.node.latest_state = self.vehicle(True)

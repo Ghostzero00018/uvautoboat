@@ -61,7 +61,12 @@ function createHarness() {
         missionState: { stopOverride: false },
         Date: { now: () => clock },
         setInterval: () => 0,
-        console
+        console,
+        // The badge consults FCU bench status to tell advisory mode from a real
+        // stop. That scope lives outside this slice, so it is supplied here.
+        FCU_BENCH_STATUS_MAX_AGE_MS: 500,
+        liveFcuBenchStatus: null,
+        liveFcuBenchStatusReceivedAt: 0
     };
     const advance = (ms) => { clock += ms; };
 
@@ -546,4 +551,61 @@ test('no thruster tooltip still advertises reverse as a direction', () => {
     for (const line of thrusterTooltips) {
         assert.equal(/negative = reverse/.test(line), false, line.trim());
     }
+});
+
+test('a person detection in advisory mode does not claim the boat stopped', () => {
+    const { api, elements, context } = createHarness();
+    context.liveFcuBenchStatus = { person_alert_advisory: true };
+    context.liveFcuBenchStatusReceivedAt = context.Date.now();
+
+    api.applyPersonAlert({ person_detected: true, feed_fresh: true });
+
+    const el = elements.get('person-stop-status');
+    assert.equal(el.textContent, 'PERSON OBSTACLE — ADVISORY, NOT STOPPED');
+    assert.equal(el.className, 'value badge critical');
+});
+
+test('the same detection without advisory still reports a stop', () => {
+    const { api, elements, context } = createHarness();
+    context.liveFcuBenchStatus = { person_alert_advisory: false };
+    context.liveFcuBenchStatusReceivedAt = context.Date.now();
+
+    api.applyPersonAlert({ person_detected: true, feed_fresh: true });
+
+    assert.equal(elements.get('person-stop-status').textContent,
+        'PERSON OBSTACLE — STOPPED');
+});
+
+test('a stale advisory report cannot keep denying that the boat stopped', () => {
+    const { api, elements, context, advance } = createHarness();
+    context.liveFcuBenchStatus = { person_alert_advisory: true };
+    context.liveFcuBenchStatusReceivedAt = context.Date.now();
+    advance(60_000);
+
+    api.applyPersonAlert({ person_detected: true, feed_fresh: true });
+
+    assert.equal(elements.get('person-stop-status').textContent,
+        'PERSON OBSTACLE — STOPPED');
+});
+
+test('advisory wording needs an affirmative report, not a missing field', () => {
+    const { api, elements, context } = createHarness();
+    context.liveFcuBenchStatus = { state: 'READY_DISARMED' };
+    context.liveFcuBenchStatusReceivedAt = context.Date.now();
+
+    api.applyPersonAlert({ person_detected: true, feed_fresh: true });
+
+    assert.equal(elements.get('person-stop-status').textContent,
+        'PERSON OBSTACLE — STOPPED');
+});
+
+test('a detector feed loss in advisory mode is also not a stop claim', () => {
+    const { api, elements, context } = createHarness();
+    context.liveFcuBenchStatus = { person_alert_advisory: true };
+    context.liveFcuBenchStatusReceivedAt = context.Date.now();
+
+    api.applyPersonAlert({ person_detected: false, feed_fresh: false });
+
+    assert.equal(elements.get('person-stop-status').textContent,
+        'CAMERA FEED LOST — ADVISORY, NOT STOPPED');
 });

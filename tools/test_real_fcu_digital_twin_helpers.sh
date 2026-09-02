@@ -2674,4 +2674,58 @@ if [ "$RFCU_TEST_NESTED_RUN" -eq 0 ]; then
   pass_case
 fi
 
+# Person-alert advisory mode is an opt-in that disables the person stop, so the
+# helper must default it off, refuse it without the detector, pass it through
+# only when asked, and say so in the evidence marker.
+ADVISORY_DEFAULT="$(bash -c '
+  set -euo pipefail
+  source "$1"
+  printf "%s\n" "$RFCU_PI_PERSON_ALERT_ADVISORY"
+' _ "$PI_HELPER")"
+[ "$ADVISORY_DEFAULT" = 0 ] \
+  || fail_test "person-alert advisory does not default off: $ADVISORY_DEFAULT"
+pass_case
+
+if bash -c '
+    set -euo pipefail
+    source "$1"
+    RFCU_PI_PERSON_ALERT_ADVISORY=1
+    RFCU_PI_HAILO_PERSON_STOP=0
+    rfcu_pi_static_preflight
+  ' _ "$PI_HELPER" >/dev/null 2>&1; then
+  fail_test 'advisory mode was accepted without the person-stop detector'
+fi
+pass_case
+
+ADVISORY_COMMAND="$(bash -c '
+  set -euo pipefail
+  source "$1"
+  RFCU_PI_RUN_MODE=run-t3a
+  RFCU_PI_HAILO_PERSON_STOP=1
+  RFCU_PI_PERSON_ALERT_ADVISORY=1
+  RFCU_PI_RUN_DIR=/tmp
+  rfcu_pi_build_commands
+  printf "%s\n" "${RFCU_PI_BRIDGE_COMMAND[@]}"
+' _ "$PI_HELPER" 2>/dev/null || true)"
+grep -Fq 'person_alert_advisory:=true' <<<"$ADVISORY_COMMAND" \
+  || fail_test 'advisory mode was not passed to the bridge'
+DEFAULT_COMMAND="$(bash -c '
+  set -euo pipefail
+  source "$1"
+  RFCU_PI_RUN_MODE=run-t3a
+  RFCU_PI_HAILO_PERSON_STOP=1
+  RFCU_PI_RUN_DIR=/tmp
+  rfcu_pi_build_commands
+  printf "%s\n" "${RFCU_PI_BRIDGE_COMMAND[@]}"
+' _ "$PI_HELPER" 2>/dev/null || true)"
+if grep -Fq 'person_alert_advisory' <<<"$DEFAULT_COMMAND"; then
+  fail_test 'advisory mode leaked into the default bridge command'
+fi
+pass_case
+
+READY_BODY="$(extract_function "$PI_HELPER" rfcu_pi_run)"
+grep -Fq 'person_alert=$([ "$RFCU_PI_PERSON_ALERT_ADVISORY" -eq 1 ]' <<<"$READY_BODY" \
+  || fail_test 'the T3a READY marker does not record the person-alert mode'
+pass_case
+
 printf 'PASS cases=%d\n' "$CASE_COUNT"

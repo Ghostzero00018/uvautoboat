@@ -20,6 +20,9 @@ RFCU_PI_STATUS_TIMEOUT_SECONDS="${REAL_FCU_STATUS_TIMEOUT_SECONDS:-15}"
 RFCU_PI_T3A_CLOSEOUT_TIMEOUT_SECONDS="${REAL_FCU_T3A_CLOSEOUT_TIMEOUT_SECONDS:-300}"
 RFCU_PI_POLL_SECONDS="${REAL_FCU_POLL_SECONDS:-1}"
 RFCU_PI_HAILO_PERSON_STOP="${REAL_FCU_HAILO_PERSON_STOP:-0}"
+# Advisory mode reports person detections without stopping. Opt-in, off by
+# default, and meaningful only alongside REAL_FCU_HAILO_PERSON_STOP=1.
+RFCU_PI_PERSON_ALERT_ADVISORY="${REAL_FCU_PERSON_ALERT_ADVISORY:-0}"
 RFCU_PI_HAILO_ROOT="${REAL_FCU_HAILO_ROOT:-$HOME/hailo_coco_overlay_2026-07-10}"
 RFCU_PI_HAILO_REPO="$RFCU_PI_HAILO_ROOT/hailo-apps"
 RFCU_PI_HAILO_VENV="$RFCU_PI_HAILO_ROOT/venv"
@@ -439,6 +442,12 @@ rfcu_pi_static_preflight() {
   rfcu_pi_validate_positive_integer REAL_FCU_T3A_CLOSEOUT_TIMEOUT_SECONDS \
     "$RFCU_PI_T3A_CLOSEOUT_TIMEOUT_SECONDS"
   rfcu_pi_validate_positive_integer REAL_FCU_POLL_SECONDS "$RFCU_PI_POLL_SECONDS"
+  rfcu_pi_validate_binary_flag REAL_FCU_PERSON_ALERT_ADVISORY \
+    "$RFCU_PI_PERSON_ALERT_ADVISORY"
+  [ "$RFCU_PI_PERSON_ALERT_ADVISORY" -eq 0 ] \
+    || [ "$RFCU_PI_HAILO_PERSON_STOP" -eq 1 ] \
+    || rfcu_pi_fail \
+      'REAL_FCU_PERSON_ALERT_ADVISORY=1 requires REAL_FCU_HAILO_PERSON_STOP=1'
   rfcu_pi_validate_binary_flag REAL_FCU_HAILO_PERSON_STOP \
     "$RFCU_PI_HAILO_PERSON_STOP"
   for command in awk bash cp date fuser grep mkdir pgrep ps python3 sed setsid \
@@ -763,6 +772,11 @@ rfcu_pi_build_commands() {
     RFCU_PI_BRIDGE_COMMAND+=(
       -p 'require_person_alert:=true'
     )
+    if [ "$RFCU_PI_PERSON_ALERT_ADVISORY" -eq 1 ]; then
+      RFCU_PI_BRIDGE_COMMAND+=(
+        -p 'person_alert_advisory:=true'
+      )
+    fi
     RFCU_PI_HAILO_COMMAND=(
       env
       'PYTHONUNBUFFERED=1'
@@ -1744,7 +1758,7 @@ rfcu_pi_run() {
   if [ "$RFCU_PI_RUN_MODE" = run-t3a ]; then
     if [ "$RFCU_PI_HAILO_PERSON_STOP" -eq 1 ]; then
       rfcu_pi_log \
-        'REAL_FCU_T3A_READY=PASS authority=demand-enabled propellers=fitted guarding=installed exclusion_zone=clear propulsion=enabled bridge=READY_DISARMED workstation=visible showcase=person-stop capture=not-required hailo=ready'
+        "REAL_FCU_T3A_READY=PASS authority=demand-enabled propellers=fitted guarding=installed exclusion_zone=clear propulsion=enabled bridge=READY_DISARMED workstation=visible showcase=person-stop capture=not-required hailo=ready person_alert=$([ "$RFCU_PI_PERSON_ALERT_ADVISORY" -eq 1 ] && printf advisory-no-stop || printf stop-enabled)"
     else
       rfcu_pi_log \
         'REAL_FCU_T3A_READY=PASS authority=demand-enabled propellers=fitted guarding=installed exclusion_zone=clear propulsion=enabled bridge=READY_DISARMED workstation=visible capture=visible'

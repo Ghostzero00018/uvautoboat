@@ -2625,6 +2625,20 @@ setInterval(refreshPersonStopFreshness, 1000);
 
 // Repaint the badge from twinState. Split out so the disconnect path can drop
 // the reading back to unknown without inventing a verdict.
+// True only when a fresh bridge status affirmatively reports advisory mode, in
+// which a detection is published but nothing is stopped. Anything else - no
+// bridge at all, as in simulation, a stale status, or a missing field - is not
+// treated as advisory, so the badge keeps its existing stop wording unless the
+// bridge is actively saying it did not stop.
+function personAlertIsAdvisory() {
+    // Guarded because this renderer is also evaluated by harnesses that do not
+    // load the FCU bench scope at all; absent bench state is simply not advisory.
+    if (typeof liveFcuBenchStatusReceivedAt === 'undefined') return false;
+    const fresh = liveFcuBenchStatusReceivedAt > 0
+        && Date.now() - liveFcuBenchStatusReceivedAt < FCU_BENCH_STATUS_MAX_AGE_MS;
+    return fresh && liveFcuBenchStatus?.person_alert_advisory === true;
+}
+
 function renderPersonStopBadge() {
     const el = document.getElementById('person-stop-status');
     if (!el) return;
@@ -2632,9 +2646,12 @@ function renderPersonStopBadge() {
     // A hold is always shown, whatever else is unknown — the safe direction
     // never waits for corroboration.
     if (twinState.personStop === true) {
-        el.textContent = twinState.personStopReason === 'detector_feed_lost'
-            ? 'CAMERA FEED LOST — STOPPED'
-            : 'PERSON OBSTACLE — STOPPED';
+        const subject = twinState.personStopReason === 'detector_feed_lost'
+            ? 'CAMERA FEED LOST'
+            : 'PERSON OBSTACLE';
+        el.textContent = personAlertIsAdvisory()
+            ? `${subject} — ADVISORY, NOT STOPPED`
+            : `${subject} — STOPPED`;
         el.className = 'value badge critical';
         return;
     }
