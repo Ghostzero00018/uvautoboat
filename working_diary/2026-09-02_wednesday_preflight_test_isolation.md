@@ -936,7 +936,7 @@ plus `FCU_VRX_CORRELATED_OBSERVATION=1`, whose default of `0` it rejects. The
 rehearsal below hit them one restart at a time; the whole set is:
 
 ```bash
-cd ~/seal_ws/src/uvautoboat && source /opt/ros/jazzy/setup.bash && FCU_VRX_LEFT_SERVO_CHANNEL=3 FCU_VRX_RIGHT_SERVO_CHANNEL=1 FCU_VRX_LEFT_PWM_MIN=800 FCU_VRX_LEFT_PWM_NEUTRAL=800 FCU_VRX_LEFT_PWM_MAX=2200 FCU_VRX_RIGHT_PWM_MIN=800 FCU_VRX_RIGHT_PWM_NEUTRAL=800 FCU_VRX_RIGHT_PWM_MAX=2200 FCU_VRX_MAX_THRUST=800.0 FCU_VRX_OBSERVER_STALE_SECONDS=5 FCU_VRX_CORRELATED_OBSERVATION=1 bash tools/fcu_to_vrx_workstation.sh run-real-fcu
+cd ~/seal_ws/src/uvautoboat && source /opt/ros/jazzy/setup.bash && FCU_TO_VRX_READY_TIMEOUT_SECONDS=600 FCU_VRX_LEFT_SERVO_CHANNEL=3 FCU_VRX_RIGHT_SERVO_CHANNEL=1 FCU_VRX_LEFT_PWM_MIN=800 FCU_VRX_LEFT_PWM_NEUTRAL=800 FCU_VRX_LEFT_PWM_MAX=2200 FCU_VRX_RIGHT_PWM_MIN=800 FCU_VRX_RIGHT_PWM_NEUTRAL=800 FCU_VRX_RIGHT_PWM_MAX=2200 FCU_VRX_MAX_THRUST=800.0 FCU_VRX_OBSERVER_STALE_SECONDS=5 FCU_VRX_CORRELATED_OBSERVATION=1 bash tools/fcu_to_vrx_workstation.sh run-real-fcu
 ```
 
 The channel and rail values must match what the bridge resolves from the flight
@@ -949,13 +949,50 @@ decimal above zero.
 Wait for `FCU_TO_VRX_WORKSTATION_PRESTART=PASS mode=run-real-fcu domain=77 ...
 relay=started relay_domain=43`. Do not start the Pi on this message alone.
 
-**W2 has a `120`-second fuse from that message.** `fcuvrx_wait_relay_ready`
-bounds on `FCUVRX_READY_TIMEOUT_SECONDS`, default `120`, and on expiry W2 exits
-`status=1` with `STOP: real-FCU RCOut relay did not become ready before the
-deadline`, tearing down VRX with it. The Pi must reach the point where it
-publishes relayed RCOut inside that window, which is after its whole gate
-sequence. Raise `FCU_TO_VRX_READY_TIMEOUT_SECONDS` before starting if the Pi
-sequence is expected to take longer.
+The command above sets `FCU_TO_VRX_READY_TIMEOUT_SECONDS=600` deliberately.
+The default is `120`, and it bounds six waits including `fcuvrx_wait_relay_ready`
+and `fcuvrx_wait_twin_telemetry_ready`. That window opens at `PRESTART=PASS`,
+before W1, the capture terminal, the browser and the Pi have even been started,
+and the Pi only publishes RCOut after its own probe cycle and full MAVROS reach
+connected and disarmed. `120` seconds is not achievable by hand; on expiry W2
+exits `status=1` with `STOP: real-FCU RCOut relay did not become ready before
+the deadline` and tears VRX down with it. `600` matches the Pi's own
+`RFCU_PI_READY_TIMEOUT_SECONDS` default. Raising it only ever permits more time.
+
+### The loop is bidirectional - both directions gate readiness
+
+The twin is a closed loop, and W2 gates on **both** legs plus a four-stream
+check after the Pi appears. Watching only the outbound leg proves half a demo.
+
+**Outbound, real FCU drives the simulator.** Dashboard demand goes through the
+Pi bridge to the flight controller; the **measured** `/mavros/rc/out` on domain
+`43` is read by W2's relay, forwarded over `127.0.0.1:14555`, and converted from
+PWM to thrust by the domain `77` bridge onto
+`/wamv/thrusters/left|right/thrust` using the configured mapping and rails.
+
+**Return, the simulator reports back to the dashboard.** VRX pose and thrust are
+emitted as twin telemetry over `127.0.0.1:14556` onto
+`/fcu_to_vrx/twin_telemetry` on domain `43`, schema
+`uvautoboat.fcu_to_vrx.twin_telemetry.v1`, source
+`fcu_to_vrx_domain77_bridge`. The dashboard subscribes to it and renders actual
+VRX pose and left/right thrust, expiring the reading after `2000` ms.
+
+Three markers appear in terminal 1 after the Pi starts, in this order:
+
+| Order | Marker | Proves |
+| --- | --- | --- |
+| 1 | `FCU_TO_VRX_RC_OUT_RELAY_READY=PASS topic=/mavros/rc/out udp=127.0.0.1:14555 left=SERVO3 right=SERVO1 pwm=800/800/2200` | the outbound leg: real measured RCOut is reaching the relay |
+| 2 | `FCU_TO_VRX_TWIN_TELEMETRY_READY=PASS topic=/fcu_to_vrx/twin_telemetry udp=127.0.0.1:14556 schema=uvautoboat.fcu_to_vrx.twin_telemetry.v1 source=fcu_to_vrx_domain77_bridge stale_seconds=5` | the return leg: telemetry is flowing back toward the dashboard |
+| 3 | `FCU_TO_VRX_WORKSTATION_READY=PASS ... observer=ready streams=4 relay=ready twin_telemetry=ready` | the four-stream observer gate, `servo_output_raw` plus both thrust streams |
+
+Marker 3 is bounded separately by `FCUVRX_OBSERVER_READY_TIMEOUT_SECONDS`,
+default `900`, not by the `600` above.
+
+The end-to-end proof is not a marker at all: it is the dashboard's twin
+telemetry panel showing live VRX pose and left/right thrust, which only exists
+once the whole loop has closed. Note that `rails=800/800/2200` puts neutral at
+minimum, so neutral demand should read zero VRX thrust rather than an idle
+value.
 
 ### Terminal 2, workstation - W1, the real-FCU supervisor
 
