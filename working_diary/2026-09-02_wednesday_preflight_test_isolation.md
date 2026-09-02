@@ -1619,6 +1619,72 @@ Both bundle members changed again. `tools/real_fcu_digital_twin_pi.sh` is now
 manifest at `f0a91bb4`. The bundle certified earlier today as `65e1fb8` no
 longer matches and needs a fresh transfer before advisory mode can be used.
 
+## ESC start threshold measured - 02/09/2026
+
+First measurement of where the propellers actually begin to turn, taken during
+the armed T3a run on bundle `929831e` with the `0.20` ceiling. Steering at `0`
+throughout, so both sides carry the same demand.
+
+| Condition | Demand | Measured PWM | Rail position |
+| --- | ---: | ---: | ---: |
+| **From-rest start, both sides** | `0.15` | `996 us` | `+14.0%` |
+| Observed turning at the ceiling | `0.20` | `1066 us` | `+19.0%` |
+| Former ceiling, for comparison | `0.12` | `968 us` | `+12.0%` |
+
+The servo rail is `800/800/2200`, so neutral sits at minimum and the span is
+`1400 us`. `996 - 800 = 196`, and `196 / 1400` is `14.0%`; `1066 - 800 = 266`,
+and `266 / 1400` is `19.0%`. Both figures reconcile with the reported
+rail-relative percentages.
+
+### Why the old ceiling could never turn them
+
+`0.12` capped the output at `968 us`, which is `28 us` below the measured
+`996 us` start. No amount of throttle under the previous limit could start the
+motors. The request to raise the ceiling was correct, and the margin was
+narrow rather than large.
+
+### The usable band is real but small
+
+From-rest start at `0.15` against a ceiling of `0.20` leaves roughly `70 us`,
+or `0.05` in demand units, of controllable range above break-away. That is not
+zero, but it is narrow. Whether it is enough for a visible demonstration rather
+than a twitch into life is an operational judgement, and raising the ceiling
+further would be a further increase in actuation authority on a props-fitted
+hull.
+
+An earlier reading of this session claimed the threshold sat **at** the ceiling
+with no usable band. That was based on the coarser `0.20` observation and is
+withdrawn; the `0.15` from-rest figure supersedes it.
+
+### The calibration interface makes this hard to capture, and is one-shot
+
+Recorded as a finding, not repaired. `real_fcu_command_feedback_capture.py`
+correlates an operator observation to the **last ACTIVE plateau**, requires a
+disabled neutral release frame first, and accepts the input within a `10`-second
+grace. That much works: the held PWM is what is recorded, not the released
+neutral.
+
+The difficulty is that it records the plateau held at the moment of release
+rather than the transition itself. Capturing `996 us` therefore requires holding
+at exactly `0.15`, observing break-away, releasing without moving the control,
+and typing inside the grace window. Locating a threshold becomes a bisection in
+which every candidate costs a full hold, release and type cycle.
+
+Worse, the terminal observation is one-shot per side:
+
+```python
+raise CaptureError(f"terminal {side} observation was already recorded")
+```
+
+Once `started` or `not-observed` is recorded for a side, that session cannot
+revise it. An observation entered while holding `0.20` pins the artifact at
+`1066 us`, and recording the true `996 us` requires a fresh capture session.
+
+The operator's assessment of the interface is that it does not fit how a
+threshold is actually found. That is a fair criticism of the design rather than
+of its implementation: the mechanism is sound for confirming a value already
+known, and poor for discovering one.
+
 ## Open
 
 ### The deployed Pi bundle is stale
