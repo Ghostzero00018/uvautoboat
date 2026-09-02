@@ -651,24 +651,88 @@ It also does not exercise `tools/real_fcu_digital_twin_pi.sh`. SITL runs the
 command bridge, not the Pi runtime, so the `123` guards made fail-closed
 earlier today remain verified offline only.
 
+## Pi bundle deployment and certification - 02/09/2026
+
+Published revision `778e069` was transferred to the Pi and certified
+non-actuating. Pi powered; no flight controller, propulsion or other hardware
+powered. Nothing actuated and no runtime started.
+
+Endpoint `imt-aqua-drone@10.120.2.249`, host `imtaquadrone-desktop`. Key
+authentication is not configured from the workstation, so every remote step
+prompted for the account password and was run by the operator; the four
+checksum-pinned one-shot helpers used on 01/09/2026 no longer exist in the
+tree, so the transfer was direct `ssh` and `scp` from the workstation.
+
+Deployment root
+`/home/imt-aqua-drone/uvautoboat_real_fcu_bundle_20260902_778e069`.
+
+### Source parity before transfer
+
+`git status --short` was silent and `HEAD` and `origin/main` were both
+`778e069263044de67f625bdc8de73ac54271d3a0`. The four governed members verified
+`OK` on the workstation first. They are byte-identical between `0ed5525` and
+`778e069`, since the intervening commit was documentation only, so the bundle is
+named for the published head without any change to what it governs.
+
+### Pi preconditions
+
+Checked before spending a transfer: all seventeen required commands present, a
+writable `~/Desktop` log root, `/dev/ttyAMA0` present, readable, writable and
+free, `apm_config.yaml` readable, the `mavros` package resolvable and the
+`json, mavros_msgs, rclpy, sensor_msgs, std_msgs, yaml` imports available. No
+`MISSING` line and no `SERIAL BUSY`.
+
+The unpowered flight controller does not block this. `rfcu_pi_check` runs
+`rfcu_pi_static_preflight` and then logs; the serial endpoint is required to
+exist, be read-write and be free, but no link is ever opened, so certification
+is possible with the Pi alone.
+
+### Certification
+
+The five-file inventory transferred, the helper was made executable and
+`sha256sum -c` passed on the Pi. The manifest digest read
+`fedda913bb31698b150f29a96fd82735637e04d5a6ea2b8a573e39724310db58`, matching
+the workstation exactly. The four governed hashes were then verified a second
+time by `rfcu_pi_verify_bundle` inside `static_preflight`, and the helper
+emitted:
+
+```text
+[real-fcu-pi] REAL_FCU_PI_CHECK=PASS serial=/dev/ttyAMA0 runtime=not-started
+```
+
+A second pass retained the evidence at
+`/home/ghostzero/Desktop/pi_bundle_certification_20260902_778e069.log` and
+reproduced the same marker, so the result is not a single observation.
+
+Every digest the Pi reported was then compared on the workstation against both
+the worktree and `HEAD`, rather than read by eye. All five matched both, and the
+four governed lines are identical to the manifest line for line. The
+`tools/real_fcu_digital_twin_pi.sh` entry reads `43a4775f`, which is the value
+the manifest moved to when it was regenerated after the guard change, so the
+fail-closed runtime is what is deployed.
+
+Classification: **DEPLOYED / CERTIFIED / NOT RUN**. No probe, MAVROS, command
+bridge or run mode was started; no parameter write, arm or propulsion action
+occurred, and this grants no run authority.
+
+### First hardware execution of the fail-closed guards
+
+`static_preflight` contains twelve of the `123` guards that could previously be
+continued past. All twelve executed on the Pi, twice, and none fired
+spuriously. That is real hardware evidence for the guard change, and it is
+bounded: the remaining `111`, including the thirteen inside `rfcu_pi_run` and
+those in `rfcu_pi_capture_t0b`, `rfcu_pi_probe_snapshot` and the Hailo
+preflight, require a run mode and hardware that was not powered.
+
 ## Open
 
-Both remaining items need the Pi.
+The deployment is current: `778e069` is **DEPLOYED / CERTIFIED / NOT RUN** at
+`/home/imt-aqua-drone/uvautoboat_real_fcu_bundle_20260902_778e069`. What remains
+is a run, which needs hardware beyond the Pi.
 
-The deployed bundle is still named for `da6627e` and predates the badge, the
-isolation fix, the guard work and the current revision. A transfer of `0ed5525`
-and a non-actuating certification are required before any run. The bundle root
-convention is
-`/home/imt-aqua-drone/uvautoboat_real_fcu_bundle_<YYYYMMDD>_0ed5525`, the
-manifest digest to certify against is
-`fedda913bb31698b150f29a96fd82735637e04d5a6ea2b8a573e39724310db58`, and the
-expected non-actuating marker is
-`REAL_FCU_PI_CHECK=PASS serial=/dev/ttyAMA0 runtime=not-started`. The four
-checksum-pinned one-shot transfer helpers used on 01/09/2026 were removed when
-the worktree was restored clean and do not exist in the tree; a transfer either
-re-creates them or runs directly.
-
-The `123` fail-closed guards in the Pi runtime are verified offline only. The
-first run of the new bundle exercises them on hardware for the first time. A
-run that previously proceeded may now stop at a gate; that is the repair
-working on a gate that was already failing and being ignored, not a regression.
+`111` of the `123` fail-closed guards in the Pi runtime are still verified
+offline only, including the thirteen in `rfcu_pi_run`. The first run of this
+bundle exercises them on hardware for the first time. A run that previously
+proceeded may now stop at a gate; that is the repair working on a gate that was
+already failing and being ignored, not a regression. Read the `STOP:` line
+rather than working around it.
