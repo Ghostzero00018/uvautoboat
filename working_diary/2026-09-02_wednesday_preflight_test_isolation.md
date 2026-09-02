@@ -575,13 +575,100 @@ safety by eye at ten points, and the dashboard now shows the flight
 controller's own reading of it. Adding that cross-check is an enhancement, not
 a correction, so it is left for an explicit decision.
 
+## Current-revision SITL acceptance - 02/09/2026
+
+Run on clean published revision `0ed5525`, with `HEAD` equal to `origin/main`,
+divergence `0/0` and an unchanged worktree before and after. Workstation only:
+no Pi, no FCU, no physical hardware. Evidence root
+`/home/ghostzero/Desktop/sitl_digital_twin_20260902_041033`.
+
+This closes the gap recorded below. The last accepted SITL revision predated
+`da6627e`, `12236b5`, `3c57fa0`, `2a769d7`, `0f2f5ca` and `0ed5525`, so no
+accepted simulator result covered the current bytes.
+
+### Pinned environment
+
+The runner's own guards passed before it started anything: ArduPilot at
+`3fc7011a`, Rover binary `4939888` bytes, and `HEAD` descending from the
+approved baseline `d911f8a7`. MAVProxy, the digital-twin plugin YAML, the
+operator and evidence helpers and the MAVROS `apm_config.yaml` were all
+confirmed present beforehand, so the run reached its first phase rather than
+aborting on a stale pin.
+
+### Sequence
+
+`SITL_PREFLIGHT=PASS domain=42 discovery=LOCALHOST localhost_only=1`, SITL
+`motorboat-skid` instance `0` on ports `5760,5762`, MAVProxy `master=tcp:
+127.0.0.1:5760 out=udp:127.0.0.1:14600 source=254.190 target=1.1
+reconnect=false`, MAVROS `parameters=1283 state=disarmed mode=MANUAL`.
+
+Three operator gates were claimed and released one-shot -- `safety-off`, `arm`,
+`disarm` -- each leaving a claim, gate and result file. The browser drove the
+demand phases from
+`http://127.0.0.1:8002/?enable_fcu_bench_control=1&thrust_left_servo=1&thrust_right_servo=3`:
+one disabled frame to clear the browser gate, a positive hold at steering
+`+0.10` and throttle `0.08`, a release to zero, a negative hold at steering
+`-0.04` and throttle `0.09`, then a single latched E-Stop.
+
+`SITL_ACCEPTANCE=COMPLETE`, then teardown of all seven children and
+`SITL_SUPERVISOR_EXIT status=0 trigger=exit signal=none
+stop_phase=acceptance-complete failed_phase=none cleanup_rc=0 finalize_rc=0`.
+
+### Independent adjudication
+
+The runner's own `SITL_VERDICT=PASS` was not taken as the result.
+`tools/sitl_digital_twin_adjudicate.sh` was run separately against the evidence
+root and returned `SITL_ADJUDICATION=PASS` with no `FAIL` line anywhere:
+
+| Check | Result |
+| --- | --- |
+| Nine evidence phases, `startup` through `disarm` | each `SITL_EVIDENCE=PASS` |
+| `verdict.json` | `PASS`, `session_complete: true`, `missing: []`, ten digests |
+| Disarm release frames | `PASS count=3` |
+| Shutdown frames | `PASS count=3` |
+| Stop order | `PASS order=dashboard,rosbridge,bridge,evidence,mavros,mavproxy,sitl` |
+| Control cross-check, verdict, teardown | `PASS` |
+| Ports `5760`, `5762`, `8002`, `9090`, `14600` | `SITL_POSTRUN_PORTS=FREE` |
+| Twelve process names | `SITL_POSTRUN_PROCESSES=FREE` |
+
+Teardown was also checked directly before adjudicating, so the clean result is
+not the adjudicator grading its own run: no surviving `ardurover`, `mavproxy`,
+`mavros_node`, bridge, evidence, rosbridge or dashboard process, every port
+released, and the worktree unchanged.
+
+### What this does not cover
+
+The bridge guard resolved `steering=RC1 throttle=RC3 left=SERVO1 right=SERVO3`.
+That is the reverse of the boat, which resolves `left=SERVO3 right=SERVO1`, and
+it is correct behaviour rather than a defect:
+`tools/real_fcu_rc_command_bridge.py:245-250` scans `SERVO1..16_FUNCTION` for
+functions `73` and `74` and requires exactly one assignment each, so it reads
+whichever vehicle it is attached to. What passed is that the guard resolves a
+mapping and refuses ambiguity. **This run is not evidence that the boat's
+left/right channel assignment is correct.**
+
+It also does not exercise `tools/real_fcu_digital_twin_pi.sh`. SITL runs the
+command bridge, not the Pi runtime, so the `123` guards made fail-closed
+earlier today remain verified offline only.
+
 ## Open
 
-A current-revision SITL acceptance remains meaningful. The last accepted SITL
-revision predates `da6627e`, the hardware-safety badge commit `12236b5`, the
-isolation fix `3c57fa0` and this change, so no accepted SITL result covers the
-current bytes. Not started, and not authorised by this entry.
+Both remaining items need the Pi.
 
-The deployed Pi bundle is still named for `da6627e` and predates the badge, the
-isolation fix and this change. A new bundle transfer and non-actuating
-certification remain required before any run.
+The deployed bundle is still named for `da6627e` and predates the badge, the
+isolation fix, the guard work and the current revision. A transfer of `0ed5525`
+and a non-actuating certification are required before any run. The bundle root
+convention is
+`/home/imt-aqua-drone/uvautoboat_real_fcu_bundle_<YYYYMMDD>_0ed5525`, the
+manifest digest to certify against is
+`fedda913bb31698b150f29a96fd82735637e04d5a6ea2b8a573e39724310db58`, and the
+expected non-actuating marker is
+`REAL_FCU_PI_CHECK=PASS serial=/dev/ttyAMA0 runtime=not-started`. The four
+checksum-pinned one-shot transfer helpers used on 01/09/2026 were removed when
+the worktree was restored clean and do not exist in the tree; a transfer either
+re-creates them or runs directly.
+
+The `123` fail-closed guards in the Pi runtime are verified offline only. The
+first run of the new bundle exercises them on hardware for the first time. A
+run that previously proceeded may now stop at a gate; that is the repair
+working on a gate that was already failing and being ignored, not a regression.
