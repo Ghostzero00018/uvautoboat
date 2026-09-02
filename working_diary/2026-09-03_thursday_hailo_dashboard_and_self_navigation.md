@@ -156,6 +156,41 @@ ceiling whose measured start threshold is `0.15`. The usable band above
 break-away is roughly `0.05` in demand units. Autonomous steering inside a band
 that narrow deserves its own thinking, and nothing here authorises a run.
 
+## Check the Hailo checkout before starting anything
+
+The Hailo branch has a second gate, separate from the bundle, and it is much
+stricter. `rfcu_pi_validate_hailo_preflight` runs only when
+`REAL_FCU_HAILO_PERSON_STOP=1`, and it checks a **different repository**: the
+`hailo-apps` checkout on the Pi. It requires that checkout to sit on a pinned
+revision and to be completely clean including untracked files, then verifies
+three pinned file checksums, the HEF checksum, the camera device and the
+virtualenv.
+
+The Pi helper's own `check` mode cannot pre-validate this. It leaves the run
+mode at `none`, and the gate rejects any mode that is not a run mode, so
+`REAL_FCU_HAILO_PERSON_STOP=1 ... check` fails with
+`allowed only for a run mode` rather than validating anything.
+
+The two pins that actually drift are the revision and the cleanliness, because
+both change the moment anyone opens that checkout. On the Pi:
+
+```bash
+git -C ~/hailo_coco_overlay_2026-07-10/hailo-apps rev-parse HEAD
+```
+
+```bash
+git -C ~/hailo_coco_overlay_2026-07-10/hailo-apps status --porcelain=v1 --untracked-files=all
+```
+
+The first must print `891ce701c2ebe239a5d277759eb75a30f76678a9`. The second
+must print nothing at all; a single stray untracked file is enough to stop the
+run at the gate. If the checkout root was moved, `REAL_FCU_HAILO_ROOT`
+overrides it and the paths above shift with it.
+
+The remaining pins - the three file checksums, the HEF, the camera and the
+virtualenv - are left to the gate itself, which names precisely which one
+failed. They do not drift on their own the way a working checkout does.
+
 ## How the stack starts now
 
 The three workstation terminals were replaced on the evening of 02/09/2026 by
