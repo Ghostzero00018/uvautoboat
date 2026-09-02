@@ -800,6 +800,97 @@ its call sites were traced.
 No repair, no re-pin: `tools/pi_live_hailo_mavlink_dashboard.sh` is unchanged
 and still matches its runbook pin at `0d3f6d1b` and `95,720` bytes.
 
+## Run-path guard map and pre-run contract
+
+Prepared for a single full-stack run before the demo, so a `STOP:` line is
+diagnosable on sight rather than read cold.
+
+### Correction - the new bundle is not stricter in the normal path
+
+Recorded earlier, and wrong: that a run which previously proceeded may now stop
+at a gate. In the normal invocation path it will not. `rfcu_pi_main` dispatches
+`rfcu_pi_run` as a plain statement inside a `case` branch, `set -euo pipefail`
+is in force from line `5`, and each `rfcu_pi_fail` is the last command of its
+`||` list, so `set -e` already aborted on every one of these guards before the
+change. Verified against the same shape - a `case` branch calling a function
+whose guard is `false || myfail` - which exits `1` and prints neither
+continuation marker.
+
+The fail-closed change is a robustness improvement: the guards no longer depend
+on `set -e` being in force or on no caller suppressing it. It is not a
+behaviour change for `bash tools/real_fcu_digital_twin_pi.sh run-t3a`. The only
+`set +e` in the file is line `1481` inside `rfcu_pi_cleanup`, which reaches no
+function that calls `rfcu_pi_fail`.
+
+### The thirteen stop points in `rfcu_pi_run`, lines 1635-1759
+
+| Line | `STOP:` message | Trips when |
+| --- | --- | --- |
+| 1655 | `unsupported run mode` | the mode argument is not `run-t2a`, `run` or `run-t3a` |
+| 1680 | Hailo readiness failure | showcase mode only; the person-stop and video path did not come up |
+| 1688 | `T0b MAVROS did not reach connected:true and armed:false` | no FCU link, or the FCU reports armed at start |
+| 1691 | `guard-probe MAVROS did not stop cleanly` | the probe process would not stop |
+| 1692 | `serial remained owned after guard probe` | `/dev/ttyAMA0` still held after teardown |
+| 1698 | `full MAVROS did not reach connected:true and armed:false` | as 1688, for the full runtime |
+| 1704 | `bridge did not resolve the complete parameter guard` | the parameter contract below is not satisfied |
+| 1711 | T3a propulsion-enable not confirmed | `run-t3a` only; operator confirmation missing or invalid |
+| 1723 | `manual hardware-safety release was not confirmed while disarmed` | release not confirmed |
+| 1731 | `bridge did not reach fresh READY_DISARMED after the manual safety gate` | bridge did not re-establish readiness after the release |
+| 1734 | `...person-stop/video nodes were not discovered` | workstation discovery failed, Hailo enabled |
+| 1738 | `...capture nodes were not discovered` | workstation discovery failed, `run-t3a` |
+| 1740 | `...rosbridge/rosapi nodes were not discovered` | workstation discovery failed, otherwise |
+
+Lines 1734, 1738 and 1740 are three messages for one failure, selected by mode.
+The discovery guards depend on the workstation side already being up.
+
+### Pre-run parameter contract
+
+Line 1704 is the guard most likely to end a first run, and it is checkable in
+advance. `tools/real_fcu_rc_command_bridge.py` enforces these bounds on the
+resolved parameters:
+
+| Requirement | Source line |
+| --- | --- |
+| `RCMAP_ROLL` and `RCMAP_THROTTLE` distinct, each in `1..16` | 241 |
+| functions `73` and `74` each with exactly one `SERVO1..16` assignment | 250 |
+| `<prefix>DZ` in `1..200` | 267 |
+| `<prefix>REVERSED` is `0` or `1` | 269, 292 |
+| `<prefix>OPTION` is `0` | 275 |
+| `BRD_SAFETY_DEFLT` is `1` | 404 |
+| `SYSID_THISMAV` and `SYSID_MYGCS` differ | 474 |
+| **`RC_OVERRIDE_TIME` in `(0, 0.5]`** | 492 |
+| `DDS_ENABLE` absent or `0` | 503 |
+
+The guard also records `ARMING_CHECK`, `BRD_SAFETY_MASK`, `BRD_SAFETYOPTION`
+and `RC_OPTIONS` as critical evidence.
+
+### The single largest risk to a one-shot run
+
+`RC_OVERRIDE_TIME` must be in `(0, 0.5]`. The value has moved: `3.0` was the
+restored live value on 31/08/2026, and the 01/09/2026 entry records `0.5` set
+for the bounded test and left temporary, with **no rollback-to-`3.0` artifact**
+and rollback explicitly open. If the parameter is currently `3.0`, the guard at
+line 1704 rejects it and the run ends there.
+
+The last record therefore says the value is compatible, but that is a claim from
+01/09/2026 and it has not been read since. It can only be confirmed from the
+flight controller. Reading it before starting the supervisors costs nothing and
+removes the most likely single cause of a wasted run.
+
+Two related notes from the runbook, not restated in the guard: snapshot mode is
+opt-in and requires a MAVProxy `param save` artifact, its exact lowercase
+SHA-256 and `REAL_FCU_GUARD_SNAPSHOT_APPROVED=1` together, and the retained
+`986`-parameter artifact carrying `RC_OVERRIDE_TIME=3.0` is rejected and must
+not be reused. Without those three, the bridge takes the live pull path.
+
+### The other historical run-burner
+
+The 21/08/2026 run ended at the equivalent of line 1688 with `47` of `50` state
+samples reading connected and **armed** in `MANUAL`. The gate requires connected
+and disarmed, so an FCU already armed when the supervisor starts ends the run
+before the bridge or command publisher exist. Starting disarmed is a contract,
+not a preference.
+
 ## Open
 
 ### Finding - the view-only Pi monitor trusts a stale safety sample
@@ -853,7 +944,7 @@ is a run, which needs hardware beyond the Pi.
 
 `111` of the `123` fail-closed guards in the Pi runtime are still verified
 offline only, including the thirteen in `rfcu_pi_run`. The first run of this
-bundle exercises them on hardware for the first time. A run that previously
-proceeded may now stop at a gate; that is the repair working on a gate that was
-already failing and being ignored, not a regression. Read the `STOP:` line
-rather than working around it.
+bundle exercises them on hardware for the first time. It will not be stricter
+than the bundle it replaces in the normal path - see the correction and guard
+map above - so a `STOP:` line names a precondition that would have ended the
+run before this change too. Read it rather than working around it.
