@@ -891,6 +891,102 @@ and disarmed, so an FCU already armed when the supervisor starts ends the run
 before the bridge or command publisher exist. Starting disarmed is a contract,
 not a preference.
 
+## Full-stack run-sheet
+
+Derived from what each supervisor waits on, not from a previous run. **This
+order has never been executed end to end in this configuration**, so a first
+attempt also tests the order itself. The tier, the timing and the go/no-go are
+the operator's; nothing here supplies a physical declaration.
+
+### Binding constraint
+
+Both workstation supervisors must be up and in their waiting state before the
+Pi starts, because the Pi's discovery guards at lines `1734`, `1738` and `1740`
+look for nodes the workstation side owns. Each supervisor states this itself:
+W2 logs `start the approved real-FCU Pi helper now; this terminal waits for
+relayed RCOut, outbound twin telemetry and four-stream observer READY`, and W1
+logs `waiting for the separately approved Pi helper and READY_DISARMED status`.
+
+W2's message appears before W1 is necessarily running, so it is not the trigger
+to start the Pi. Nothing in the source forces W1 before W2 or the reverse; what
+is forced is both before the Pi.
+
+Domains: W1 and the Pi on `43` with `SUBNET` discovery, W2 on `77` with
+`LOCALHOST` plus a relay onto `43`/`SUBNET`. Each helper exports its own domain,
+so it must not be set by hand for W1, W2 or the Pi.
+
+### Before starting anything
+
+- Ports `8002` and `9090` free, and `8080` as well in Hailo mode.
+- The flight controller **disarmed**. The 21/08/2026 run ended at the line
+  `1688` gate with `47` of `50` state samples connected and armed; the gate
+  requires connected and disarmed.
+- `RC_OVERRIDE_TIME` read from the flight controller and inside `(0, 0.5]`. It
+  was `3.0` on 31/08/2026 and `0.5` on 01/09/2026 left temporary with rollback
+  open, and has not been read since. A value of `3.0` ends the run at line
+  `1704`.
+- The rest of the parameter contract in the section above.
+
+### Terminal 1, workstation - W2, the VRX supervisor
+
+Slowest to come up, so it goes first.
+
+```bash
+cd ~/seal_ws/src/uvautoboat && source /opt/ros/jazzy/setup.bash && bash tools/fcu_to_vrx_workstation.sh run-real-fcu
+```
+
+Wait for `FCU_TO_VRX_WORKSTATION_PRESTART=PASS mode=run-real-fcu domain=77 ...
+relay=started relay_domain=43`. Do not start the Pi on this message alone.
+
+### Terminal 2, workstation - W1, the real-FCU supervisor
+
+```bash
+cd ~/seal_ws/src/uvautoboat && source /opt/ros/jazzy/setup.bash && bash tools/real_fcu_digital_twin_workstation.sh run
+```
+
+Prefix `REAL_FCU_HAILO_PERSON_STOP=1` for the showcase path. Wait for
+`waiting for the separately approved Pi helper and READY_DISARMED status`.
+
+### Terminal 3, workstation - the command/feedback capture node, `run-t3a` only
+
+No supervisor starts this node, and the `run-t3a` discovery guard requires
+`/real_fcu_command_feedback_capture`. Omitting it stops the Pi at line `1738`
+with `workstation rosbridge/rosapi/capture nodes were not discovered`.
+
+```bash
+cd ~/seal_ws/src/uvautoboat && source /opt/ros/jazzy/setup.bash && ROS_DOMAIN_ID=43 ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET ROS_LOCALHOST_ONLY=0 python3 tools/real_fcu_command_feedback_capture.py t3a
+```
+
+It validates all three variables exactly against `EXPECTED_ENVIRONMENT` and
+refuses otherwise. The tier positional is `t2a`, `t2b` or `t3a` and must match
+the Pi's run mode.
+
+### Terminal 4, workstation - browser
+
+Open the `REAL_FCU_BENCH_URL=` that W1 prints. Confirm the Hardware Safety
+reading agrees with the physical switch; a contradiction, or a reading stuck at
+`Unknown (stale)`, is no observation.
+
+### Terminal 5, the Pi - last
+
+Only once terminals 1 to 3 are all waiting. From the workstation:
+
+```bash
+ssh imt-aqua-drone@10.120.2.249
+```
+
+then in `/home/imt-aqua-drone/uvautoboat_real_fcu_bundle_20260902_778e069`,
+with the physical-declaration flags the chosen tier requires, run
+`bash tools/real_fcu_digital_twin_pi.sh run-t3a`, or `run-t2a` or `run`. The
+flag values are the operator's observation of physical state and are not
+recorded here.
+
+### Stop order - reverse, and it matters
+
+Externally disarm first, stop W2, initiate the Pi stop and closeout, then stop
+W1 last. W1's stop marker is what lets the Pi finish its closeout, so stopping
+W1 early strands the Pi mid-closeout.
+
 ## Open
 
 ### Finding - the view-only Pi monitor trusts a stale safety sample
