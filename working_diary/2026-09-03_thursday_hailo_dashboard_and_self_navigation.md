@@ -77,7 +77,7 @@ constraint for any demonstration.
 Detection must warn, not stop. That is what advisory mode does, and it is
 already built and deployed:
 
-```
+```bash
 REAL_FCU_HAILO_PERSON_STOP=1 REAL_FCU_PERSON_ALERT_ADVISORY=1
 ```
 
