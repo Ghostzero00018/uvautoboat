@@ -2013,3 +2013,55 @@ The rehearsal predates this change, so the sequence it validated is the one up
 to and including teardown; what triggers that teardown changed afterwards. The
 teardown mechanics themselves were proven against the real supervisors and are
 untouched.
+
+### Second and third rehearsals - the hold, and two more defects
+
+The first rehearsal validated the sequence up to teardown but predated the
+change that separated an operator interrupt from the capture node ending by
+itself. Two further rehearsals covered that, and found two defects.
+
+**The hold works.** Given a pseudo-terminal, with no Pi, the capture node ends
+by itself and the helper holds instead of stopping. Measured while holding:
+no teardown line in the transcript, ports `8002` and `9090` still bound, and
+the simulator still running. The dashboard, and with it the emergency stop,
+stays reachable, which is the whole point of the change.
+
+**Defect: a closed terminal orphaned both supervisors.** The second rehearsal
+drove the helper through `script`, which kills its child on termination rather
+than forwarding the signal, so the helper was killed without running its
+teardown. That was a fault in the rehearsal, not in the helper, but the result
+was instructive: `rosbridge` and the dashboard were left running with ports
+`8002` and `9090` still bound, and had to be stopped by hand.
+
+The cause is that `HUP` was not trapped. An untrapped signal terminates the
+shell without running the `EXIT` trap, so a closed terminal window or a
+dropped session leaves both supervisors running with nothing left to stop
+them. The helper starts them in separate process groups on purpose, so they do
+not die with it; its teardown is the only thing that stops them. `HUP` is now
+trapped alongside `INT` and `TERM`.
+
+**Defect: the test suite leaked stand-in supervisors.** Eight were found still
+running from earlier cases, including the red/green run that deliberately
+reintroduced the ignored-`SIGINT` defect, where by construction nothing could
+stop them. Left alone they would eventually trip a real supervisor's conflict
+guard and stop a run for no reason. Each sandbox is now swept before it is
+removed, matched on the sandbox path so it cannot reach a supervisor in the
+repository. The sweep itself then had to be corrected: `pgrep` exits non-zero
+when nothing matches, which under `pipefail` aborted the whole suite through
+the assignment, and nothing to sweep is the normal case rather than an error.
+
+**Still open.** The third rehearsal, which delivers a genuine interrupt to the
+helper's own process group while it holds, stopped at
+`STOP: FCU-to-VRX run requires a clean worktree`, because the two fixes above
+were uncommitted at the time. It did confirm one thing on real supervisors:
+the helper detected the early exit, printed the supervisor's own reason
+verbatim, and tore down at `FULL_STACK_EXIT status=1` leaving no survivors.
+The interrupt-while-holding path is therefore covered by the suite but not yet
+on real supervisors, and that rehearsal should be repeated once these changes
+are committed.
+
+| Rehearsal | Covered | Result |
+| --- | --- | --- |
+| First | marker strings, sequence, teardown | pass, no survivors |
+| Second | the hold, with a pseudo-terminal | hold confirmed; found the untrapped `HUP` |
+| Third | interrupt while holding | blocked on a clean worktree; early-exit path confirmed |

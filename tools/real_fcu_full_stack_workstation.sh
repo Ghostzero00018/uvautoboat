@@ -240,7 +240,7 @@ rfcufs_cleanup() {
   local incoming_rc=$?
   [ "$RFCUFS_CLEANING" -eq 0 ] || return "$incoming_rc"
   RFCUFS_CLEANING=1
-  trap - INT TERM EXIT
+  trap - INT TERM HUP EXIT
   printf '\n'
   rfcufs_log 'stopping the workstation stack in the documented order'
 
@@ -356,7 +356,11 @@ rfcufs_main() {
   rfcufs_show_contract
   rfcufs_log "FULL_STACK_START mode=$RFCUFS_MODE tier=$RFCUFS_TIER run_dir=$RFCUFS_RUN_DIR"
 
-  trap rfcufs_on_interrupt INT TERM
+  # HUP is trapped alongside INT and TERM. An untrapped signal terminates the
+  # shell without running the EXIT trap, so a closed terminal or a dropped
+  # session would leave both supervisors running with their ports still bound
+  # and nothing left to stop them. Observed on this workstation 02/09/2026.
+  trap rfcufs_on_interrupt INT TERM HUP
   trap rfcufs_cleanup EXIT
 
   # W2 first: it is the slowest to come up, and starting the simulator before

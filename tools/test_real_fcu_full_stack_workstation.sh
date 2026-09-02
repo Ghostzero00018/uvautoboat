@@ -12,8 +12,38 @@ TEST_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 SUPERVISOR="$TEST_DIR/real_fcu_full_stack_workstation.sh"
 CASES=0
 
+# Stand-in supervisors outlive a case whenever the helper could not stop them,
+# which is exactly what a case asserting a broken stop is arranged to produce.
+# Left alone they accumulate and would later trip a real supervisor's conflict
+# guard, so every sandbox is swept before it is removed. The match is anchored
+# on the sandbox path and cannot reach a supervisor in the repository.
+sweep_sandbox() {
+  local root="$1" pid sig
+  for sig in TERM KILL; do
+    local pids=''
+    # pgrep exits non-zero when nothing matches, which under pipefail would
+    # abort the whole suite through this assignment. Nothing to sweep is the
+    # normal case, not an error.
+    pids="$(pgrep -af -- 'workstation.sh' 2>/dev/null \
+      | grep -F -- "$root" | awk '{print $1}')" || pids=''
+    [ -n "$pids" ] || return 0
+    for pid in $pids; do
+      kill -"$sig" "$pid" 2>/dev/null || true
+    done
+    sleep 1
+  done
+}
+
+discard_sandbox() {
+  local root="$1"
+  [ -n "$root" ] || return 0
+  sweep_sandbox "$root"
+  rm -rf "$root"
+}
+
 fail_test() {
   printf 'FAIL: %s\n' "$1" >&2
+  [ -n "${SANDBOX:-}" ] && discard_sandbox "$SANDBOX"
   exit 1
 }
 
@@ -137,7 +167,7 @@ RC=$?
 set -e
 [ "$RC" -eq 2 ] || fail_test "an unknown mode should exit 2, got $RC"
 require_text "$OUTPUT" 'usage:' 'an unknown mode does not print usage'
-rm -rf "$SANDBOX"
+discard_sandbox "$SANDBOX"
 pass_case
 
 # --- no argument is rejected ----------------------------------------------
@@ -147,7 +177,7 @@ OUTPUT="$(run_helper "$SANDBOX")"
 RC=$?
 set -e
 [ "$RC" -eq 2 ] || fail_test "a missing mode should exit 2, got $RC"
-rm -rf "$SANDBOX"
+discard_sandbox "$SANDBOX"
 pass_case
 
 # --- a missing child helper stops the run before anything starts ----------
@@ -159,7 +189,7 @@ set -e
 [ "$RC" -ne 0 ] || fail_test 'a missing child helper was accepted'
 require_text "$OUTPUT" 'required helper missing' \
   'a missing child helper does not name itself'
-rm -rf "$SANDBOX"
+discard_sandbox "$SANDBOX"
 pass_case
 
 # --- check delegates, and a failing child fails the check -----------------
@@ -178,7 +208,7 @@ require_text "$OUTPUT" 'VRX supervisor preflight failed' \
   'a failing VRX preflight is not attributed to the VRX supervisor'
 refute_text "$OUTPUT" 'FULL_STACK_CHECK=PASS' \
   'a failing preflight still reported an overall pass'
-rm -rf "$SANDBOX"
+discard_sandbox "$SANDBOX"
 pass_case
 
 # --- a supervisor that never starts is reported as such --------------------
@@ -202,7 +232,7 @@ require_text "$OUTPUT" 'stand-in supervisor refused to start' \
   'the failed supervisor own output was not surfaced'
 [ "$ELAPSED" -lt 60 ] \
   || fail_test "a failed start was not detected promptly (${ELAPSED}s)"
-rm -rf "$SANDBOX"
+discard_sandbox "$SANDBOX"
 pass_case
 
 # --- a supervisor that dies during the marker wait is detected promptly ----
@@ -226,7 +256,7 @@ require_text "$OUTPUT" 'lost its device mid-start' \
   'the dying supervisor own output was not surfaced'
 [ "$ELAPSED" -lt 60 ] \
   || fail_test "a mid-start death was not detected promptly (${ELAPSED}s)"
-rm -rf "$SANDBOX"
+discard_sandbox "$SANDBOX"
 pass_case
 
 # --- the full sequence, and the stop order ---------------------------------
@@ -261,7 +291,7 @@ FIRST_STOPPED="$(grep -E '^w[12]$' "$ORDER" | head -1)"
 LAST_STOPPED="$(grep -E '^w[12]$' "$ORDER" | tail -1)"
 [ "$LAST_STOPPED" = 'w1' ] \
   || fail_test "the real-FCU supervisor must stop last, got '$LAST_STOPPED'"
-rm -rf "$SANDBOX"
+discard_sandbox "$SANDBOX"
 pass_case
 
 # --- the t2a tier does not request ESC-threshold calibration ---------------
@@ -279,7 +309,7 @@ set -e
 require_text "$(cat "$ORDER")" 'capture:t2a' 't2a did not reach the capture node'
 refute_text "$(cat "$ORDER")" 'capture:t2a --esc-threshold-calibration' \
   't2a wrongly requested ESC-threshold calibration'
-rm -rf "$SANDBOX"
+discard_sandbox "$SANDBOX"
 pass_case
 
 # --- the advisory description is only shown when the detector is on --------
@@ -301,7 +331,7 @@ require_text "$OUTPUT" 'advisory, warns on the dashboard without stopping' \
   'advisory mode is not described in the contract'
 refute_text "$OUTPUT" 'a detection stops the stack' \
   'advisory mode was described as stopping the stack'
-rm -rf "$SANDBOX"
+discard_sandbox "$SANDBOX"
 pass_case
 
 # --- an operator interrupt stops the stack in the documented order ---------
@@ -355,7 +385,7 @@ LAST_STOPPED="$(grep -E '^w[12]$' "$ORDER" | tail -1)"
   || fail_test "on an interrupt the VRX supervisor must stop first, got '$FIRST_STOPPED'"
 [ "$LAST_STOPPED" = 'w1' ] \
   || fail_test "on an interrupt the real-FCU supervisor must stop last, got '$LAST_STOPPED'"
-rm -rf "$SANDBOX"
+discard_sandbox "$SANDBOX"
 pass_case
 
 # --- the capture node failing by itself does not tear the stack down -------
@@ -376,7 +406,7 @@ require_text "$OUTPUT" 'Nothing else has been stopped' \
   'the hold does not say the stack is still up'
 refute_text "$OUTPUT" 'operator stop requested' \
   'a capture failure was mistaken for an operator stop'
-rm -rf "$SANDBOX"
+discard_sandbox "$SANDBOX"
 pass_case
 
 printf 'full-stack workstation helper tests: PASS cases=%d runtime=not-started\n' "$CASES"
