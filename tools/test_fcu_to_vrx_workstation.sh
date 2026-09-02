@@ -3,6 +3,51 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+# The supervisor takes its whole live-read contract from the environment, and
+# several cases below assert that a MISSING value is rejected. Those cases run
+# the check in a subshell, which inherits the operator's shell, so an exported
+# value reaches the assertion and the configuration passes validation when the
+# case requires it to fail. Scrubbing once here, before any case, is what makes
+# the suite independent of the shell it was started from.
+fcuvrx_test_scrub_ambient_env() {
+  local name
+  for name in ${!FCU_VRX_@} ${!FCU_TO_VRX_@}; do
+    unset "$name"
+  done
+}
+
+fcuvrx_test_scrub_ambient_env
+
+# Internal re-entry modes for the scrub call above. Both are reserved
+# arguments rather than environment variables, because an environment trigger
+# would itself be an ambient bypass. The first positional is otherwise the
+# supervisor path, so the reserved tokens are matched before that meaning is
+# taken and cannot collide with a real path.
+#
+#   --fcuvrx-internal-entry-scrub-probe  print any FCU_VRX_* or FCU_TO_VRX_*
+#                                        that survived the entry call above,
+#                                        then exit. A case re-executes this
+#                                        file with that argument and a polluted
+#                                        environment, so the assertion is bound
+#                                        to the real entry call: delete that
+#                                        call and the probe reports residue.
+#   --fcuvrx-internal-nested-run         mark a nested run so the case that
+#                                        re-executes this suite does not recurse.
+FCUVRX_TEST_NESTED_RUN=0
+case "${1:-}" in
+  --fcuvrx-internal-entry-scrub-probe)
+    for name in ${!FCU_VRX_@} ${!FCU_TO_VRX_@}; do
+      printf '%s\n' "$name"
+    done
+    exit 0
+    ;;
+  --fcuvrx-internal-nested-run)
+    FCUVRX_TEST_NESTED_RUN=1
+    shift
+    ;;
+esac
+
 SUPERVISOR="${1:-$SCRIPT_DIR/fcu_to_vrx_workstation.sh}"
 EVIDENCE="$SCRIPT_DIR/fcu_to_vrx_evidence.py"
 WIKI="$SCRIPT_DIR/../wiki/Live_Hailo_MAVLink_Dashboard_Testing.md"
@@ -733,6 +778,59 @@ if bash -c 'source "$1"; set +e; fcuvrx_fail probe; printf "RETURNED\n"' \
   fail_test 'fcuvrx_fail returned to its caller instead of terminating'
 fi
 pass_case
+
+# --- the suite-entry scrub, bound to the real call ------------------------
+# Re-executes this file with a polluted environment and the reserved probe
+# argument. The probe reports what survived the entry scrub, so an empty
+# result is evidence about that call and not about a separate invocation.
+POLLUTED_ENV=(
+  FCU_VRX_LEFT_SERVO_CHANNEL=3
+  FCU_VRX_RIGHT_SERVO_CHANNEL=1
+  FCU_VRX_LEFT_PWM_MIN=800
+  FCU_VRX_LEFT_PWM_NEUTRAL=800
+  FCU_VRX_LEFT_PWM_MAX=2200
+  FCU_VRX_RIGHT_PWM_MIN=800
+  FCU_VRX_RIGHT_PWM_NEUTRAL=800
+  FCU_VRX_RIGHT_PWM_MAX=2200
+  FCU_VRX_MAX_THRUST=800.0
+  FCU_VRX_OBSERVER_STALE_SECONDS=5
+  FCU_VRX_CORRELATED_OBSERVATION=1
+  FCU_TO_VRX_READY_TIMEOUT_SECONDS=600
+)
+SCRUB_RESIDUE="$(env "${POLLUTED_ENV[@]}" bash "$SCRIPT_DIR/test_fcu_to_vrx_workstation.sh" \
+  --fcuvrx-internal-entry-scrub-probe 2>&1)"
+[ -z "$SCRUB_RESIDUE" ] \
+  || fail_test "the suite-entry scrub left these set: $(tr '\n' ' ' <<<"$SCRUB_RESIDUE")"
+pass_case
+
+# --- control: the fixture really is sensitive to a polluted environment ----
+# Without this, the case above could rot into a vacuous pass if the fixture
+# ever stopped reading the environment at all.
+set +e
+UNSCRUBBED_OUTPUT="$(env "${POLLUTED_ENV[@]}" bash -c '
+  source "$1"
+  fcuvrx_validate_configuration
+' _ "$SUPERVISOR" 2>&1)"
+UNSCRUBBED_RC=$?
+set -e
+[ "$UNSCRUBBED_RC" -eq 0 ] \
+  || fail_test 'the polluted fixture no longer passes validation, so the scrub case proves nothing'
+pass_case
+
+# --- a polluted shell cannot suppress the final marker ---------------------
+if [ "$FCUVRX_TEST_NESTED_RUN" -eq 0 ]; then
+  set +e
+  NESTED_OUTPUT="$(env "${POLLUTED_ENV[@]}" bash \
+    "$SCRIPT_DIR/test_fcu_to_vrx_workstation.sh" --fcuvrx-internal-nested-run 2>&1)"
+  NESTED_RC=$?
+  set -e
+  [ "$NESTED_RC" -eq 0 ] \
+    || fail_test "a polluted nested run failed: $(tail -3 <<<"$NESTED_OUTPUT")"
+  require_text "$NESTED_OUTPUT" 'FCU-to-VRX workstation supervisor tests: PASS cases=' \
+    'a polluted nested run did not reach the final PASS marker'
+fi
+pass_case
+
 
 # The check marker states its own suite sizes. They are literals, so they drift
 # silently the moment a suite grows; this pins them to what the suites report.

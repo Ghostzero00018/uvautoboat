@@ -96,11 +96,11 @@ EOF
 RFCUFS_CLEAN_ENV=(env -u ROS_DOMAIN_ID -u ROS_AUTOMATIC_DISCOVERY_RANGE -u ROS_LOCALHOST_ONLY)
 
 # Both supervisors' check modes run their own test suites, and those suites
-# assert that a missing configuration is rejected. An exported value reaches
-# the assertion and makes it pass validation, so check mode scrubs the whole
-# operator-facing set before delegating. Verified 02/09/2026: the VRX suite
-# reports PASS cases=33 scrubbed and fails its own missing-configuration case
-# when the values are exported.
+# assert that a missing configuration is rejected, which an exported value can
+# defeat. Both suites now scrub their own environment on entry, so this is
+# defence in depth rather than the thing that makes them pass: a check is meant
+# to validate the helper, not the operator's shell, and a suite that has not
+# been swept yet should not be able to read anything from here.
 RFCUFS_SCRUBBED_ENV=(env
   -u ROS_DOMAIN_ID -u ROS_AUTOMATIC_DISCOVERY_RANGE -u ROS_LOCALHOST_ONLY
   -u FCU_VRX_LEFT_SERVO_CHANNEL -u FCU_VRX_RIGHT_SERVO_CHANNEL

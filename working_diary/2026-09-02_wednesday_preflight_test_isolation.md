@@ -2106,3 +2106,68 @@ has now been run against the real supervisors: readiness, a supervisor dying
 before its marker, a capture node ending by itself, an operator interrupt, and
 the ordered teardown with the closeout pause. What none of it touches is a Pi
 or a flight controller.
+
+## The FCU-to-VRX suite made hermetic - 02/09/2026, evening
+
+The leak recorded earlier tonight is repaired. `bash tools/fcu_to_vrx_workstation.sh check`
+now passes from a shell carrying the eleven `FCU_VRX_*` values, where it
+previously stopped at `missing live-read configuration was accepted`.
+
+The mechanism was the same as the Pi helper suite this morning. Several cases
+assert that a **missing** live-read value is rejected, and they run the check
+in a subshell that inherits the operator's environment. An exported value
+reaches the assertion, validation succeeds where the case requires failure,
+and the suite fails on a healthy supervisor. Nothing in the supervisor was
+wrong; the suite was reading the shell it was started from.
+
+`fcuvrx_test_scrub_ambient_env` now unsets the whole `FCU_VRX_*` and
+`FCU_TO_VRX_*` families once, before any case runs.
+
+### Bound to the real call, and proved load-bearing
+
+A scrub is only worth as much as the evidence that it actually runs, so the
+first new case re-executes this file with a polluted environment and a
+reserved argument that reports whatever survived the entry call. The assertion
+is therefore about that call and not about a separate invocation of the
+function.
+
+The reserved tokens are matched before the first positional is read as the
+supervisor path, so they cannot collide with a real path, and they are
+arguments rather than environment variables for the reason established this
+morning: an environment trigger would itself be an ambient bypass.
+
+Two mutants were run:
+
+| Mutant | Caught by | Outcome |
+| --- | --- | --- |
+| entry scrub call deleted | the pre-existing missing-configuration case | fails |
+| scrub covers `FCU_VRX_*` only, leaving `FCU_TO_VRX_*` | only the new probe case | fails, naming `FCU_TO_VRX_READY_TIMEOUT_SECONDS` |
+
+The second is the one that matters. No pre-existing case exercises the
+`FCU_TO_VRX_*` family, so without the new case that partial scrub would pass
+unnoticed. The probe is load-bearing rather than decorative.
+
+Three cases added, `33` to `36`: the entry-scrub probe, a control asserting
+the polluted fixture still passes validation so the probe cannot rot into a
+vacuous pass, and a polluted nested run that must still reach the final
+`PASS cases=` marker.
+
+### Surfaces that moved with it
+
+Bumping the check marker edited the supervisor, which made its pins stale, and
+the suite caught both. The runbook now records SHA-256
+`94d182543a185db5950bef899f78288594ce355de16afb831abaf172f7a98e3c`; the size
+is unchanged at `35,799` bytes because the edit replaced two digits with two
+digits. The marker reads `shell_cases=36 python_tests=48`.
+
+One correction in the single workstation entry point: its comment claimed the
+VRX suite reports `PASS cases=33` scrubbed and fails when the values are
+exported. Both halves are now false. The scrubbing there is kept as defence in
+depth, on the principle that a check validates the helper rather than the
+operator's shell, but the comment no longer asserts a behaviour that has been
+repaired.
+
+Measured both ways after the change: `PASS cases=36` from a clean shell and
+from a polluted one, and `FCU_TO_VRX_WORKSTATION_CHECK=PASS shell_cases=36
+python_tests=48 runtime=not-started` from both. Workstation-only; nothing was
+started.

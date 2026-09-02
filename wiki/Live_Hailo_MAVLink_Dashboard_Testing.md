@@ -51,7 +51,7 @@ below only for traceability.
 | Supervisor SHA-256 | `a14da50ba6a2c582ac6ac0de019f31375ff880f1a6f1467212b7630d794fd601` |
 | VRX supervisor | `tools/fcu_to_vrx_workstation.sh` |
 | VRX supervisor size | `35,799` bytes |
-| VRX supervisor SHA-256 | `cd28ed20dfd530d6f01100a00cc50f78e179e1996991fd1e9f6e0f7371aa0a1b` |
+| VRX supervisor SHA-256 | `94d182543a185db5950bef899f78288594ce355de16afb831abaf172f7a98e3c` |
 | Correlation recorder | `tools/fcu_to_vrx_evidence.py` |
 | Correlation recorder size | `43,839` bytes |
 | Correlation recorder SHA-256 | `19df4dae7015cfe3af44512c7a0bf854e1e448df8a3fc0b1f37075e6d62d0126` |
