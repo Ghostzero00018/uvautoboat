@@ -724,7 +724,75 @@ bounded: the remaining `111`, including the thirteen inside `rfcu_pi_run` and
 those in `rfcu_pi_capture_t0b`, `rfcu_pi_probe_snapshot` and the Hailo
 preflight, require a run mode and hardware that was not powered.
 
+## Operator documentation for the hardware-safety reading
+
+The gap recorded earlier is filled. `wiki/Live_Hailo_MAVLink_Dashboard_Testing.md`
+gained "Hardware-safety reading on the dashboard": the three rendered strings
+and their styles, the read-only contract, and three properties that matter
+during a run - `Unknown (stale)` is not `ENGAGED` and proves nothing in either
+direction; `RELEASED (suppression off)` reports only that suppression is off and
+never that propulsion is powered or that the vehicle is armed; and the reading
+appears without `enable_fcu_bench_control=1`, because the page always subscribes
+to bridge status even when it creates no command publisher.
+
+Two cross-references were added where the document already directs the operator
+at the switch: before enabling the selector, where it asks for the live
+hardware-safety state, and at the release-then-arm stop condition. Both frame
+the reading as a cross-check on the physical switch, never authority to proceed,
+and both say that a contradiction, or a reading stuck at `Unknown (stale)`, is
+no observation at all.
+
+### A claim that had to be narrowed before it shipped
+
+The section first stated that no gate in any helper consults the safety state.
+That is false. `tools/pi_live_hailo_mavlink_dashboard.sh:2274` defines its own
+`hardware_safety_is_on()` and `restored_safe_state()` requires it. The wording
+now scopes the guarantee to what is actually proven - the badge is read-only and
+only four surfaces in `tools/real_fcu_rc_command_bridge.py` may read the safety
+state, enforced by a whitelist test - and names the independent reader so the
+two are not confused for each other.
+
 ## Open
+
+### Finding - the view-only Pi monitor trusts a stale safety sample
+
+Found while writing the documentation above, not repaired.
+`tools/pi_live_hailo_mavlink_dashboard.sh` reads the same
+`MAV_SYS_STATUS_SENSOR_MOTOR_OUTPUTS` bit as the dashboard badge, but without
+either guard the bridge applies:
+
+```python
+def hardware_safety_is_on(self):
+    sensors_enabled = getattr(self.latest_sys_status, "sensors_enabled", None)
+    return isinstance(sensors_enabled, int) and not (
+        sensors_enabled & motor_outputs_bit
+    )
+```
+
+`self.latest_sys_status` is assigned at line `2256` with no timestamp, so there
+is no staleness check: if `/mavros/sys_status` stops arriving, the last sample
+answers indefinitely. `isinstance(True, int)` is also true, and `True &
+32768` is `0`, so a boolean would report safety on. The bridge's
+`hardware_safety_state` rejects both cases and returns `UNKNOWN-STALE`.
+
+Both failure modes push the answer toward "safety is on", and
+`restored_safe_state()` requires that, so both push toward declaring the safe
+state restored. That is the fail-open direction for a safety monitor, and it is
+load-bearing: `restored_safe_state()` drives the transition to `COMPLETE` at
+line `2313` and the `FINAL_STATE_LOST` abort at line `2317`. A stale sample can
+let the monitor call an armed observation complete, and can suppress an abort
+that should have fired.
+
+Severity is bounded by the source: `sensors_enabled` arrives as a `uint32` field
+on a MAVROS `SysStatus` message, so the boolean path is theoretical. The
+staleness path is not - it needs only the `/mavros/sys_status` stream to stop
+while the monitor keeps running.
+
+This is the same defect class as the badge staleness fixed on 01/09/2026, in a
+helper that was not swept at the time. It is not repaired here: the file is
+checksum-pinned in the runbook at `0d3f6d1b` and `95,720` bytes, it is a
+Pi-side safety monitor, and changing it needs an explicit decision and a
+re-pin. It is relevant to any armed run, so it is recorded before one.
 
 The deployment is current: `778e069` is **DEPLOYED / CERTIFIED / NOT RUN** at
 `/home/imt-aqua-drone/uvautoboat_real_fcu_bundle_20260902_778e069`. What remains

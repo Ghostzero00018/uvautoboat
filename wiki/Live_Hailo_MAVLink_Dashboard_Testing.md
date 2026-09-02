@@ -119,7 +119,10 @@ failed instead on a contradictory GPS source graph check described below.
 
 Before enabling the selector, use the retained T0b artifact for
 `BRD_SAFETY_DEFLT`, mapping and rails, then observe the live hardware-safety
-state. Stop if hardware safety is
+state. The dashboard reading described under "Hardware-safety reading on the
+dashboard" cross-checks the physical switch here; treat a contradiction between
+them, or a reading that stays `Unknown (stale)`, as no observation at all. Stop
+if hardware safety is
 disabled, absent, or never reaches the required safe state. Observe a stable
 disarmed `/mavros/rc/out` pair before supplying the exact live-read trims; a
 reported `0` is not an accepted substitute for a PWM trim in `800..2200`.
@@ -128,6 +131,55 @@ link, then supply an explicit `LIVE_ARMED_OBSERVATION_STALE_SECONDS` value to
 the emitter. The emitter deliberately does not inherit the helper's direct-call
 default. A baseline that does not become ready is a stop condition, not
 authority to weaken these gates.
+
+### Hardware-safety reading on the dashboard
+
+The dashboard displays the flight controller's own report of the safety switch,
+beside Control Owner in the FCU loop panel. It is corroboration for the
+operator's physical check, never a replacement for it, and it carries no
+authority: the badge is read-only and gates no command path. Only four surfaces
+in `tools/real_fcu_rc_command_bridge.py` may read the safety state at all - the
+classifier itself, the constructor, the `/mavros/sys_status` callback and the
+status payload - and a focused test fails if any other function reads it, so a
+command path cannot start consulting it by later edit.
+
+The same MAVLink bit is read independently elsewhere, and that reader is not
+this badge. `tools/pi_live_hailo_mavlink_dashboard.sh` derives its own
+`hardware_safety_is_on()` from `sensors_enabled` and requires it before
+`restored_safe_state()` will report a restored safe state. That is a separate
+implementation for a separate purpose; do not treat agreement or disagreement
+between it and the dashboard badge as either confirming the other.
+
+| Reading | Style | Meaning |
+| --- | --- | --- |
+| `ENGAGED (motor output suppressed)` | clear | the flight controller left `MAV_SYS_STATUS_SENSOR_MOTOR_OUTPUTS` clear, so it is suppressing motor output |
+| `RELEASED (suppression off)` | critical | the flight controller set that bit, so output suppression is off |
+| `Unknown (stale)` | warning | no usable sample; the reading proves nothing in either direction |
+
+Three properties matter when using it during a run:
+
+- `Unknown (stale)` is not `ENGAGED`. It appears when the sample is missing,
+  older than five seconds at the bridge, or older than the dashboard's own
+  freshness window, and also on malformed bridge status or a lost rosbridge
+  link. Absence of a `RELEASED` reading is never evidence that the switch is
+  engaged.
+- `RELEASED (suppression off)` reports only that output suppression is off. It
+  does not establish that propulsion is powered, that any output is being
+  produced, or that the vehicle is armed.
+- The reading follows the flight controller, not the dashboard. It appears
+  without the `enable_fcu_bench_control=1` query value, because the page always
+  subscribes to bridge status even when it creates no command publisher.
+
+Where this document instructs the operator to observe or restore hardware
+safety, the reading is a cross-check against the physical switch. A
+contradiction between the two is a stop condition: stop and resolve it rather
+than choosing whichever one permits the next step.
+
+The rendering and staleness behaviour were verified in a browser on
+02/09/2026 against revision `0ed5525`, driven synthetically through rosbridge.
+That verification covers what the dashboard displays. It does not cover the
+classifier against a real switch, which is exercised only with the flight
+controller in the loop.
 
 ### Current-source dashboard and SITL acceptance - 26/08/2026
 
@@ -1611,7 +1663,10 @@ only after C1 has passed and fully stopped.
   build has no live MAVLink Inspector, `SERVO_OUTPUT_RAW.time_usec` does not advance, or
   the disarmed `servo1_raw` / `servo3_raw` pair is not `800` / `800`. After hardware
   safety is released but before the QGroundControl arm request, both outputs must still
-  read `800`; otherwise re-engage hardware safety and stop without arming. Do not retry a
+  read `800`; otherwise re-engage hardware safety and stop without arming. The dashboard
+  hardware-safety reading should corroborate the release at this point; it is a
+  cross-check on the physical switch and never authority to proceed on its own, and a
+  reading of `Unknown (stale)` corroborates nothing. Do not retry a
   rejected arm. After an accepted arm, disarm immediately on a persistent departure from
   the observed neutral pair, unexpected actuator movement, a non-neutral control, loss
   of the QGroundControl link, an armed-state transition without the intended QGroundControl
