@@ -2171,3 +2171,28 @@ Measured both ways after the change: `PASS cases=36` from a clean shell and
 from a polluted one, and `FCU_TO_VRX_WORKSTATION_CHECK=PASS shell_cases=36
 python_tests=48 runtime=not-started` from both. Workstation-only; nothing was
 started.
+
+### Correction - the bare run mode used the wrong capture tier
+
+Found while writing tomorrow's pipelines from source rather than from memory.
+
+The Pi is the authority for what a run mode means, and it maps `run-t2a` to
+tier `T2a`, a bare `run` to tier **`T2b`**, and `run-t3a` to `T3a`. The entry
+point mapped its own bare `run` to capture tier `t2a`, so a bare run would
+have started the capture node at `t2a` against a Pi running `T2b`. Its own
+usage text states the tiers must match, and they would not have.
+
+The capture node accepts `t2a`, `t2b` and `t3a`, so nothing would have
+refused. The mismatch would have been silent, and the recording would have
+been adjudicated against the wrong tier's expectations.
+
+Fixed to mirror the Pi: bare `run` is `t2b`, and `run-t2b` is added as an
+explicit alias for operators who prefer to name the tier. Only `t3a` requests
+ESC-threshold calibration, which is unchanged and is what the capture node
+requires for that tier.
+
+Tomorrow's planned mode is `run-t3a`, which was never affected.
+
+One case added, `11` to `12`, asserting the tier each of the four modes sends
+and that only `t3a` requests calibration. Proved load-bearing: restoring the
+old mapping fails it with `mode run did not send the capture node tier t2b`.

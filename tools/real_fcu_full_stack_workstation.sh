@@ -76,15 +76,17 @@ rfcufs_fail() {
 
 rfcufs_usage() {
   cat >&2 <<'EOF'
-usage: real_fcu_full_stack_workstation.sh check|run|run-t2a|run-t3a
+usage: real_fcu_full_stack_workstation.sh check|run|run-t2a|run-t2b|run-t3a
 
   check     run both supervisors' own preflight checks and exit.
             Needs no Pi and no flight controller.
-  run       full stack, capture tier t2a
-  run-t2a   full stack, capture tier t2a
+  run       full stack, capture tier t2b   (the Pi's bare "run")
+  run-t2a   full stack, capture tier t2a   (the Pi's "run-t2a")
+  run-t2b   full stack, capture tier t2b   (same as "run", named explicitly)
   run-t3a   full stack, capture tier t3a with ESC-threshold calibration
 
-The tier must match the run mode used on the Pi.
+Each mode matches the Pi mode named beside it. The Pi is the authority for
+what a mode means, and a bare run there is tier T2b, not T2a.
 EOF
   exit 2
 }
@@ -337,8 +339,12 @@ rfcufs_main() {
   [ "$#" -eq 1 ] || rfcufs_usage
   case "$1" in
     check)   RFCUFS_MODE=check ;;
-    run)     RFCUFS_MODE=run; RFCUFS_TIER=t2a ;;
+    # These mirror the Pi's own modes, which are the authority: there
+    # run-t2a is tier T2a, a bare run is tier T2b, and run-t3a is T3a. The
+    # capture tier has to be the one the Pi is running, so a bare run is t2b.
+    run)     RFCUFS_MODE=run; RFCUFS_TIER=t2b ;;
     run-t2a) RFCUFS_MODE=run; RFCUFS_TIER=t2a ;;
+    run-t2b) RFCUFS_MODE=run; RFCUFS_TIER=t2b ;;
     run-t3a) RFCUFS_MODE=run; RFCUFS_TIER=t3a ;;
     *)       rfcufs_usage ;;
   esac

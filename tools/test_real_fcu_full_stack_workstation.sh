@@ -409,4 +409,34 @@ refute_text "$OUTPUT" 'operator stop requested' \
 discard_sandbox "$SANDBOX"
 pass_case
 
+# --- a bare run uses the tier the Pi's bare run uses ----------------------
+# The Pi maps run-t2a to T2a, a bare run to T2b and run-t3a to T3a. Sending
+# the capture node t2a for a Pi running T2b would mismatch silently.
+for MODE_TIER in "run:t2b" "run-t2a:t2a" "run-t2b:t2b" "run-t3a:t3a"; do
+  MODE="${MODE_TIER%%:*}"
+  WANT_TIER="${MODE_TIER##*:}"
+  SANDBOX="$(make_sandbox)"
+  ORDER="$SANDBOX/order.txt"
+  : >"$ORDER"
+  write_supervisor_stub "$SANDBOX/fcu_to_vrx_workstation.sh" \
+    'FCU_TO_VRX_WORKSTATION_PRESTART=PASS' 'w2' "$ORDER" 1
+  write_supervisor_stub "$SANDBOX/real_fcu_digital_twin_workstation.sh" \
+    'REAL_FCU_WORKSTATION_SERVICES=PASS' 'w1' "$ORDER" 1
+  write_capture_stub "$SANDBOX/real_fcu_command_feedback_capture.py" "$ORDER"
+  set +e
+  OUTPUT="$(run_helper "$SANDBOX" "$MODE")"
+  set -e
+  require_text "$(cat "$ORDER")" "capture:$WANT_TIER" \
+    "mode $MODE did not send the capture node tier $WANT_TIER"
+  if [ "$WANT_TIER" = t3a ]; then
+    require_text "$(cat "$ORDER")" 'capture:t3a --esc-threshold-calibration' \
+      't3a did not request ESC-threshold calibration'
+  else
+    refute_text "$(cat "$ORDER")" "capture:$WANT_TIER --esc-threshold-calibration" \
+      "mode $MODE wrongly requested ESC-threshold calibration"
+  fi
+  discard_sandbox "$SANDBOX"
+done
+pass_case
+
 printf 'full-stack workstation helper tests: PASS cases=%d runtime=not-started\n' "$CASES"
