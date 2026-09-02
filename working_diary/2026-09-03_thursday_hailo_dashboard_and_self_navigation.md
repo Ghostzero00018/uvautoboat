@@ -156,6 +156,34 @@ ceiling whose measured start threshold is `0.15`. The usable band above
 break-away is roughly `0.05` in demand units. Autonomous steering inside a band
 that narrow deserves its own thinking, and nothing here authorises a run.
 
+## How the stack starts now
+
+The three workstation terminals were replaced on the evening of 02/09/2026 by
+a single entry point, `tools/real_fcu_full_stack_workstation.sh`. It starts
+the VRX supervisor, then the real-FCU supervisor, then the capture node in the
+foreground of the same terminal, and it stops them in the documented order:
+the VRX supervisor first, the real-FCU supervisor last so its stop marker
+releases the Pi.
+
+    bash tools/real_fcu_full_stack_workstation.sh check
+    bash tools/real_fcu_full_stack_workstation.sh run-t3a
+
+Run `check` first. The real-FCU supervisor requires a clean worktree checked
+with `--untracked-files=all`, so the two new files must be committed before
+either mode passes, and the combined `check` had not yet been run at the time
+this was written.
+
+Then one command on the Pi, then the dashboard. The base URL is
+`http://127.0.0.1:8002/`; the exact bench-control URL, carrying the mapping
+resolved from the flight controller, is printed by the real-FCU supervisor
+into its log only once the Pi has connected, and the entry point says where to
+read it.
+
+Two things worth carrying into the first use. The capture node must stay
+running because the Pi's discovery guard requires it. And the entry point has
+never met a Pi or a flight controller; the three terminals it replaces still
+work exactly as they did on 02/09/2026, so falling back costs only the paste.
+
 ## Carried open items
 
 - The deployed bundle matches the repository at `929831e`; keep it that way or
@@ -164,3 +192,7 @@ that narrow deserves its own thinking, and nothing here authorises a run.
   the transition, and its terminal observation is one-shot per side. Fine for
   confirming a known value, poor for discovering one. Recorded, not repaired.
 - `RC_OVERRIDE_TIME` remains `0.5` and the bridge requires `(0, 0.5]`.
+- The FCU-to-VRX supervisor's own test suite is non-hermetic: exported
+  `FCU_VRX_*` values make it fail with `missing live-read configuration was
+  accepted`. Recorded 02/09/2026, not repaired. The new entry point scrubs
+  them before delegating, so it is not in the way of a run.

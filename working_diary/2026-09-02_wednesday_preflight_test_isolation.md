@@ -1833,3 +1833,125 @@ mid-run, while the operator is watching propellers.
 `person_alert_advisory=false` and `person_alert_required=false` in the final
 status. The Hailo branch was not part of this run, so the advisory path built
 today is still deployed and unrun on hardware.
+
+## Single workstation entry point - 02/09/2026, evening
+
+Today's run needed three workstation terminals plus a browser plus the Pi, and
+the three terminals each carried environment the operator had to paste
+correctly. Two of the day's failures came out of that surface rather than out
+of the vehicle: a W2 readiness window that expired because the default is not
+reachable by hand, and a first attempt that ended with W1 timing out by under
+a minute. The goal here is one command on the workstation, one on the Pi, then
+the dashboard.
+
+Two new files, `tools/real_fcu_full_stack_workstation.sh` and its test suite
+`tools/test_real_fcu_full_stack_workstation.sh`. Neither has been run against
+a Pi or a flight controller.
+
+### What it does, and what it deliberately does not
+
+It sequences and supervises. It does not re-implement one guard, threshold or
+readiness check; each stays in the helper that owns it, and a stop still
+prints that helper's own reason. The order is W2, then W1, then the capture
+node in the foreground of the same terminal.
+
+The capture node is in the foreground on purpose. It is interactive, and the
+run above finalised `pass=false` purely because nobody typed the ESC
+observations into it. Putting it where the operator already is removes the
+separate terminal that made that easy to forget.
+
+Defaults now carry the eleven values W2 has no defaults for, plus both
+readiness timeouts at `1200`. The mapping and rails are printed back before
+anything starts, with the instruction to confirm them against the vehicle
+rather than against the file.
+
+### The start order was checked, not assumed
+
+W2 before W1 is safe here for two reasons that had to be read out of the
+sources rather than taken from the run-sheet:
+
+- `real_fcu_digital_twin_workstation.sh` has no domain-emptiness check, so
+  W2's relay already publishing on domain `43` does not block it.
+- None of W2's children matches any of W1's ten conflict patterns. The five
+  pattern strings that do appear in the W2 script are entries in W2's own
+  conflict list, not commands it launches.
+
+Worth separating from a similar-looking rule elsewhere in the documentation:
+the start order that is **not** interchangeable, where W1 rejects a running
+`gz sim`, belongs to `tools/live_dashboard_preflight.sh`. That is a different
+helper with a different pattern list, and it is not the one in this path.
+
+### A supervisor started with plain background never runs its stop handler
+
+The first version signalled each supervisor with `SIGINT` after starting it
+with `setsid ... &`. The stop handler never ran. Measured on this workstation
+by reading `/proc/<pid>/status`:
+
+| How the child was started | `SigIgn` | `SIGINT` ignored | `SIGINT` caught | Result of `kill -INT` |
+| --- | --- | --- | --- | --- |
+| plain background | `...0006` | yes | no | still running |
+| under `set -m` | `...0004` | no | yes | handler ran, exited |
+
+A non-interactive shell sets `SIGINT` to ignore for every asynchronous child,
+and a shell cannot trap a signal that was already ignored when it started, so
+the supervisor's own `trap ... INT` is silently inert. The stop would have
+fallen through to the `TERM` escalation, and both supervisors record a `TERM`
+stop as a failed one: on a real run that means no ordered teardown, no stop
+marker, and a Pi left waiting at its closeout.
+
+The fix is job control rather than `setsid`. Under `set -m` each background
+job still gets its own process group, which is what keeps a Ctrl+C in this
+terminal off the supervisors, and `SIGINT` stays trappable. `setsid` is not
+used at all now: under job control the process is already a group leader, so
+it forks and the recorded pid stops referring to the supervisor.
+
+The suite covers this as a regression. Reintroducing `setsid` was checked to
+fail it, with `neither supervisor recorded a stop`, and removing it again to
+pass.
+
+### A second non-hermetic test suite
+
+`bash tools/fcu_to_vrx_workstation.sh check` fails when the eleven `FCU_VRX_*`
+values are exported, with `missing live-read configuration was accepted`. Its
+suite spawns a subshell that inherits the ambient environment and asserts that
+a missing configuration is rejected; an exported value reaches the assertion
+and the case wrongly passes validation. Measured both ways in the same shell:
+`PASS cases=33` with the values scrubbed, and the failure above with them set.
+
+This is the same class as the leak repaired in the Pi helper suite this
+morning, in a suite that was not swept then. It is **not** repaired here: it
+is outside what was authorised tonight. The new entry point works around it by
+scrubbing the whole operator-facing set before delegating to either check
+mode, which is correct regardless, since a check is meant to validate the
+helper rather than the operator's shell.
+
+### Preflight results
+
+Both supervisor preflights pass on this workstation tonight:
+
+| Preflight | Result |
+| --- | --- |
+| `fcu_to_vrx_workstation.sh check` | `PASS shell_cases=33 python_tests=48 runtime=not-started` |
+| `real_fcu_digital_twin_workstation.sh check` | `PASS tests=helper,bridge,capture,dashboard runtime=not-started ports=8002,9090`, `101` dashboard tests |
+| `test_real_fcu_full_stack_workstation.sh` | `PASS cases=9 runtime=not-started` |
+
+The nine cases cover argument rejection, a missing child helper, delegation
+and failure attribution for both check modes, a supervisor that never starts,
+one that dies during the marker wait, the full sequence with the stop order
+asserted as W2 first and W1 last, the tier reaching the capture node with and
+without ESC calibration, and the advisory description. No simulator,
+supervisor, flight controller or hardware runtime was started by any of them.
+
+### One thing to know before tomorrow
+
+`real_fcu_digital_twin_workstation.sh` requires a clean worktree, checked with
+`--untracked-files=all`. The two new files make the worktree dirty, so the
+combined check reports `workstation helper requires a clean worktree` until
+they are committed. Each half was verified separately tonight; the combined
+`check` is the first thing to run tomorrow, after the commit, and it takes
+about a minute.
+
+The residual risk is stated plainly: this is a new sequencer, and tomorrow
+would be its first contact with a Pi and a flight controller. The three
+terminals it replaces still work exactly as they did today, and nothing about
+the run depends on the new file, so falling back costs only the paste.
