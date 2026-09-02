@@ -485,6 +485,96 @@ exercised directly. The returning mutant yields `CONTINUED_PAST_GUARD` where the
 real helper yields nothing, and a mutant whose `rfcu_pi_cleanup` calls
 `rfcu_pi_fail` is reported as reaching it.
 
+## Browser verification of the hardware-safety badge
+
+Run at 03:43-03:44 on 02/09/2026 against `0f2f5ca`, workstation only: rosbridge
+on `9090`, `serve_dashboard.py` on `8002`, both bound to `127.0.0.1`, all three
+terminals on `ROS_DOMAIN_ID=43`. No Pi, no FCU, no MAVROS, no simulator.
+
+The bridge status was driven synthetically with `ros2 topic pub -r 5` on
+`/command_ingress/status` as `std_msgs/String` carrying JSON. The `5` Hz rate
+matters: `FCU_BENCH_STATUS_MAX_AGE_MS` is `500`, so a one-shot publish would
+show for half a second and then correctly age out, which reads as a fault.
+
+The rosbridge log records `Subscribed to /command_ingress/status` for both page
+loads, confirming the badge subscription is unconditional. No URL parameter was
+used; `enable_fcu_bench_control=1` gates command publication, not this
+read-only reading.
+
+| Stimulus | Published | Badge |
+| --- | --- | --- |
+| `hardware_safety: ENGAGED` | 73 messages | `ENGAGED (motor output suppressed)`, clear |
+| `hardware_safety: RELEASED` | 93 messages | `RELEASED (suppression off)`, critical |
+| publisher stopped | - | falls back to `Unknown (stale)` within the `500` ms window |
+| `{not json` | 46 messages | `Unknown (stale)`, with Loop State reading `Invalid bridge status` |
+| rosbridge stopped | - | returns to `Unknown (stale)` rather than holding the last reading |
+
+All five matched. The three staleness paths are the ones added on 01/09/2026;
+before that change the last value stayed on screen indefinitely.
+
+Teardown was clean: all three services stopped, ports `8002`, `8080` and `9090`
+released, no stray `serve_dashboard.py`, `rosbridge_websocket` or `topic pub`
+process, and the worktree unchanged. Nothing was written.
+
+### What this establishes, and what it does not
+
+It establishes the browser rendering and staleness behaviour end to end, through
+a real rosbridge and a real DOM, matching what the five Node cases assert
+headlessly.
+
+It does not exercise `hardware_safety_state()` against a real switch. The
+classifier reads `MAV_SYS_STATUS_SENSOR_MOTOR_OUTPUTS` from a real
+`/mavros/sys_status`, and every reading in this run was a string chosen by the
+publisher. A `RELEASED` badge here is not a statement about any hardware. That
+half remains covered only by the Python suite until the FCU is in the loop.
+
+## Documentation audit
+
+Every tracked markdown file outside `working_diary/` was checked against the
+current bytes. Dated entries in `Board.md` and `wiki/Roadmap.md` were read as
+append-only records, accurate for their own revision, and were not touched.
+Three claims were genuinely stale.
+
+`wiki/Live_Hailo_MAVLink_Dashboard_Testing.md` pinned the VRX supervisor at
+`35,497` bytes when the file was `35,799`. The suite checks only the SHA-256
+rows of that table, so the size beside them had drifted silently while the
+digest was kept current. The pin test now checks both sizes as well as both
+digests, and it reproduced the stale figure before the fix. Extending it grew
+the suite from `32` to `33`, which the marker-consistency assertion added
+earlier today caught immediately - the same guard working on its own author.
+
+`web_dashboard/autoboat/README_autoboat_dashboard.md` stated that the FCU bench
+component has "two dashboard rows ... with deliberately different provenance"
+and tabled Requested RC Demand and Measured Motor Output. The hardware-safety
+badge is a third reading in that component, and its provenance is exactly what
+the table exists to separate: the flight controller's own report of the switch,
+neither a browser request nor a measured PWM. The table now carries all three,
+with the read-only contract, the three rendered strings and both staleness
+windows spelled out, and the explicit statement that a released switch does not
+mean propulsion is powered.
+
+The same file described `/command_ingress/status` without the `hardware_safety`
+and `sys_status_age_ms` fields added on 01/09/2026. The topic row now names
+them.
+
+Two stamps were bumped to 02/09/2026: the `Board.md` header, which still read
+01/09/2026 while the file carried 02/09/2026 rows, and the dashboard README
+footer.
+
+Checked and deliberately left alone: the dated `Board.md` and `wiki/Roadmap.md`
+rows quoting `55`, `60` and `66`; the runbook's `55` and `91/91` figures, which
+sit inside a superseded `NOT COMMITTED` entry; the four 23/07/2026 digests the
+runbook labels as not being repository revisions; and the `legacy/` tree. No
+document described any helper as returning rather than exiting on failure, and
+none quoted a `CHECK=PASS` marker as an operator expectation, so today's
+fail-closed and port-marker changes invalidated no prose.
+
+One gap is recorded rather than filled: no operator-facing document tells a
+reader that the badge exists. The runbook asks the operator to confirm hardware
+safety by eye at ten points, and the dashboard now shows the flight
+controller's own reading of it. Adding that cross-check is an enhancement, not
+a correction, so it is left for an explicit decision.
+
 ## Open
 
 A current-revision SITL acceptance remains meaningful. The last accepted SITL

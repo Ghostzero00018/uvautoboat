@@ -488,13 +488,23 @@ snapshot SHA-256 is
 ### FCU Bench Command/Feedback Component
 
 This component is separate from the view-only helper and from the normal
-simulation controls. Its two dashboard rows have deliberately different
+simulation controls. Its three dashboard readings have deliberately different
 provenance:
 
 | Row | Source | Meaning |
 | --- | --- | --- |
 | Requested RC Demand | bridge status | The bounded steering/throttle pair accepted from the browser |
 | Measured Motor Output | `/mavros/rc/out` plus bridge rail resolution | Raw PWM and signed position within each function-resolved output rail; not physical force |
+| Hardware Safety | `/mavros/sys_status` via bridge status | The flight controller's own reading of the safety switch; neither a browser request nor a measured output |
+
+Hardware Safety is read-only and never gates a command path. It reports
+`ENGAGED (motor output suppressed)` when ArduPilot leaves the
+`MAV_SYS_STATUS_SENSOR_MOTOR_OUTPUTS` bit clear, `RELEASED (suppression off)`
+when it is set, and `Unknown (stale)` whenever the sample is missing, older than
+five seconds at the bridge, or older than the dashboard's own status freshness
+window. A released switch means output suppression is off; it does not
+establish that propulsion is powered or that any output is being produced, and
+it is not a substitute for the physical checks a run requires.
 
 The narrow browser publisher exists only when the page is opened with:
 
@@ -636,7 +646,7 @@ a confirmation prompt.
 | `/planning/config`              | Current config values (syncs fields) |
 | `/wamv/thrusters/left/thrust`  | Left thruster command feedback       |
 | `/wamv/thrusters/right/thrust` | Right thruster command feedback      |
-| `/command_ingress/status`   | Guarded bridge state, live mapping and rails, request and measured RC/servo PWM feedback |
+| `/command_ingress/status`   | Guarded bridge state, live mapping and rails, request and measured RC/servo PWM feedback, and the reported hardware safety state with its sample age |
 
 The live MAVLink thrust row defaults to the real boat's measured output mapping
 (`SERVO3` left, `SERVO1` right). For another connected vehicle, first resolve
@@ -762,4 +772,4 @@ Part of the uvautoboat project — Apache License 2.0.
 
 Built with [roslibjs](http://robotwebtools.org/), [Leaflet.js](https://leafletjs.com/), [OpenStreetMap](https://www.openstreetmap.org/).
 
-Last updated: 01/09/2026
+Last updated: 02/09/2026

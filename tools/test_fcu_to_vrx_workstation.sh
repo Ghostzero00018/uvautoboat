@@ -46,6 +46,21 @@ grep -Fqx -- "| Correlation recorder SHA-256 | \`$EVIDENCE_SHA256\` |" "$WIKI" \
   || fail_test 'live-dashboard runbook correlation recorder checksum is stale'
 pass_case
 
+# The runbook pins a size beside each digest. Only the digest rows were checked,
+# so a size could drift silently while the suite stayed green - and one had. The
+# sizes are grouped thousands, matching how the table is written.
+grouped_size() {
+  LC_ALL=en_US.UTF-8 printf "%'d" "$(stat -c%s "$1")" 2>/dev/null \
+    || printf '%d' "$(stat -c%s "$1")"
+}
+SUPERVISOR_SIZE="$(grouped_size "$SUPERVISOR")"
+EVIDENCE_SIZE="$(grouped_size "$EVIDENCE")"
+grep -Fqx -- "| VRX supervisor size | \`$SUPERVISOR_SIZE\` bytes |" "$WIKI" \
+  || fail_test "live-dashboard runbook VRX supervisor size is stale; file is $SUPERVISOR_SIZE bytes"
+grep -Fqx -- "| Correlation recorder size | \`$EVIDENCE_SIZE\` bytes |" "$WIKI" \
+  || fail_test "live-dashboard runbook correlation recorder size is stale; file is $EVIDENCE_SIZE bytes"
+pass_case
+
 FIXTURE_ROOT="$(mktemp -d)"
 trap 'rm -rf "$FIXTURE_ROOT"' EXIT
 ROS_SETUP_FIXTURE="$FIXTURE_ROOT/ros_setup.bash"
