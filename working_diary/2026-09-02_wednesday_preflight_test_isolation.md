@@ -2065,3 +2065,44 @@ are committed.
 | First | marker strings, sequence, teardown | pass, no survivors |
 | Second | the hold, with a pseudo-terminal | hold confirmed; found the untrapped `HUP` |
 | Third | interrupt while holding | blocked on a clean worktree; early-exit path confirmed |
+
+### Third rehearsal - the operator path, complete
+
+Repeated on a clean worktree, with the helper given a real pseudo-terminal in
+its own session so a `SIGINT` reaches only its process group, the way a
+terminal delivers Ctrl+C.
+
+| Stage | Observed |
+| --- | --- |
+| VRX prestart marker | `18s` |
+| Real-FCU services marker | `4s` |
+| Before the interrupt | no teardown started, port `8002` still served, simulator still running |
+| Interrupt | recognised as an operator stop |
+| First stop | VRX supervisor, `stopped cleanly` |
+| Closeout prompt | appeared, answered with a keystroke |
+| Last stop | real-FCU supervisor, `stopped cleanly` |
+| Exit | `status=0`, no survivors, no bound ports |
+
+`REHEARSAL3=PASS`. The stop order was read back out of the transcript rather
+than assumed: the VRX supervisor stopped before the real-FCU supervisor.
+
+Two corrections to earlier readings, both mine rather than the helper's. The
+first run of this rehearsal reported nine defects and none of them were real:
+the helper had paused at the closeout prompt exactly as designed, waiting up
+to `900` seconds for the operator to finish the Pi closeout while the
+dashboard stayed up, and the rehearsal killed it after `300` without ever
+answering. The kill is what orphaned the supervisors' children. Answering the
+prompt, which is what an operator does, is what closed the run cleanly.
+
+The second is that whether the capture node ends by itself is not fixed. It
+ended on its own in the earlier rehearsals and stayed running here, so both
+outcomes are now accepted and recorded. Both converge on the same stop, and
+the case where it ends by itself was already confirmed in the second
+rehearsal. The path exercised here is the ordinary one: a capture node still
+running and an operator pressing Ctrl+C.
+
+That closes the workstation entry point for tomorrow. Every path it can take
+has now been run against the real supervisors: readiness, a supervisor dying
+before its marker, a capture node ending by itself, an operator interrupt, and
+the ordered teardown with the closeout pause. What none of it touches is a Pi
+or a flight controller.
