@@ -756,7 +756,7 @@ rfcu_pi_build_commands() {
     -p 'expected_domain_id:="43"'
     -p "neutral_only:=$neutral_only"
     -p 'max_steering:=0.20'
-    -p 'max_throttle:=0.12'
+    -p 'max_throttle:=0.20'
   )
   RFCU_PI_HAILO_COMMAND=()
   if [ "$RFCU_PI_HAILO_PERSON_STOP" -eq 1 ]; then

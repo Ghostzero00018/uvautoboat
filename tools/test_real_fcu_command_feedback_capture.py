@@ -185,27 +185,27 @@ class CaptureContractTest(unittest.TestCase):
     def test_calibration_axis_bounds_accept_only_exact_float32_endpoints(self):
         steering_upper = struct.unpack("!f", struct.pack("!f", 0.20))[0]
         steering_lower = struct.unpack("!f", struct.pack("!f", -0.20))[0]
-        throttle_upper = struct.unpack("!f", struct.pack("!f", 0.12))[0]
+        throttle_upper = struct.unpack("!f", struct.pack("!f", 0.20))[0]
         self.assertEqual(
             MODULE.normalize_float32_axis(steering_upper, -0.20, 0.20), 0.20
         )
         self.assertEqual(
             MODULE.normalize_float32_axis(steering_lower, -0.20, 0.20), -0.20
         )
-        self.assertEqual(MODULE.normalize_float32_axis(throttle_upper, 0.0, 0.12), 0.12)
+        self.assertEqual(MODULE.normalize_float32_axis(throttle_upper, 0.0, 0.20), 0.20)
 
         steering_outside = struct.unpack(
             "!f", struct.pack("!I", struct.unpack("!I", struct.pack("!f", 0.20))[0] + 1)
         )[0]
         throttle_outside = struct.unpack(
-            "!f", struct.pack("!I", struct.unpack("!I", struct.pack("!f", 0.12))[0] + 1)
+            "!f", struct.pack("!I", struct.unpack("!I", struct.pack("!f", 0.20))[0] + 1)
         )[0]
         self.assertIsNone(MODULE.normalize_float32_axis(steering_outside, -0.20, 0.20))
-        self.assertIsNone(MODULE.normalize_float32_axis(throttle_outside, 0.0, 0.12))
+        self.assertIsNone(MODULE.normalize_float32_axis(throttle_outside, 0.0, 0.20))
 
     def test_calibration_correlation_normalizes_float32_command_endpoints(self):
         steering_upper = struct.unpack("!f", struct.pack("!f", 0.20))[0]
-        throttle_upper = struct.unpack("!f", struct.pack("!f", 0.12))[0]
+        throttle_upper = struct.unpack("!f", struct.pack("!f", 0.20))[0]
         receipts = iter(
             (index * 1_000_000, index * 100_000_000) for index in range(1, 30)
         )
@@ -231,7 +231,7 @@ class CaptureContractTest(unittest.TestCase):
 
         self.assertEqual(
             event["message"]["correlation"]["command"],
-            {"steering": 0.20, "throttle": 0.12},
+            {"steering": 0.20, "throttle": 0.20},
         )
 
     def test_ros_environment_is_exactly_domain_43_subnet(self):
@@ -548,7 +548,7 @@ class CaptureContractTest(unittest.TestCase):
         self.assertEqual(manifest["tier"], "t3a")
         self.assertTrue(manifest["esc_threshold_calibration"])
         self.assertEqual(manifest["calibration_max_steering"], 0.20)
-        self.assertEqual(manifest["calibration_max_throttle"], 0.12)
+        self.assertEqual(manifest["calibration_max_throttle"], 0.20)
         self.assertEqual(manifest["operator_observation_grace_seconds"], 10)
         self.assertEqual(len(manifest["subscription_topics"]), 5)
         expected_binding = {

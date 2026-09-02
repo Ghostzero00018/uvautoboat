@@ -1410,7 +1410,138 @@ It refused to advance a props-fitted run whose telemetry link was not
 established. No propulsion was enabled, no safety released, nothing armed. The
 run cost time, not safety.
 
+## Full-stack T3a digital-twin run - 02/09/2026, complete
+
+The second attempt reached readiness on both sides, closed the bidirectional
+twin loop against the real flight controller, and ended on a confirmed safe
+closeout. This is the first time the full path has run at any revision.
+
+### What unblocked it
+
+Two changes from the failed attempt, both diagnosed from its evidence.
+
+**The Hailo child was removed from the run.** With `REAL_FCU_HAILO_PERSON_STOP=1`
+the probe never saw the vehicle: `78` router address events, all implausible, and
+`1.1` never among them. Without it the probe cleared immediately. The Hailo
+bridge does not open the serial port - it is `cv2`, `numpy` and `rclpy`
+publishing `Image`, and its only match for "serial" is the literal string
+`serial_owner=none` in a log line - so contention is ruled out and the mechanism
+is still unknown. Scheduling starvation and electrical interference both fit the
+evidence and were not separated.
+
+**Guard-snapshot mode replaced the live parameter pull.** The second failure was
+`T0b MAVROS parameter pull failed`, from
+`timeout 20 ros2 service call /mavros/param/pull` at
+`tools/real_fcu_digital_twin_pi.sh:1198`. Three isolated MAVROS runs each
+measured `36` seconds to `PR: parameters list received`, so a `20`-second budget
+cannot fit this vehicle's `986` parameters and no number of retries would help.
+
+`rfcu_pi_capture_runtime_guard` routes to `rfcu_pi_capture_snapshot_guard`
+instead of `rfcu_pi_capture_t0b` when `RFCU_PI_GUARD_SOURCE=snapshot`, which
+skips the pull entirely. That is how the 01/09/2026 run succeeded, and its
+artifact `real_fcu_params_20260901_t3a_live_0p5.parm` was still present and
+still valid. Note the two snapshot mechanisms differ: the T0b snapshot is
+`probe`-only, while the **guard** snapshot is explicitly allowed for `run-t2a`,
+`run` and `run-t3a`.
+
+Its contents were checked against every bound the bridge enforces before use:
+`986` parameters, `RC_OVERRIDE_TIME 0.500000`, `BRD_SAFETY_DEFLT 1`,
+`RCMAP_ROLL 1` and `RCMAP_THROTTLE 3` distinct, `SERVO3_FUNCTION 73` and
+`SERVO1_FUNCTION 74`, `SYSID_THISMAV 1` against `SYSID_MYGCS 255`, and
+`DDS_ENABLE` absent.
+
+### The run
+
+```text
+REAL_FCU_GUARD_SNAPSHOT=PASS sha256=5ea352bc... safety=ON source=mavproxy parameter_write=none
+REAL_FCU_TELEMETRY=PASS topics=state,GPS,IMU,battery,RC-input,thrust-output
+snapshot guard resolved: parameters=986 steering=RC1 throttle=RC3 left=SERVO3 right=SERVO1
+REAL_FCU_T3A_READY=PASS authority=demand-enabled propellers=fitted propulsion=enabled bridge=READY_DISARMED workstation=visible capture=visible
+```
+
+The guard resolved `left=SERVO3 right=SERVO1` from the vehicle's own parameters,
+the reverse of the simulator's mapping, which is exactly the behaviour the
+02/09/2026 SITL entry above warned must not be read as covering the boat.
+
+Both workstation supervisors reached readiness, and the loop closed in both
+directions:
+
+```text
+FCU_TO_VRX_RC_OUT_RELAY_READY=PASS topic=/mavros/rc/out udp=127.0.0.1:14555 left=SERVO3 right=SERVO1 pwm=800/800/2200
+FCU_TO_VRX_TWIN_TELEMETRY_READY=PASS topic=/fcu_to_vrx/twin_telemetry udp=127.0.0.1:14556 schema=uvautoboat.fcu_to_vrx.twin_telemetry.v1
+FCU_TO_VRX_WORKSTATION_READY=PASS ... observer=ready streams=4 relay=ready twin_telemetry=ready
+REAL_FCU_WORKSTATION_READY=PASS telemetry=state,GPS,IMU,battery,RC-input,thrust-output
+```
+
+`streams=4` is the four-stream observer gate - `servo_output_raw` plus both
+thrust topics - all originating from the real flight controller's measured
+output. The capture terminal recorded
+`REAL_FCU_CAPTURE_STREAMS=PASS status=received state=received rc_in=received
+rc_out=received`.
+
+### Closeout
+
+`REAL_FCU_T3A_SAFE_CLOSEOUT=PASS neutral=true estop=true disarmed=true
+safety=ON propulsion=isolated source=operator-confirmation`, then
+`REAL_FCU_FINAL_STATE=PASS connected=true armed=false`. W1 ended
+`REAL_FCU_WORKSTATION_STOP_MARKER=PASS` and `EXIT status=0 cleanup_rc=0`.
+
+Two non-faults in the tail. W2 ended `STOP: a VRX/bridge child exited
+unexpectedly` because the Pi stopped before it, taking the relay's source away;
+the documented order stops W2 first and avoids this. The capture terminal ended
+`FAIL` with only `calibration_left_observation_incomplete` and
+`calibration_right_observation_incomplete`, meaning every stream arrived and only
+the operator's typed ESC observations were absent.
+
+## Throttle ceiling raised to 0.20
+
+Requested after the run. The ceiling was enforced in five places, two of them
+bundle members, and asserted by three test suites:
+
+| Surface | Note |
+| --- | --- |
+| `tools/real_fcu_rc_command_bridge.py:802,805` | parameter default and the hard `GuardError` ceiling; bundle member |
+| `tools/real_fcu_digital_twin_pi.sh:759` | the `-p max_throttle:=` the helper passes; bundle member |
+| `tools/real_fcu_command_feedback_capture.py:56` | `CALIBRATION_MAX_THROTTLE` |
+| `web_dashboard/autoboat/app.js:379` | `FCU_BENCH_MAX_THROTTLE` |
+| `web_dashboard/autoboat/index.html:240-241` | slider `max` and its label |
+
+Three independent guards caught the change rather than letting it pass: the
+dashboard clamp test, the bundle manifest, and a deliberate tripwire in the
+helper suite reading `FAIL: Pi bridge throttle bound changed`. That tripwire
+exists so this bound cannot move silently, and it did its job.
+
+Five test assertions were updated to exercise the **new** endpoint rather than
+merely expect a different number. The float32 endpoint-normalisation tests in
+the bridge and capture suites now clamp at `0.20`, which is the behaviour that
+matters at a ceiling.
+
+Steering and throttle now share a ceiling of `0.20`; throttle was previously
+capped at `60%` of steering's range. On a props-fitted hull this is a `67%`
+increase in maximum commanded throttle. The number was specified by the
+operator.
+
+The bundle manifest was regenerated. `tools/real_fcu_digital_twin_pi.sh` moved to
+`0e7395f5` and `tools/real_fcu_rc_command_bridge.py` to `14944a50`; the two YAML
+members are unchanged.
+
 ## Open
+
+### The deployed Pi bundle is stale
+
+The throttle change altered two governed members, so `778e069` no longer matches
+the repository. `tools/real_fcu_digital_twin_pi.sh` is now `0e7395f5` and
+`tools/real_fcu_rc_command_bridge.py` is `14944a50`. A fresh transfer and
+non-actuating certification are required before any further run, and the first
+run on the new bundle is also the first at a `0.20` throttle ceiling.
+
+### The Hailo and flight-controller interaction is unexplained
+
+It blocks the person-stop showcase the run is meant to demonstrate. With
+`REAL_FCU_HAILO_PERSON_STOP=1` the probe never sees the vehicle; with it
+disabled the full stack runs to READY. Serial contention is ruled out from the
+Hailo bridge's own source. Scheduling starvation and electrical interference
+both fit the evidence and have not been separated. Investigation is not started.
 
 ### Finding - the view-only Pi monitor trusts a stale safety sample
 

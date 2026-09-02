@@ -885,7 +885,7 @@ grep -Fq 'expected_domain_id:="43"' <<<"$COMMAND_OUTPUT" \
   || fail_test 'physical bridge does not explicitly require domain 43'
 grep -Fq 'max_steering:=0.20' <<<"$COMMAND_OUTPUT" \
   || fail_test 'Pi bridge steering bound changed'
-grep -Fq 'max_throttle:=0.12' <<<"$COMMAND_OUTPUT" \
+grep -Fq 'max_throttle:=0.20' <<<"$COMMAND_OUTPUT" \
   || fail_test 'Pi bridge throttle bound changed'
 grep -Fq 'PI_T2A_BRIDGE=' <<<"$COMMAND_OUTPUT" \
   && grep -Fq 'neutral_only:=true' \

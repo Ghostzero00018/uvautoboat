@@ -799,11 +799,11 @@ class RealFcuRcCommandBridge(Node):
         self.guard_source = "none"
         self.guard_evidence: Optional[dict] = None
         self.max_steering = float(self.declare_parameter("max_steering", 0.20).value)
-        self.max_throttle = float(self.declare_parameter("max_throttle", 0.12).value)
+        self.max_throttle = float(self.declare_parameter("max_throttle", 0.20).value)
         if not (0.0 < self.max_steering <= 0.20):
             raise GuardError("max_steering must be in (0, 0.20]")
-        if not (0.0 < self.max_throttle <= 0.12):
-            raise GuardError("max_throttle must be in (0, 0.12]")
+        if not (0.0 < self.max_throttle <= 0.20):
+            raise GuardError("max_throttle must be in (0, 0.20]")
 
         self.status_pub = self.create_publisher(String, STATUS_TOPIC, 10)
         self.guard: Optional[LiveGuard] = None

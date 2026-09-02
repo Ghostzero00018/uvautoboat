@@ -734,7 +734,7 @@ class BridgeNodeStateMachineTest(unittest.TestCase):
             bits = struct.unpack(">I", struct.pack(">f", value))[0]
             return struct.unpack(">f", struct.pack(">I", bits + 1))[0]
 
-        def command(stamp, steering, throttle=0.12, enable=0):
+        def command(stamp, steering, throttle=0.20, enable=0):
             message = Joy()
             message.header.frame_id = MODULE.FRAME_ID
             message.header.stamp.sec = stamp
@@ -748,10 +748,10 @@ class BridgeNodeStateMachineTest(unittest.TestCase):
         self.assertLess(negative, -0.20)
 
         self.node._command_cb(command(1, 0.20))
-        self.assertEqual(self.node.last_command, (0.20, 0.12, False))
+        self.assertEqual(self.node.last_command, (0.20, 0.20, False))
 
         self.node._command_cb(command(2, -0.20))
-        self.assertEqual(self.node.last_command, (-0.20, 0.12, False))
+        self.assertEqual(self.node.last_command, (-0.20, 0.20, False))
 
         accepted = self.node.last_command
         accepted_stamp = self.node.last_command_stamp_ns

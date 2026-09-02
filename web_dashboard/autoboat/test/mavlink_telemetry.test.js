@@ -503,7 +503,7 @@ test('bench command path is opt-in, bounded, paired, and strictly stamped', () =
 
     const clamped = harness.api.clampFcuBenchDemand(9, 9);
     assert.equal(clamped.steering, 0.2);
-    assert.equal(clamped.throttle, 0.12);
+    assert.equal(clamped.throttle, 0.2);
     assert.equal(harness.api.fcuBenchMessage(0, 0, 2), null);
 });
 
