@@ -931,12 +931,31 @@ so it must not be set by hand for W1, W2 or the Pi.
 
 Slowest to come up, so it goes first.
 
+`run-real-fcu` requires **ten** environment variables that have no defaults,
+plus `FCU_VRX_CORRELATED_OBSERVATION=1`, whose default of `0` it rejects. The
+rehearsal below hit them one restart at a time; the whole set is:
+
 ```bash
-cd ~/seal_ws/src/uvautoboat && source /opt/ros/jazzy/setup.bash && bash tools/fcu_to_vrx_workstation.sh run-real-fcu
+cd ~/seal_ws/src/uvautoboat && source /opt/ros/jazzy/setup.bash && FCU_VRX_LEFT_SERVO_CHANNEL=3 FCU_VRX_RIGHT_SERVO_CHANNEL=1 FCU_VRX_LEFT_PWM_MIN=800 FCU_VRX_LEFT_PWM_NEUTRAL=800 FCU_VRX_LEFT_PWM_MAX=2200 FCU_VRX_RIGHT_PWM_MIN=800 FCU_VRX_RIGHT_PWM_NEUTRAL=800 FCU_VRX_RIGHT_PWM_MAX=2200 FCU_VRX_MAX_THRUST=800.0 FCU_VRX_OBSERVER_STALE_SECONDS=5 FCU_VRX_CORRELATED_OBSERVATION=1 bash tools/fcu_to_vrx_workstation.sh run-real-fcu
 ```
+
+The channel and rail values must match what the bridge resolves from the flight
+controller. `3/1` and `800/800/2200` are what a previous run's own
+`PRESTART=PASS` marker recorded and what the rehearsal reproduced; confirm them
+against the current vehicle rather than assuming. Both rails must be equal, the
+two channels must differ and be in `1..16`, and `MAX_THRUST` must be a finite
+decimal above zero.
 
 Wait for `FCU_TO_VRX_WORKSTATION_PRESTART=PASS mode=run-real-fcu domain=77 ...
 relay=started relay_domain=43`. Do not start the Pi on this message alone.
+
+**W2 has a `120`-second fuse from that message.** `fcuvrx_wait_relay_ready`
+bounds on `FCUVRX_READY_TIMEOUT_SECONDS`, default `120`, and on expiry W2 exits
+`status=1` with `STOP: real-FCU RCOut relay did not become ready before the
+deadline`, tearing down VRX with it. The Pi must reach the point where it
+publishes relayed RCOut inside that window, which is after its whole gate
+sequence. Raise `FCU_TO_VRX_READY_TIMEOUT_SECONDS` before starting if the Pi
+sequence is expected to take longer.
 
 ### Terminal 2, workstation - W1, the real-FCU supervisor
 
@@ -953,13 +972,24 @@ No supervisor starts this node, and the `run-t3a` discovery guard requires
 `/real_fcu_command_feedback_capture`. Omitting it stops the Pi at line `1738`
 with `workstation rosbridge/rosapi/capture nodes were not discovered`.
 
+The `t3a` tier is **rejected without `--esc-threshold-calibration`**:
+`validate_capture_mode` raises `t3a capture tier requires ESC-threshold
+calibration`. The flag is accepted only for `t2b` and `t3a`.
+
 ```bash
-cd ~/seal_ws/src/uvautoboat && source /opt/ros/jazzy/setup.bash && ROS_DOMAIN_ID=43 ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET ROS_LOCALHOST_ONLY=0 python3 tools/real_fcu_command_feedback_capture.py t3a
+cd ~/seal_ws/src/uvautoboat && source /opt/ros/jazzy/setup.bash && ROS_DOMAIN_ID=43 ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET ROS_LOCALHOST_ONLY=0 python3 tools/real_fcu_command_feedback_capture.py t3a --esc-threshold-calibration
 ```
 
 It validates all three variables exactly against `EXPECTED_ENVIRONMENT` and
-refuses otherwise. The tier positional is `t2a`, `t2b` or `t3a` and must match
-the Pi's run mode.
+refuses otherwise. The tier positional must match the Pi's run mode.
+
+**This terminal is interactive, not fire-and-forget.** On readiness it prints
+`REAL_FCU_ESC_THRESHOLD_INPUT=READY commands='<left|right> <stopped|started|not-observed>'
+steering=-0.20..0.20 bracket=per-side-pwm release-Apply-before-input=true
+recent-active-grace=10s` and expects the operator to type those observations
+during the run. It needs a real interactive terminal; started without one it
+reaches `REAL_FCU_CAPTURE_READY=PASS` and then ends
+`REAL_FCU_CAPTURE_FINAL=FAIL`.
 
 ### Terminal 4, workstation - browser
 
@@ -980,6 +1010,18 @@ with the physical-declaration flags the chosen tier requires, run
 `bash tools/real_fcu_digital_twin_pi.sh run-t3a`, or `run-t2a` or `run`. The
 flag values are the operator's observation of physical state and are not
 recorded here.
+
+### Conflict guards and stray terminals
+
+`rfcu_ws_reject_conflicts` and `fcuvrx_reject_conflicts` both scan with
+`pgrep -af -- "$pattern"`. Any process whose argv merely mentions a pattern
+counts as a match, including a shell running a compound command that names one.
+The rehearsal reproduced this: a sweep command mentioning `rosbridge`, `gz sim`
+and similar made the very next preflight report
+`STOP: conflicting workstation process found` with no such process running, and
+the same preflight passed immediately when run on its own command line. Clear
+stray diagnostic terminals before the run, and if a conflict stop looks wrong,
+re-run the check by itself before believing it.
 
 ### Stop order - reverse, and it matters
 
@@ -1118,6 +1160,70 @@ re-isolate propulsion, then type the token.
 Stack teardown follows the start-order sheet in reverse: externally disarm
 first, stop W2, run the Pi closeout and Ctrl+C the Pi, then stop W1 last,
 because W1's stop marker is what lets the Pi finish.
+
+## Workstation dress rehearsal - 02/09/2026
+
+Terminals 1 to 3 of the run-sheet executed on the workstation at revision
+`90a9cdd` with no Pi and no flight controller, to prove the workstation half
+and the start order before the single full-stack attempt. Both supervisors do
+all of their own startup before they need the Pi, so the rehearsal reaches
+their waiting states.
+
+It found **five defects in the run-sheet as written**, every one of which would
+have cost time during the one attempt. All five are corrected above.
+
+| # | Defect | How it surfaced |
+| --- | --- | --- |
+| 1 | W2 needs ten environment variables; the sheet listed none | `STOP: FCU_VRX_LEFT_SERVO_CHANNEL is required`, then `STOP: FCU_VRX_OBSERVER_STALE_SECONDS is required` on the next attempt |
+| 2 | `run-real-fcu` needs `FCU_VRX_CORRELATED_OBSERVATION=1`, default `0` | `fcuvrx_validate_configuration` rejects the default |
+| 3 | The capture command was invalid | `t3a capture tier requires ESC-threshold calibration` |
+| 4 | The capture terminal is interactive, not fire-and-forget | it printed `REAL_FCU_ESC_THRESHOLD_INPUT=READY` expecting typed observations |
+| 5 | W2 carries a `120`-second fuse after `PRESTART=PASS` | it exited `status=1` with `STOP: real-FCU RCOut relay did not become ready before the deadline` |
+
+Defects 1 and 2 were found serially, one restart each, which is exactly the
+failure mode the rehearsal existed to move off the run day.
+
+### What passed
+
+With the correct environment, W2 reached
+`FCU_TO_VRX_WORKSTATION_PRESTART=PASS mode=run-real-fcu domain=77 ...
+mapping=3/1 rails=800/800/2200 ... relay=started relay_domain=43`, matching a
+previous run's own marker. VRX reported ready on `/clock`, `/wamv/pose` and both
+thruster topics, the observer started fail-closed, the pose baseline resolved on
+`sydney_regatta`, and the bridge and relay started.
+
+W1 reached `REAL_FCU_WORKSTATION_SERVICES=PASS ports=8002,9090
+address=127.0.0.1` and then its waiting state. The domain `43` graph showed
+exactly `/rosapi` and `/rosbridge_websocket`. The capture node reached
+`REAL_FCU_CAPTURE_READY=PASS tier=T3A subscriptions=5
+esc_threshold_calibration=true` before ending `FAIL` on absent flight-controller
+data, which is the correct outcome without a Pi.
+
+### Teardown
+
+W2 timed out on its own and stopped `relay`, `bridge`, `observer` and `vrx` with
+`FCU_TO_VRX_WORKSTATION_EXIT status=1 cleanup_rc=0`. W1 took `SIGINT` and
+exited `REAL_FCU_WORKSTATION_EXIT status=130 cleanup_rc=0` after stopping the
+dashboard and rosbridge. Afterwards: zero surviving simulator, MAVROS,
+rosbridge, dashboard or capture processes, ports `8002`, `9090` and `8080`
+released, worktree unchanged, and the workstation preflight passing again.
+
+### The conflict-guard false positive, demonstrated
+
+Immediately after teardown the preflight reported
+`STOP: conflicting workstation process found` while a process sweep showed none
+and the ports were free. The cause was `pgrep -af` matching the sweep command's
+own argv, which mentioned `rosbridge`, `gz sim` and similar. Re-running the same
+preflight on a clean command line passed. This had been raised earlier as a
+theoretical risk; it is now reproduced, and the caution is recorded in the
+run-sheet.
+
+### What the rehearsal does not cover
+
+The Hailo branch of W1 was not exercised: with `REAL_FCU_HAILO_PERSON_STOP=1`
+the supervisor blocks in `rfcu_ws_wait_hailo_detection` on
+`/perception/detections`, which is Pi-sourced. Nothing on the Pi side, and
+nothing requiring the flight controller, was exercised.
 
 ## Open
 
