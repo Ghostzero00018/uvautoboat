@@ -987,6 +987,138 @@ Externally disarm first, stop W2, initiate the Pi stop and closeout, then stop
 W1 last. W1's stop marker is what lets the Pi finish its closeout, so stopping
 W1 early strands the Pi mid-closeout.
 
+## T3a armed-run sheet
+
+Traced from `rfcu_pi_run` and the confirmation functions. Extends the
+start-order sheet above with where arming sits. The tier, the timing, the flag
+values and the go/no-go are the operator's; none is supplied here.
+
+### Where arming sits
+
+The helper cannot arm. The MAVROS plugin allowlist is `sys_status`, `param`,
+`global_position`, `imu`, `rc_io`, with no arming plugin, and line `1753` states
+`arming remains external; planned stop requires external disarm before Ctrl+C`.
+Arming is external at every point, after `REAL_FCU_T3A_READY=PASS`, and never a
+starting condition.
+
+### Starting state the gates require
+
+`rfcu_pi_wait_connected_disarmed` gates both the T0b probe at line `1688` and
+the full runtime at line `1698`, and its predicate is exact: `connected` must be
+`True` and `armed` must be `False`. A flight controller already armed when the
+supervisor starts fails there, before the bridge or command publisher exist.
+That is how the 21/08/2026 run ended, with `47` of `50` state samples connected
+and armed in `MANUAL`.
+
+So the run begins connected, **disarmed**, hardware safety ON and propulsion
+isolated, with propellers fitted, guarding installed and the exclusion zone
+clear. `RC_OVERRIDE_TIME` must already be inside `(0, 0.5]`.
+
+### The T3a flags replace the interactive prompts
+
+This differs from `run` and `run-t2a` and is easy to be caught by.
+`rfcu_pi_confirm_t3a_propulsion_enable` and
+`rfcu_pi_confirm_manual_safety_release` both short-circuit and return success
+immediately when the mode is `run-t3a`. In T2 they prompt for the exact tokens
+`PROPULSION_ENABLED_FCU_DISARMED_SAFETY_ON_GUARDING_INSTALLED_EXCLUSION_CLEAR`
+and `RELEASED_DISARMED`; in T3a the declaration was made up front by the ten
+approved flags and **the run does not stop to ask again**.
+
+A flag set to `1` for a condition that is not physically true therefore removes
+a gate that would otherwise have stopped the run.
+
+The gate requires ten names at `1` - `REAL_FCU_T0A_COMPLETE`,
+`REAL_FCU_T0B_APPROVED`, `REAL_FCU_T3A_APPROVED`, `REAL_FCU_START_DISARMED`,
+`REAL_FCU_SAFETY_ON`, `REAL_FCU_PROPELLERS_FITTED`,
+`REAL_FCU_HULL_RESTRAINED`, `REAL_FCU_MECHANICAL_GUARDING_INSTALLED`,
+`REAL_FCU_EXCLUSION_ZONE_CLEAR`, `REAL_FCU_PROPULSION_ISOLATED` - and three at
+`0`: `REAL_FCU_T2A_APPROVED`, `REAL_FCU_T2B_APPROVED`,
+`REAL_FCU_PROPELLERS_REMOVED`.
+
+`REAL_FCU_PROPULSION_ISOLATED=1` describes the **starting** state. Propulsion is
+enabled later, at the gate below, during the run.
+
+### The two external cues during the run
+
+Both are logged with `operator_action=external`, and in T3a they pass without
+prompting, so the log line is the cue:
+
+1. `REAL_FCU_T3A_PROPULSION_ENABLE=AUTHORIZED state=disarmed safety=ON
+   guarding=installed exclusion_zone=clear` - propulsion power goes on here,
+   while disarmed and with safety ON.
+2. `REAL_FCU_T3A_SAFETY_RELEASE=AUTHORIZED state=disarmed`, then `=WAITING
+   readiness=bridge-READY_DISARMED` - hardware safety is released here, while
+   still disarmed.
+
+The helper then requires a fresh `READY_DISARMED` after that release, at line
+`1731`, and workstation discovery, before it prints `REAL_FCU_PI_READY=PASS` and
+`REAL_FCU_T3A_READY=PASS ... propellers=fitted propulsion=enabled`.
+
+### Arm point
+
+After `REAL_FCU_T3A_READY=PASS` on the Pi and `REAL_FCU_WORKSTATION_READY=PASS`
+on W1. Arming is external, by QGroundControl or Herelink. The dashboard
+Hardware Safety reading should already read `RELEASED (suppression off)` and
+agree with the physical switch; a contradiction or a stuck `Unknown (stale)` is
+no observation.
+
+Demand then comes from the browser: tick the confirmation, hold
+`Hold to Apply RC Demand`, which publishes only while held.
+
+### Pi terminal - session persistence
+
+The Pi terminal can be an `ssh` session from the workstation or a terminal on
+the Pi's own desktop over Remmina. They are not equivalent for a run that ends
+in an interactive closeout.
+
+`rfcu_pi_start_child` launches every child as
+`( trap - INT QUIT; exec setsid "$@" ) >"$logfile" 2>&1 < /dev/null &`, so the
+children hold their own sessions with detached stdin and survive the loss of
+the parent terminal. The **supervisor** does not: it runs in that terminal. Over
+`ssh`, a dropped link `SIGHUP`s it mid-run, the closeout prompt at line `1433`
+never gets answered, and `rfcu_pi_cleanup` records
+`REAL_FCU_T3A_SAFE_CLOSEOUT=FAIL confirmation=missing-or-invalid` with
+`cleanup_rc=1`.
+
+An RDP desktop session keeps running on the Pi when the client disconnects, so
+Remmina removes that failure mode. Nothing in the helper reads `DISPLAY`,
+`WAYLAND_DISPLAY` or `xdg-user-dir`, so the desktop costs nothing.
+
+Three consequences for a Remmina run:
+
+- Paste the flag line rather than retyping it. Thirteen flags is a realistic
+  typo surface. It fails safe - a mistyped **name** leaves the intended variable
+  unset, it defaults to `0`, and `rfcu_pi_require_flag` stops the run - so the
+  cost is time rather than safety, which on a single-attempt run is still the
+  scarce thing. If the clipboard does not reach the Pi, Remmina `1.4.43` needs
+  `deny_screenshot_clipboard=false`, and the Pi's GNOME RDP needs NLA with
+  Automatic negotiation plus its own `grdctl` credentials rather than the system
+  password.
+- Do not close the Remmina window between arming and closeout. The closeout is
+  `read -r -t "$RFCU_PI_T3A_CLOSEOUT_TIMEOUT_SECONDS" -p` on the supervisor's
+  own terminal; if that window is gone the prompt cannot be answered and the
+  cleanup failure above is recorded.
+- Confirm `Ctrl+C` reaches the Pi terminal through the Remmina keyboard
+  settings before the run rather than during it, since the stop order depends
+  on it.
+
+### Closeout - this one does prompt
+
+`rfcu_pi_confirm_t3a_safe_closeout` reads with a timeout of
+`RFCU_PI_T3A_CLOSEOUT_TIMEOUT_SECONDS`, default `300`, and requires exactly:
+
+```text
+NEUTRAL_ESTOP_FCU_DISARMED_SAFETY_ON_PROPULSION_ISOLATED
+```
+
+Its prompt states the required order: release Apply to neutral, press E-Stop,
+externally disarm the flight controller, restore hardware safety ON, physically
+re-isolate propulsion, then type the token.
+
+Stack teardown follows the start-order sheet in reverse: externally disarm
+first, stop W2, run the Pi closeout and Ctrl+C the Pi, then stop W1 last,
+because W1's stop marker is what lets the Pi finish.
+
 ## Open
 
 ### Finding - the view-only Pi monitor trusts a stale safety sample
