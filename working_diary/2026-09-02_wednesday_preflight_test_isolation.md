@@ -1955,3 +1955,61 @@ The residual risk is stated plainly: this is a new sequencer, and tomorrow
 would be its first contact with a Pi and a flight controller. The three
 terminals it replaces still work exactly as they did today, and nothing about
 the run depends on the new file, so falling back costs only the paste.
+
+### Dress rehearsal against the real supervisors - 02/09/2026, evening
+
+The nine cases above prove the entry point's logic against stand-ins. What
+they cannot prove is whether the marker strings it waits for match what the
+real supervisors actually print. That is the failure that would strand an
+operator tomorrow, so it was rehearsed with no Pi and no flight controller.
+
+Run directory `real_fcu_full_stack_20260902_211002`.
+
+| Milestone | Result |
+| --- | --- |
+| Pre-check | no conflicting processes, ports `8002`, `9090`, `14555`, `14556` free |
+| Own process group | helper `115331`, calling shell `115280`, distinct as intended |
+| VRX prestart marker | matched at `20s` |
+| Real-FCU services marker | matched at `5s` |
+| Capture node | reached `REAL_FCU_CAPTURE_READY=PASS tier=T3A subscriptions=5` |
+| Teardown | VRX first then real-FCU, both `stopped cleanly`, `FULL_STACK_EXIT status=0` |
+| After | no survivors, no bound ports |
+
+All four marker strings match the real supervisors, which was the point.
+
+One correction to the rehearsal's own method: it planned to deliver the stop
+itself and its `kill` returned `1`, because the helper had already exited.
+So the rehearsal exercised the teardown, but not the operator-interrupt path
+that reaches it. That path is now covered by a case that holds a capture
+stand-in in the foreground and interrupts the helper under job control, which
+is what keeps `SIGINT` trappable.
+
+### The rehearsal found a real defect
+
+Without a Pi the capture node ended by itself, `REAL_FCU_CAPTURE_FINAL=FAIL`
+with `capture_runtime_error` leading eleven reasons. The helper treated that
+exactly as it treats an operator Ctrl+C and tore the whole stack down.
+
+On a run that matters this is wrong, and in the dangerous direction. The
+capture node can die on a runtime error while the boat is armed. Tearing down
+then takes the dashboard, and with it the emergency stop, away from the
+operator at the one moment they are most likely to need it. The three
+terminals this replaces do not behave that way: a capture that dies there
+leaves both supervisors and the dashboard running.
+
+An operator interrupt and a capture node ending on its own are now different
+events. The interrupt still stops the stack in the documented order. A capture
+node that ends by itself instead holds everything up, says so, and says the
+recording has ended and any further observation is not being captured. It then
+waits for the operator to bring the boat to a safe state and press Ctrl+C. A
+standard input with no terminal cannot deliver a Ctrl+C, so that case stops
+rather than holding forever, which is also what keeps the suite deterministic.
+
+Two cases added, `9` to `11`: an operator interrupt is recognised as one and
+stops in the documented order, and a capture node failing by itself neither
+stops anything nor is mistaken for an operator stop.
+
+The rehearsal predates this change, so the sequence it validated is the one up
+to and including teardown; what triggers that teardown changed afterwards. The
+teardown mechanics themselves were proven against the real supervisors and are
+untouched.

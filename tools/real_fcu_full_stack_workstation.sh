@@ -29,6 +29,7 @@ RFCUFS_W2_PGID=''
 RFCUFS_W1_PGID=''
 RFCUFS_MODE=''
 RFCUFS_TIER=''
+RFCUFS_OPERATOR_STOP=0
 
 # Vehicle mapping and rails. These are the values the previous run's own
 # PRESTART marker recorded for this boat: left thruster on SERVO3, right on
@@ -224,6 +225,17 @@ rfcufs_stop_supervisor() {
 # the Pi closeout runs, and W1 stops last. W1 is last because its stop marker
 # is what releases the Pi, and because stopping it kills the dashboard the
 # operator is still reading during the closeout.
+# An operator Ctrl+C is a request to stop the run. The capture node ending on
+# its own is not: it can die on a runtime error while the boat is still armed,
+# and tearing the stack down then would take the dashboard and its emergency
+# stop away from the operator at the worst possible moment. Only the first of
+# those two may proceed straight to teardown.
+rfcufs_on_interrupt() {
+  RFCUFS_OPERATOR_STOP=1
+  rfcufs_log 'operator stop requested; beginning the ordered stop'
+  rfcufs_cleanup
+}
+
 rfcufs_cleanup() {
   local incoming_rc=$?
   [ "$RFCUFS_CLEANING" -eq 0 ] || return "$incoming_rc"
@@ -344,7 +356,8 @@ rfcufs_main() {
   rfcufs_show_contract
   rfcufs_log "FULL_STACK_START mode=$RFCUFS_MODE tier=$RFCUFS_TIER run_dir=$RFCUFS_RUN_DIR"
 
-  trap rfcufs_cleanup INT TERM EXIT
+  trap rfcufs_on_interrupt INT TERM
+  trap rfcufs_cleanup EXIT
 
   # W2 first: it is the slowest to come up, and starting the simulator before
   # the dashboard means the dashboard is not left waiting on it.
@@ -418,10 +431,41 @@ EOF
   if [ "$RFCUFS_TIER" = t3a ]; then
     capture_command+=(--esc-threshold-calibration)
   fi
+  local capture_rc=0
   ROS_DOMAIN_ID=43 ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET ROS_LOCALHOST_ONLY=0 \
-    "${capture_command[@]}" || true
+    "${capture_command[@]}" || capture_rc=$?
 
-  rfcufs_log 'capture node exited; beginning the ordered stop'
+  # Reached only when the capture node ended without an operator interrupt:
+  # the interrupt handler tears down and exits rather than returning here.
+  cat <<EOF
+
+  ========================================================================
+  WARNING: the capture node exited on its own (status $capture_rc).
+
+  Nothing else has been stopped. The dashboard, its emergency stop and both
+  supervisors are still running, and the Pi is untouched. If the boat is
+  armed it is still armed.
+
+  Recording has ended, so any observation from here on is not being captured.
+
+  Bring the boat to a safe state first. Then press Ctrl+C here to stop the
+  workstation in the documented order.
+  ========================================================================
+
+EOF
+  rfcufs_log 'holding with the stack up; Ctrl+C stops it in the documented order'
+  local ignored=''
+  while [ "$RFCUFS_OPERATOR_STOP" -eq 0 ]; do
+    if ! read -r -t 30 ignored; then
+      # A terminal at end of file cannot deliver a Ctrl+C, so holding would
+      # never end. Anything else means the read simply timed out; keep holding.
+      if [ ! -t 0 ]; then
+        rfcufs_log 'no terminal on standard input; stopping now'
+        return 0
+      fi
+    fi
+  done
+  return 0
 }
 
 rfcufs_main "$@"

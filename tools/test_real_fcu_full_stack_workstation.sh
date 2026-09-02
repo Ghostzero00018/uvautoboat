@@ -90,6 +90,21 @@ STUB
   chmod +x "$path"
 }
 
+# A capture stand-in that keeps running, so a case can deliver an operator
+# interrupt while it is still in the foreground.
+write_long_capture_stub() {
+  local path="$1" order_file="$2"
+  cat >"$path" <<STUB
+#!/usr/bin/env python3
+import sys, time, pathlib
+with open("$order_file", "a") as handle:
+    handle.write("capture:" + " ".join(sys.argv[1:]) + "\n")
+print("CAPTURE_STUB_RUNNING", flush=True)
+time.sleep(600)
+STUB
+  chmod +x "$path"
+}
+
 write_capture_stub() {
   local path="$1" order_file="$2"
   cat >"$path" <<STUB
@@ -286,6 +301,81 @@ require_text "$OUTPUT" 'advisory, warns on the dashboard without stopping' \
   'advisory mode is not described in the contract'
 refute_text "$OUTPUT" 'a detection stops the stack' \
   'advisory mode was described as stopping the stack'
+rm -rf "$SANDBOX"
+pass_case
+
+# --- an operator interrupt stops the stack in the documented order ---------
+# Started under job control so the helper keeps a trappable SIGINT, which is
+# what an operator's Ctrl+C delivers. A plain background job would inherit
+# SIGINT ignored and this case would prove nothing.
+SANDBOX="$(make_sandbox)"
+ORDER="$SANDBOX/order.txt"
+: >"$ORDER"
+write_supervisor_stub "$SANDBOX/fcu_to_vrx_workstation.sh" \
+  'FCU_TO_VRX_WORKSTATION_PRESTART=PASS' 'w2' "$ORDER" 1
+write_supervisor_stub "$SANDBOX/real_fcu_digital_twin_workstation.sh" \
+  'REAL_FCU_WORKSTATION_SERVICES=PASS' 'w1' "$ORDER" 1
+write_long_capture_stub "$SANDBOX/real_fcu_command_feedback_capture.py" "$ORDER"
+RUNLOG="$SANDBOX/run.log"
+set -m
+( cd "$SANDBOX" && HOME="$SANDBOX/home" exec bash \
+    "$SANDBOX/real_fcu_full_stack_workstation.sh" run-t3a ) \
+  >"$RUNLOG" 2>&1 </dev/null &
+HELPER_PID=$!
+set +m
+WAITED=0
+while [ "$WAITED" -lt 60 ]; do
+  if grep -q 'CAPTURE_STUB_RUNNING' "$RUNLOG" 2>/dev/null; then break; fi
+  WAITED=$((WAITED + 1))
+  sleep 1
+done
+grep -q 'CAPTURE_STUB_RUNNING' "$RUNLOG" \
+  || fail_test 'the capture stand-in never reached the foreground'
+HELPER_PGID="$(ps -o pgid= -p "$HELPER_PID" 2>/dev/null | tr -d ' ')"
+[ -n "$HELPER_PGID" ] || fail_test 'the helper has no process group'
+kill -INT -- "-$HELPER_PGID" 2>/dev/null || true
+WAITED=0
+while [ "$WAITED" -lt 90 ]; do
+  if ! kill -0 "$HELPER_PID" 2>/dev/null; then break; fi
+  WAITED=$((WAITED + 1))
+  sleep 1
+done
+if kill -0 "$HELPER_PID" 2>/dev/null; then
+  kill -KILL -- "-$HELPER_PGID" 2>/dev/null || true
+  fail_test 'an operator interrupt did not stop the helper'
+fi
+OUTPUT="$(cat "$RUNLOG")"
+require_text "$OUTPUT" 'operator stop requested' \
+  'an operator interrupt was not recognised as one'
+refute_text "$OUTPUT" 'exited on its own' \
+  'an operator interrupt was mistaken for the capture node failing'
+FIRST_STOPPED="$(grep -E '^w[12]$' "$ORDER" | head -1)"
+LAST_STOPPED="$(grep -E '^w[12]$' "$ORDER" | tail -1)"
+[ "$FIRST_STOPPED" = 'w2' ] \
+  || fail_test "on an interrupt the VRX supervisor must stop first, got '$FIRST_STOPPED'"
+[ "$LAST_STOPPED" = 'w1' ] \
+  || fail_test "on an interrupt the real-FCU supervisor must stop last, got '$LAST_STOPPED'"
+rm -rf "$SANDBOX"
+pass_case
+
+# --- the capture node failing by itself does not tear the stack down -------
+SANDBOX="$(make_sandbox)"
+ORDER="$SANDBOX/order.txt"
+: >"$ORDER"
+write_supervisor_stub "$SANDBOX/fcu_to_vrx_workstation.sh" \
+  'FCU_TO_VRX_WORKSTATION_PRESTART=PASS' 'w2' "$ORDER" 1
+write_supervisor_stub "$SANDBOX/real_fcu_digital_twin_workstation.sh" \
+  'REAL_FCU_WORKSTATION_SERVICES=PASS' 'w1' "$ORDER" 1
+write_capture_stub "$SANDBOX/real_fcu_command_feedback_capture.py" "$ORDER"
+set +e
+OUTPUT="$(run_helper "$SANDBOX" run-t3a)"
+set -e
+require_text "$OUTPUT" 'exited on its own' \
+  'the capture node ending by itself was not reported as such'
+require_text "$OUTPUT" 'Nothing else has been stopped' \
+  'the hold does not say the stack is still up'
+refute_text "$OUTPUT" 'operator stop requested' \
+  'a capture failure was mistaken for an operator stop'
 rm -rf "$SANDBOX"
 pass_case
 
