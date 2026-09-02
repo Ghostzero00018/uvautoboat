@@ -1759,3 +1759,77 @@ bundle exercises them on hardware for the first time. It will not be stricter
 than the bundle it replaces in the normal path - see the correction and guard
 map above - so a `STOP:` line names a precondition that would have ended the
 run before this change too. Read it rather than working around it.
+
+## Run closeout and capture verdict - 02/09/2026
+
+This section closes the run recorded above and supersedes the last line of
+`Open`, which was written before the run and still said a run was what
+remained. The run happened. Both supervisors were stopped in the planned
+order and both exited cleanly.
+
+### Teardown
+
+W2 stopped first, then the Pi closeout, then W1 last so its stop marker
+could release the Pi:
+
+| Supervisor | Closing markers |
+| --- | --- |
+| W2 | `TEARDOWN=PASS order=relay,bridge,observer,vrx udp=14555-free twin_telemetry_udp=14556-free`, `EXIT status=0 cleanup_rc=0` |
+| W1 | `FINAL_STATE=PASS connected=true armed=false`, `STOP_MARKER=PASS topic=/real_fcu/workstation_stop`, `EXIT status=0 cleanup_rc=0` |
+
+Both `cleanup_rc=0`. A survivor sweep for `gz sim`, `gazebo`, `mavros_node`,
+`serve_dashboard`, `rosbridge` and the capture process returned nothing, and
+ports `8002`, `8080` and `9090` were all unbound afterwards. This is the first
+teardown of the day where both supervisors reached `status=0` with no manual
+cleanup.
+
+The Pi recorded `NEUTRAL_ESTOP_FCU_DISARMED_SAFETY_ON_PROPULSION_ISOLATED` in
+`evidence/t3a_safe_closeout.txt`. The Pi run directory
+`real_fcu_t3a_pi_20260902_180626` was copied to the workstation at
+`~/Desktop/pi_run_evidence/`, `59` files including `artifacts.sha256`.
+
+### What the capture recorded
+
+`real_fcu_capture_t3a_esc_threshold_20260902_180557`, `evidence/verdict.json`:
+
+| Field | Value |
+| --- | --- |
+| Span | `3558.7` s, `59m18s` armed |
+| Events | `106,339` total |
+| Per topic | `/command_ingress/status` `70,041`, `/mavros/rc/in` `14,020`, `/mavros/rc/out` `14,010`, `/command_ingress/rc_axes` `4,714`, `/mavros/state` `3,554` |
+| Invalid status | `0` |
+| Publisher binding | `pass=true`, observed `/real_fcu_rc_command_bridge_t3a` |
+| Guard source | `snapshot`, sha `5ea352bc3922` |
+| Final state | `EMERGENCY_STOP` latched, `hardware_safety=ENGAGED`, armed `false`, connected `true` |
+| Final measured | both servos `800`, both RC `1515` |
+
+`236` state entries with `115` `ACTIVE` and `116` `ARMED_NEUTRAL` alternations,
+opening `STATE_STALE` to `WAITING_DISARMED_NEUTRAL_RC` to `ARMED_BEFORE_READY`
+to `READY_DISARMED` and ending `EMERGENCY_STOP`. The alternation count is the
+throttle being driven up and returned to neutral, over and over, for an hour.
+Not one invalid status in `70,041` samples, and the publisher lock held for
+the whole run.
+
+### The threshold is not in the artifact
+
+`"calibration": {"left": null, "right": null}` and
+`"operator/esc_threshold": 0`. Zero observations were entered, so the run
+finalised `pass=false` with `calibration_left_observation_incomplete` and
+`calibration_right_observation_incomplete`.
+
+The `996` us / `0.15` measurement therefore exists only as prose in the
+section above. Nothing in the capture artifact carries it. Anyone reading
+`verdict.json` tomorrow will find nulls, and should not read that as the
+measurement having failed - the boat did start, it was observed, and the
+number was simply never typed into the calibration prompt during the run.
+
+This is the interface problem already recorded above, now with a concrete
+cost: an hour of armed running produced a `FAIL` verdict for a measurement
+that succeeded physically. The interface wants the observation entered live,
+mid-run, while the operator is watching propellers.
+
+### Advisory mode was not exercised
+
+`person_alert_advisory=false` and `person_alert_required=false` in the final
+status. The Hailo branch was not part of this run, so the advisory path built
+today is still deployed and unrun on hardware.
