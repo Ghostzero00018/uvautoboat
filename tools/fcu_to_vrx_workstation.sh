@@ -92,9 +92,13 @@ fcuvrx_log_error() {
   printf '%s\n' "$line" >&2
 }
 
+# Terminates. Returning here would leave 55 guards continued past inside their
+# own function: a failed PWM-rail or ROS-environment check would fall through to
+# the later checks and the function could still return success to a caller that
+# suppresses set -e. Exiting keeps every guard fail-closed by construction.
 fcuvrx_fail() {
   fcuvrx_log_error "STOP: $*"
-  return 1
+  exit 1
 }
 
 fcuvrx_usage() {
@@ -177,7 +181,7 @@ fcuvrx_validate_configuration() {
   fcuvrx_validate_channel FCU_VRX_RIGHT_SERVO_CHANNEL \
     "$FCU_VRX_RIGHT_SERVO_CHANNEL" || return 1
   [ "$FCU_VRX_LEFT_SERVO_CHANNEL" != "$FCU_VRX_RIGHT_SERVO_CHANNEL" ] \
-    || fcuvrx_fail 'left and right servo channels must be distinct' || return 1
+    || fcuvrx_fail 'left and right servo channels must be distinct'
 
   fcuvrx_validate_pwm_rail left "$FCU_VRX_LEFT_PWM_MIN" \
     "$FCU_VRX_LEFT_PWM_NEUTRAL" "$FCU_VRX_LEFT_PWM_MAX" || return 1
@@ -800,7 +804,7 @@ fcuvrx_check() {
   python3 -m unittest "$FCUVRX_SCRIPT_DIR/test_fcu_to_vrx_parameter_contract.py"
   python3 -m unittest "$FCUVRX_SCRIPT_DIR/test_fcu_to_vrx_evidence.py"
   fcuvrx_log \
-    'FCU_TO_VRX_WORKSTATION_CHECK=PASS shell_cases=30 python_tests=48 runtime=not-started'
+    'FCU_TO_VRX_WORKSTATION_CHECK=PASS shell_cases=32 python_tests=48 runtime=not-started'
 }
 
 fcuvrx_run() {

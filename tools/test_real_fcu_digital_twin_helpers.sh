@@ -2550,10 +2550,53 @@ GUARD_OUTPUT="$(bash -c '
   || fail_test "a failed ss inspection did not stop the preflight: $GUARD_OUTPUT"
 pass_case
 
-if bash -c 'source "$1"; rfcu_ws_fail probe; printf "RETURNED\n"' \
+# set +e is required: sourcing the helper turns on set -e, under which a
+# returning failure aborts this probe before the marker prints and the
+# assertion passes against a returning implementation - a vacuous test.
+if bash -c 'source "$1"; set +e; rfcu_ws_fail probe; printf "RETURNED\n"' \
     _ "$WORKSTATION_HELPER" 2>/dev/null | grep -q RETURNED; then
   fail_test 'rfcu_ws_fail returned to its caller instead of terminating'
 fi
+pass_case
+
+# The Pi runtime carries the same contract, and more of it: 123 of its guards
+# have code after them inside their own function, 13 in rfcu_pi_run itself, so a
+# returning failure could let a failed readiness or safety gate fall through to
+# the next run step. Sourcing the helper turns on set -e, which masks this in a
+# plain call path, so the probe reads the guard through an if.
+PI_GUARD_OUTPUT="$(bash -c '
+  source "$1"
+  if rfcu_pi_require_command rfcu_pi_absent_command_probe; then
+    printf "GUARD_FAIL_OPEN\n"
+  fi
+  printf "CONTINUED_PAST_GUARD\n"
+' _ "$PI_HELPER" 2>/dev/null || true)"
+[ -z "$PI_GUARD_OUTPUT" ] \
+  || fail_test "a failed Pi guard did not stop the runtime: $PI_GUARD_OUTPUT"
+pass_case
+
+# set +e is required: sourcing the helper turns on set -e, under which a
+# returning failure aborts this probe before the marker prints and the
+# assertion passes against a returning implementation - a vacuous test.
+if bash -c 'source "$1"; set +e; rfcu_pi_fail probe; printf "RETURNED\n"' \
+    _ "$PI_HELPER" 2>/dev/null | grep -q RETURNED; then
+  fail_test 'rfcu_pi_fail returned to its caller instead of terminating'
+fi
+pass_case
+
+# Exiting must not skip the closeout. The EXIT trap is installed before any
+# child starts, and neither rfcu_pi_cleanup nor the INT and TERM handlers may
+# reach a function that calls rfcu_pi_fail, or a failed guard inside the
+# closeout would abort the closeout itself.
+for pi_handler in rfcu_pi_cleanup rfcu_pi_on_interrupt rfcu_pi_on_term; do
+  pi_body="$(extract_function "$PI_HELPER" "$pi_handler")"
+  [ -n "$pi_body" ] || fail_test "missing Pi handler: $pi_handler"
+  case "$pi_body" in
+    *rfcu_pi_fail*)
+      fail_test "$pi_handler reaches rfcu_pi_fail, so a failed guard would abort the closeout"
+      ;;
+  esac
+done
 pass_case
 
 # The PASS marker must report the ports actually inspected. Both read one list.

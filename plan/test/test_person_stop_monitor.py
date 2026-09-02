@@ -14,7 +14,7 @@
 
 import json
 
-from plan.person_stop_monitor import PersonStopMonitor, detection_publisher_binding
+from plan.person_stop_monitor import detection_publisher_binding, PersonStopMonitor
 
 
 class _Logger:

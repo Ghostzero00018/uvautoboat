@@ -696,5 +696,50 @@ require_text "$RUN_BODY" \
   'run-real-fcu does not state the complete W2 -> Pi-closeout -> W1-stop-marker order'
 pass_case
 
+# The supervisor's guards must be fail-closed by construction, not by the
+# caller's shell options. fcuvrx_fail exits, so none of the 55 guards that have
+# code after them inside their own function can be continued past.
+GUARD_OUTPUT="$(bash -c '
+  source "$1"
+  if fcuvrx_require_command fcuvrx_absent_command_probe; then
+    printf "GUARD_FAIL_OPEN\n"
+  fi
+  printf "CONTINUED_PAST_GUARD\n"
+' _ "$SUPERVISOR" 2>/dev/null || true)"
+[ -z "$GUARD_OUTPUT" ] \
+  || fail_test "a failed guard did not stop the supervisor: $GUARD_OUTPUT"
+pass_case
+
+# set +e is required: sourcing the helper turns on set -e, under which a
+# returning failure aborts this probe before the marker prints and the
+# assertion passes against a returning implementation - a vacuous test.
+if bash -c 'source "$1"; set +e; fcuvrx_fail probe; printf "RETURNED\n"' \
+    _ "$SUPERVISOR" 2>/dev/null | grep -q RETURNED; then
+  fail_test 'fcuvrx_fail returned to its caller instead of terminating'
+fi
+pass_case
+
+# The check marker states its own suite sizes. They are literals, so they drift
+# silently the moment a suite grows; this pins them to what the suites report.
+# It runs after every pass_case, so CASE_COUNT is already final, and it is
+# deliberately not counted as a case: counting it would compare the marker
+# against a total that excludes the comparison itself.
+CHECK_BODY="$(extract_function fcuvrx_check)"
+MARKER_SHELL_CASES="$(sed -n 's/.*shell_cases=\([0-9]*\).*/\1/p' <<<"$CHECK_BODY")"
+MARKER_PYTHON_TESTS="$(sed -n 's/.*python_tests=\([0-9]*\).*/\1/p' <<<"$CHECK_BODY")"
+[ "$MARKER_SHELL_CASES" = "$CASE_COUNT" ] \
+  || fail_test "check marker says shell_cases=$MARKER_SHELL_CASES, suite has $CASE_COUNT"
+ACTUAL_PYTHON_TESTS=0
+for py_suite in test_servo_command_bridge_mapping.py \
+    test_fcu_to_vrx_parameter_contract.py test_fcu_to_vrx_evidence.py; do
+  py_output="$(python3 -m unittest "$SCRIPT_DIR/$py_suite" 2>&1 || true)"
+  py_count="$(sed -n 's/^Ran \([0-9]*\) test.*/\1/p' <<<"$py_output")"
+  [ -n "$py_count" ] \
+    || fail_test "could not read a test count from $py_suite"
+  ACTUAL_PYTHON_TESTS=$((ACTUAL_PYTHON_TESTS + py_count))
+done
+[ "$MARKER_PYTHON_TESTS" = "$ACTUAL_PYTHON_TESTS" ] \
+  || fail_test "check marker says python_tests=$MARKER_PYTHON_TESTS, suites ran $ACTUAL_PYTHON_TESTS"
+
 printf 'FCU-to-VRX workstation supervisor tests: PASS cases=%d runtime=not-started\n' \
   "$CASE_COUNT"

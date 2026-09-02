@@ -204,7 +204,7 @@ are the ports that must be free for each command.
 bash tools/fcu_to_vrx_workstation.sh check
 ```
 
-Expect `FCU_TO_VRX_WORKSTATION_CHECK=PASS shell_cases=30 python_tests=48
+Expect `FCU_TO_VRX_WORKSTATION_CHECK=PASS shell_cases=32 python_tests=48
 runtime=not-started`.
 
 ### Pipeline 3 - focused suites, for a dirty worktree
@@ -219,7 +219,7 @@ python3 tools/test_real_fcu_command_feedback_capture.py
 ( cd plan && python3 -m pytest -q test/test_person_stop_monitor.py )
 ```
 
-Expect `PASS cases=66`, `PASS cases=30`, `Ran 62 tests ... OK`,
+Expect `PASS cases=69`, `PASS cases=32`, `Ran 62 tests ... OK`,
 `Ran 37 tests ... OK`, `pass 96` with `fail 0`, and `37 passed`. The
 `plan` suite must be run from `plan/`; from the repository root its import
 fails. A whole-repository `pytest` run cannot collect at all, because
@@ -234,7 +234,7 @@ REAL_FCU_HAILO_PERSON_STOP=1 REAL_FCU_PROPELLERS_FITTED=true \
   bash tools/test_real_fcu_digital_twin_helpers.sh
 ```
 
-Expect `PASS cases=66`, identical to the clean-shell run. A different count, or
+Expect `PASS cases=69`, identical to the clean-shell run. A different count, or
 any output that is not the marker, means the isolation regressed.
 
 ### Pipeline 5 - integrity
@@ -354,16 +354,143 @@ its own cause. It now runs last, so a real defect is reported by the outer
 run's own case first, and it distinguishes an empty nested run - the genuine
 suppression signature - from a nested run that failed for some other reason.
 
+## Third change - the same class swept across the remaining helpers
+
+With the workstation helper repaired at `2a769d7`, every abort helper in the
+repository was checked rather than assumed. Five exist:
+
+| Helper | Verdict |
+| --- | --- |
+| `rfcu_ws_fail` | fixed at `2a769d7` |
+| `fcuvrx_fail` | same fault, fixed here |
+| `rfcu_pi_fail` | same fault, fixed on approval - see the fourth change |
+| `adj_fail` in the SITL adjudicator | accumulator, sets `ADJ_RESULT=1` by design |
+| `fail` in the health check | reporter, increments a counter; zero or-branch call sites |
+
+`tools/sitl_digital_twin_runner.sh` has no abort helper and uses `exit 1`
+directly in `25` places, so it was already fail-closed.
+
+### FCU-to-VRX supervisor
+
+`fcuvrx_fail` returned, and `55` of its guards have code after them inside their
+own function, so a failed PWM-rail or ROS-environment check fell through to the
+later checks in the same function. One site already carried a hand-applied
+`|| return 1` after the failure call - the fault was known and patched at one
+place out of `60`. `fcuvrx_fail` now exits, and that lone workaround was removed
+as redundant.
+
+Blast radius was checked the same way as before: `16` functions call it, none is
+consumed conditionally, `fcuvrx_cleanup` never calls it, and the EXIT, INT and
+TERM traps are unchanged, so cleanup still runs.
+
+Editing the supervisor made its checksum pin stale, which the suite caught
+immediately. The pin in `wiki/Live_Hailo_MAVLink_Dashboard_Testing.md` was
+updated to the new digest, and no other surface pins that file.
+
+Two cases were added, `30` to `32`: a failed guard cannot be continued past, and
+`fcuvrx_fail` does not return to its caller.
+
+### The check marker stated its own suite sizes as literals
+
+`FCU_TO_VRX_WORKSTATION_CHECK=PASS shell_cases=30 python_tests=48` was accurate
+but unverified, so it would have drifted silently the moment a suite grew - the
+same class as the port marker, one step earlier. A final assertion now compares
+both numbers against what the suites actually report. It caught the drift its
+own change created on the first run, and the marker now reads `shell_cases=32`.
+
+That assertion deliberately is not counted as a case and runs after every
+`pass_case`, so `CASE_COUNT` is final when compared; counting it would have
+measured the marker against a total excluding the comparison itself.
+
+Both changes were proved load-bearing against mutants. A whole-suite mutant run
+is masked by the checksum pin, which fires first on any edited supervisor, so
+each assertion was exercised directly: the returning mutant yields
+`CONTINUED_PAST_GUARD` where the real file yields nothing, and a marker reading
+`shell_cases=30` fails against a suite of `32`.
+
+### Repository lint
+
+`plan/test/test_person_stop_monitor.py:17` imported `PersonStopMonitor` before
+`detection_publisher_binding`, failing `flake8` with `I101`. The names are now
+in order. `plan` reports `67 passed, 1 skipped` with no failures; it was
+`1 failed, 66 passed` at `3c57fa0` and predates every change made today.
+
+### Not fixed, and why
+
+A whole-repository `pytest` run still cannot collect, because
+`control/test/test_copyright.py` and `plan/test/test_copyright.py` resolve to
+the same module name. `--import-mode=importlib` does not help: the failure comes
+from `launch_testing/pytest/hooks.py`, which calls `import_path` itself and
+bypasses the setting. The supported path is per-package testing, which works, so
+this is left alone and documented in the pipelines above rather than worked
+around by adding `__init__.py` files that would change ament test discovery.
+
+## Fourth change - the Pi runtime, on explicit approval
+
+`rfcu_pi_fail` carried the same fault and the largest instance of it: `123`
+guards had code after them inside their own function, `13` of those in
+`rfcu_pi_run` itself, so a failed readiness or safety gate could fall through to
+the next run step rather than stopping the run. It now exits.
+
+This file is the Pi-side runtime that drives the thrusters, so the change was
+cleared before being made rather than after:
+
+- `23` functions call `rfcu_pi_fail`; none is consumed conditionally anywhere in
+  the helper.
+- No call site sits inside a subshell or command substitution, where `exit`
+  would only leave the subshell and the guard would still be continued past.
+- The EXIT trap is installed in `rfcu_pi_run` before any child is started, so
+  every failure after that point still runs `rfcu_pi_cleanup`, which performs
+  the T3a safe-closeout gate and the final connected/disarmed capture.
+- `rfcu_pi_cleanup` is re-entry guarded by `RFCU_PI_CLEANING`, clears its own
+  EXIT trap and runs under `set +e`. That last point made the reachability check
+  necessary rather than nice to have: with `set -e` off inside the closeout, a
+  guard failing there would have been fail-open in the safety path itself.
+  Transitively, `rfcu_pi_cleanup` reaches `15` functions, `rfcu_pi_on_interrupt`
+  `4` and `rfcu_pi_on_term` `3`, and none of the `22` calls `rfcu_pi_fail`.
+
+Because the helper is a bundle member, `config/real_fcu_digital_twin_bundle.sha256`
+was regenerated. Its `tools/real_fcu_digital_twin_pi.sh` entry moved from
+`5c6fca19` to `43a4775f`; the other three entries are unchanged. The manifest
+gate caught the stale digest before the regeneration, which is the gate working.
+
+Three cases were added, `66` to `69`: a failed Pi guard cannot be continued past
+from a suppressing context; `rfcu_pi_fail` does not return to its caller; and
+none of the three closeout handlers reaches `rfcu_pi_fail`. The third is a
+standing guard on the clearance above, so a later edit that routes a guard into
+the closeout fails the suite instead of silently making the closeout abortable.
+
+Sourcing the helper turns on `set -e`, which masks this fault in a plain call
+path, so the guard probe reads through an `if` deliberately.
+
+### A vacuous assertion in all three suites
+
+The `does not return` probes were written as `source; <fail> probe; printf
+RETURNED`. Sourcing any of the three helpers enables `set -e`, under which a
+*returning* failure aborts the probe before the marker prints - so the assertion
+passed against a returning implementation and proved nothing. Confirmed against
+the mutants: all three reported PASSES where they should have failed.
+
+All three now run `set +e` after sourcing. Re-checked against the same mutants,
+each correctly reports RETURNED and fails, while the real helpers terminate and
+pass. The equivalent workstation and VRX assertions, written earlier today, had
+the same flaw and are fixed with them.
+
+### Verification
+
+Cases A and C were proved load-bearing against mutants of the Pi helper. A
+whole-suite mutant run is masked, as with the VRX checksum pin, because a
+scratchpad path trips a path-dependent assertion first, so each assertion was
+exercised directly. The returning mutant yields `CONTINUED_PAST_GUARD` where the
+real helper yields nothing, and a mutant whose `rfcu_pi_cleanup` calls
+`rfcu_pi_fail` is reported as reaching it.
+
 ## Open
 
 A current-revision SITL acceptance remains meaningful. The last accepted SITL
 revision predates `da6627e`, the hardware-safety badge commit `12236b5`, the
 isolation fix `3c57fa0` and this change, so no accepted SITL result covers the
 current bytes. Not started, and not authorised by this entry.
-
-A pre-existing flake8 failure also remains open and untouched:
-`plan/test/test_person_stop_monitor.py:17` reports `I101 Imported names are in
-the wrong order`. It is unrelated to any change made today.
 
 The deployed Pi bundle is still named for `da6627e` and predates the badge, the
 isolation fix and this change. A new bundle transfer and non-actuating

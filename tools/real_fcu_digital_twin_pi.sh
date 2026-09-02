@@ -94,9 +94,17 @@ rfcu_pi_log_error() {
   printf '%s\n' "$line" >&2
 }
 
+# Terminates. Returning here left 123 guards continued past inside their own
+# function, 13 of them in rfcu_pi_run itself, so a failed readiness or safety
+# gate could fall through to the next run step instead of stopping the run.
+# Exiting keeps every guard fail-closed regardless of caller context. The EXIT
+# trap is installed before any child starts, so rfcu_pi_cleanup still performs
+# the T3a safe-closeout gate and the final connected/disarmed capture; neither
+# it nor the INT and TERM handlers reach any function that calls this one, so
+# exiting cannot recurse into or abort the closeout.
 rfcu_pi_fail() {
   rfcu_pi_log_error "STOP: $*"
-  return 1
+  exit 1
 }
 
 rfcu_pi_usage() {
