@@ -752,9 +752,62 @@ only four surfaces in `tools/real_fcu_rc_command_bridge.py` may read the safety
 state, enforced by a whitelist test - and names the independent reader so the
 two are not confused for each other.
 
+## Correction - the Pi monitor staleness finding was wrong
+
+The finding recorded in the Open section at `2ba2183`, that
+`tools/pi_live_hailo_mavlink_dashboard.sh` can act on a stale safety sample, is
+withdrawn. It does not hold. No change was made to that file, and none is
+needed.
+
+The claim was that `hardware_safety_is_on()` reads `latest_sys_status` with no
+staleness check, so a stopped `/mavros/sys_status` stream would let the last
+sample answer indefinitely and reach `restored_safe_state()`. The first half is
+true: that method applies no bound of its own. The conclusion does not follow,
+because every call site is already guarded one level up.
+
+`/mavros/sys_status` is a required subscription at line `2216`, so it is part of
+`self.required_topics`, `record_required` timestamps it in `last_seen` on every
+message, and `stale_topic` reports any required topic older than
+`self.stale_seconds`.
+
+`restored_safe_state()` has exactly three call sites, and all three sit behind
+that check:
+
+- line `2297`, `WAIT_BASELINE`: the transition to `READY` is a short-circuit
+  `and` whose second term is `self.stale_topic(now) is None`, evaluated before
+  `restored_safe_state()`;
+- line `2313`, `FINALIZING`, and line `2317`, `COMPLETE`: both are reachable
+  only past `stale = self.stale_topic(now)` at line `2302`, which calls
+  `abort_seen("REQUIRED_TOPIC_STALE", stale)` and returns when anything is
+  stale.
+
+So a stalled `/mavros/sys_status` aborts the observation before the safety
+reading is consulted at all. The monitor is fail-closed on this path; the guard
+simply lives in the caller rather than in the reader.
+
+The boolean case is also not reachable. `sensors_enabled` arrives as a `uint32`
+field on a MAVROS `SysStatus` message and is an `int` in `rclpy`, never a
+`bool`.
+
+What went wrong in the review: the reader was inspected and its missing guard
+generalised into a system property without tracing its callers. The bridge
+needed its own staleness rejection because it publishes a display value on
+every status message with no equivalent caller-side abort; this monitor does not
+share that shape, and the comparison between them was assumed rather than
+checked. A finding about a safety helper should not have been recorded before
+its call sites were traced.
+
+No repair, no re-pin: `tools/pi_live_hailo_mavlink_dashboard.sh` is unchanged
+and still matches its runbook pin at `0d3f6d1b` and `95,720` bytes.
+
 ## Open
 
 ### Finding - the view-only Pi monitor trusts a stale safety sample
+
+**WITHDRAWN 02/09/2026 - see "Correction - the Pi monitor staleness finding was
+wrong" above. Every call site is guarded by `stale_topic`, which aborts on a
+stale `/mavros/sys_status` before the safety reading is consulted. The entry
+below is retained as written; do not act on it.**
 
 Found while writing the documentation above, not repaired.
 `tools/pi_live_hailo_mavlink_dashboard.sh` reads the same
