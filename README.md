@@ -124,6 +124,13 @@ Start, Resume, Go Home, Reset, and Emergency Stop ask you to confirm before acti
 
 ---
 
+## 🛥️ Real Hardware
+
+The simulation quick start above does not apply to the real boat. The Raspberry
+Pi 5 + Cube Orange+ digital twin, with Hailo person detection and the same
+dashboard, runs from one command per machine; see the
+[Real-FCU Digital Twin Runbook](wiki/Real_FCU_Digital_Twin_Runbook.md).
+
 ## 🩺 Health Check
 
 ```bash

@@ -74,7 +74,7 @@ The helper retains its finite `120`-second evidence window and uses
 link-down line does not bypass the finite heartbeat deadline. HEFs, calibration data,
 the Hailo runtime tree, and generated logs remain outside this repository.
 
-Direct helper calls default to `HAILO_LOCAL_DISPLAY=0` and retain `--no-display`.
+Direct helper calls default to `HAILO_LOCAL_DISPLAY=0` and retain `--no-display`. (These variables belong to the older tool on this page; the T3a stack's Pi window is `REAL_FCU_HAILO_LOCAL_DISPLAY=1`, see the runbook above.)
 When local display is enabled, `HAILO_LOCAL_WINDOW_MODE` defaults to `resizable`.
 The tracked supervisor defaults to `HAILO_LOCAL_DISPLAY=1` and
 `HAILO_LOCAL_WINDOW_MODE=resizable`, and keeps the normal display path.
@@ -426,7 +426,7 @@ encoding of each configured command endpoint. The next adjacent float32,
 materially over-limit steering or throttle, and a tiny negative throttle remain
 rejected without replacing the last accepted command. An enabled endpoint also
 reaches the paired RC override.
-`max_steering=0.20` and `max_throttle=0.12` are unchanged. The focused bridge
+`max_steering=0.20` and `max_throttle=0.12` are unchanged. (Forward note 03/09/2026: the throttle ceiling was raised to `0.20` on 02/09/2026 on operator specification, after the ESC start threshold was measured; see [Real-FCU Digital Twin Runbook](Real_FCU_Digital_Twin_Runbook).) The focused bridge
 suite passes `36` tests, but the repair is offline-only until the repaired
 revision passes SITL and is deployed with its regenerated bundle manifest.
 
@@ -1107,6 +1107,8 @@ disarm and restored hardware safety. Any recorder abort, missing READY event,
 mismatched value or late/missing stage fails adjudication.
 
 #### Start and stop order
+
+> This order belongs to the older view-only stack on this page. The real-FCU T3a stack started from `tools/real_fcu_full_stack_workstation.sh` starts W2 first and has its own stop order; see [Real-FCU Digital Twin Runbook](Real_FCU_Digital_Twin_Runbook).
 
 Start `W1` (`tools/live_dashboard_preflight.sh run`), then `W2`
 (`tools/fcu_to_vrx_workstation.sh run`), then the Pi. The order is not

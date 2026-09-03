@@ -47,6 +47,16 @@ The **Modular (Perception–Planner–Controller)** three-node pipeline is the a
 
 ---
 
+## Real-Hardware Path (03/09/2026)
+
+On the real boat the only actuator path is dashboard demand on
+`/command_ingress/rc_axes` into the Pi's RC command bridge, which holds the RC
+override, the rails, the parameter guard and every interlock; the VRX
+simulator follows the measured outputs rather than being driven. The Hailo-8L
+detector publishes a person alert that, in advisory mode, warns on the
+dashboard without stopping. Procedure, markers and evidence:
+[Real-FCU Digital Twin Runbook](Real_FCU_Digital_Twin_Runbook).
+
 ## High-Level Data Flow
 
 ```text

@@ -1,5 +1,7 @@
 # Pi Hailo COCO-Overlay Demo — Build & Run Procedure
 
+> **Status 03/09/2026:** the overlay pipeline from this demo runs inside the T3a digital twin; the T3a Pi helper generates its own wrapper and opens the local window with `REAL_FCU_HAILO_LOCAL_DISPLAY=1`. See [Real-FCU Digital Twin Runbook](Real_FCU_Digital_Twin_Runbook).
+
 Reproducible procedure for the Raspberry Pi 5 + Hailo-8L **live object-detection
 overlay pipeline**: `D435I RGB -> HailoRT NMS post-process -> COCO box overlay ->
 display / save`. It is proven end to end with a stock COCO `yolov11n` model, so

@@ -1,5 +1,7 @@
 # Pi 5 ↔ Flight Controller Bring-up — Smoke-Test Procedure
 
+> **Status 03/09/2026:** the serial link this test verifies is now exercised daily by the T3a stack. Note for a fresh boot: `cat /dev/ttyAMA0` reads at the default rate and prints nothing while the link is fine; see the runbook's preflight section. [Real-FCU Digital Twin Runbook](Real_FCU_Digital_Twin_Runbook).
+
 > **Status:** bring-up scaffolding only. This procedure confirms the physical Pi 5 ↔ flight-controller serial link works and that one IMU stream is decoded. **It is not the production telemetry path** — production uses `mavros2` (the ROS 2 port of MAVROS), per [Roadmap §1.1](Roadmap#11-scope-clarifications-locked-30042026).
 >
 > **Owner:** intern bring-up notes. Captured 30/04/2026 from procedural commands shared by the team for first-light verification when the Pi 5 lands at the bench.

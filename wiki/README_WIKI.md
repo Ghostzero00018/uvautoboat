@@ -24,6 +24,8 @@ The following pages are published to the wiki by `scripts/sync_wiki.sh`:
 | **RealSense_Dashboard_Testing.md** | Camera-only procedure for showing the Pi 5 RealSense feed in the workstation dashboard, with loopback-only browser services and explicit non-goals |
 | **YOLO_Dataset_Plan.md** | Object-detection dataset plan for Pi 5 RealSense frames, workstation GPU training, NCNN export, and Pi-side validation gates |
 | **Hailo_HAT_Workstream.md** | Hailo AI HAT+ 13 TOPS / Hailo-8L accelerator branch: version and runtime pin sheet, proven runtime baseline, host-side decode contract, and next integration gates |
+| **Real_FCU_Digital_Twin_Runbook.md** | Operator runbook for the real-FCU digital twin: Pi 5 + Cube Orange+ + Hailo-8L, one command per machine, start/stop order, evidence, verdict reading, ESC reference, advisory mode, Pi window, bundle governance |
+| **Live_Hailo_MAVLink_Dashboard_Testing.md** | Older two-command view-only live procedure (`live_dashboard_preflight.sh` + `pi_live_hailo_mavlink_dashboard.sh`) and its acceptance records |
 | **MP_QGC_Update_Procedures.md** | Host-local update workflow for Mission Planner (under Mono on Linux) + QGroundControl (AppImage), including the SkiaSharp/libdl fix re-apply step after MP updates |
 | **VRX_Fork_Migration.md** | Repoint guide for teammates with a pre-06/05/2026 VRX checkout from `osrf/vrx` to the fork `Ghostzero00018/vrx` branch `autoboat/main` |
 | **Common_Issues.md** | Troubleshooting guide |

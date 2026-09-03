@@ -4,6 +4,10 @@ Get AutoBoat running in 5 minutes! This guide assumes you've already completed t
 
 ---
 
+> **Real hardware?** This page is the simulator. The Pi 5 + Cube Orange+
+> digital twin runs from one command per machine; see
+> [Real-FCU Digital Twin Runbook](Real_FCU_Digital_Twin_Runbook).
+
 ## Two-Terminal Quick Start
 
 The fastest way to get AutoBoat running.

@@ -1,5 +1,7 @@
 # Hailo HAT Workstream Memo
 
+> **Status 03/09/2026:** the accelerator is in service on the real boat - live person detection in the T3a digital twin, images on the dashboard and in a resizable Pi window, advisory mode proven with `96` detections against `0` stops. See [Real-FCU Digital Twin Runbook](Real_FCU_Digital_Twin_Runbook).
+
 This memo is the planning home for the Hailo accelerator branch: the durable
 version constraints, OS / runtime gate, artifact pin sheet, runtime baseline,
 and next integration gates. Day-by-day evidence lives in the dated

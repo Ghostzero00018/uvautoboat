@@ -569,6 +569,9 @@ Status row in §3 Phase 5 status table now records Path A landed 05/05/2026 and 
    justified. A threshold measurement remains a separately approved,
    propellers-removed calibration with correlated demand, RC-input and
    servo-output capture.
+   *Forward note 03/09/2026: measured since, propellers fitted - break-away
+   about `14 %` of the rail, `996` us at throttle `0.15`; ceiling `0.20` since
+   02/09/2026. See [Real-FCU Digital Twin Runbook](Real_FCU_Digital_Twin_Runbook).*
 
    **Later 31/08/2026 closure:** clean revision
    `bba195b19a0f06a874bfbcbcbbd1621524cbce60` passed the complete supervised

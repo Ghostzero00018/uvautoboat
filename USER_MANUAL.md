@@ -180,6 +180,7 @@ uvautoboat/
 | [YOLO Dataset Plan](wiki/YOLO_Dataset_Plan.md) | Object-detection dataset plan for Pi 5 RealSense frames, workstation training, NCNN export, and Pi validation |
 | [Pi 5 Bring-up Smoke Test](wiki/Pi5_Bringup_Smoke_Test.md) | Manual Pi 5 serial/MAVProxy smoke-test procedure before MAVROS integration |
 | [Hailo HAT Workstream Memo](wiki/Hailo_HAT_Workstream.md) | Hailo AI HAT+ / Hailo-8L accelerator branch notes and next gates |
+| [Real-FCU Digital Twin Runbook](wiki/Real_FCU_Digital_Twin_Runbook.md) | Operator runbook for the real flight-controller digital twin: one command per machine, start and stop order, evidence, verdict reading, reference figures (03/09/2026) |
 | [MP + QGC Update Procedures](wiki/MP_QGC_Update_Procedures.md) | Host-local Mission Planner and QGroundControl update procedure |
 | [Dashboard Security](wiki/Dashboard_Security.md) | Security posture, known vulnerabilities, mitigations |
 | [Node Naming Refactor Plan](wiki/Node_Naming_Refactor_Plan.md) | Record of the functional-naming rename |

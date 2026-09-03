@@ -597,3 +597,52 @@ for by name.
 Added to the carried open items. The day's Board row states the stop as clean
 from the entry point's view, which it was; this section is the correction from
 the Pi's view.
+
+## Evening session - the stop-path fixes and the first docs batch
+
+### Fixes, workstation-side, no bundle change
+
+`rfcu_ws_publish_stop_marker` now publishes `--times 5 --rate 2` with the
+subscriber wait kept, so a Pi reader that completes its match late still
+receives a marker; the pre-existing argv pin was updated to the burst form and
+a new case asserts the burst and the absence of `--once`, proved against a
+mutant. The entry point's operator block now puts the dashboard E-stop before
+Ctrl+C, its closeout pause names the Pi line to wait for, and the prompt
+instruction is logged as well as prompted, because `read -p` shows nothing
+when standard input is not a terminal. Helper suite `82` to `83`, wrapper
+suite `15` with three new assertions. Verification is tomorrow's first run.
+
+### Docs
+
+New page `wiki/Real_FCU_Digital_Twin_Runbook.md`, `271` lines: what runs
+where, preflight including the fresh-boot UART caveat, start with the Pi
+command and the declarations named, READY markers, dashboard, the corrected
+stop order, evidence layout and copy-back, how to read the verdict, reference
+figures including the ESC table, advisory mode, the Pi window, bundle
+governance with the regeneration, transfer and certification recipes, and the
+known limits. Registered in `Home`, `README_WIKI` (which also gained the
+missing row for the older live-testing page) and `USER_MANUAL`.
+
+Corrected in place, forward notes rather than rewrites where the text is
+dated: the older runbook's `max_throttle=0.12`, its start-order section now
+labelled as the older tool's, its display-variable paragraph; the dashboard
+README gained a current-procedure section ahead of the older one and its
+`0.12` verdict text; `README.md` gained a real-hardware pointer; Board's
+Active System table gained the real-FCU twin; the props-removed calibration
+sentences in Board and Roadmap carry the measured result; Quick Start, System
+Overview and the three Hailo pages point at the runbook with a dated status.
+
+Not done tonight: Board's `300`-line Next Priorities rewrite and the Roadmap
+status-table summary rows. Both are on the 04/09 pre-diary list.
+
+### The auto-move idea
+
+Operator proposal: a dashboard function that holds throttle above the
+break-away for five seconds, then adds steering for five seconds. Assessment
+given: yes, as **hold-to-run** - the operator holds one button, the dashboard
+publishes the scripted profile, release at any instant is neutral, so the
+bridge's deadman and every interlock stay exactly as they are. Dashboard-only,
+no bridge or bundle change, about half a day with tests. Suggested figures
+`0.17` to `0.18` throttle inside the `0.20` ceiling, steering `±0.10` on top.
+Scheduled after tomorrow's verification run; the internship ends 10/09/2026.
+

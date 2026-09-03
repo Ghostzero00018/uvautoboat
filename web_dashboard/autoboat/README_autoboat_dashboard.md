@@ -269,7 +269,19 @@ Then open **<http://localhost:8002>**.
 > `delay_between_messages` to `0.0`; the simulation command keeps it explicit.
 > Do NOT open `index.html` directly as a file (`file://`). Serve it via HTTP for WebSocket to work.
 
-### Real-Hardware View-Only Diagnostic
+### Real-FCU Digital Twin (current procedure)
+
+The dashboard's real-hardware mode as run on 02/09 and 03/09/2026 is the
+real-FCU digital twin: one command on the workstation,
+`tools/real_fcu_full_stack_workstation.sh run-t3a`, one on the Pi, then this
+dashboard at `http://127.0.0.1:8002/` with the bench-control URL printed by
+the workstation supervisor. It carries the `0.20` throttle ceiling, advisory
+person detection (`REAL_FCU_PERSON_ALERT_ADVISORY=1`: a detection raises the
+badge and stops nothing) and the optional Hailo window on the Pi desktop.
+Follow [Real-FCU Digital Twin Runbook](../../wiki/Real_FCU_Digital_Twin_Runbook.md);
+the section below describes the older view-only procedure.
+
+### Real-Hardware View-Only Diagnostic (older procedure)
 
 Do not use the simulation one-click launcher for live Hailo/MAVROS testing.
 Follow [Live Hailo and MAVROS Dashboard
@@ -383,7 +395,7 @@ the session manifest and verdict.
 For each side, the verdict selects the highest stopped-output PWM and requires
 a later terminal observation at higher requested throttle and strictly higher
 delivered per-side PWM. `not-observed` is accepted only at the governed
-`max_throttle=0.12`; it means no onset was observed within that bounded range,
+`max_throttle` ceiling, `0.12` when this was written and `0.20` since 02/09/2026; it means no onset was observed within that bounded range,
 not a measured start threshold. The ordinary T2a/T2b verdict behavior is
 unchanged, and calibration still requires the complete demand-enabled
 bridge-state sequence, E-Stop and final connected/disarmed `MANUAL` evidence.

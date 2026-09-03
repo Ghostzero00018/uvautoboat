@@ -513,6 +513,7 @@
 | System | Architecture | Sensors | Features |
 |--------|--------------|---------|----------|
 | **AutoBoat Modular** | Modular (Perception + Planner + Controller) | 3D PointCloud | A\* path planning, simple anti-stuck, runtime config, web dashboard + camera, waypoint persistence |
+| **Real-FCU Digital Twin** (03/09/2026) | Pi 5 bridge to Cube Orange+ / ArduRover 4.6.3, workstation dashboard, VRX following real outputs | GPS, IMU, RC, Hailo-8L camera | Hold-to-apply demand with parameter guard, advisory person detection, Hailo images on dashboard and Pi desktop, one command per machine; see `wiki/Real_FCU_Digital_Twin_Runbook.md` |
 
 > **Note:** The integrated AutoBoat monolith has been deprecated and moved to `legacy/`. Use the modular system.
 
@@ -1118,6 +1119,10 @@ The whole repo is expected to run on the Pi 5. Long-term (Phase 5.2+): QGC and t
    `MOT_THR_MIN` value was raised; any threshold measurement remains a
    separately approved, propellers-removed calibration with correlated command
    and PWM capture.
+   *Forward note 03/09/2026: measured since, propellers fitted, on the armed
+   runs of 02/09 and 03/09/2026 - break-away about `14 %` of the rail, `996` us
+   at throttle `0.15`; the dashboard ceiling was raised to `0.20` on 02/09.
+   See the Real-FCU Digital Twin Runbook.*
 
    **Later 31/08/2026 closure:** clean revision
    `bba195b19a0f06a874bfbcbcbbd1621524cbce60` passed the complete supervised
