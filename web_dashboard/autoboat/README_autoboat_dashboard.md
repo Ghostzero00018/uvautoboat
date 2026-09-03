@@ -224,6 +224,20 @@ and page hiding, so moving focus with Tab cannot leave its interval active. The
 first-run onboarding backdrop is visual only and cannot intercept pointer
 events; its card remains interactive above the page.
 
+**Auto move (03/09/2026).** Beside Hold to Apply, `Hold to Run Auto Move`
+publishes a bounded scripted maneuver on the same guarded path: straight at a
+configured throttle for a set number of seconds, then the same throttle with
+steering to a chosen side for a set number of seconds, then it ends itself
+with the usual disabled frames. Its inputs are local to the page, not ROS
+parameters. Throttle is bounded to `0.15` to `0.20`, the measured ESC
+break-away to the ceiling; releasing the button, the E-stop, lost readiness or
+a bridge status older than `500` ms end it as they end a plain hold. Nine
+tests in `test/mavlink_telemetry.test.js` cover the profile, the frames, the
+self-ending, release, gating, refusal below break-away, the side sign, E-stop
+and stale status. Not yet run on hardware; see the Real-FCU Digital Twin
+Runbook.
+
+
 On 17/07/2026, two runs from the clean, pushed workstation checkout on
 `IoT IMT Nord Europe` proved six-topic arrival and automatic rate measurement;
 both had operator-confirmed combined Hailo and MAVLink browser output.

@@ -131,6 +131,19 @@ Confirm Hardware Safety agrees with the physical switch; `Unknown (stale)` is
 not a reading. Arming is external and the operator's. HOLD applies demand only
 while held; release is neutral within a frame.
 
+**Auto move** (added 03/09/2026 evening, not yet run on hardware). A second
+hold-to-run button on the bench panel publishes a bounded scripted maneuver
+through the same guarded path as the sliders: straight at the configured
+throttle for `1` to `10` s, then the same throttle with steering to the chosen
+side for `1` to `10` s, then it ends itself with the ordinary release frames.
+Throttle must be between `0.15`, the measured break-away, and the `0.20`
+ceiling; steering magnitude `0.01` to `0.20`; the side selector maps onto the
+FCU mixer's sign and says so. Release at any instant, E-stop, loss of
+readiness, or a bridge status older than `500` ms all end it exactly as they
+end a plain hold. Nothing changes on the Pi or in the bridge; the capture
+records the frames like any other demand. Defaults `0.17`, `5` s, right,
+`0.10`, `5` s.
+
 ## 5. Stop, in this order
 
 1. Press E-stop on the dashboard. The capture node ends at the next step, and

@@ -646,3 +646,37 @@ no bridge or bundle change, about half a day with tests. Suggested figures
 `0.17` to `0.18` throttle inside the `0.20` ceiling, steering `±0.10` on top.
 Scheduled after tomorrow's verification run; the internship ends 10/09/2026.
 
+### Auto-move implemented, dashboard only
+
+Confirmed from the bridge source before writing anything: `_command_cb`
+checks frame id, a monotonic stamp, two axes and one button, clamps each axis
+to its ceiling and honours the E-stop latch. No slew, ramp or frame-to-frame
+rule, so a scripted profile is just successive frames, and the hold timer
+already publishes one every `50` ms. Nothing on the Pi, nothing in the bridge,
+no bundle transfer.
+
+`app.js`, inside the temporary live-view region so the harness sees it: a
+pure profile function (straight, then turn, then `null`), a config reader with
+the bounds, a demand source that reads the profile while a maneuver is active
+and the sliders otherwise, and `startFcuBenchAutoMove`, which is
+`startFcuBenchHold` with the demand source swapped. When the profile returns
+`null` the tick's publish fails and the ordinary release path runs, so the
+maneuver ends with the same three disabled frames as a released hold. Every
+stop path already routes through `stopFcuBenchHold`, which now also forgets
+the profile. `index.html`: a fieldset of five inputs and a second hold-to-run
+button with the same gating as HOLD. The inputs are page-local, not ROS
+parameters, so the launch-file mirror rule does not apply.
+
+Nine tests, dashboard suite `101` to `110`. Two proved load-bearing against
+mutants: a release that no longer forgets the profile fails the release test,
+and a profile that never ends fails the self-ending test. Two harness lessons
+on the way: objects created inside the `vm` context carry that realm's
+prototypes and fail `deepStrictEqual` against test literals until flattened,
+and advancing the fake clock without feeding a bridge status trips the
+dashboard's own `500` ms freshness guard, which is the correct behaviour and
+is now a test of its own: a bridge that goes quiet mid-maneuver ends it within
+the freshness limit.
+
+Not run on hardware. First use is after tomorrow's verification run, with the
+operator's declarations and a restrained hull.
+
