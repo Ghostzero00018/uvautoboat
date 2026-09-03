@@ -661,10 +661,18 @@ if not (
 ' "$1"
 }
 
+# A short burst rather than a single message. --wait-matching-subscriptions
+# returns when this publisher counts a match, which can be before the Pi's
+# VOLATILE reader has completed its side of the reliable match; a lone message
+# sent then is not retained for it, and this process exits at once. On
+# 03/09/2026 the Pi sat at its marker wait after W1 had logged PASS, until the
+# marker was republished by hand. Five messages over about two seconds give a
+# late-matching reader one it can receive; the Pi's reader is --once and exits
+# on the first, so its single-document check is unaffected.
 rfcu_ws_publish_stop_marker() {
   local command_timeout=$((RFCU_WS_READY_TIMEOUT_SECONDS + 5))
   timeout "$command_timeout" \
-    ros2 topic pub --once --wait-matching-subscriptions 1 \
+    ros2 topic pub --times 5 --rate 2 --wait-matching-subscriptions 1 \
       --max-wait-time-secs "$RFCU_WS_READY_TIMEOUT_SECONDS" \
       --qos-history keep_last --qos-depth 1 \
       --qos-reliability reliable --qos-durability volatile \

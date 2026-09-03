@@ -321,13 +321,20 @@ rfcufs_cleanup() {
     cat <<EOF
 
   W1 is still running, so the dashboard is still up.
-  Complete the Pi closeout now, in the Pi terminal.
-  W1 stops last: its stop marker is what releases the Pi.
+  Complete the Pi closeout now, in the Pi terminal: Ctrl+C there, do the
+  physical steps it lists, type its closeout token.
+  W1 stops last: its stop marker is what releases the Pi, and the Pi can only
+  receive it once it has printed this exact line:
+
+      waiting for workstation operator stop before bridge shutdown
 
 EOF
+    # Logged as well as prompted: read -p shows its prompt only on a terminal,
+    # and this instruction belongs in the log either way.
+    rfcufs_log "Press Enter ONLY AFTER the Pi has printed that line (or wait ${RFCUFS_CLOSEOUT_PROMPT_SECONDS}s)"
     local reply=''
     if read -r -t "$RFCUFS_CLOSEOUT_PROMPT_SECONDS" \
-        -p "  Press Enter once the Pi is at its closeout wait (or wait ${RFCUFS_CLOSEOUT_PROMPT_SECONDS}s): " reply; then
+        -p "  Press Enter ONLY AFTER the Pi has printed that line (or wait ${RFCUFS_CLOSEOUT_PROMPT_SECONDS}s): " reply; then
       printf '\n'
     else
       printf '\n'
@@ -516,7 +523,12 @@ rfcufs_main() {
      A reading stuck at "Unknown (stale)" is not an observation.
 
   The capture node is interactive: type the ESC-threshold observations here
-  during the run. Ctrl+C here begins the ordered stop.
+  during the run.
+
+  To stop, in this order: press E-stop on the dashboard, disarm externally
+  and reach a safe state, THEN Ctrl+C here. The capture node ends at the
+  Ctrl+C, so an E-stop pressed after it is never recorded and the t3a
+  verdict fails its final-state and sequence checks for that alone.
   ========================================================================
 
 EOF

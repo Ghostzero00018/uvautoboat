@@ -307,6 +307,12 @@ require_text "$OUTPUT" 'W2 reached FCU_TO_VRX_WORKSTATION_PRESTART=PASS' \
   'the VRX prestart marker was not awaited'
 require_text "$OUTPUT" 'W1 reached REAL_FCU_WORKSTATION_SERVICES=PASS' \
   'the real-FCU services marker was not awaited'
+require_text "$OUTPUT" 'press E-stop on the dashboard, disarm externally' \
+  'the operator block does not put the E-stop before Ctrl+C'
+require_text "$OUTPUT" 'waiting for workstation operator stop before bridge shutdown' \
+  'the closeout pause does not name the Pi line to wait for'
+require_text "$OUTPUT" 'Press Enter ONLY AFTER the Pi has printed that line' \
+  'the closeout prompt does not tell the operator to wait for the Pi line'
 ORDER_TEXT="$(cat "$ORDER")"
 require_text "$ORDER_TEXT" 'capture:t3a --esc-threshold-calibration' \
   't3a did not reach the capture node with ESC-threshold calibration'

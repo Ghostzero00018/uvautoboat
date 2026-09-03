@@ -264,6 +264,19 @@ grep -Fxq -- '--no-display' <<<"$PI_HAILO_COMMANDS" \
   || fail_test 'Pi Hailo command duplicates FCU serial or relay ownership'
 pass_case
 
+# --- the workstation stop marker is a burst, not a single message ---------
+# The publisher-side match can precede the Pi reader's, and W1 exits right
+# after publishing. Seen 03/09/2026: PASS logged, Pi still waiting.
+WS_MARKER_FUNCTION="$(awk -v start='rfcu_ws_publish_stop_marker() {' \
+  '$0 == start { c = 1 } c { print } c && $0 == "}" { exit }' "$WORKSTATION_HELPER")"
+grep -Eq -- '--times [2-9]' <<<"$WS_MARKER_FUNCTION" \
+  || fail_test 'workstation stop marker is not published as a burst'
+! grep -Fq -- '--once' <<<"$WS_MARKER_FUNCTION" \
+  || fail_test 'workstation stop marker still uses a single --once publish'
+grep -Fq -- '--wait-matching-subscriptions 1' <<<"$WS_MARKER_FUNCTION" \
+  || fail_test 'workstation stop marker no longer waits for the Pi reader to match'
+pass_case
+
 # --- opt-in local Hailo window drops --no-display, and nothing else ---------
 PI_HAILO_DISPLAY_COMMANDS="$(bash -c '
   set -euo pipefail
@@ -2115,7 +2128,7 @@ bash -c '
   }
   rfcu_ws_publish_stop_marker
 ' _ "$WORKSTATION_HELPER" "$WS_PUBLISH_DIR" "$WS_PUBLISH_ARGS"
-EXPECTED_WS_PUBLISH_ARGS=$'12\nros2\ntopic\npub\n--once\n--wait-matching-subscriptions\n1\n--max-wait-time-secs\n7\n--qos-history\nkeep_last\n--qos-depth\n1\n--qos-reliability\nreliable\n--qos-durability\nvolatile\n/real_fcu/workstation_stop\nstd_msgs/msg/String\n{data: "REAL_FCU_WORKSTATION_STOPPED final=disarmed children=stopped ports=free"}'
+EXPECTED_WS_PUBLISH_ARGS=$'12\nros2\ntopic\npub\n--times\n5\n--rate\n2\n--wait-matching-subscriptions\n1\n--max-wait-time-secs\n7\n--qos-history\nkeep_last\n--qos-depth\n1\n--qos-reliability\nreliable\n--qos-durability\nvolatile\n/real_fcu/workstation_stop\nstd_msgs/msg/String\n{data: "REAL_FCU_WORKSTATION_STOPPED final=disarmed children=stopped ports=free"}'
 [ "$(cat "$WS_PUBLISH_ARGS")" = "$EXPECTED_WS_PUBLISH_ARGS" ] \
   || fail_test 'workstation stop marker is not a bounded reliable volatile publication'
 pass_case
