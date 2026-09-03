@@ -14,6 +14,13 @@ RFCU_WS_READY_TIMEOUT_SECONDS="${REAL_FCU_READY_TIMEOUT_SECONDS:-600}"
 RFCU_WS_STATUS_TIMEOUT_SECONDS="${REAL_FCU_STATUS_TIMEOUT_SECONDS:-15}"
 RFCU_WS_POLL_SECONDS="${REAL_FCU_POLL_SECONDS:-1}"
 RFCU_WS_HAILO_PERSON_STOP="${REAL_FCU_HAILO_PERSON_STOP:-0}"
+# Advisory mode: the person-stop monitor keeps publishing its descriptive
+# alert but no longer raises /planning/emergency_stop, so a detection warns
+# on the dashboard without stopping the boat. The bridge handles the alert
+# under its own advisory flag; this is the second publisher on the shared
+# E-stop topic, and it has to be told the same thing or it latches the bridge
+# regardless. Observed live 03/09/2026.
+RFCU_WS_PERSON_ALERT_ADVISORY="${REAL_FCU_PERSON_ALERT_ADVISORY:-0}"
 RFCU_WS_DOMAIN_ID='43'
 RFCU_WS_DISCOVERY_RANGE='SUBNET'
 RFCU_WS_LOCALHOST_ONLY='0'
@@ -223,6 +230,12 @@ rfcu_ws_static_preflight() {
   rfcu_ws_validate_positive_integer REAL_FCU_POLL_SECONDS "$RFCU_WS_POLL_SECONDS"
   rfcu_ws_validate_binary_flag REAL_FCU_HAILO_PERSON_STOP \
     "$RFCU_WS_HAILO_PERSON_STOP"
+  rfcu_ws_validate_binary_flag REAL_FCU_PERSON_ALERT_ADVISORY \
+    "$RFCU_WS_PERSON_ALERT_ADVISORY"
+  [ "$RFCU_WS_PERSON_ALERT_ADVISORY" -eq 0 ] \
+    || [ "$RFCU_WS_HAILO_PERSON_STOP" -eq 1 ] \
+    || rfcu_ws_fail \
+      'REAL_FCU_PERSON_ALERT_ADVISORY=1 requires REAL_FCU_HAILO_PERSON_STOP=1'
   for command in awk bash curl date git grep mkdir pgrep ps python3 sed setsid \
     sha256sum sleep ss timeout tr; do
     rfcu_ws_require_command "$command"
@@ -300,8 +313,15 @@ rfcu_ws_build_commands() {
       -p 'clear_hold_s:=5.0'
       -p 'detection_timeout_s:=2.0'
       -p 'require_detection_feed:=true'
-      -p 'latch_emergency_stop:=true'
     )
+    # The monitor's shared-latch parameter. Off in advisory mode, so the only
+    # thing a detection changes is the dashboard badge. The bridge still latches
+    # on a lost detector feed in either mode; that requirement is its own.
+    if [ "$RFCU_WS_PERSON_ALERT_ADVISORY" -eq 1 ]; then
+      RFCU_WS_PERSON_MONITOR_COMMAND+=(-p 'latch_emergency_stop:=false')
+    else
+      RFCU_WS_PERSON_MONITOR_COMMAND+=(-p 'latch_emergency_stop:=true')
+    fi
     RFCU_WS_WEB_VIDEO_COMMAND=(
       ros2 run web_video_server web_video_server --ros-args
       -p 'address:=127.0.0.1'
@@ -319,6 +339,7 @@ rfcu_ws_write_manifest() {
       "$ROS_AUTOMATIC_DISCOVERY_RANGE"
     printf 'ROS_LOCALHOST_ONLY=%s\n' "$ROS_LOCALHOST_ONLY"
     printf 'hailo_person_stop=%s\n' "$RFCU_WS_HAILO_PERSON_STOP"
+    printf 'person_alert_advisory=%s\n' "$RFCU_WS_PERSON_ALERT_ADVISORY"
   } >"$RFCU_WS_RUN_DIR/manifest/environment.txt"
   {
     sha256sum "$RFCU_WS_SCRIPT_DIR/real_fcu_digital_twin_workstation.sh" \
@@ -793,7 +814,7 @@ rfcu_ws_run() {
   rfcu_ws_log "REAL_FCU_BENCH_URL=$RFCU_WS_BENCH_URL"
   if [ "$RFCU_WS_HAILO_PERSON_STOP" -eq 1 ]; then
     rfcu_ws_log \
-      'REAL_FCU_WORKSTATION_READY=PASS telemetry=state,GPS,IMU,battery,RC-input,thrust-output hailo=image,person-detections person_stop=armed'
+      "REAL_FCU_WORKSTATION_READY=PASS telemetry=state,GPS,IMU,battery,RC-input,thrust-output hailo=image,person-detections person_alert=$([ "$RFCU_WS_PERSON_ALERT_ADVISORY" -eq 1 ] && printf advisory-no-stop || printf stop-enabled)"
   else
     rfcu_ws_log \
       'REAL_FCU_WORKSTATION_READY=PASS telemetry=state,GPS,IMU,battery,RC-input,thrust-output'

@@ -190,6 +190,70 @@ grep -Fxq -- '--no-display' <<<"$PI_HAILO_COMMANDS" \
   || fail_test 'Pi Hailo command duplicates FCU serial or relay ownership'
 pass_case
 
+# --- opt-in local Hailo window drops --no-display, and nothing else ---------
+PI_HAILO_DISPLAY_COMMANDS="$(bash -c '
+  set -euo pipefail
+  source "$1"
+  RFCU_PI_RUN_MODE=run-t3a
+  RFCU_PI_RUN_DIR="$2/pi-hailo-display"
+  RFCU_PI_HAILO_WRAPPER="$RFCU_PI_RUN_DIR/hailo_person_stop_bridge.py"
+  RFCU_PI_HAILO_PERSON_STOP=1
+  RFCU_PI_HAILO_LOCAL_DISPLAY=1
+  rfcu_pi_build_commands
+  printf "%s\n" "${RFCU_PI_HAILO_COMMAND[@]}"
+' _ "$PI_HELPER" "$TEST_TMP")" \
+  || fail_test 'Pi helper cannot build the local-display Hailo command'
+! grep -Fxq -- '--no-display' <<<"$PI_HAILO_DISPLAY_COMMANDS" \
+  || fail_test 'local-display mode still passes --no-display'
+grep -Fxq -- '--show-fps' <<<"$PI_HAILO_DISPLAY_COMMANDS" \
+  || fail_test 'local-display mode dropped an argument other than --no-display'
+grep -Fq 'hailo_person_stop_bridge.py' <<<"$PI_HAILO_DISPLAY_COMMANDS" \
+  || fail_test 'local-display mode no longer launches the generated wrapper'
+pass_case
+
+# --- the local window is refused without the detector or without a display -
+set +e
+DISPLAY_WITHOUT_HAILO="$(bash -c '
+  set -euo pipefail
+  source "$1"
+  RFCU_PI_HAILO_PERSON_STOP=0
+  RFCU_PI_HAILO_LOCAL_DISPLAY=1
+  rfcu_pi_validate_hailo_local_display
+' _ "$PI_HELPER" 2>&1)"
+DISPLAY_WITHOUT_HAILO_RC=$?
+DISPLAY_WITHOUT_DESKTOP="$(env -u DISPLAY bash -c '
+  set -euo pipefail
+  source "$1"
+  RFCU_PI_HAILO_PERSON_STOP=1
+  RFCU_PI_HAILO_LOCAL_DISPLAY=1
+  rfcu_pi_validate_hailo_local_display
+' _ "$PI_HELPER" 2>&1)"
+DISPLAY_WITHOUT_DESKTOP_RC=$?
+DISPLAY_WITH_DESKTOP="$(DISPLAY=:77 bash -c '
+  set -euo pipefail
+  source "$1"
+  RFCU_PI_HAILO_PERSON_STOP=1
+  RFCU_PI_HAILO_LOCAL_DISPLAY=1
+  rfcu_pi_validate_hailo_local_display
+' _ "$PI_HELPER" 2>&1)"
+DISPLAY_WITH_DESKTOP_RC=$?
+set -e
+[ "$DISPLAY_WITHOUT_HAILO_RC" -ne 0 ] \
+  || fail_test 'a local Hailo window without the detector was accepted'
+grep -Fq 'requires REAL_FCU_HAILO_PERSON_STOP=1' <<<"$DISPLAY_WITHOUT_HAILO" \
+  || fail_test 'window-without-detector rejection does not name the requirement'
+[ "$DISPLAY_WITHOUT_DESKTOP_RC" -ne 0 ] \
+  || fail_test 'a local Hailo window with no DISPLAY was accepted'
+grep -Fq 'requires a Pi desktop or Remmina terminal with DISPLAY set' \
+  <<<"$DISPLAY_WITHOUT_DESKTOP" \
+  || fail_test 'window-without-display rejection does not say what is missing'
+[ "$DISPLAY_WITH_DESKTOP_RC" -eq 0 ] \
+  || fail_test "a local Hailo window with DISPLAY set was refused: $DISPLAY_WITH_DESKTOP"
+pass_case
+
+# --- headless stays the default: --no-display is asserted above when the
+# --- display flag is unset, so that existing case is this pair's control.
+
 DEFAULT_PI_HAILO_COMMANDS="$(bash -c '
   set -euo pipefail
   source "$1"
@@ -295,6 +359,60 @@ DEFAULT_HAILO_COMMANDS="$(bash -c '
   || fail_test 'workstation cannot build its default commands'
 [ "$DEFAULT_HAILO_COMMANDS" = '0|0' ] \
   || fail_test "default workstation path started Hailo services: $DEFAULT_HAILO_COMMANDS"
+pass_case
+
+# --- advisory mode turns the monitor's shared latch off ---------------------
+# The bridge is advisory-aware on its own flag, but the monitor is a second
+# publisher on /planning/emergency_stop and latches the bridge regardless of
+# what the bridge was told. Found live on 03/09/2026: advisory reported true
+# in the bridge status while the state sat in EMERGENCY_STOP.
+ADVISORY_HAILO_COMMANDS="$(bash -c '
+  set -euo pipefail
+  source "$1"
+  RFCU_WS_HAILO_PERSON_STOP=1
+  RFCU_WS_PERSON_ALERT_ADVISORY=1
+  rfcu_ws_build_commands
+  printf "%q\n" "${RFCU_WS_PERSON_MONITOR_COMMAND[@]}"
+' _ "$WORKSTATION_HELPER")" \
+  || fail_test 'workstation cannot build the advisory Hailo commands'
+grep -Fxq 'latch_emergency_stop:=false' <<<"$ADVISORY_HAILO_COMMANDS" \
+  || fail_test 'advisory mode still lets the monitor raise the authoritative E-stop'
+! grep -Fq 'latch_emergency_stop:=true' <<<"$ADVISORY_HAILO_COMMANDS" \
+  || fail_test 'advisory mode carries both latch settings at once'
+grep -Fxq 'require_detection_feed:=true' <<<"$ADVISORY_HAILO_COMMANDS" \
+  || fail_test 'advisory mode dropped the feed-loss requirement, which it must keep'
+pass_case
+
+# --- control: without the flag the latch stays on --------------------------
+# The case at line 279 already asserts :=true on the default path; this one
+# repeats it beside the advisory case so the pair cannot drift apart silently.
+! grep -Fq 'latch_emergency_stop:=false' <<<"$HAILO_COMMANDS" \
+  || fail_test 'the default person-stop monitor no longer raises the E-stop'
+pass_case
+
+# --- advisory without the detector is rejected, as on the Pi ---------------
+set +e
+ADVISORY_ALONE="$(bash -c '
+  set -euo pipefail
+  source "$1"
+  RFCU_WS_HAILO_PERSON_STOP=0
+  RFCU_WS_PERSON_ALERT_ADVISORY=1
+  rfcu_ws_static_preflight
+' _ "$WORKSTATION_HELPER" 2>&1)"
+ADVISORY_ALONE_RC=$?
+set -e
+[ "$ADVISORY_ALONE_RC" -ne 0 ] \
+  || fail_test 'advisory mode without the detector was accepted'
+grep -Fq 'requires REAL_FCU_HAILO_PERSON_STOP=1' <<<"$ADVISORY_ALONE" \
+  || fail_test 'advisory-without-detector rejection does not name the requirement'
+pass_case
+
+# --- the READY marker stops claiming a stop it will not make ---------------
+grep -Fq 'person_alert=$([ "$RFCU_WS_PERSON_ALERT_ADVISORY" -eq 1 ] && printf advisory-no-stop || printf stop-enabled)' \
+  "$WORKSTATION_HELPER" \
+  || fail_test 'workstation READY marker does not report the advisory setting'
+! grep -Fq 'person_stop=armed' "$WORKSTATION_HELPER" \
+  || fail_test 'workstation READY marker still claims person_stop=armed unconditionally'
 pass_case
 
 WS_HAILO_SERVICE_TRACE="$TEST_TMP/ws_hailo_service_trace.txt"

@@ -25,8 +25,11 @@ RFCUFS_CAPTURE="$RFCUFS_SCRIPT_DIR/real_fcu_command_feedback_capture.py"
 
 RFCUFS_RUN_DIR=''
 RFCUFS_CLEANING=0
+RFCUFS_W2_PID=''
+RFCUFS_W1_PID=''
 RFCUFS_W2_PGID=''
 RFCUFS_W1_PGID=''
+RFCUFS_STOP_ESCALATED=0
 RFCUFS_MODE=''
 RFCUFS_TIER=''
 RFCUFS_OPERATOR_STOP=0
@@ -60,13 +63,21 @@ RFCUFS_OPERATOR_STOP=0
 : "${RFCUFS_W1_WAITING_TIMEOUT_SECONDS:=600}"
 # Seconds the closeout prompt waits before stopping W1 anyway.
 : "${RFCUFS_CLOSEOUT_PROMPT_SECONDS:=900}"
+# Seconds each supervisor is given to run its own teardown after the interrupt
+# before the wrapper escalates. W1's teardown ends by publishing its stop
+# marker with --wait-matching-subscriptions, which legitimately blocks until
+# the Pi reaches its closeout wait, for up to its readiness timeout; the grace
+# has to cover that or the wrapper interrupts a stop that is working. Observed
+# 03/09/2026: a 180 s grace expired while W1 was doing exactly that.
+: "${RFCUFS_W2_STOP_GRACE_SECONDS:=300}"
+: "${RFCUFS_W1_STOP_GRACE_SECONDS:=$((REAL_FCU_READY_TIMEOUT_SECONDS + 60))}"
 
 # Optional passthrough, off unless set by the operator.
 : "${REAL_FCU_HAILO_PERSON_STOP:=0}"
 : "${REAL_FCU_PERSON_ALERT_ADVISORY:=0}"
 
 rfcufs_log() {
-  printf '[full-stack] %s\n' "$1"
+  printf '[full-stack %s] %s\n' "$(date +%H:%M:%S)" "$1"
 }
 
 rfcufs_fail() {
@@ -119,8 +130,9 @@ RFCUFS_SCRUBBED_ENV=(env
 # reaches only this script and the foreground capture node. Without that the
 # signal would hit all three at once and the documented stop order could not
 # be honoured.
-# Sets RFCUFS_LAST_PGID rather than echoing it: this function also logs, and a
-# command substitution would capture the log line along with the value.
+# Sets RFCUFS_LAST_PID and RFCUFS_LAST_PGID rather than echoing them: this
+# function also logs, and a command substitution would capture the log line
+# along with the value.
 #
 # Job control, not setsid. A non-interactive shell sets SIGINT to SIG_IGN for
 # every asynchronous child, and a shell cannot trap a signal that was ignored
@@ -132,10 +144,12 @@ RFCUFS_SCRUBBED_ENV=(env
 # SigIgn=...6 with INT uncaught, "set -m" gives SigIgn=...4 with INT caught.
 # setsid is not used because under job control it is already a process-group
 # leader, so it forks and $! stops referring to the supervisor.
+RFCUFS_LAST_PID=''
 RFCUFS_LAST_PGID=''
 rfcufs_start_supervisor() {
   local name="$1" log="$2"
   shift 2
+  RFCUFS_LAST_PID=''
   RFCUFS_LAST_PGID=''
   set -m
   "$@" >"$log" 2>&1 </dev/null &
@@ -160,8 +174,21 @@ rfcufs_start_supervisor() {
   if [ "$pgid" = "$$" ]; then
     rfcufs_fail "$name shares this script's process group; refusing to signal it"
   fi
+  RFCUFS_LAST_PID="$pid"
   RFCUFS_LAST_PGID="$pgid"
   rfcufs_log "started $name pid=$pid pgid=$pgid log=$log"
+}
+
+# Liveness is the supervisor process itself, never its process group. A group
+# can outlive its leader: the ROS 2 CLI daemon that "ros2 topic echo" starts
+# is a plain Popen on Linux and inherits the caller's group, so after W1 had
+# exited cleanly its group still held that daemon, kill -0 on the group kept
+# answering, and the wrapper waited its full grace and then TERMed a bystander.
+# Measured on this workstation 03/09/2026.
+rfcufs_pid_alive() {
+  local pid="$1"
+  [ -n "$pid" ] || return 1
+  kill -0 "$pid" 2>/dev/null
 }
 
 rfcufs_pgid_alive() {
@@ -174,7 +201,7 @@ rfcufs_pgid_alive() {
 # dies. Waiting the whole timeout on a dead child wastes the operator's time
 # on a run that has already ended.
 rfcufs_wait_marker() {
-  local name="$1" log="$2" marker="$3" timeout="$4" pgid="$5"
+  local name="$1" log="$2" marker="$3" timeout="$4" pid="$5"
   local deadline=$((SECONDS + timeout))
   rfcufs_log "waiting for $name: $marker"
   while [ "$SECONDS" -lt "$deadline" ]; do
@@ -182,7 +209,7 @@ rfcufs_wait_marker() {
       rfcufs_log "$name reached $marker"
       return 0
     fi
-    if ! rfcufs_pgid_alive "$pgid"; then
+    if ! rfcufs_pid_alive "$pid"; then
       printf '\n--- last 30 lines of %s ---\n' "$log" >&2
       tail -30 "$log" >&2 || true
       printf -- '--- end ---\n\n' >&2
@@ -196,31 +223,70 @@ rfcufs_wait_marker() {
   rfcufs_fail "$name did not reach $marker within ${timeout}s"
 }
 
+# The interrupt goes to the whole group, so the supervisor's own foreground
+# child (its poll sleep) dies too and the trap runs at once. Completion is the
+# supervisor's pid exiting. Anything else still in the group afterwards is a
+# straggler: named, terminated, and never counted as the supervisor failing
+# to stop. Returns non-zero only when the supervisor itself had to be forced.
 rfcufs_stop_supervisor() {
-  local name="$1" pgid="$2" grace="${3:-120}"
-  if ! rfcufs_pgid_alive "$pgid"; then
+  local name="$1" pid="$2" pgid="$3" grace="${4:-120}"
+  if ! rfcufs_pid_alive "$pid"; then
     rfcufs_log "$name already stopped"
+    rfcufs_sweep_stragglers "$name" "$pgid"
     return 0
   fi
-  rfcufs_log "stopping $name (pgid=$pgid), allowing ${grace}s for its own teardown"
-  kill -INT -- "-$pgid" 2>/dev/null || true
+  rfcufs_log "stopping $name (pid=$pid pgid=$pgid), allowing ${grace}s for its own teardown"
+  if ! kill -INT -- "-$pgid" 2>/dev/null; then
+    rfcufs_log "INT to $name's group failed; signalling the pid directly"
+    kill -INT "$pid" 2>/dev/null || true
+  fi
   local waited=0
   while [ "$waited" -lt "$grace" ]; do
-    if ! rfcufs_pgid_alive "$pgid"; then
-      rfcufs_log "$name stopped cleanly"
+    if ! rfcufs_pid_alive "$pid"; then
+      rfcufs_log "$name stopped cleanly after ${waited}s"
+      rfcufs_sweep_stragglers "$name" "$pgid"
       return 0
     fi
     waited=$((waited + 1))
     sleep 1
   done
-  rfcufs_log "$name did not stop within ${grace}s, sending TERM"
+  RFCUFS_STOP_ESCALATED=1
+  rfcufs_log "$name did not stop within ${grace}s; sending TERM to its pid"
+  kill -TERM "$pid" 2>/dev/null || true
+  waited=0
+  while [ "$waited" -lt 15 ]; do
+    if ! rfcufs_pid_alive "$pid"; then
+      rfcufs_log "$name stopped after TERM"
+      rfcufs_sweep_stragglers "$name" "$pgid"
+      return 1
+    fi
+    waited=$((waited + 1))
+    sleep 1
+  done
+  rfcufs_log "$name still alive after TERM; it is left running for inspection"
+  return 1
+}
+
+# Processes left in a supervisor's group after the supervisor has exited. They
+# are not the supervisor, so they are not evidence about its stop; they are
+# listed by name and terminated so the next run starts on an empty group.
+# Selection is by process group id, never by argument text: a text match can
+# hit the very shell that is running this script.
+rfcufs_sweep_stragglers() {
+  local name="$1" pgid="$2"
+  [ -n "$pgid" ] || return 0
+  local listing=''
+  listing="$(pgrep -a -g "$pgid" 2>/dev/null)" || listing=''
+  [ -n "$listing" ] || return 0
+  local count
+  count="$(printf '%s\n' "$listing" | grep -c .)"
+  rfcufs_log "$name left ${count} straggler(s) in its group; terminating them:"
+  printf '%s\n' "$listing" | cut -c1-110 | sed 's/^/    /'
   kill -TERM -- "-$pgid" 2>/dev/null || true
-  sleep 5
+  sleep 2
   if rfcufs_pgid_alive "$pgid"; then
-    rfcufs_log "$name still alive after TERM; it is left running for inspection"
-    return 1
+    kill -KILL -- "-$pgid" 2>/dev/null || true
   fi
-  return 0
 }
 
 # Stop order, from the run-sheet: the operator disarms externally, W2 stops,
@@ -246,11 +312,12 @@ rfcufs_cleanup() {
   printf '\n'
   rfcufs_log 'stopping the workstation stack in the documented order'
 
-  if [ -n "$RFCUFS_W2_PGID" ]; then
-    rfcufs_stop_supervisor 'W2 (VRX supervisor)' "$RFCUFS_W2_PGID" 180 || true
+  if [ -n "$RFCUFS_W2_PID" ]; then
+    rfcufs_stop_supervisor 'W2 (VRX supervisor)' "$RFCUFS_W2_PID" "$RFCUFS_W2_PGID" \
+      "$RFCUFS_W2_STOP_GRACE_SECONDS" || true
   fi
 
-  if [ -n "$RFCUFS_W1_PGID" ] && rfcufs_pgid_alive "$RFCUFS_W1_PGID"; then
+  if [ -n "$RFCUFS_W1_PID" ] && rfcufs_pid_alive "$RFCUFS_W1_PID"; then
     cat <<EOF
 
   W1 is still running, so the dashboard is still up.
@@ -266,12 +333,20 @@ EOF
       printf '\n'
       rfcufs_log 'closeout prompt timed out; stopping W1 now'
     fi
-    rfcufs_stop_supervisor 'W1 (real-FCU supervisor)' "$RFCUFS_W1_PGID" 180 || true
+    rfcufs_stop_supervisor 'W1 (real-FCU supervisor)' "$RFCUFS_W1_PID" "$RFCUFS_W1_PGID" \
+      "$RFCUFS_W1_STOP_GRACE_SECONDS" || true
   fi
 
   rfcufs_log "logs: ${RFCUFS_RUN_DIR:-<none>}"
   rfcufs_log 'each supervisor wrote its own run directory under ~/Desktop; read those for evidence'
-  rfcufs_log "FULL_STACK_EXIT status=$incoming_rc"
+  # A stop that needed force is not a clean stop, whatever this script's own
+  # status was on the way in.
+  if [ "$RFCUFS_STOP_ESCALATED" -eq 1 ]; then
+    [ "$incoming_rc" -ne 0 ] || incoming_rc=1
+    rfcufs_log "FULL_STACK_EXIT status=$incoming_rc stop=escalated"
+  else
+    rfcufs_log "FULL_STACK_EXIT status=$incoming_rc stop=clean"
+  fi
   exit "$incoming_rc"
 }
 
@@ -387,10 +462,11 @@ rfcufs_main() {
       FCU_VRX_OBSERVER_STALE_SECONDS="$FCU_VRX_OBSERVER_STALE_SECONDS" \
       FCU_VRX_CORRELATED_OBSERVATION="$FCU_VRX_CORRELATED_OBSERVATION" \
       bash "$RFCUFS_W2" run-real-fcu
+  RFCUFS_W2_PID="$RFCUFS_LAST_PID"
   RFCUFS_W2_PGID="$RFCUFS_LAST_PGID"
   rfcufs_wait_marker 'W2' "$RFCUFS_RUN_DIR/logs/w2.log" \
     'FCU_TO_VRX_WORKSTATION_PRESTART=PASS' \
-    "$RFCUFS_W2_PRESTART_TIMEOUT_SECONDS" "$RFCUFS_W2_PGID"
+    "$RFCUFS_W2_PRESTART_TIMEOUT_SECONDS" "$RFCUFS_W2_PID"
 
   rfcufs_start_supervisor 'W1 (real-FCU supervisor)' \
     "$RFCUFS_RUN_DIR/logs/w1.log" \
@@ -399,10 +475,11 @@ rfcufs_main() {
       REAL_FCU_HAILO_PERSON_STOP="$REAL_FCU_HAILO_PERSON_STOP" \
       REAL_FCU_PERSON_ALERT_ADVISORY="$REAL_FCU_PERSON_ALERT_ADVISORY" \
       bash "$RFCUFS_W1" run
+  RFCUFS_W1_PID="$RFCUFS_LAST_PID"
   RFCUFS_W1_PGID="$RFCUFS_LAST_PGID"
   rfcufs_wait_marker 'W1' "$RFCUFS_RUN_DIR/logs/w1.log" \
     'REAL_FCU_WORKSTATION_SERVICES=PASS' \
-    "$RFCUFS_W1_WAITING_TIMEOUT_SECONDS" "$RFCUFS_W1_PGID"
+    "$RFCUFS_W1_WAITING_TIMEOUT_SECONDS" "$RFCUFS_W1_PID"
 
   # The dashboard is served as soon as W1 reports its services, but the
   # bench-control URL is not: W1 derives it from the Pi's resolved mapping and

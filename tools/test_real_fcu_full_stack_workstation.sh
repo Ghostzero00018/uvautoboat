@@ -107,6 +107,35 @@ STUB
   chmod +x "$path"
 }
 
+# Exits promptly on INT but leaves a background child in its own process
+# group, the way the ROS 2 CLI daemon is left behind by a real supervisor.
+write_straggling_stub() {
+  local path="$1" marker="$2" name="$3" order_file="$4"
+  cat >"$path" <<STUB
+#!/usr/bin/env bash
+set -Eeuo pipefail
+trap 'printf "%s\n" "$name" >>"$order_file"; exit 0' INT TERM
+sleep 600 &
+sleep 1
+printf '%s\n' "$marker"
+while true; do sleep 0.2; done
+STUB
+  chmod +x "$path"
+}
+
+# Ignores the interrupt entirely, so only an escalation can stop it.
+write_deaf_stub() {
+  local path="$1" marker="$2"
+  cat >"$path" <<STUB
+#!/usr/bin/env bash
+trap '' INT
+sleep 1
+printf '%s\n' "$marker"
+while true; do sleep 0.2; done
+STUB
+  chmod +x "$path"
+}
+
 # Dies only after its process group is readable, so the death is detected by
 # the marker wait rather than by the start-up probe.
 write_late_dying_stub() {
@@ -437,6 +466,68 @@ for MODE_TIER in "run:t2b" "run-t2a:t2a" "run-t2b:t2b" "run-t3a:t3a"; do
   fi
   discard_sandbox "$SANDBOX"
 done
+pass_case
+
+# --- a straggler in the supervisor's group is swept, not mistaken for it ---
+SANDBOX="$(make_sandbox)"
+ORDER="$SANDBOX/order.txt"
+: >"$ORDER"
+write_straggling_stub "$SANDBOX/fcu_to_vrx_workstation.sh" \
+  'FCU_TO_VRX_WORKSTATION_PRESTART=PASS' 'w2' "$ORDER"
+write_straggling_stub "$SANDBOX/real_fcu_digital_twin_workstation.sh" \
+  'REAL_FCU_WORKSTATION_SERVICES=PASS' 'w1' "$ORDER"
+write_capture_stub "$SANDBOX/real_fcu_command_feedback_capture.py" "$ORDER"
+STARTED="$SECONDS"
+set +e
+OUTPUT="$( cd "$SANDBOX" && HOME="$SANDBOX/home" \
+  RFCUFS_W1_STOP_GRACE_SECONDS=20 RFCUFS_W2_STOP_GRACE_SECONDS=20 \
+  timeout 120 bash "$SANDBOX/real_fcu_full_stack_workstation.sh" run-t3a </dev/null 2>&1 )"
+RC=$?
+set -e
+ELAPSED=$((SECONDS - STARTED))
+[ "$RC" -eq 0 ] || { printf -- '--- output ---\n%s\n--- end ---\n' "$OUTPUT" >&2; fail_test "a straggler made the stop non-clean (rc=$RC)"; }
+require_text "$OUTPUT" 'W1 (real-FCU supervisor) stopped cleanly' \
+  'a supervisor with a straggler in its group was not seen to stop'
+require_text "$OUTPUT" 'straggler' 'the straggler was not reported'
+require_text "$OUTPUT" 'stop=clean' 'a swept straggler was counted as an escalation'
+refute_text "$OUTPUT" 'did not stop within' \
+  'a straggler was mistaken for the supervisor still running'
+[ "$ELAPSED" -lt 60 ] \
+  || fail_test "the stop waited on the straggler instead of the supervisor (${ELAPSED}s)"
+# The group is checked by the pgid the helper itself logged, never by argument
+# text: a text match can hit the shell running this suite.
+# Guarded assignment: an empty match under pipefail would otherwise end the
+# suite silently instead of through fail_test.
+W1_GROUP="$(grep -oE 'started W1 .* pgid=[0-9]+' <<<"$OUTPUT" | head -1 \
+  | grep -oE 'pgid=[0-9]+' | cut -d= -f2)" || W1_GROUP=''
+[ -n "$W1_GROUP" ] || fail_test 'could not read the W1 process group from the helper output'
+if pgrep -g "$W1_GROUP" >/dev/null 2>&1; then
+  pkill -g "$W1_GROUP" || true
+  fail_test "the straggler in group $W1_GROUP was not terminated by the sweep"
+fi
+discard_sandbox "$SANDBOX"
+pass_case
+
+# --- a supervisor that ignores the interrupt is escalated and reported -----
+SANDBOX="$(make_sandbox)"
+ORDER="$SANDBOX/order.txt"
+: >"$ORDER"
+write_supervisor_stub "$SANDBOX/fcu_to_vrx_workstation.sh" \
+  'FCU_TO_VRX_WORKSTATION_PRESTART=PASS' 'w2' "$ORDER" 1
+write_deaf_stub "$SANDBOX/real_fcu_digital_twin_workstation.sh" \
+  'REAL_FCU_WORKSTATION_SERVICES=PASS'
+write_capture_stub "$SANDBOX/real_fcu_command_feedback_capture.py" "$ORDER"
+set +e
+OUTPUT="$( cd "$SANDBOX" && HOME="$SANDBOX/home" \
+  RFCUFS_W1_STOP_GRACE_SECONDS=5 RFCUFS_W2_STOP_GRACE_SECONDS=20 \
+  timeout 120 bash "$SANDBOX/real_fcu_full_stack_workstation.sh" run-t3a </dev/null 2>&1 )"
+RC=$?
+set -e
+[ "$RC" -ne 0 ] || fail_test 'a forced stop was reported as clean (rc=0)'
+require_text "$OUTPUT" 'did not stop within 5s; sending TERM' \
+  'a deaf supervisor was not escalated'
+require_text "$OUTPUT" 'stop=escalated' 'a forced stop was not labelled as escalated'
+discard_sandbox "$SANDBOX"
 pass_case
 
 printf 'full-stack workstation helper tests: PASS cases=%d runtime=not-started\n' "$CASES"

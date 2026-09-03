@@ -23,6 +23,13 @@ RFCU_PI_HAILO_PERSON_STOP="${REAL_FCU_HAILO_PERSON_STOP:-0}"
 # Advisory mode reports person detections without stopping. Opt-in, off by
 # default, and meaningful only alongside REAL_FCU_HAILO_PERSON_STOP=1.
 RFCU_PI_PERSON_ALERT_ADVISORY="${REAL_FCU_PERSON_ALERT_ADVISORY:-0}"
+# Opt-in local Hailo window on the Pi desktop. The generated wrapper hands
+# every frame back to hailo-apps' own visualize loop, so leaving --no-display
+# off is all it takes to open that window; nothing in the wrapper changes. A
+# window needs a display, and a detector that dies for want of one mid-run
+# reads as a lost feed and stops the boat, so the display is required up
+# front rather than discovered at the first frame.
+RFCU_PI_HAILO_LOCAL_DISPLAY="${REAL_FCU_HAILO_LOCAL_DISPLAY:-0}"
 RFCU_PI_HAILO_ROOT="${REAL_FCU_HAILO_ROOT:-$HOME/hailo_coco_overlay_2026-07-10}"
 RFCU_PI_HAILO_REPO="$RFCU_PI_HAILO_ROOT/hailo-apps"
 RFCU_PI_HAILO_VENV="$RFCU_PI_HAILO_ROOT/venv"
@@ -432,6 +439,18 @@ rfcu_pi_verify_bundle() {
     || rfcu_pi_fail 'deployed Pi bundle checksum failed'
 }
 
+rfcu_pi_validate_hailo_local_display() {
+  rfcu_pi_validate_binary_flag REAL_FCU_HAILO_LOCAL_DISPLAY \
+    "$RFCU_PI_HAILO_LOCAL_DISPLAY"
+  [ "$RFCU_PI_HAILO_LOCAL_DISPLAY" -eq 0 ] && return 0
+  [ "$RFCU_PI_HAILO_PERSON_STOP" -eq 1 ] \
+    || rfcu_pi_fail \
+      'REAL_FCU_HAILO_LOCAL_DISPLAY=1 requires REAL_FCU_HAILO_PERSON_STOP=1'
+  [ -n "${DISPLAY:-}" ] \
+    || rfcu_pi_fail \
+      'REAL_FCU_HAILO_LOCAL_DISPLAY=1 requires a Pi desktop or Remmina terminal with DISPLAY set'
+}
+
 rfcu_pi_static_preflight() {
   local command model
   rfcu_pi_validate_positive_integer REAL_FCU_BAUD "$RFCU_PI_BAUD"
@@ -448,6 +467,7 @@ rfcu_pi_static_preflight() {
     || [ "$RFCU_PI_HAILO_PERSON_STOP" -eq 1 ] \
     || rfcu_pi_fail \
       'REAL_FCU_PERSON_ALERT_ADVISORY=1 requires REAL_FCU_HAILO_PERSON_STOP=1'
+  rfcu_pi_validate_hailo_local_display
   rfcu_pi_validate_binary_flag REAL_FCU_HAILO_PERSON_STOP \
     "$RFCU_PI_HAILO_PERSON_STOP"
   for command in awk bash cp date fuser grep mkdir pgrep ps python3 sed setsid \
@@ -794,8 +814,10 @@ rfcu_pi_build_commands() {
       --output-resolution sd
       --frame-rate 15
       --show-fps
-      --no-display
     )
+    if [ "$RFCU_PI_HAILO_LOCAL_DISPLAY" -eq 0 ]; then
+      RFCU_PI_HAILO_COMMAND+=(--no-display)
+    fi
   fi
   if [ "$RFCU_PI_RUN_MODE" = run-t3a ]; then
     RFCU_PI_BRIDGE_COMMAND+=(
@@ -837,6 +859,11 @@ rfcu_pi_write_manifest() {
     "${REAL_FCU_EXCLUSION_ZONE_CLEAR:-0}" \
     "${REAL_FCU_PROPULSION_ISOLATED:-0}" \
     >"$RFCU_PI_RUN_DIR/manifest/environment.txt"
+  # Two run settings the long form above predates; appended so its positional
+  # argument list is left exactly as it is.
+  printf 'person_alert_advisory=%s\nhailo_local_display=%s\n' \
+    "$RFCU_PI_PERSON_ALERT_ADVISORY" "$RFCU_PI_HAILO_LOCAL_DISPLAY" \
+    >>"$RFCU_PI_RUN_DIR/manifest/environment.txt"
   {
     sha256sum "$RFCU_PI_SCRIPT_DIR/real_fcu_digital_twin_pi.sh" \
       "$RFCU_PI_BRIDGE" "$RFCU_PI_PLUGIN_YAML" "$RFCU_PI_PROBE_PLUGIN_YAML" \
@@ -1758,7 +1785,7 @@ rfcu_pi_run() {
   if [ "$RFCU_PI_RUN_MODE" = run-t3a ]; then
     if [ "$RFCU_PI_HAILO_PERSON_STOP" -eq 1 ]; then
       rfcu_pi_log \
-        "REAL_FCU_T3A_READY=PASS authority=demand-enabled propellers=fitted guarding=installed exclusion_zone=clear propulsion=enabled bridge=READY_DISARMED workstation=visible showcase=person-stop capture=not-required hailo=ready person_alert=$([ "$RFCU_PI_PERSON_ALERT_ADVISORY" -eq 1 ] && printf advisory-no-stop || printf stop-enabled)"
+        "REAL_FCU_T3A_READY=PASS authority=demand-enabled propellers=fitted guarding=installed exclusion_zone=clear propulsion=enabled bridge=READY_DISARMED workstation=visible showcase=person-stop capture=not-required hailo=ready person_alert=$([ "$RFCU_PI_PERSON_ALERT_ADVISORY" -eq 1 ] && printf advisory-no-stop || printf stop-enabled) display=$([ "$RFCU_PI_HAILO_LOCAL_DISPLAY" -eq 1 ] && printf local-window || printf headless)"
     else
       rfcu_pi_log \
         'REAL_FCU_T3A_READY=PASS authority=demand-enabled propellers=fitted guarding=installed exclusion_zone=clear propulsion=enabled bridge=READY_DISARMED workstation=visible capture=visible'
