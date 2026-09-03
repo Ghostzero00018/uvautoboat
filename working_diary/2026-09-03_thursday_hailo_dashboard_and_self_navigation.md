@@ -371,5 +371,73 @@ Helper suite `73` to `79`, wrapper suite `12` to `14`, bundle manifest
 regenerated with the Pi helper at `1dcc84d9`, `sha256sum -c` clean. Committed
 as `7cf684b` and transferred by `scp` into
 `/home/imt-aqua-drone/uvautoboat_real_fcu_bundle_20260903_7cf684b`, a copy of
-the `929831e` directory with the two changed files replaced. Certification on
-the Pi and the restart were pending when this was written.
+the `929831e` directory with the two changed files replaced. Certified on the
+Pi: `sha256sum -c` clean and `REAL_FCU_PI_CHECK=PASS`.
+
+### Second cycle - a stale latched sample, the window's shape, and a hint
+
+The restart on `7cf684b` stopped at
+`STOP: snapshot guard requires connected:true and armed:false`. UART counters
+across the whole session, before run 1 to after this stop: `rx 825` to
+`6,941,905`, `fe +36`, `brk +0`, `oe +1`. Seven megabytes with five parts per
+million of framing error and a single overrun, with the Hailo window open the
+whole time. The FIFO-overrun theory is dead at this load, and the window did
+not touch the link.
+
+The MAVROS probe log had `CON: Got HEARTBEAT, connected` and no lost
+connection anywhere. The evidence files decided it: the probe's sample read
+`connected: true` at `sec 1788450780`; the snapshot guard's sample, captured
+**afterwards**, read `connected: false` at `sec 1788450777`, three seconds
+older. Only a latched backlog hands a later reader an older message.
+`/mavros/state` is published latched, MAVROS publishes `connected: false` once
+a second before the first heartbeat, and `rfcu_pi_capture_topic` reads with
+`--once` under `best_available` durability. The probe gate absorbs this by
+retrying until it reads `true`, and yesterday's evidence shows it doing exactly
+that (attempt 001 `false` at `…187`, later attempts `true`); the snapshot
+guard was a single shot and had no second chance.
+
+Fixed by giving the snapshot guard the probe's own retrying wait, bounded by
+the readiness timeout. Two cases added: the guard function is asserted to call
+the wait and never `/mavros/state` single-shot, and the wait itself is driven
+with a stub `ros2` that returns two stale samples before a good one and must
+report success only after three reads. A mutant restoring the single shot
+fails with `snapshot guard does not reuse the retrying connected/disarmed wait`.
+
+**The window resizes.** hailo-apps creates `Output` with the default
+`WINDOW_AUTOSIZE`. The wrapper now pre-creates the same name with
+`WINDOW_NORMAL | WINDOW_KEEPRATIO` before the first `imshow`, which makes
+hailo-apps' own call a no-op, and falls back to headless by appending
+`--no-display` if no window can be created rather than letting the detector
+die mid-run. A mutant removing the pre-create fails with `generated wrapper
+does not pre-create a resizable Output window`.
+
+**The start hint.** In Hailo mode W1 reports its services only after one
+detection frame from the Pi, so the entry point's operator block cannot appear
+until the Pi helper is running. The entry point now says so the moment W1
+starts. One case added asserting the hint precedes the W1 wait and is absent
+without the detector. Wrapper suite `14` to `15`.
+
+Helper suite `79` to `82`. Committed `a8bed50`, transferred into
+`/home/imt-aqua-drone/uvautoboat_real_fcu_bundle_20260903_a8bed50`, certified
+on the Pi. The restart on it: the snapshot gate passed at the first attempt
+with the window open; the hint printed at `18:14:25` and W1 was ready `34`
+seconds after the Pi's Hailo child started; the Pi reached
+`REAL_FCU_T3A_READY=PASS ... person_alert=advisory-no-stop display=local-window`;
+the window resizes when dragged.
+
+### Advisory mode, recorded on hardware
+
+Armed, a person in frame, HOLD usable, badge red. Then a `30`-second capture
+of the detector verdict, the bridge status and the shared E-stop topic
+together, retained at `/home/ghostzero/Desktop/advisory_proof_20260903_183827`:
+
+| Stream | Samples | Of which |
+| --- | --- | --- |
+| `/perception/person_alert` | `141` | `96` with `person_detected: true` |
+| `/command_ingress/status` | `574` | `0` latched, `0` not ready, `574` advisory, states `ACTIVE` x172, `ARMED_NEUTRAL` x402 |
+| `/planning/emergency_stop` | `0` | nothing published |
+
+`ADVISORY_PROOF=PASS detections=96 latches=0 estop_publications=0`. A
+detection warns and does not stop, on the real boat, with the recording to
+show it. Yesterday's request and today's two from the professor - warn without
+stopping, and a window on the Pi desktop - are all met in this run.
