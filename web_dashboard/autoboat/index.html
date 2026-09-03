@@ -246,10 +246,30 @@
                         Physical conditions required by the separately approved active tier confirmed;
                         fitted propellers require installed mechanical guarding and a clear exclusion zone
                     </label>
+                    <fieldset class="fcu-loop-auto-move">
+                        <legend>Auto move — hold to run, release is neutral</legend>
+                        <label for="fcu-loop-auto-throttle">Throttle (0.15 to 0.20; 0.15 is the measured break-away)</label>
+                        <input id="fcu-loop-auto-throttle" type="number" min="0.15" max="0.20" step="0.01" value="0.17" disabled>
+                        <label for="fcu-loop-auto-straight-seconds">Straight for (s, 1 to 10)</label>
+                        <input id="fcu-loop-auto-straight-seconds" type="number" min="1" max="10" step="1" value="5" disabled>
+                        <label for="fcu-loop-auto-side">Then turn</label>
+                        <select id="fcu-loop-auto-side" disabled>
+                            <option value="right">right (+steering, left propeller faster)</option>
+                            <option value="left">left (-steering, right propeller faster)</option>
+                        </select>
+                        <label for="fcu-loop-auto-steering">Steering magnitude (0.01 to 0.20)</label>
+                        <input id="fcu-loop-auto-steering" type="number" min="0.01" max="0.20" step="0.01" value="0.10" disabled>
+                        <label for="fcu-loop-auto-turn-seconds">Turn for (s, 1 to 10)</label>
+                        <input id="fcu-loop-auto-turn-seconds" type="number" min="1" max="10" step="1" value="5" disabled>
+                        <span id="fcu-loop-auto-status" class="value">Idle</span>
+                    </fieldset>
                     <div class="fcu-loop-actions">
                         <button id="btn-fcu-loop-neutral" type="button" disabled>Neutral Now</button>
                         <button id="btn-fcu-loop-hold" type="button" class="mission-btn emergency" disabled>
                             Hold to Apply RC Demand
+                        </button>
+                        <button id="btn-fcu-loop-auto-move" type="button" class="mission-btn emergency" disabled>
+                            Hold to Run Auto Move
                         </button>
                         <button id="btn-fcu-loop-reset-estop" type="button" class="mission-btn reset" disabled>
                             Reset E-Stop

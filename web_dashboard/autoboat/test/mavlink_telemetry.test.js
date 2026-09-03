@@ -194,7 +194,10 @@ function createHarness(search = '') {
             publishFcuBenchEmergencyStop,
             publishFcuBenchEmergencyReset,
             publishFcuBenchControlOwner,
-            toggleFcuBenchControlOwner
+            toggleFcuBenchControlOwner,
+            fcuBenchAutoMoveProfile,
+            readFcuBenchAutoMoveConfig,
+            startFcuBenchAutoMove
         };`,
         context
     );
@@ -366,7 +369,14 @@ test('temporary panel DOM contract is complete and camera defaults to Hailo', ()
         'btn-fcu-loop-neutral',
         'btn-fcu-loop-hold',
         'btn-fcu-loop-reset-estop',
-        'btn-fcu-loop-control-owner'
+        'btn-fcu-loop-control-owner',
+        'btn-fcu-loop-auto-move',
+        'fcu-loop-auto-throttle',
+        'fcu-loop-auto-steering',
+        'fcu-loop-auto-side',
+        'fcu-loop-auto-straight-seconds',
+        'fcu-loop-auto-turn-seconds',
+        'fcu-loop-auto-status'
     ];
     for (const id of ids) {
         const matches = htmlSource.match(new RegExp(`id=["']${id}["']`, 'g')) || [];
@@ -1234,3 +1244,195 @@ test('a status without hardware_safety does not leave a stale safety claim', () 
     assert.equal(harness.elements.get('fcu-loop-hardware-safety').textContent,
         'Unknown (stale)');
 });
+
+// ---------------------------------------------------------------------------
+// Auto-move: a bounded scripted maneuver on the same hold path as the sliders.
+
+function readyBenchHarness() {
+    const harness = createHarness('?enable_fcu_bench_control=1');
+    harness.api.subscribeToLiveFcuBenchLoop();
+    harness.api.initFcuBenchLoop();
+    harness.elements.get('fcu-loop-physical-confirmation').checked = true;
+    harness.api.updateLiveFcuBenchStatus({
+        data: JSON.stringify({
+            state: 'ARMED_NEUTRAL', fault: 'ARMED_NEUTRAL', ready: true,
+            connected: true, armed: true, mode: 'MANUAL', feedback_fresh: true,
+            resolved: { steering_rc: 1, throttle_rc: 3, left_servo: 3, right_servo: 1 },
+            command: {}, measured: {}
+        })
+    });
+    harness.elements.get('fcu-loop-auto-throttle').value = '0.17';
+    harness.elements.get('fcu-loop-auto-steering').value = '0.10';
+    harness.elements.get('fcu-loop-auto-side').value = 'right';
+    harness.elements.get('fcu-loop-auto-straight-seconds').value = '5';
+    harness.elements.get('fcu-loop-auto-turn-seconds').value = '5';
+    // The bridge publishes status at about 20 Hz in a real run; the dashboard
+    // treats a status older than 500 ms as stale and stops applying demand.
+    // Tests that advance the clock must feed a fresh status, as the bridge would.
+    harness.refreshStatus = () => harness.api.updateLiveFcuBenchStatus({
+        data: JSON.stringify({
+            state: 'ACTIVE', fault: 'ACTIVE', ready: true,
+            connected: true, armed: true, mode: 'MANUAL', feedback_fresh: true,
+            resolved: { steering_rc: 1, throttle_rc: 3, left_servo: 3, right_servo: 1 },
+            command: {}, measured: {}
+        })
+    });
+    return harness;
+}
+
+// Objects created inside the vm context carry that realm's prototypes, which
+// deepStrictEqual treats as a difference; a JSON round-trip flattens them.
+function plain(value) {
+    return JSON.parse(JSON.stringify(value));
+}
+
+function commandFrames(harness) {
+    return harness.published
+        .filter((entry) => entry.topic === '/command_ingress/rc_axes')
+        .map((entry) => plain({ axes: Array.from(entry.message.axes), enable: entry.message.buttons[0] }));
+}
+
+function activeTick(harness) {
+    const entry = harness.intervals.find((item) => item.active);
+    assert.ok(entry, 'expected an active hold interval');
+    entry.callback();
+}
+
+test('auto-move profile is straight, then turn, then over', () => {
+    const harness = createHarness('?enable_fcu_bench_control=1');
+    const config = { throttle: 0.17, steering: 0.10, straightMs: 5000, turnMs: 5000 };
+    const profile = (ms) => plain(harness.api.fcuBenchAutoMoveProfile(config, ms));
+    assert.deepEqual(profile(0), { steering: 0, throttle: 0.17, phase: 'straight' });
+    assert.deepEqual(profile(4999), { steering: 0, throttle: 0.17, phase: 'straight' });
+    assert.deepEqual(profile(5000), { steering: 0.10, throttle: 0.17, phase: 'turn' });
+    assert.deepEqual(profile(9999), { steering: 0.10, throttle: 0.17, phase: 'turn' });
+    assert.equal(harness.api.fcuBenchAutoMoveProfile(config, 10000), null);
+    assert.equal(harness.api.fcuBenchAutoMoveProfile(config, -1), null);
+    assert.equal(harness.api.fcuBenchAutoMoveProfile(null, 0), null);
+});
+
+test('auto-move publishes straight then turn frames and ends itself with disabled frames', () => {
+    const harness = readyBenchHarness();
+    assert.equal(harness.api.startFcuBenchAutoMove(), true);
+    let frames = commandFrames(harness);
+    assert.deepEqual(frames.at(-1), { axes: [0, 0.17], enable: 1 });
+
+    harness.advance(5001);
+    harness.refreshStatus();
+    activeTick(harness);
+    frames = commandFrames(harness);
+    assert.deepEqual(frames.at(-1), { axes: [0.10, 0.17], enable: 1 });
+
+    harness.advance(5000);
+    harness.refreshStatus();
+    activeTick(harness);
+    frames = commandFrames(harness);
+    assert.equal(frames.at(-1).enable, 0, 'the maneuver must end in a disabled frame');
+    assert.deepEqual(frames.at(-1).axes, [0, 0]);
+    assert.equal(harness.intervals.some((entry) => entry.active), false, 'the hold interval must be stopped');
+    assert.equal(harness.elements.get('fcu-loop-auto-status').textContent, 'Idle');
+});
+
+test('releasing mid-maneuver is neutral at once and the profile is forgotten', () => {
+    const harness = readyBenchHarness();
+    assert.equal(harness.api.startFcuBenchAutoMove(), true);
+    harness.advance(2000);
+    harness.refreshStatus();
+    activeTick(harness);
+    assert.equal(commandFrames(harness).at(-1).enable, 1);
+    harness.api.stopFcuBenchHold();
+    const frames = commandFrames(harness);
+    assert.equal(frames.at(-1).enable, 0);
+    assert.deepEqual(frames.at(-1).axes, [0, 0]);
+    assert.equal(harness.intervals.some((entry) => entry.active), false);
+    // A plain hold afterwards uses the sliders, not the leftover profile.
+    harness.elements.get('fcu-loop-steering').value = '0.03';
+    harness.elements.get('fcu-loop-throttle').value = '0.05';
+    harness.refreshStatus();
+    assert.equal(harness.api.startFcuBenchHold(), true);
+    assert.deepEqual(commandFrames(harness).at(-1), { axes: [0.03, 0.05], enable: 1 });
+    harness.api.stopFcuBenchHold();
+});
+
+test('auto-move keeps the same gating as the hold: not ready, no frames', () => {
+    const harness = readyBenchHarness();
+    harness.api.updateLiveFcuBenchStatus({
+        data: JSON.stringify({
+            state: 'READY_DISARMED', fault: 'READY_DISARMED', ready: true,
+            connected: true, armed: false, mode: 'MANUAL', feedback_fresh: true,
+            resolved: { steering_rc: 1, throttle_rc: 3, left_servo: 3, right_servo: 1 },
+            command: {}, measured: {}
+        })
+    });
+    const before = commandFrames(harness).length;
+    assert.equal(harness.api.startFcuBenchAutoMove(), false);
+    assert.equal(commandFrames(harness).length, before);
+    assert.equal(harness.elements.get('btn-fcu-loop-auto-move').disabled, true);
+});
+
+test('auto-move refuses a throttle below the measured break-away', () => {
+    const harness = readyBenchHarness();
+    harness.elements.get('fcu-loop-auto-throttle').value = '0.10';
+    const before = commandFrames(harness).length;
+    assert.equal(harness.api.startFcuBenchAutoMove(), false);
+    assert.equal(commandFrames(harness).length, before);
+    assert.match(harness.elements.get('fcu-loop-auto-status').textContent, /Rejected/);
+    assert.equal(harness.api.readFcuBenchAutoMoveConfig(), null);
+    harness.elements.get('fcu-loop-auto-throttle').value = '0.25';
+    assert.equal(harness.api.readFcuBenchAutoMoveConfig(), null);
+    harness.elements.get('fcu-loop-auto-throttle').value = '0.17';
+    harness.elements.get('fcu-loop-auto-turn-seconds').value = '11';
+    assert.equal(harness.api.readFcuBenchAutoMoveConfig(), null);
+});
+
+test('auto-move side maps onto the FCU mixer sign', () => {
+    const harness = readyBenchHarness();
+    harness.elements.get('fcu-loop-auto-side').value = 'left';
+    const config = harness.api.readFcuBenchAutoMoveConfig();
+    assert.equal(config.steering, -0.10);
+    harness.elements.get('fcu-loop-auto-side').value = 'right';
+    assert.equal(harness.api.readFcuBenchAutoMoveConfig().steering, 0.10);
+    harness.elements.get('fcu-loop-auto-side').value = 'sideways';
+    assert.equal(harness.api.readFcuBenchAutoMoveConfig(), null);
+});
+
+test('emergency stop during an auto-move ends it and later ticks publish nothing enabled', () => {
+    const harness = readyBenchHarness();
+    assert.equal(harness.api.startFcuBenchAutoMove(), true);
+    harness.advance(1000);
+    assert.equal(harness.api.publishFcuBenchEmergencyStop(), true);
+    const frames = commandFrames(harness);
+    assert.equal(frames.at(-1).enable, 0);
+    assert.equal(harness.intervals.some((entry) => entry.active), false);
+    const before = commandFrames(harness).length;
+    assert.equal(harness.api.startFcuBenchAutoMove(), false, 'latched: nothing may start');
+    assert.equal(commandFrames(harness).length, before);
+});
+
+test('readiness lost during an auto-move stops it like the plain hold', () => {
+    const harness = readyBenchHarness();
+    assert.equal(harness.api.startFcuBenchAutoMove(), true);
+    harness.advance(1000);
+    harness.api.updateLiveFcuBenchStatus({
+        data: JSON.stringify({
+            state: 'FEEDBACK_INVALID', fault: 'FEEDBACK_INVALID', ready: false,
+            connected: true, armed: true, mode: 'MANUAL', feedback_fresh: false,
+            resolved: { steering_rc: 1, throttle_rc: 3, left_servo: 3, right_servo: 1 },
+            command: {}, measured: {}
+        })
+    });
+    assert.equal(harness.intervals.some((entry) => entry.active), false);
+    assert.equal(commandFrames(harness).at(-1).enable, 0);
+});
+
+test('a bridge status that goes stale mid-maneuver ends the auto-move within the freshness limit', () => {
+    const harness = readyBenchHarness();
+    assert.equal(harness.api.startFcuBenchAutoMove(), true);
+    // No refreshStatus(): the bridge has gone quiet.
+    harness.advance(600);
+    activeTick(harness);
+    const frames = commandFrames(harness);
+    assert.equal(frames.at(-1).enable, 0, 'a stale bridge status must end the maneuver in a disabled frame');
+    assert.equal(harness.intervals.some((entry) => entry.active), false);
+});
+

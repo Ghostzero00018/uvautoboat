@@ -377,6 +377,12 @@ const FCU_BENCH_PUBLISH_MS = 50;
 const FCU_BENCH_STATUS_MAX_AGE_MS = 500;
 const FCU_BENCH_MAX_STEERING = 0.20;
 const FCU_BENCH_MAX_THROTTLE = 0.20;
+// Auto-move: a bounded scripted maneuver run through the same hold path as
+// the sliders. Throttle must clear the measured ESC break-away (0.15 demand,
+// 996 us, 14.0 % of the 800/800/2200 rail, recorded 02/09 and 03/09/2026);
+// below it the propellers do not turn and the maneuver would prove nothing.
+const FCU_BENCH_AUTO_MOVE_MIN_THROTTLE = 0.15;
+const FCU_BENCH_AUTO_MOVE_MAX_PHASE_SECONDS = 10;
 const FCU_BENCH_HERELINK_NEUTRAL_CONFIRMATION = 'HERELINK_STICKS_NEUTRAL';
 const FCU_BENCH_DASHBOARD_RESET_CONFIRMATION = 'DASHBOARD_COMMAND_NEUTRAL';
 
@@ -398,6 +404,8 @@ let liveFcuBenchEmergencyResetPublisher = null;
 let liveFcuBenchControlOwnerPublisher = null;
 let liveFcuBenchHoldTimer = null;
 let liveFcuBenchNeutralTimeouts = [];
+// Active auto-move maneuver, or null. Cleared by every stop path.
+let liveFcuBenchAutoMove = null;
 let liveFcuBenchLastStampMs = 0;
 let liveFcuBenchLastArmed = false;
 let liveFcuBenchEmergencyLatched = false;
@@ -709,6 +717,13 @@ function refreshFcuBenchControls() {
     if (throttle) throttle.disabled = !requested || !resolved;
     if (neutral) neutral.disabled = !requested || !resolved || !connected;
     if (hold) hold.disabled = !canApply;
+    const autoMove = document.getElementById('btn-fcu-loop-auto-move');
+    if (autoMove) autoMove.disabled = !canApply;
+    ['fcu-loop-auto-throttle', 'fcu-loop-auto-steering', 'fcu-loop-auto-side',
+        'fcu-loop-auto-straight-seconds', 'fcu-loop-auto-turn-seconds'].forEach((id) => {
+        const control = document.getElementById(id);
+        if (control) control.disabled = !requested || !resolved;
+    });
     if (resetEstop) {
         resetEstop.disabled = !requested || !resolved || !connected
             || !statusFresh
@@ -1015,15 +1030,72 @@ function updateLiveFcuTwinTelemetry(message) {
     return true;
 }
 
+// The scripted profile, as a pure function of the maneuver and elapsed time.
+// Straight first, then the turn, then null: the maneuver is over. The FCU
+// mixes left as throttle plus steering and right as throttle minus steering,
+// so positive steering drives the left propeller harder and yaws the boat to
+// the right; the side selector maps onto that sign and is labelled with it so
+// the convention can be checked on the water.
+function fcuBenchAutoMoveProfile(config, elapsedMs) {
+    if (!config || !Number.isFinite(elapsedMs) || elapsedMs < 0) return null;
+    if (elapsedMs < config.straightMs) {
+        return { steering: 0, throttle: config.throttle, phase: 'straight' };
+    }
+    if (elapsedMs < config.straightMs + config.turnMs) {
+        return { steering: config.steering, throttle: config.throttle, phase: 'turn' };
+    }
+    return null;
+}
+
+function readFcuBenchAutoMoveConfig() {
+    const throttle = Number(document.getElementById('fcu-loop-auto-throttle')?.value);
+    const magnitude = Number(document.getElementById('fcu-loop-auto-steering')?.value);
+    const side = document.getElementById('fcu-loop-auto-side')?.value;
+    const straightSeconds = Number(document.getElementById('fcu-loop-auto-straight-seconds')?.value);
+    const turnSeconds = Number(document.getElementById('fcu-loop-auto-turn-seconds')?.value);
+    const inRange = (value, low, high) => Number.isFinite(value) && value >= low && value <= high;
+    if (!inRange(throttle, FCU_BENCH_AUTO_MOVE_MIN_THROTTLE, FCU_BENCH_MAX_THROTTLE)) return null;
+    if (!inRange(magnitude, 0.01, FCU_BENCH_MAX_STEERING)) return null;
+    if (side !== 'left' && side !== 'right') return null;
+    if (!inRange(straightSeconds, 1, FCU_BENCH_AUTO_MOVE_MAX_PHASE_SECONDS)) return null;
+    if (!inRange(turnSeconds, 1, FCU_BENCH_AUTO_MOVE_MAX_PHASE_SECONDS)) return null;
+    return {
+        throttle,
+        steering: side === 'right' ? magnitude : -magnitude,
+        side,
+        straightMs: straightSeconds * 1000,
+        turnMs: turnSeconds * 1000
+    };
+}
+
+// What an enabled frame should carry right now: the profile step while an
+// auto-move is active, the sliders otherwise. Null means the maneuver has
+// ended, which the tick turns into the ordinary release path.
+function fcuBenchCurrentDemand(nowMs = Date.now()) {
+    if (liveFcuBenchAutoMove) {
+        const step = fcuBenchAutoMoveProfile(liveFcuBenchAutoMove, nowMs - liveFcuBenchAutoMove.startedMs);
+        if (!step) return null;
+        setLiveMavlinkValue('fcu-loop-auto-status',
+            `${step.phase === 'straight' ? 'Straight' : 'Turning ' + liveFcuBenchAutoMove.side}`
+            + ` — steering ${step.steering.toFixed(2)}, throttle ${step.throttle.toFixed(2)}`);
+        return step;
+    }
+    return {
+        steering: document.getElementById('fcu-loop-steering')?.value,
+        throttle: document.getElementById('fcu-loop-throttle')?.value
+    };
+}
+
 function publishFcuBenchDemand(enable) {
     if (!LIVE_FCU_BENCH_REQUESTED || !liveFcuBenchCommandPublisher || !connected) return false;
     if (enable === 1 && !fcuBenchCanApply()) return false;
-    const steering = enable === 1
-        ? document.getElementById('fcu-loop-steering')?.value
-        : 0;
-    const throttle = enable === 1
-        ? document.getElementById('fcu-loop-throttle')?.value
-        : 0;
+    let steering = 0;
+    let throttle = 0;
+    if (enable === 1) {
+        const demand = fcuBenchCurrentDemand();
+        if (!demand) return false;
+        ({ steering, throttle } = demand);
+    }
     const message = fcuBenchMessage(steering, throttle, enable);
     if (!message) return false;
     liveFcuBenchCommandPublisher.publish(message);
@@ -1031,6 +1103,10 @@ function publishFcuBenchDemand(enable) {
 }
 
 function stopFcuBenchHold() {
+    if (liveFcuBenchAutoMove) {
+        liveFcuBenchAutoMove = null;
+        setLiveMavlinkValue('fcu-loop-auto-status', 'Idle');
+    }
     if (liveFcuBenchHoldTimer !== null) {
         clearInterval(liveFcuBenchHoldTimer);
         liveFcuBenchHoldTimer = null;
@@ -1045,6 +1121,7 @@ function stopFcuBenchHold() {
 }
 
 function cancelFcuBenchHoldWithoutPublishing() {
+    liveFcuBenchAutoMove = null;
     if (liveFcuBenchHoldTimer !== null) {
         clearInterval(liveFcuBenchHoldTimer);
         liveFcuBenchHoldTimer = null;
@@ -1056,6 +1133,31 @@ function cancelFcuBenchHoldWithoutPublishing() {
 function startFcuBenchHold() {
     if (!fcuBenchCanApply() || liveFcuBenchHoldTimer !== null) return false;
     if (!publishFcuBenchDemand(1)) return false;
+    liveFcuBenchHoldTimer = setInterval(
+        () => {
+            if (!publishFcuBenchDemand(1)) stopFcuBenchHold();
+        },
+        FCU_BENCH_PUBLISH_MS
+    );
+    return true;
+}
+
+// Hold-to-run. Identical gating and identical stop paths to the plain hold;
+// the only difference is where the demand values come from. The maneuver also
+// ends itself: once the profile returns null the tick's publish fails and the
+// ordinary release publishes the disabled frames.
+function startFcuBenchAutoMove() {
+    if (!fcuBenchCanApply() || liveFcuBenchHoldTimer !== null) return false;
+    const config = readFcuBenchAutoMoveConfig();
+    if (!config) {
+        setLiveMavlinkValue('fcu-loop-auto-status', 'Rejected — check throttle ≥ 0.15, steering, side and phase seconds');
+        return false;
+    }
+    liveFcuBenchAutoMove = { ...config, startedMs: Date.now() };
+    if (!publishFcuBenchDemand(1)) {
+        liveFcuBenchAutoMove = null;
+        return false;
+    }
     liveFcuBenchHoldTimer = setInterval(
         () => {
             if (!publishFcuBenchDemand(1)) stopFcuBenchHold();
@@ -1186,6 +1288,7 @@ function initFcuBenchLoop() {
     const hold = document.getElementById('btn-fcu-loop-hold');
     const resetEstop = document.getElementById('btn-fcu-loop-reset-estop');
     const ownerButton = document.getElementById('btn-fcu-loop-control-owner');
+    const autoMove = document.getElementById('btn-fcu-loop-auto-move');
     const updateLabels = () => {
         setLiveMavlinkValue('fcu-loop-steering-value', Number(steering?.value || 0).toFixed(2));
         setLiveMavlinkValue('fcu-loop-throttle-value', Number(throttle?.value || 0).toFixed(2));
@@ -1213,6 +1316,23 @@ function initFcuBenchLoop() {
         if (event.key === 'Enter' || event.key === ' ') stopFcuBenchHold();
     });
     hold?.addEventListener('blur', stopFcuBenchHold);
+    autoMove?.addEventListener('pointerdown', (event) => {
+        event.preventDefault();
+        startFcuBenchAutoMove();
+    });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach((eventName) => {
+        autoMove?.addEventListener(eventName, stopFcuBenchHold);
+    });
+    autoMove?.addEventListener('keydown', (event) => {
+        if ((event.key === 'Enter' || event.key === ' ') && !event.repeat) {
+            event.preventDefault();
+            startFcuBenchAutoMove();
+        }
+    });
+    autoMove?.addEventListener('keyup', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') stopFcuBenchHold();
+    });
+    autoMove?.addEventListener('blur', stopFcuBenchHold);
     window.addEventListener('blur', stopFcuBenchHold);
     document.addEventListener('visibilitychange', () => {
         if (document.hidden) stopFcuBenchHold();
