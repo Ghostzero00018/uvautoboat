@@ -61,8 +61,10 @@ run.
 
 ### The verification run
 
-Same as 03/09 with the two fixes committed. Workstation preflight first; it
-refuses a dirty worktree, so commit before `check`.
+Same as 03/09 with the two fixes committed. The workstation preflight already
+passed on the committed tree on 03/09/2026 at `21:07` (`7d1eece`: VRX `36`
+shell and `48` Python, helper `83`, dashboard `110`, `FULL_STACK_CHECK=PASS`),
+so the morning starts at the Pi pins. Rerun it only if the worktree changed:
 
 ```bash
 cd ~/seal_ws/src/uvautoboat && bash tools/real_fcu_full_stack_workstation.sh check

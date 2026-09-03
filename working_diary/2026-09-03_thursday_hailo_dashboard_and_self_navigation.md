@@ -680,3 +680,13 @@ the freshness limit.
 Not run on hardware. First use is after tomorrow's verification run, with the
 operator's declarations and a restrained hull.
 
+### Evening close
+
+Combined workstation preflight on the committed tree `7d1eece` at `21:07`:
+`FULL_STACK_CHECK=PASS`, VRX `36` shell and `48` Python, helper `83`,
+dashboard `110`. Tomorrow starts at the Pi pins and the verification run.
+Committed tonight: `53b3a38` stop-path fixes, `c67f0dd` runbook and docs,
+`b8b1477` auto-move, `7d1eece` its docs. Not done tonight and carried: the
+Board Next Priorities rewrite, Roadmap summary rows, and the decision on
+decoupling the `t3a` calibration requirement from the verdict.
+
