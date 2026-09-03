@@ -746,6 +746,26 @@ print(
     "class=person serial_owner=none thermal=supervised",
     flush=True,
 )
+# Local window. hailo-apps creates its "Output" window on first imshow with
+# the default WINDOW_AUTOSIZE, which the operator cannot resize. Creating the
+# same name first with WINDOW_NORMAL makes hailo-apps' later namedWindow a
+# no-op and leaves the window resizable. If no window can be created, fall
+# back to headless rather than let the detector die mid-run.
+if "--no-display" not in sys.argv:
+    try:
+        cv2.namedWindow("Output", cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
+        print("HAILO_LOCAL_WINDOW=READY mode=resizable name=Output", flush=True)
+    except cv2.error as exc:
+        try:
+            cv2.destroyWindow("Output")
+        except cv2.error:
+            pass
+        sys.argv.append("--no-display")
+        print(
+            "HAILO_LOCAL_WINDOW=FALLBACK_HEADLESS stage=namedWindow "
+            f"error={type(exc).__name__}",
+            flush=True,
+        )
 try:
     detector.main()
 finally:
@@ -1303,10 +1323,13 @@ rfcu_pi_capture_snapshot_guard() {
   local snapshot_copy="$RFCU_PI_RUN_DIR/evidence/guard_snapshot.parm"
   local evidence_file="$RFCU_PI_RUN_DIR/evidence/guard_snapshot.json"
   local resolver_log="$RFCU_PI_RUN_DIR/logs/guard_snapshot_resolver.log"
-  rfcu_pi_capture_topic /mavros/state mavros_msgs/msg/State "$state_file" 8 \
-    || rfcu_pi_fail 'snapshot guard did not receive a MAVROS state sample'
-  rfcu_pi_state_file_is_connected_disarmed "$state_file" \
-    || rfcu_pi_fail 'snapshot guard requires connected:true and armed:false'
+  # Same retry the probe gate already has. /mavros/state is latched, and a
+  # late-joining single read can be handed the pre-heartbeat connected:false
+  # backlog: the probe's first attempt read exactly that on 02/09/2026 and its
+  # loop absorbed it, while this single shot stopped a run on 03/09/2026 with
+  # MAVROS never having logged a lost connection.
+  rfcu_pi_wait_connected_disarmed mavros-probe "$state_file" \
+    || rfcu_pi_fail 'snapshot guard requires connected:true and armed:false before the readiness deadline'
   rfcu_pi_capture_topic /mavros/sys_status mavros_msgs/msg/SysStatus \
     "$sys_status_file" 8 || rfcu_pi_fail 'snapshot guard did not receive SYS_STATUS'
   /usr/bin/python3 -c '

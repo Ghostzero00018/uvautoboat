@@ -477,6 +477,13 @@ rfcufs_main() {
       bash "$RFCUFS_W1" run
   RFCUFS_W1_PID="$RFCUFS_LAST_PID"
   RFCUFS_W1_PGID="$RFCUFS_LAST_PGID"
+  if [ "$REAL_FCU_HAILO_PERSON_STOP" = '1' ]; then
+    # In Hailo mode W1 will not report its services until it has seen one
+    # detection frame from the Pi, so the operator block below cannot appear
+    # before the Pi helper is running. Say so now rather than after a 600 s
+    # wait. Observed on the 03/09/2026 restart.
+    rfcufs_log 'HAILO MODE: start the Pi helper NOW. W1 waits for the Pi detection feed before it reports ready; the operator block appears after that.'
+  fi
   rfcufs_wait_marker 'W1' "$RFCUFS_RUN_DIR/logs/w1.log" \
     'REAL_FCU_WORKSTATION_SERVICES=PASS' \
     "$RFCUFS_W1_WAITING_TIMEOUT_SECONDS" "$RFCUFS_W1_PID"

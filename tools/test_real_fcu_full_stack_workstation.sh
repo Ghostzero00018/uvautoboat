@@ -530,4 +530,31 @@ require_text "$OUTPUT" 'stop=escalated' 'a forced stop was not labelled as escal
 discard_sandbox "$SANDBOX"
 pass_case
 
+# --- Hailo mode tells the operator to start the Pi before W1 can be ready --
+SANDBOX="$(make_sandbox)"
+ORDER="$SANDBOX/order.txt"
+: >"$ORDER"
+write_supervisor_stub "$SANDBOX/fcu_to_vrx_workstation.sh" \
+  'FCU_TO_VRX_WORKSTATION_PRESTART=PASS' 'w2' "$ORDER" 1
+write_supervisor_stub "$SANDBOX/real_fcu_digital_twin_workstation.sh" \
+  'REAL_FCU_WORKSTATION_SERVICES=PASS' 'w1' "$ORDER" 1
+write_capture_stub "$SANDBOX/real_fcu_command_feedback_capture.py" "$ORDER"
+set +e
+OUTPUT="$( cd "$SANDBOX" && HOME="$SANDBOX/home" REAL_FCU_HAILO_PERSON_STOP=1 \
+  timeout 120 bash "$SANDBOX/real_fcu_full_stack_workstation.sh" run-t3a </dev/null 2>&1 )"
+set -e
+require_text "$OUTPUT" 'HAILO MODE: start the Pi helper NOW' \
+  'Hailo mode does not tell the operator to start the Pi before the W1 wait'
+HINT_LINE="$(grep -n 'HAILO MODE: start the Pi helper NOW' <<<"$OUTPUT" | head -1 | cut -d: -f1)"
+READY_LINE="$(grep -n 'W1 reached REAL_FCU_WORKSTATION_SERVICES=PASS' <<<"$OUTPUT" | head -1 | cut -d: -f1)"
+[ -n "$HINT_LINE" ] && [ -n "$READY_LINE" ] && [ "$HINT_LINE" -lt "$READY_LINE" ] \
+  || fail_test 'the Hailo start hint is not printed before W1 is awaited'
+discard_sandbox "$SANDBOX"
+set +e
+OUTPUT="$(run_helper "$(SANDBOX="$(make_sandbox)"; write_supervisor_stub "$SANDBOX/fcu_to_vrx_workstation.sh" 'FCU_TO_VRX_WORKSTATION_PRESTART=PASS' w2 "$SANDBOX/o" 1; write_supervisor_stub "$SANDBOX/real_fcu_digital_twin_workstation.sh" 'REAL_FCU_WORKSTATION_SERVICES=PASS' w1 "$SANDBOX/o" 1; write_capture_stub "$SANDBOX/real_fcu_command_feedback_capture.py" "$SANDBOX/o"; printf %s "$SANDBOX")" run-t3a)"
+set -e
+refute_text "$OUTPUT" 'HAILO MODE: start the Pi helper NOW' \
+  'the Hailo start hint is printed even when the detector is off'
+pass_case
+
 printf 'full-stack workstation helper tests: PASS cases=%d runtime=not-started\n' "$CASES"

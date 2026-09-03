@@ -164,6 +164,80 @@ grep -Fq 'HAILO_PERSON_STOP_THERMAL_ABORT' "$PI_HAILO_WRAPPER" \
   || fail_test 'Hailo bridge tries to own or relay the FCU serial path'
 pass_case
 
+# --- the local window is created resizable before hailo-apps' own imshow ---
+grep -Fq 'cv2.namedWindow("Output", cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)' "$PI_HAILO_WRAPPER" \
+  || fail_test 'generated wrapper does not pre-create a resizable Output window'
+grep -Fq 'if "--no-display" not in sys.argv:' "$PI_HAILO_WRAPPER" \
+  || fail_test 'window pre-creation is not gated on display being requested'
+grep -Fq 'HAILO_LOCAL_WINDOW=FALLBACK_HEADLESS' "$PI_HAILO_WRAPPER" \
+  || fail_test 'window pre-creation has no headless fallback when no window can be made'
+grep -Fq 'sys.argv.append("--no-display")' "$PI_HAILO_WRAPPER" \
+  || fail_test 'headless fallback does not actually tell hailo-apps to skip display'
+pass_case
+
+# --- the snapshot guard reads state with the probe gate's retry ------------
+# /mavros/state is latched; a single late-joining read can be handed the
+# pre-heartbeat connected:false backlog. Seen 02/09 (probe attempt 001 read
+# false, its loop absorbed it) and 03/09 (single-shot snapshot read false and
+# stopped a run with no lost connection in the MAVROS log).
+PI_SNAPSHOT_GUARD_FUNCTION="$(awk -v start='rfcu_pi_capture_snapshot_guard() {' \
+  '$0 == start { c = 1 } c { print } c && $0 == "}" { exit }' "$PI_HELPER")"
+grep -Fq 'rfcu_pi_wait_connected_disarmed mavros-probe' <<<"$PI_SNAPSHOT_GUARD_FUNCTION" \
+  || fail_test 'snapshot guard does not reuse the retrying connected/disarmed wait'
+! grep -Fq 'rfcu_pi_capture_topic /mavros/state' <<<"$PI_SNAPSHOT_GUARD_FUNCTION" \
+  || fail_test 'snapshot guard still reads /mavros/state with a single shot'
+pass_case
+
+# --- and that wait really absorbs a stale first sample ----------------------
+# Fixtures are files and the stub cats them: embedding the sample text inside
+# the single-quoted body would have to survive its own quotes (frame_id: '').
+STALE_TRUE="$TEST_TMP/state_connected_true.yaml"
+STALE_FALSE="$TEST_TMP/state_connected_false.yaml"
+cat >"$STALE_TRUE" <<'YAML'
+header:
+  stamp:
+    sec: 1788450780
+    nanosec: 530545112
+  frame_id: ''
+connected: true
+armed: false
+guided: false
+manual_input: true
+mode: MANUAL
+system_status: 5
+---
+YAML
+sed 's/^connected: true$/connected: false/; s/sec: 1788450780/sec: 1788450777/' "$STALE_TRUE" >"$STALE_FALSE"
+grep -Fxq 'connected: false' "$STALE_FALSE" || fail_test 'stale fixture was not derived'
+STALE_FIRST_OUTPUT="$(bash -c '
+  set -euo pipefail
+  source "$1"
+  RFCU_PI_RUN_DIR="$2/stale-first"
+  # Captured before the stub is defined: inside a function $3 and $4 would be
+  # the arguments the helper passes to ros2, not these paths.
+  stale_false="$3"
+  stale_true="$4"
+  mkdir -p "$RFCU_PI_RUN_DIR/evidence"
+  RFCU_PI_READY_TIMEOUT_SECONDS=20
+  RFCU_PI_POLL_SECONDS=1
+  rfcu_pi_child_alive() { return 0; }
+  calls="$RFCU_PI_RUN_DIR/calls"
+  : >"$calls"
+  ros2() {
+    printf x >>"$calls"
+    if [ "$(wc -c <"$calls")" -le 2 ]; then cat "$stale_false"; else cat "$stale_true"; fi
+  }
+  rfcu_pi_wait_connected_disarmed stub "$RFCU_PI_RUN_DIR/evidence/state.yaml" \
+    && printf "WAIT_OK calls=%s\n" "$(wc -c <"$calls")"
+' _ "$PI_HELPER" "$TEST_TMP" "$STALE_FALSE" "$STALE_TRUE")" \
+  || fail_test 'the connected/disarmed wait gave up on a stale first sample'
+grep -Fq 'WAIT_OK' <<<"$STALE_FIRST_OUTPUT" \
+  || fail_test 'the connected/disarmed wait did not report success after stale samples'
+STALE_CALLS="$(sed -n 's/.*calls=//p' <<<"$STALE_FIRST_OUTPUT")"
+[ "${STALE_CALLS:-0}" -ge 3 ] \
+  || fail_test "the wait passed without retrying past the stale samples (calls=$STALE_CALLS)"
+pass_case
+
 PI_HAILO_COMMANDS="$(bash -c '
   set -euo pipefail
   source "$1"
