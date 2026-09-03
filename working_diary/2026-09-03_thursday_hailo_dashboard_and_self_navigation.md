@@ -555,3 +555,46 @@ E-stop on the dashboard, then Ctrl+C here". Carried as an open item.
 - Copy back `real_fcu_t3a_pi_20260903_181451` and the earlier
   `real_fcu_t3a_pi_20260903_163003` from the Pi.
 
+### Correction to the stop - the Pi did not finish on its own
+
+The Pi stayed at `waiting for workstation operator stop before bridge
+shutdown` after W1 had exited. W1's own log shows `REAL_FCU_WORKSTATION_STOP_MARKER=PASS`
+at `t=1788454701` (`18:58:21`) and a clean exit five seconds after the
+operator's Enter, so W1 believed the marker was delivered.
+
+Read from the workstation at `19:04:47`: `/real_fcu/workstation_stop` had
+exactly one subscriber, `_ros2cli_16057`, `RELIABLE` / `VOLATILE`, the Pi's
+`ros2 topic echo --once` reader, still waiting inside its `1200` s window. No
+other node in the bridge, dashboard or planner subscribes to that topic. W1's
+marker was republished once by hand with the exact payload
+`REAL_FCU_WORKSTATION_STOPPED final=disarmed children=stopped ports=free` and
+the same QoS, gated on `--wait-matching-subscriptions 1`; it published, and the
+subscription was gone three seconds later, which is the reader exiting on
+receipt. The Pi then printed `REAL_FCU_WORKSTATION_STOP=PASS marker=received`,
+stopped `hailo-person-stop`, `bridge` and `mavros`, and ended
+`REAL_FCU_PI_EXIT status=0 cleanup_rc=0` — a clean exit, because the marker
+arrived inside its wait; only its arrival was late.
+
+The mechanism is a race in W1's marker publish. `ros2 topic pub --once
+--wait-matching-subscriptions 1` sends as soon as the **publisher** counts a
+matched subscription. On a `VOLATILE` topic the **subscriber** side of that
+match can still be completing, and a message sent into a half-formed reliable
+connection is not retained for it. W1 then exits, so there is no second
+chance. Yesterday and this morning it worked because the Pi's reader had been
+up for some time before W1 published; today the operator's Enter on the entry
+point's prompt landed within moments of the Pi reaching its wait.
+
+Proposed fix, W1 side, not a bundle member: publish the marker more than once
+over a short interval (`--times 5 --rate 1`, or `--once` after a one-second
+settle following the match) or publish it `TRANSIENT_LOCAL` so a reader that
+completes its match late still receives it. The Pi's reader would then need
+the matching durability. Either removes the race; the first is the smaller
+change. The entry point's closeout prompt should also say: press Enter only
+after the Pi prints `waiting for workstation operator stop`, which is the line
+the prompt already alludes to and which the operator needs to be told to wait
+for by name.
+
+Added to the carried open items. The day's Board row states the stop as clean
+from the entry point's view, which it was; this section is the correction from
+the Pi's view.
+
