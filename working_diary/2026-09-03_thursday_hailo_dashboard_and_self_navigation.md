@@ -690,3 +690,40 @@ Committed tonight: `53b3a38` stop-path fixes, `c67f0dd` runbook and docs,
 Board Next Priorities rewrite, Roadmap summary rows, and the decision on
 decoupling the `t3a` calibration requirement from the verdict.
 
+### Late evening - workstation-only checks for tomorrow
+
+**Marker race, local.** Six trials each on a throwaway domain with the reader
+starting `0.3` s after the publisher: `--once` delivered `6/6` and
+`--times 5 --rate 2` delivered `6/6`. The race did not reproduce on one host,
+where discovery is fast; the loss on 03/09 was cross-host to the Pi over WiFi.
+Tonight's evidence is therefore that the burst is harmless, not that it fixes
+the field failure. Tomorrow's stop is the test and will be recorded as such.
+
+**Render check of the auto-move controls.** Dashboard served statically on
+`8002` with `?enable_fcu_bench_control=1`, no ROS. Console errors were only the
+expected rosbridge refusals. The fieldset and button are present, visible
+(display `block`, no hidden ancestor, hit-test lands inside), gated disabled
+with their defaults `0.17`, `5`, right, `0.10`, `5`, and the status reads
+`Idle`. Styling matches the existing bench controls exactly: labels and legend
+`rgb(51,51,51)` at `16` px on the panel's white background, the same as the
+slider labels; the button is `766` px wide at opacity `0.4` like HOLD. No CSS
+change needed. The browser pane's screenshots after scrolling came back blank;
+the DOM and computed-style readings are the evidence.
+
+**SITL acceptance not run.** It is `tools/live_dashboard_preflight.sh sitl`,
+about `8` minutes and seven children on 02/09, followed by the adjudicator. It
+exercises the bridge and simulated FCU, which did not change tonight, and
+serves the dashboard without driving a browser, so it would not reach the new
+JS. Low marginal value tonight; still the standing simulator regression.
+
+**Rehearsal of the fixed wrapper against the real supervisors.** No Pi, a
+pseudo-terminal in its own session. Readiness on both supervisors; the
+operator block carries the E-stop-first stop wording; the interrupt was
+recognised; the closeout pause names
+`waiting for workstation operator stop before bridge shutdown` and the new
+prompt appeared and was answered; W2 and W1 `stopped cleanly`;
+`FULL_STACK_EXIT status=0 stop=clean`; no survivors, no bound ports.
+`REHEARSAL4=PASS`. Fix B is therefore verified end to end on the workstation.
+Fix A, the marker burst, can only be verified against the Pi's reader and
+waits for tomorrow's stop.
+

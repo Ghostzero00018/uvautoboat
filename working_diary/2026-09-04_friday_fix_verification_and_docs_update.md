@@ -89,7 +89,9 @@ closeout token, then wait for the Pi to print
 `waiting for workstation operator stop before bridge shutdown`, then Enter at
 the workstation prompt.
 
-What proves the fixes:
+Fix B was already rehearsed against the real supervisors on the evening of
+03/09 (`REHEARSAL4=PASS`: wording present, prompt answered, `stop=clean`), so
+the run only has to prove Fix A. What proves it:
 
 - The Pi prints `REAL_FCU_WORKSTATION_STOP=PASS marker=received` **without** a
   manual republish, and `REAL_FCU_PI_EXIT status=0 cleanup_rc=0`.
