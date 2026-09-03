@@ -478,3 +478,80 @@ should be dropped or the calibration made an opt-in, and the verdict's
 calibration reasons should not decide `pass` for a tier whose threshold is
 recorded here.
 
+## Day close - 03/09/2026
+
+### What the day achieved
+
+Stated by the operator at close, with the evidence each rests on:
+
+- **Hailo live detection images in both places.** The annotated stream showed
+  on the workstation dashboard camera panel (`/hailo/overlay/image_raw`, W1
+  `hailo=image,person-detections`) and, for the first time, in a resizable
+  window on the Pi desktop (`display=local-window` on the T3a READY line,
+  operator confirmed it resizes when dragged).
+- **Two-way digital twin, commands reaching the propellers.** Dashboard demand
+  went through the Pi bridge to the flight controller and turned the fitted
+  propellers (operator observed; capture recorded `2,214` demand frames,
+  `9,841` measured RCOut samples and `65` `ACTIVE` plateaus), while W2's relay
+  and twin telemetry both reached `READY` with `streams=4`, so the simulator
+  followed the real outputs and reported back.
+- **Person detection as an advisory.** A person in frame raised the red badge
+  and stopped nothing: `96` detections against `0` latches in the joint
+  capture, and `0` `EMERGENCY_STOP` states across the whole `42`-minute armed
+  run.
+- **Live arm and disarm from the Herelink.** Arming and disarming on the
+  Herelink console changed the dashboard's armed state live (operator
+  observed; the bridge status stream carried `armed` throughout).
+
+### The stop
+
+Workstation, from the entry point: W2 `stopped cleanly after 5s`, the closeout
+pause, W1 `stopped cleanly after 5s` inside a `1260` s grace it did not need,
+`FULL_STACK_EXIT status=0 stop=clean`. Both supervisors' own exits
+`status=0 cleanup_rc=0`. No survivors, ports `8002`, `8080`, `9090` free. Pi:
+`REAL_FCU_T3A_SAFE_CLOSEOUT=PASS`, `REAL_FCU_FINAL_STATE=PASS connected=true
+armed=false`, then waiting for the marker W1 published at `18:58:16`; the Pi's
+final exit line was not pasted and is inferred from the marker handshake, not
+read. Pi evidence directory `real_fcu_t3a_pi_20260903_181451`, not yet copied
+back.
+
+### Capture verdict, `real_fcu_capture_t3a_esc_threshold_20260903_181500`
+
+`42m21s` armed, `73,808` events, `invalid_status_count 0`, publisher binding
+`pass` on `/real_fcu_rc_command_bridge_t3a`, states `ACTIVE x65`,
+`ARMED_NEUTRAL x67`, `EMERGENCY_STOP x0`, final `READY_DISARMED` with hardware
+safety `ENGAGED` and both servos at `800`. `pass:false` on four reasons:
+
+| Reason | Meaning | Status |
+| --- | --- | --- |
+| `calibration_left_observation_incomplete` | no typed ESC line | expected; the operator reference values above are the figure |
+| `calibration_right_observation_incomplete` | as above | expected |
+| `final_status_not_disarmed` | for `t3a` the check wants final state `EMERGENCY_STOP` | stop-order artefact, see below |
+| `tier_status_sequence_incomplete` | wants `... ACTIVE, EMERGENCY_STOP` in order | stop-order artefact, see below |
+
+The last two are not about the run. `real_fcu_command_feedback_capture.py`
+lines `1038` and `1068` expect a `t3a` run to end latched in `EMERGENCY_STOP`.
+It did yesterday, because the operator pressed E-stop before stopping the
+capture. Today the entry point's stop order puts Ctrl+C on the workstation,
+which ends the capture, **before** the Pi closeout in which the E-stop is
+pressed, so the capture never saw the latch. The fix is wording, not code
+logic: the stop sequence and the entry point's closing text should say "press
+E-stop on the dashboard, then Ctrl+C here". Carried as an open item.
+
+### Carried open items
+
+- Stop order: press the dashboard E-stop before Ctrl+C on the workstation, so
+  the capture records the terminal `EMERGENCY_STOP`; update the entry point's
+  text and the runbook.
+- `t3a` capture requires `--esc-threshold-calibration` and fails `pass` on its
+  two calibration reasons; decouple, since the threshold reference is the
+  operator's recorded figure.
+- UART probe on a fresh boot needs `stty -F /dev/ttyAMA0 57600 raw` before
+  `cat`, or a counter pair taken while a process holds the port; the current
+  run-sheet step zero gives a false dead-link reading otherwise. Untested fix.
+- The Pi clock read `Aug 27` at boot; NTP likely corrected it, unverified.
+- GPS has no fix indoors; the self-navigation task from the pre-diary needs sky
+  and is untouched today.
+- Copy back `real_fcu_t3a_pi_20260903_181451` and the earlier
+  `real_fcu_t3a_pi_20260903_163003` from the Pi.
+
