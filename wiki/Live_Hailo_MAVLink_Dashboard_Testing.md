@@ -460,6 +460,16 @@ separate, freshly approved, propellers-removed calibration with correlated
 requested demand, RC input, both servo outputs and operator-observed start
 points.
 
+**Forward note, 03/09/2026.** That measurement has since been made, propellers
+fitted, on the armed T3a runs of 02/09 and 03/09/2026. Operator-recorded
+reference values with steering `0`: both propellers start at throttle `0.15`,
+`996` us, `14.0 %` of the `800/800/2200` rail; with throttle `0`, steering
+`-0.14` or `+0.14` starts the corresponding side at `994` us, `13.9 %`.
+Break-away is therefore about `14 %` of the rail whichever axis drives it. The
+dashboard throttle ceiling was raised to `0.20` on 02/09/2026 on operator
+specification, after this threshold was known; `MOT_THR_MIN` was not changed.
+The typed calibration in the capture node is not the source of these figures.
+
 **01/09/2026 forward supersession:** the preceding propellers-removed sentence
 records the 31/08 restriction. T2b remains the isolated props-removed evidence
 path. A physical fitted-propeller ESC-onset measurement now belongs only to the
@@ -562,7 +572,13 @@ phrases. The supervisor then waits fail-closed for bridge `READY_DISARMED`.
 READY additionally requires the generic
 `/real_fcu_command_feedback_capture` node to be visible; the separately
 launched recorder must be `t3a --esc-threshold-calibration`, and its verdict
-binds the T3a bridge identity. Expected markers are:
+binds the T3a bridge identity. Since 02/09/2026 the single workstation entry
+point `tools/real_fcu_full_stack_workstation.sh run-t3a` launches that recorder
+itself, in the foreground of its own terminal. Its typed ESC observations are
+optional in practice: the threshold reference is the operator-recorded figure
+above, and a T3a verdict that reads `pass:false` only on the two calibration
+reasons is the expected outcome of not typing them, not a failed run. Expected
+markers are:
 
 ```text
 REAL_FCU_T3A_START=PASS propellers=fitted hull=restrained mechanical_guarding=installed exclusion_zone=clear propulsion=isolated safety=ON state=disarmed

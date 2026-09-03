@@ -441,3 +441,40 @@ together, retained at `/home/ghostzero/Desktop/advisory_proof_20260903_183827`:
 detection warns and does not stop, on the real boat, with the recording to
 show it. Yesterday's request and today's two from the professor - warn without
 stopping, and a window on the Pi desktop - are all met in this run.
+
+## ESC start threshold - operator-recorded reference values
+
+Measured by the operator on the armed `a8bed50` run, propellers fitted, hull
+restrained, reading the dashboard's measured output while driving from rest.
+These values are the reference. The capture node's typed calibration is
+**not** the source of truth for this figure and its `calibration` field is
+expected to stay `null`: it demands a hold, a release and a typed line inside
+a ten-second window, once per side, while the operator is watching propellers.
+Yesterday's run lost an hour of armed evidence to that interface and today's
+operator declined to use it. Rails for all rows: `800 / 800 / 2200`, so a rail
+percentage is `(pwm - 800) / 1400`.
+
+| Demand held | Side that starts | Output at onset | Rail |
+| --- | --- | --- | --- |
+| throttle `0`, steering `-0.14` | one side | `994` us | `13.9 %` |
+| throttle `0`, steering `+0.14` | the other side | `994` us | `13.9 %` |
+| steering `0`, throttle `0.15` | both | `996` us | `14.0 %` |
+
+The two figures agree with each other and with yesterday's `0.15 / 996 us`
+from-rest reading: break-away on this hull is at about `14 %` of the rail,
+whichever axis gets the output there. Below that the ESC holds the propeller
+still; the usable band above it, at the `0.20` ceiling, is about `0.05` of
+demand.
+
+The operator's wording as given - "-0.14 and 0.14 (994us, 13.9% PWM rail)"
+for the steering-only case, "15.0, 996us, 14% PWM rail" for the throttle-only
+case - is recorded here; the second is read as demand `0.15`, the only value
+in the bench range consistent with `996` us and with yesterday.
+
+Open item, not for today: `t3a` capture still **requires**
+`--esc-threshold-calibration`, so every T3a verdict will read `pass:false` on
+the calibration reasons even when the run is otherwise clean. The requirement
+should be dropped or the calibration made an opt-in, and the verdict's
+calibration reasons should not decide `pass` for a tier whose threshold is
+recorded here.
+
