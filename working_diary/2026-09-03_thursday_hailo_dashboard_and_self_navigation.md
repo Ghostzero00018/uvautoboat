@@ -597,4 +597,3 @@ for by name.
 Added to the carried open items. The day's Board row states the stop as clean
 from the entry point's view, which it was; this section is the correction from
 the Pi's view.
-
