@@ -231,3 +231,145 @@ work exactly as they did on 02/09/2026, so falling back costs only the paste.
   `FCU_VRX_*` values make it fail with `missing live-read configuration was
   accepted`. Recorded 02/09/2026, not repaired. The new entry point scrubs
   them before delegating, so it is not in the way of a run.
+
+## Session record - 03/09/2026, at the bench
+
+Pi and flight controller present. Committed before the session started:
+`60804e3` corrected the entry point's bare `run` to capture tier `t2b`, the
+Pi's authority for that mode, and `37da8ac` added the Hailo checkout pins to
+this file. Workstation preflight `FULL_STACK_CHECK=PASS` on `37da8ac`.
+
+### A wrong UART diagnosis, and the corrected instrument
+
+With the Pi up and then with the flight controller powered, the receive
+counter read `tx:740 rx:436 fe:284 brk:15 oe:12` and did not move across four
+3-second windows, and `timeout 3 cat /dev/ttyAMA0 | xxd` printed nothing. A
+later pair read `tx:1120 rx:825 fe:541 brk:30 oe:23`. I called that "zero
+signal edges at the pin" and named the cable. Then the stack was started
+anyway and MAVROS connected at once: `REAL_FCU_TELEMETRY=PASS` on all six
+topics. The link had been fine throughout.
+
+Two facts I stated were false:
+
+- The PL011 receiver is disabled when no process holds the port, so
+  `/proc/tty/driver/ttyAMA` counts nothing while the port is closed. Every
+  static reading was a reading of a disabled receiver.
+- `cat` opens the port at the tty's boot-default line settings, not `57600`.
+  Yesterday's `cat` showed clean frames only because MAVROS had already set
+  `57600` earlier in that boot and termios persists across open and close
+  until reboot. Today, on a fresh boot, `cat` received the `57600` stream at
+  the wrong rate, the tty layer discarded it as framing errors, and nothing
+  reached `xxd`. The `+389 rx / +257 fe` burst between readings was that
+  `cat` run itself, not a connector moving.
+
+Corrected instrument for a fresh boot, untested here: set the line first with
+`stty -F /dev/ttyAMA0 57600 raw` and then read, or take the counter pair while
+a process that has set the rate holds the port. The unexplained `tx` bursts
+were also this: a wrong-rate reader still acknowledges nothing, but a serial
+console was ruled out (`console=tty1` only, both gettys inactive, ModemManager
+inactive). This is the fourth wrong UART call across two days, and it cost a
+run delay and a false cable suspicion. The lesson is the same each time: name
+what the instrument can and cannot see before reading it.
+
+### First Hailo-enabled READY, ever
+
+Bundle `929831e`, Pi run `real_fcu_t3a_pi_20260903_163003`, workstation
+`real_fcu_full_stack_20260903_162620`, W1 `..._162638`, capture `..._163015`.
+The Hailo checkout pins passed (`HEAD 891ce701`, clean). Both machines came up
+from one command each. The Pi reached
+`REAL_FCU_T3A_READY=PASS ... hailo=ready person_alert=advisory-no-stop`; W2
+reported relay, twin telemetry and the four-stream observer all `READY`; W1
+reported all six telemetry topics plus `hailo=image,person-detections`. The
+dashboard showed Hardware Safety `ENGAGED`, a live camera panel, and the
+operator armed.
+
+### Defect - advisory mode latched the stop anyway
+
+A person in frame gave the red badge, and every control greyed. Live bridge
+status: `state EMERGENCY_STOP`, `emergency_stop_latched true`,
+`person_alert_advisory true`, `person_hold_clear false`, `ready false`,
+reset blocked by `COMMAND_NEUTRAL_DISABLED_REQUIRED`. Advisory was on in the
+bridge and the stop latched regardless.
+
+The bridge got advisory mode yesterday; the detector monitor did not.
+`tools/real_fcu_digital_twin_workstation.sh` launched
+`plan/plan/person_stop_monitor.py` with `latch_emergency_stop:=true`, and the
+monitor publishes `Bool(True)` on `/planning/emergency_stop` on every tick a
+person is visible. The bridge subscribes to that topic and latches on it
+unconditionally, and it must: the dashboard's own E-stop button publishes to
+the same topic (`FCU_BENCH_EMERGENCY_TOPIC`), so the bridge cannot tell a
+monitor stop from an operator stop. The fix therefore has to be at the
+monitor, and W1 never read `REAL_FCU_PERSON_ALERT_ADVISORY` at all. My miss:
+one publisher on a shared topic was made advisory-aware and the second was
+never traced.
+
+W1 now reads the flag, launches the monitor with `latch_emergency_stop:=false`
+under advisory and `:=true` otherwise, requires the detector to be on when
+advisory is set, records the setting in its manifest, and its READY marker
+says `person_alert=advisory-no-stop` or `stop-enabled` instead of the
+unconditional `person_stop=armed`. Four cases added; a mutant forcing the
+latch back on fails with `advisory mode still lets the monitor raise the
+authoritative E-stop`. W1 is not a bundle member.
+
+### GPS: no fix indoors, not a software fault
+
+`/mavros/global_position/raw/fix` read `status -1`, latitude and longitude
+`0.0`, `raw/satellites` `0`. The dashboard's "Waiting" and its refusal to move
+the map are what its own tests require of an invalid fix. Yesterday's correct
+position had sky; today did not.
+
+### Stop of the first run - the Pi clean, my wrapper wrong
+
+Pi: `REAL_FCU_T3A_SAFE_CLOSEOUT=PASS`, `REAL_FCU_FINAL_STATE=PASS`,
+`REAL_FCU_WORKSTATION_STOP=PASS marker=received`, all children stopped,
+`REAL_FCU_PI_EXIT status=0 cleanup_rc=0`. W1: `operator stop requested` at
+`t=1788447988`, marker published, `REAL_FCU_WORKSTATION_EXIT status=0
+cleanup_rc=0` at `t=1788447991`, three seconds later. The wrapper meanwhile
+printed `W1 did not stop within 180s, sending TERM` and then
+`FULL_STACK_EXIT status=0`.
+
+W1 was innocent. The wrapper judged liveness by process group, and the ROS 2
+CLI daemon that `ros2 topic echo` starts had landed in W1's group: proven on
+this workstation with a throwaway domain, where the daemon spawned by a job
+under `set -m` carried that job's pgid `62058` after the job had exited, and
+`ros2cli/daemon/daemonize.py` sets `DETACHED_PROCESS` only on Windows. So after
+W1 exited cleanly in three seconds, `kill -0` on its group kept answering, the
+wrapper waited its whole grace and TERMed a bystander, and then reported a
+clean exit it had not earned.
+
+Fixed: liveness is the supervisor's pid; stragglers in the group are listed
+with `pgrep -g` and terminated, never counted against the supervisor; W1's
+grace is its readiness timeout plus sixty seconds, because its stop marker
+legitimately blocks until the Pi reaches its closeout wait; a forced stop exits
+non-zero with `stop=escalated`; every wrapper line carries a timestamp and no
+`kill` result is swallowed. Two cases added, `12` to `14`: a supervisor that
+leaves an in-group straggler must be seen to stop cleanly and the straggler
+swept, and a supervisor that ignores the interrupt must be escalated and
+reported. A mutant restoring group liveness fails the first with `a straggler
+made the stop non-clean`. Two suite defects surfaced on the way and were
+fixed: a `pkill -f` on a literal that matched the harness's own shell, and a
+`pipefail` assignment that ended the suite silently; both are now selection by
+pgid with guarded assignments.
+
+### Feature - the Hailo window on the Pi desktop
+
+Requested by the professor. `REAL_FCU_HAILO_LOCAL_DISPLAY=1` drops
+`--no-display` from the Pi's Hailo command. Nothing else changes: the
+generated wrapper hands every frame back to hailo-apps' own `visualize`, which
+draws its native resizable window when the flag is absent. A display is
+required at preflight, because a detector that dies for want of one mid-run
+reads as a lost feed and stops the boat; the check mirrors the older
+`HAILO_LOCAL_DISPLAY` tool. The T3a READY marker gains `display=local-window`
+or `headless`, and the Pi manifest gains `person_alert_advisory=` and
+`hailo_local_display=`, which it had lacked. Three cases added; a mutant
+forcing `--no-display` back fails with `local-display mode still passes
+--no-display`.
+
+### Deployment
+
+Helper suite `73` to `79`, wrapper suite `12` to `14`, bundle manifest
+regenerated with the Pi helper at `1dcc84d9`, `sha256sum -c` clean. Committed
+as `7cf684b` and transferred by `scp` into
+`/home/imt-aqua-drone/uvautoboat_real_fcu_bundle_20260903_7cf684b`, a copy of
+the `929831e` directory with the two changed files replaced. Certification on
+the Pi and the restart were pending when this was written.
