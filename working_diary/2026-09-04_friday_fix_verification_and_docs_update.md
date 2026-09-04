@@ -83,6 +83,18 @@ The Pi command is the 03/09 one, unchanged, from a Remmina terminal, in the
 `a8bed50` bundle directory, with `REAL_FCU_HAILO_LOCAL_DISPLAY=1` and the
 thirteen declarations as the operator's own.
 
+**Inside the armed verification window - first use of auto-move:** after all
+READY markers and external arming, use the bench panel's `Hold to Run Auto
+Move` before the dashboard E-stop or either supervisor is stopped. Defaults:
+throttle `0.17`, straight `5` s, then right, steering `0.10`, `5` s. Hold it;
+release at any instant is neutral. Watch three things: the propellers follow
+the two phases, the capture records `ACTIVE` frames with the profile's values,
+and the side selector's sign matches which way the hull tries to turn - if it
+is reversed, the mixer convention in the label is wrong and the sign flips in
+`readFcuBenchAutoMoveConfig`. Hull restrained as declared. This dashboard-only
+feature was implemented on the evening of 03/09/2026 with nine tests and has
+not yet run on hardware.
+
 **Stop, in the corrected order:** dashboard E-stop, then external disarm and
 safe state, then Ctrl+C on the workstation terminal, then Pi Ctrl+C and the
 closeout token, then wait for the Pi to print
@@ -102,17 +114,6 @@ the run only has to prove Fix A. What proves it:
 
 A short armed window is enough; the advisory proof is already recorded. Copy
 the Pi run directory back afterwards as on 03/09.
-
-### After the verification run - first use of auto-move
-
-Implemented on the evening of 03/09/2026, dashboard only, nine tests, never
-run on hardware. On the bench panel: `Hold to Run Auto Move`, defaults
-throttle `0.17`, straight `5` s, then right, steering `0.10`, `5` s. Hold it;
-release at any instant is neutral. Watch three things: the propellers follow
-the two phases, the capture records `ACTIVE` frames with the profile's values,
-and the side selector's sign matches which way the hull tries to turn - if it
-is reversed, the mixer convention in the label is wrong and the sign flips in
-`readFcuBenchAutoMoveConfig`. Hull restrained as declared.
 
 ## Task 2 - the rest of the day: the stale-docs update
 

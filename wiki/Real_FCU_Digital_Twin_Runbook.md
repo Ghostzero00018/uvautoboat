@@ -142,7 +142,9 @@ FCU mixer's sign and says so. Release at any instant, E-stop, loss of
 readiness, or a bridge status older than `500` ms all end it exactly as they
 end a plain hold. Nothing changes on the Pi or in the bridge; the capture
 records the frames like any other demand. Defaults `0.17`, `5` s, right,
-`0.10`, `5` s.
+`0.10`, `5` s. Run it after all READY markers and external arming, and before
+the dashboard E-stop or any supervisor shutdown in section 5. Running it after
+that stop sequence requires a second full-stack launch.
 
 ## 5. Stop, in this order
 
@@ -175,7 +177,7 @@ reading the logs for.
 Copy back from the workstation:
 
 ```bash
-mkdir -p ~/Desktop/pi_run_evidence && scp -r imt-aqua-drone@10.120.2.249:/home/imt-aqua-drone/Desktop/real_fcu_t3a_pi_<stamp> ~/Desktop/pi_run_evidence/
+mkdir -p ~/Desktop/test_logs_folder/pi_run_evidence && scp -r imt-aqua-drone@10.120.2.249:/home/imt-aqua-drone/Desktop/real_fcu_t3a_pi_<stamp> ~/Desktop/test_logs_folder/pi_run_evidence/
 ```
 
 The Pi address was `10.120.2.249` on both 02/09 and 03/09/2026; `hostname -I`
