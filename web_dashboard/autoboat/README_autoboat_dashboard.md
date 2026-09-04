@@ -231,11 +231,20 @@ steering to a chosen side for a set number of seconds, then it ends itself
 with the usual disabled frames. Its inputs are local to the page, not ROS
 parameters. Throttle is bounded to `0.15` to `0.20`, the measured ESC
 break-away to the ceiling; releasing the button, the E-stop, lost readiness or
-a bridge status older than `500` ms end it as they end a plain hold. Nine
+a bridge status older than `500` ms end it as they end a plain hold. Thirteen
 tests in `test/mavlink_telemetry.test.js` cover the profile, the frames, the
-self-ending, release, gating, refusal below break-away, the side sign, E-stop
-and stale status. Not yet run on hardware; see the Real-FCU Digital Twin
-Runbook.
+self-ending, release, gating, refusal below break-away, the side sign, E-stop,
+stale status and pointer capture. First hardware run 04/09/2026 by keyboard
+hold: straight then right, and the hull turned right, so the side label
+matches the mixer. The same day the mouse hold was found to release itself
+after one frame, because the status line written on the first frame moved the
+button out from under the pointer; since that evening both hold buttons
+capture the pointer on press. Reserving the tested two-line phase height also
+removes that measured shift, but pointer capture is what preserves the hold
+under any other reflow. Sliding the pressed mouse off the button no longer
+releases and releasing the mouse button anywhere does. Keyboard activation
+does not request pointer capture. The mouse path has not been re-run on
+hardware. Procedure and stop order: the Real-FCU Digital Twin Runbook.
 
 
 On 17/07/2026, two runs from the clean, pushed workstation checkout on

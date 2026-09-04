@@ -1130,6 +1130,24 @@ function cancelFcuBenchHoldWithoutPublishing() {
     liveFcuBenchNeutralTimeouts = [];
 }
 
+// A hold must survive the page moving under a stationary pointer. On
+// 04/09/2026 the status line written on the first auto-move frame reflowed
+// the bench panel, the button slid out from under the mouse, and the
+// resulting pointerleave released the hold after one frame. Capturing the
+// pointer on press keeps its events on the button wherever the layout puts
+// it; pointerup and pointercancel still arrive and still release. A refusal
+// to capture must not block the press: the hold then runs as before.
+function captureHoldPointer(event) {
+    const target = event?.currentTarget ?? event?.target;
+    if (!target || typeof target.setPointerCapture !== 'function') return false;
+    try {
+        target.setPointerCapture(event.pointerId);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 function startFcuBenchHold() {
     if (!fcuBenchCanApply() || liveFcuBenchHoldTimer !== null) return false;
     if (!publishFcuBenchDemand(1)) return false;
@@ -1301,6 +1319,7 @@ function initFcuBenchLoop() {
     ownerButton?.addEventListener('click', toggleFcuBenchControlOwner);
     hold?.addEventListener('pointerdown', (event) => {
         event.preventDefault();
+        captureHoldPointer(event);
         startFcuBenchHold();
     });
     ['pointerup', 'pointercancel', 'pointerleave'].forEach((eventName) => {
@@ -1318,6 +1337,7 @@ function initFcuBenchLoop() {
     hold?.addEventListener('blur', stopFcuBenchHold);
     autoMove?.addEventListener('pointerdown', (event) => {
         event.preventDefault();
+        captureHoldPointer(event);
         startFcuBenchAutoMove();
     });
     ['pointerup', 'pointercancel', 'pointerleave'].forEach((eventName) => {

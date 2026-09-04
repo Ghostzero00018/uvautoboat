@@ -168,14 +168,24 @@ records the frames like any other demand. Defaults `0.17`, `5` s, right,
 the dashboard E-stop or any supervisor shutdown in section 5. Running it after
 that stop sequence requires a second full-stack launch.
 
-**Hold it with the keyboard, not the mouse, until the defect below is fixed.**
-Click `Neutral Now`, press Tab twice so the auto-move button shows its focus
-outline, then hold Space; letting go is neutral. With the mouse the button
-releases itself after one frame: the status text written on the first frame
-grows the box above the buttons and moves the button out from under the
-pointer, and the browser's pointer-leave is the release path (measured
-04/09/2026: the box grows by `46` px at a `238` px box width, the button is
-`64` px tall). On 04/09/2026 the keyboard hold ran straight then right at
+**Mouse hold, fixed on the evening of 04/09/2026, not yet re-run on hardware.**
+At the bench that afternoon every mouse press released itself after one
+frame: the status text written on the first frame grew the box above the
+buttons by `46` px at its `238` px width, the `64` px button slid out from
+under the stationary pointer, and the browser's pointer-leave is the release
+path. Two changes since: both hold buttons capture the pointer on press, so
+their events stay on the button wherever the layout puts it (a browser drag
+test showed the release still arriving after a `230` px slide off the button,
+with no leave event until after it). The status line also reserves the tested
+two-line phase height, which removed the measured shift at the run's width;
+pointer capture remains the continuity mechanism under any other reflow.
+One behaviour changed with it: sliding the pressed mouse off the button no
+longer releases; letting go of the mouse button does, anywhere on the page,
+as do E-stop, lost readiness, a stale status, keyboard release, focus loss
+and a hidden page.
+The keyboard hold still works and needs nothing: click `Neutral Now`, press
+Tab twice so the auto-move button shows its focus outline, hold Space. That
+is how the first hardware run went on 04/09/2026: straight then right at
 throttle `0.20`, steering `0.18`, left `1315` us and right `1066` us, and the
 hull turned right, so the side label matches the mixer.
 
@@ -308,9 +318,12 @@ Hailo gate, which accepts only run modes; section 2 covers that by hand.
 
 ## 11. Known limits, updated 04/09/2026
 
-- Auto-move held with the mouse releases after one frame; hold it with the
-  keyboard as section 4 says. Fix proposed: pointer capture on both hold
-  buttons and a fixed-height status line.
+- The mouse-hold release after one frame is fixed in the tree since the
+  evening of 04/09/2026. Pointer capture on both hold buttons is the
+  continuity mechanism; reserving the tested two-line status height removes
+  the measured reflow but is not relied on for other layouts. Verified by
+  the suite and a browser drag test, not yet on hardware. Section 4 has the
+  detail and the keyboard hold.
 - A Pi kernel update removes the Hailo driver until the new kernel's headers
   are installed; section 2 has the check and the repair. Installing the
   kernel-headers meta-package on the Pi would stop it recurring.

@@ -295,6 +295,13 @@ h2 {
     min-height: 46px;
 }
 
+/* Reserve the two-line height used by the tested auto-move phase text. Pointer
+   capture remains responsible for hold continuity under any other reflow. */
+#fcu-loop-auto-status {
+    display: block;
+    min-height: 2.6em;
+}
+
 @media (max-width: 760px) {
     .fcu-loop-controls {
         grid-template-columns: 1fr;

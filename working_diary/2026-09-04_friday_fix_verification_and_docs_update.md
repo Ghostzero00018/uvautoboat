@@ -340,3 +340,45 @@ demand frames, `3,111` of them enabled, in `48` bursts of which `8` lasted
   alive; operator's decision.
 - Fix C unchanged.
 - Copy back `real_fcu_t3a_pi_20260904_163724`.
+
+### Evening - the mouse-hold fix, approved and landed
+
+Approved after the copy-back. Tests first, on the untouched code: the
+harness element stub gained `setPointerCapture`, which records pointer ids.
+The first three cases assert that each hold button captures pointer id `7` on
+`pointerdown` and still releases on `pointerup` with a disabled frame, and
+that a press whose capture call throws still starts the hold. The capture
+cases were red as expected (`[]` against `[7]`). Review added a fourth
+characterisation case: keyboard activation of both buttons requests no
+pointer capture. A first version
+of the cases called `initFcuBenchLoop` after `readyBenchHarness` already had,
+which registered the listeners twice and captured `[7, 7]`; the extra call
+was removed.
+
+Change, dashboard only: `captureHoldPointer(event)` in `app.js` takes the
+event's `currentTarget`, returns without effect when the element has no
+capture method, calls `setPointerCapture(event.pointerId)` inside a
+`try/catch`, and is called by both `pointerdown` handlers before the start;
+keyboard handlers do not call it. `style_merged.css` gives
+`#fcu-loop-auto-status` `display: block` and `min-height: 2.6em`, reserving the
+tested two-line phase height; pointer capture remains responsible for
+continuity under any other reflow. Suite `114`, all passing. Mutants: removing
+the auto-move call fails only its capture case; making the helper rethrow fails
+only the refusal case; adding capture to a keyboard handler fails the keyboard
+isolation case.
+
+Browser, a static copy served on `8003` at `800` px wide: the three phase
+texts now shift the buttons by `0` px (status height reserved at `52` px);
+the "Rejected" text still shifts them by `17` px, when no hold is running.
+Drag test on the fixed page: pointer down on the auto-move button, a `230` px
+slide off it, release. Events on the button, in order: `pointerdown`,
+`gotpointercapture`, `pointerup`, `lostpointercapture`, `pointerleave`. The
+release arrived and no leave fired while pressed. Two test-rig notes: the
+unconnected page keeps the bench controls `inert` and disabled, which hides
+them from hit-testing until pinned off for the test, and the browser pane's
+coordinates scale by about `1.08` against the emulated viewport, which cost
+two missed drags.
+
+Behaviour change to know: sliding the pressed mouse off the button no longer
+releases the hold; releasing the mouse button does, anywhere, as do the other
+release paths. Recorded in the runbook. Not yet run on hardware.

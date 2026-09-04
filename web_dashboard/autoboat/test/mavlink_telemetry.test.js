@@ -57,6 +57,8 @@ function createHarness(search = '') {
             },
             setAttribute(name, value) { this.attributes.set(name, value); },
             removeAttribute(name) { this.attributes.delete(name); },
+            capturedPointers: [],
+            setPointerCapture(pointerId) { this.capturedPointers.push(pointerId); },
             addEventListener(name, callback) {
                 if (!listeners.has(name)) listeners.set(name, []);
                 listeners.get(name).push(callback);
@@ -1436,3 +1438,50 @@ test('a bridge status that goes stale mid-maneuver ends the auto-move within the
     assert.equal(harness.intervals.some((entry) => entry.active), false);
 });
 
+// On 04/09/2026 every mouse press of the auto-move button sent exactly one
+// frame: the status line written on that frame reflowed the panel, the button
+// slid out from under the stationary pointer, and pointerleave released the
+// hold. Capturing the pointer on press keeps its events on the button wherever
+// the layout puts it. The harness has no layout, so the contract under test is
+// the capture call itself; the browser measurement is in the runbook.
+['btn-fcu-loop-hold', 'btn-fcu-loop-auto-move'].forEach((id) => {
+    test(`${id} captures the pointer on press so a layout shift cannot release the hold`, () => {
+        const harness = readyBenchHarness();
+        const button = harness.elements.get(id);
+        button.dispatch('pointerdown', {
+            pointerId: 7, currentTarget: button, preventDefault() {}
+        });
+        assert.deepEqual(button.capturedPointers, [7]);
+        assert.equal(harness.intervals.some((entry) => entry.active), true, 'hold started');
+        button.dispatch('pointerup', { pointerId: 7 });
+        assert.equal(harness.intervals.some((entry) => entry.active), false, 'pointerup still releases');
+        assert.deepEqual(Array.from(harness.published.at(-1).message.buttons), [0]);
+    });
+});
+
+test('a press still starts the hold when the element cannot capture the pointer', () => {
+    const harness = readyBenchHarness();
+    const button = harness.elements.get('btn-fcu-loop-auto-move');
+    button.setPointerCapture = () => { throw new Error('capture refused'); };
+    button.dispatch('pointerdown', {
+        pointerId: 3, currentTarget: button, preventDefault() {}
+    });
+    assert.equal(harness.intervals.some((entry) => entry.active), true, 'hold started without capture');
+    button.dispatch('pointerup', { pointerId: 3 });
+    assert.equal(harness.intervals.some((entry) => entry.active), false);
+});
+
+test('keyboard activation skips pointer capture for both hold buttons', () => {
+    for (const id of ['btn-fcu-loop-hold', 'btn-fcu-loop-auto-move']) {
+        const harness = readyBenchHarness();
+        const button = harness.elements.get(id);
+        button.dispatch('keydown', {
+            key: ' ', repeat: false, currentTarget: button, preventDefault() {}
+        });
+        assert.deepEqual(button.capturedPointers, [], `${id} must not capture a keyboard event`);
+        assert.equal(harness.intervals.some((entry) => entry.active), true, `${id} hold started`);
+        button.dispatch('keyup', { key: ' ' });
+        assert.equal(harness.intervals.some((entry) => entry.active), false, `${id} keyup released`);
+        assert.deepEqual(Array.from(harness.published.at(-1).message.buttons), [0]);
+    }
+});
