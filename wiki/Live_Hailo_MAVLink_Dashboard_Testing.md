@@ -1,5 +1,11 @@
 # Live Hailo and MAVROS Dashboard Testing
 
+> **Current scope - 04/09/2026:** this page preserves the older bounded,
+> view-only C1/C2 procedure and its historical pins. For the current integrated
+> real-FCU, VRX and Hailo T3a stack, use
+> [Real-FCU Digital Twin Runbook](Real_FCU_Digital_Twin_Runbook). Do not reuse
+> the `Current tracked revisions` table below as the Pi bundle pin for T3a.
+
 Block C has two sequential phases. C1 uses two foreground commands for the live,
 view-only dashboard demo. The workstation supervisor starts rosbridge,
 `web_video_server`, and the dashboard, then prints the complete Pi command. The Pi
@@ -548,18 +554,20 @@ tools/real_fcu_command_feedback_capture.py \
   --output-root /home/ghostzero/Desktop
 ```
 
-T3a always requires calibration. The recorder still creates only five ROS
-subscriptions: command, bridge status, FCU state, raw RC input and raw servo
-output. Typed `left|right stopped|started|not-observed` lines enter through
-local stdin and are retained as operator observations, not a sixth ROS stream.
+The standalone T3a recorder branch requires calibration. It creates only five
+ROS subscriptions: command, bridge status, FCU state, raw RC input and raw
+servo output. Typed `left|right stopped|started|not-observed` lines enter
+through local stdin and are retained as operator observations, not a sixth ROS
+stream.
 It publishes nothing, creates no service client and cannot enable propulsion or
 command the controller. Calibration fails unless the observed bridge-status
 publisher-node identity set contains only
 `/real_fcu_rc_command_bridge_t3a`; the expected and observed publisher
 identities are retained in the manifest and verdict.
 
-Pi `run-t3a` is separate and demand-enabled. It keeps the existing `0.20`
-steering and `0.12` throttle bounds while requiring exact `1` declarations for
+Pi `run-t3a` is separate and demand-enabled. Its current steering and throttle
+bounds are both `0.20`; the initial 01/09/2026 implementation used a `0.12`
+throttle bound. It requires exact `1` declarations for
 T0a complete, T0b approved, separate T3a approval, disarmed start, hardware
 safety ON, propellers fitted, hull restraint, installed mechanical guarding, a
 clear exclusion zone and propulsion isolated at launch. T2a/T2b approvals and a
@@ -569,16 +577,18 @@ enable propulsion and release hardware safety externally while the FCU remains
 disarmed. Those two start actions use the already-required T3a approval and
 physical-state flags; `run-t3a` does not request additional typed start
 phrases. The supervisor then waits fail-closed for bridge `READY_DISARMED`.
-READY additionally requires the generic
+On the non-Hailo branch, READY additionally requires the generic
 `/real_fcu_command_feedback_capture` node to be visible; the separately
 launched recorder must be `t3a --esc-threshold-calibration`, and its verdict
-binds the T3a bridge identity. Since 02/09/2026 the single workstation entry
-point `tools/real_fcu_full_stack_workstation.sh run-t3a` launches that recorder
-itself, in the foreground of its own terminal. Its typed ESC observations are
-optional in practice: the threshold reference is the operator-recorded figure
+binds the T3a bridge identity. The single workstation entry point
+`tools/real_fcu_full_stack_workstation.sh run-t3a`, first exercised on
+03/09/2026, launches that recorder itself in the foreground of its own terminal;
+the 02/09/2026 full loop used the underlying supervisors separately. Typed ESC
+observations are optional in practice: the threshold reference is the
+operator-recorded figure
 above, and a T3a verdict that reads `pass:false` only on the two calibration
 reasons is the expected outcome of not typing them, not a failed run. Expected
-markers are:
+markers for that non-Hailo branch are:
 
 ```text
 REAL_FCU_T3A_START=PASS propellers=fitted hull=restrained mechanical_guarding=installed exclusion_zone=clear propulsion=isolated safety=ON state=disarmed
@@ -587,6 +597,11 @@ REAL_FCU_T3A_SAFETY_RELEASE=WAITING state=disarmed readiness=bridge-READY_DISARM
 REAL_FCU_T3A_READY=PASS authority=demand-enabled propellers=fitted guarding=installed exclusion_zone=clear propulsion=enabled bridge=READY_DISARMED workstation=visible capture=visible
 REAL_FCU_T3A_SAFE_CLOSEOUT=PASS neutral=true estop=true disarmed=true safety=ON propulsion=isolated source=operator-confirmation
 ```
+
+When the Hailo person-stop feed is enabled, the person monitor and video nodes
+satisfy the workstation discovery gate instead. Its READY marker reports
+`showcase=person-stop capture=not-required hailo=ready` and the selected
+`person_alert` and `display` modes.
 
 Once the approved T3a propulsion stage begins, every normal or abnormal exit
 owes safe closeout. Cleanup presents the neutral-demand, E-Stop, external-disarm,
@@ -2000,3 +2015,18 @@ certification remain required before any run on the boat.
 `tools/real_fcu_rc_command_bridge.py` after that commit, so the bundle manifest
 and the deployed Pi directory must both be named for the revision that lands
 that change, not for `da6627e`.
+
+### Integrated-stack supersession - 04/09/2026
+
+The integrated source later landed and bundle `a8bed50` was deployed and
+certified. On 03/09/2026, the props-fitted T3a stack carried stock-COCO Hailo
+images to the workstation dashboard and the Pi's resizable window while the
+real-FCU/VRX feedback loop ran. A bounded advisory proof recorded `96` person
+detections, `0` stop latches and `0` E-stop publications. The first 04/09
+launch stopped because a kernel update left `hailo_pci` without matching
+headers; installing the `6.8.0-1064-raspi` headers rebuilt the module and
+restored `/dev/hailo0`, after which the Hailo-enabled stack reached READY.
+
+The later 04/09 focused mouse-path confirmation deliberately set both Hailo
+flags to `0`, so it adds no detector or image-path evidence. Its result belongs
+to the current runbook, not to this view-only procedure.

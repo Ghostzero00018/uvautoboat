@@ -118,6 +118,71 @@ The project includes a `autoboat_cli` tool for controlling the mission from a te
 
 ---
 
+## Real-Hardware Digital Twin
+
+### FCU (Flight Control Unit)
+
+The autopilot computer on the real boat. In this project it is a Cube Orange+
+running ArduRover. It receives pilot or dashboard control input, applies the
+vehicle mixer and safety state, and reports measured servo output.
+
+### MAVLink and MAVROS
+
+**MAVLink** is the message protocol used by the flight controller. **MAVROS** is
+the ROS 2 bridge that exposes selected MAVLink telemetry and command interfaces
+as ROS topics and services. The real-hardware path uses MAVROS on the Pi rather
+than treating simulator topics as flight-controller output.
+
+### RC Override and `RC_OVERRIDE_TIME`
+
+An RC override temporarily supplies selected radio-channel values from software.
+`RC_OVERRIDE_TIME` is the ArduPilot timeout after which an override expires if
+it is not refreshed. The guarded bridge checks this parameter before it creates
+its override publisher; operational values and any temporary change belong in
+the dated run record, not in this definition.
+
+### Servo Output and ESC
+
+A **servo output** is the flight controller's measured PWM command on an output
+channel, such as `SERVO3` or `SERVO1`. An **ESC** (electronic speed controller)
+turns that signal into motor drive. PWM proves the controller output, not the
+physical thrust by itself; propeller motion remains a separate observation.
+
+### T3a
+
+The project's props-fitted, demand-enabled bench tier. It is separate from the
+propellers-removed tiers and requires its own current declaration, approval,
+guarding and closeout. A prior T3a run does not authorize a later one.
+
+### Command Owner
+
+The input source currently allowed to control the boat. The dashboard is the
+default owner in the real-FCU bridge. A guarded, neutral-confirmed handover can
+give ownership to the Herelink; while it owns control, dashboard demand is
+inhibited but measured output still drives the VRX twin.
+
+### Guard Snapshot
+
+A hash-pinned flight-controller parameter snapshot used to resolve channel
+mapping, PWM rails and safety-critical limits before a run. It proves the
+contents of that retained file. A live readback or a separately justified
+reuse decision is needed when current controller state matters.
+
+### E-Stop (Emergency Stop)
+
+A latched stop request that clears demand and commands the guarded neutral
+override. Resetting the dashboard display alone does not grant a new active
+command; the bridge must return to its required neutral/prime state.
+
+### Hailo Person Alert Modes
+
+When the Hailo detector is enabled, **stop-enabled** mode is the default and a
+person alert requests an E-stop. **Advisory** mode is an explicit alternative
+that reports the person without stopping. A stale or missing detector feed is
+not equivalent to a clear scene.
+
+---
+
 ## Sensors
 
 ### GPS (Global Positioning System)

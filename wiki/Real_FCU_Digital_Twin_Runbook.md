@@ -40,9 +40,15 @@ Domains: the Pi and W1 on `43` with subnet discovery; W2 on `77` local-only
 with a relay onto `43`. Each helper exports its own domain; do not set one by
 hand for any of them.
 
-The only actuator path is dashboard demand on `/command_ingress/rc_axes` into
-the Pi bridge, which holds the RC override, the rails, the parameter guard and
-every interlock. The dashboard E-stop and the person-stop monitor share
+The dashboard is the default actuator-command owner through
+`/command_ingress/rc_axes`. An explicit neutral-confirmed handover can instead
+give ownership to the Herelink; dashboard demand is then inhibited while
+measured FCU output continues to drive the VRX twin. In dashboard ownership the
+Pi bridge publishes the guarded RC override. Herelink ownership releases those
+overrides while retaining measured-output supervision and the ability to
+reassert the neutral E-stop override. The resolved rails, parameter guard and
+interlocks remain active in both ownership states. The
+dashboard E-stop and the stop-enabled person monitor share
 `/planning/emergency_stop`; the bridge latches on it unconditionally.
 
 ## 2. Before starting
@@ -132,9 +138,21 @@ is the hash-pinned `986`-parameter read taken with `RC_OVERRIDE_TIME=0.5`;
 it resolves `steering=RC1 throttle=RC3 left=SERVO3 right=SERVO1`. The camera
 needs an empty field of view at startup.
 
+**Temporary parameter carry - 04/09/2026:** the operator confirmed that
+`RC_OVERRIDE_TIME` remains `0.5` and chose to retain it for the same-scope T3a
+video recording planned for Monday 07/09/2026. No new controller readback was
+made during the workstation-only night session, and all hardware was confirmed
+powered off on departure. Verify `0.5` before the next run. Restore `3.0`, read
+it back and retain the rollback snapshot after the video session completes or
+is abandoned. The earlier approval does not carry forward; the next live run
+still needs a fresh physical declaration and explicit approval.
+
 Then the workstation prints its operator block and runs the capture node,
 `REAL_FCU_CAPTURE_READY=PASS tier=T3A subscriptions=5`. Leave that terminal
-alone; the Pi's discovery guard requires the capture node.
+alone so it can retain command and feedback evidence. The Pi discovery guard
+requires the capture node only when the Hailo person-stop feed is disabled; the
+Hailo branch instead requires the person monitor and video nodes and reports
+`capture=not-required`.
 
 Markers that mean READY:
 
@@ -345,6 +363,9 @@ Four `OK` lines and `REAL_FCU_PI_CHECK=PASS`. `check` cannot pre-validate the
 Hailo gate, which accepts only run modes; section 2 covers that by hand.
 
 ## 11. Known limits, updated 04/09/2026
+
+- The temporary `RC_OVERRIDE_TIME=0.5` carry is governed by the pre-run note in
+  section 2. It is not the normal closed state.
 
 - A Pi kernel update removes the Hailo driver until the new kernel's headers
   are installed; section 2 has the check and the repair. Installing the

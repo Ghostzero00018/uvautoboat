@@ -6,13 +6,14 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 > Autonomous navigation research using the Virtual RobotX (VRX) simulation platform.
-> GPS waypoint navigation with 3D LiDAR obstacle avoidance on the WAM-V platform.
+> GPS waypoint navigation with 3D LiDAR obstacle avoidance on the WAM-V platform,
+> plus a guarded real-flight-controller digital twin on Raspberry Pi 5.
 
 ---
 
 ## 🏗️ Architecture
 
-The system is a modular 3-node ROS 2 pipeline:
+The simulation navigation system is a modular 3-node ROS 2 pipeline:
 
 | Node | Role | Description |
 | ------ | ------ | ------------- |
@@ -131,6 +132,16 @@ Pi 5 + Cube Orange+ digital twin, with Hailo person detection and the same
 dashboard, runs from one command per machine; see the
 [Real-FCU Digital Twin Runbook](wiki/Real_FCU_Digital_Twin_Runbook.md).
 
+On 02/09/2026, the props-fitted T3a stack first carried dashboard demand through
+the real flight controller and mirrored measured motor output into VRX. On
+03/09/2026, the integrated stack returned twin telemetry to the dashboard and
+displayed the live Hailo overlay; advisory person detection was separately
+correlated as `96` detections with no stop latch. On 04/09/2026, a focused run
+confirmed that Auto Move remains active
+while a pressed pointer is dragged outside its button and returns the real and
+simulated outputs to neutral on mouse-up. These are bounded integration results;
+the runbook records the remaining acceptance limits and current operating pins.
+
 ## 🩺 Health Check
 
 ```bash
@@ -215,6 +226,7 @@ uvautoboat/
 | ---------- | ------------- |
 | [USER_MANUAL.md](USER_MANUAL.md) | Full technical manual (architecture, algorithms, troubleshooting) |
 | [Dashboard Guide](web_dashboard/autoboat/README_autoboat_dashboard.md) | Dashboard setup and camera panel |
+| [Real-FCU Digital Twin Runbook](wiki/Real_FCU_Digital_Twin_Runbook.md) | Guarded Pi/FCU/VRX start, operation, stop, and evidence procedure |
 | [Board.md](Board.md) | Development milestones |
 | [Wiki](wiki/Home.md) | Installation, system overview, common issues |
 | [Glossary](wiki/Glossary.md) | Plain-language definitions of every technical term |
@@ -253,6 +265,8 @@ uvautoboat/
 | Emergency stop (dashboard + CLI) | ✅ Working |
 | JSON log export | ✅ Working |
 | VRX LiDAR patch (issue #876) | ✅ Workaround |
+| Measured real-FCU motor output mirrored into VRX | ✅ Bounded T3a integration proven 02–04/09/2026 |
+| Hailo live overlay and advisory person alert | ✅ Bounded T3a integration proven 03/09/2026 |
 | Obstacle avoidance (detour explosion fix) | 🔧 Planned (also partially tested) |
 | VFH steering bias | ✅ Working (off by default — opt-in via `use_vfh_bias` or dashboard preset) |
 | Pier/low-obstacle avoidance tuning | 🔧 Planned (also partially tested) |

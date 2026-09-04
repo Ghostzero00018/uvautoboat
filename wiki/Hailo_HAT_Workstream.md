@@ -1,6 +1,13 @@
 # Hailo HAT Workstream Memo
 
 > **Status 03/09/2026:** the accelerator is in service on the real boat - live person detection in the T3a digital twin, images on the dashboard and in a resizable Pi window, advisory mode proven with `96` detections against `0` stops. See [Real-FCU Digital Twin Runbook](Real_FCU_Digital_Twin_Runbook).
+>
+> **Current kernel rule, established 04/09/2026:** the running Raspberry Pi
+> kernel must have matching headers and a successfully built `hailo_pci/4.24.0`
+> DKMS module before `/dev/hailo0` can exist. This restored the Hailo-enabled
+> T3a stack on `6.8.0-1064-raspi`. Installing the Pi kernel-headers meta-package
+> remains open so future kernel updates rebuild automatically; incident detail
+> remains in the dated diary and real-FCU runbook.
 
 This memo is the planning home for the Hailo accelerator branch: the durable
 version constraints, OS / runtime gate, artifact pin sheet, runtime baseline,
@@ -70,9 +77,10 @@ which was previously gated behind a clean MAVProxy / MAVROS telemetry pass.
 That telemetry gate closed on 15/07/2026 and was repeated twice on 17/07/2026;
 the `imgsz=320` export has still not been copied to or run on the Pi.
 
-Hailo is the active accelerator branch from 01/07/2026 onward. It is being
-evaluated as a way to move inference off the Pi CPU, not as a replacement for
-the telemetry gate.
+Hailo is the active accelerator branch from 01/07/2026 onward. The stock-COCO
+path is now in service alongside the telemetry stack; applying the accelerator
+to the custom maritime detector remains an evaluation track, not a replacement
+for the telemetry gate.
 
 ## Compatibility Notes
 
@@ -303,7 +311,7 @@ Runtime baseline completed on 03/07/2026:
 6. `hailortcli run yolo26n_route_a_six_heads.hef` completed a bounded static
    runtime smoke test: `293` frames at `58.22 FPS`.
 
-Next gates, in order:
+Next custom-detector gates, in order:
 
 1. The six-output host-side decode contract is **proven** on saved frames
    (07/07/2026, `fb308f9`). A same-engine raw-head ONNX isolation declared the
@@ -343,9 +351,10 @@ Next gates, in order:
    sudo dmesg | grep -iE 'hailo|aer|dmar|dma|call trace|oops' | tail -120
    ```
 
-6. Feed saved RealSense RGB frames into HailoRT, then wire live ROS 2 image
-   input and publish detection messages, only after Tier 3 passes on saved
-   frames.
+6. Feed saved RealSense RGB frames into the custom HailoRT model, then wire its
+   live ROS 2 image input and publish its detection messages, only after Tier 3
+   passes on saved frames. The stock-COCO ROS/person pipeline is already live;
+   this gate applies only to the custom detector.
 
 ## Stock-COCO Live Dashboard Evidence
 
@@ -367,8 +376,11 @@ correctly failed closed when rosbridge/rosapi disappeared and then reported
 `TEARDOWN=PASS`; workstation teardown also passed. This proves fail-closed
 cleanup, not the required normal Pi-first operator shutdown. That cause remains
 open. A normal Pi-first operator shutdown with post-teardown temperature was
-obtained on 03/08/2026 and repeated on 04/08/2026. Browser-last ordering, full
-endurance, optimized transport, GPS fix, and every FCU write remain open.
+obtained on 03/08/2026 and repeated on 04/08/2026. As of that 04/08/2026
+repeat, browser-last ordering, full endurance, optimized transport, GPS fix,
+and every FCU write were still open. The later stock-COCO T3a stack
+provides a guarded real-FCU write path; the custom-detector-triggered write path
+remains open.
 
 ## Still Out Of Scope For The Custom-Detector Track
 
@@ -376,7 +388,9 @@ endurance, optimized transport, GPS fix, and every FCU write remain open.
 - No custom-detector RealSense + Hailo + MAVROS combined-load acceptance.
 - No custom-detector calibration, accuracy-grade Tier 3, or live dashboard
   integration.
-- No real-FCU command/write path.
+- No custom-detector-triggered real-FCU command/write path. The separate
+  stock-COCO T3a stack has a guarded real-FCU command path and person-alert
+  integration.
 
 ## Source Anchors
 

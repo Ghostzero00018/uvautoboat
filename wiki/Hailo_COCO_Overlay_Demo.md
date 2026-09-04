@@ -1,6 +1,12 @@
 # Pi Hailo COCO-Overlay Demo — Build & Run Procedure
 
 > **Status 03/09/2026:** the overlay pipeline from this demo runs inside the T3a digital twin; the T3a Pi helper generates its own wrapper and opens the local window with `REAL_FCU_HAILO_LOCAL_DISPLAY=1`. See [Real-FCU Digital Twin Runbook](Real_FCU_Digital_Twin_Runbook).
+>
+> **Status 04/09/2026:** after the Pi booted
+> `6.8.0-1064-raspi`, installing the matching headers rebuilt
+> `hailo_pci/4.24.0` through DKMS and restored `/dev/hailo0`; the integrated
+> T3a pipeline then reached READY. The exact running-kernel headers are now a
+> launch prerequisite, not the older `1060` kernel number.
 
 Reproducible procedure for the Raspberry Pi 5 + Hailo-8L **live object-detection
 overlay pipeline**: `D435I RGB -> HailoRT NMS post-process -> COCO box overlay ->
@@ -30,7 +36,8 @@ detector](#plugging-in-a-custom-detector).
 The proven Pi runtime baseline from [Hailo HAT Workstream
 Memo](Hailo_HAT_Workstream) must be in place:
 
-- Ubuntu 24.04 on kernel `6.8.0-1060-raspi`, Python `3.12`, aarch64.
+- Ubuntu 24.04 on the Pi's running `6.8.*-raspi` kernel, Python `3.12`,
+  aarch64; the exact matching kernel headers and Hailo module must be installed.
 - HailoRT / driver / pyHailoRT `4.24.0`; `/dev/hailo0` present; `hailo_pci` DKMS
   module matches the running kernel; `hailortcli fw-control identify` reports
   `HAILO8L`.
@@ -167,7 +174,9 @@ For a larger, faithful recording set `HAILO_DEMO_RES` (e.g. `hd` or `fhd`) so ca
 and output match — `OUTRES` follows `RES` by default. Setting `OUTRES` alone decouples
 them: the runner keeps the display aspect-correct but stretches the *saved* AVI to the
 literal `OUTRES` preset, so match the two to avoid a distorted recording. The window
-is fixed-size (not drag-resizable), so choose the size with these knobs.
+is fixed-size (not drag-resizable), so choose the size with these knobs. This
+describes the standalone `hailo_coco_demo.sh`; the T3a helper's generated
+wrapper uses a separate resizable-window path.
 
 Canonical source (the SHA-256 above is of this file):
 
@@ -373,8 +382,10 @@ startup, while direct local-display use defaults to resizable. Window-creation f
 falls back to headless visualization, and fullscreen-property failure retains the
 resizable window; the same annotated callback remains the sole ROS image publisher.
 Each Pi run also persists the parent helper lifecycle in `supervisor.log`. These changes
-do not alter the standalone launcher's fixed-size behavior documented above, and the new
-live-dashboard window modes still require Pi-side visual acceptance.
+do not alter the standalone launcher's fixed-size behavior documented above. At the close
+of the 17/07/2026 runs, the new live-dashboard window modes still required Pi-side visual
+acceptance. The integrated resizable Pi window was later operator-observed during the
+03/09/2026 T3a run; that result does not qualify every fullscreen or fallback mode.
 
 On 17/07/2026, two tracked-supervisor runs on `IoT IMT Nord Europe` reached the
 six-topic arrival gate. During both runs, the operator confirmed the combined
@@ -390,9 +401,11 @@ before the intended Pi-first stop, without deliberate operator intervention.
 Pi and workstation teardown markers passed fail-closed, but this is not the
 required normal Pi-first operator shutdown. That cause remains open. A normal
 Pi-first operator shutdown with post-teardown temperature was obtained on
-03/08/2026 and repeated on 04/08/2026. Browser-last ordering, full endurance,
-optimized transport, GPS fix, custom-detector calibration/accuracy/live
-integration, and every FCU write remain open.
+03/08/2026 and repeated on 04/08/2026. As of that 04/08/2026 repeat,
+browser-last ordering, full endurance, optimized transport, GPS fix,
+custom-detector calibration/accuracy/live integration, and every FCU write
+remained open. The later stock-COCO T3a stack adds a guarded real-FCU
+write path; no custom-detector-triggered write path has been accepted.
 
 That diagnostic does not replace or modify the canonical `hailo_coco_demo.sh`
 procedure documented here.

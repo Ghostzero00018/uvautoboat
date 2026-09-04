@@ -94,8 +94,8 @@ both resolved RC inputs at their live trims while armed. `Ctrl+C` and `SIGTERM`
 use the same neutralisation path before the ROS context closes; when already
 disarmed, shutdown sends the channel-aware release values instead.
 
-This path has static, dashboard-test and workstation-only SITL runtime coverage,
-but no physical acceptance. On 10/08/2026, a clean `motorboat-skid` run resolved
+This path has static, dashboard-test, supervised SITL and bounded physical T3a
+coverage. On 10/08/2026, a clean `motorboat-skid` run resolved
 steering/throttle to RC channels `1`/`3` and functions `73`/`74` to
 `SERVO1`/`SERVO3`. Normal arming reached `ARMED_NEUTRAL`; browser-held positive
 and negative steering demands reached `ACTIVE`, produced independently measured
@@ -103,6 +103,14 @@ asymmetric servo output in the expected directions, and returned to measured
 `1500`/`1500` neutral. Normal disarm was acknowledged `ACCEPTED`. The recordings
 prove the visible request/feedback loop; the simultaneous terminal capture
 missed both active intervals and proves neutral stability only.
+
+The physical boundary was crossed later under the separate T3a procedure. On
+03/09/2026, dashboard demand reached the real flight controller and fitted
+propellers while measured output drove the VRX twin. On 04/09/2026, a focused
+mouse-path run correlated ten active bursts and `587` enabled frames with FCU
+output, VRX response and neutral return. The pointer action and physical
+propeller motion are operator-observed; the command/output/twin chain is
+machine-correlated. Neither run is a blanket approval for routine operation.
 
 The dedicated workstation SITL entry is implemented with static and focused-test
 coverage:
@@ -123,8 +131,10 @@ a display terminal outside the supervisor-owned process group, so the runner
 could neither certify Rover provenance nor retain its output. The runner now
 launches the pinned `ardurover` binary directly in the run-owned state directory,
 and early teardown checks shutdown frames only after the bridge has started.
-Those corrections pass focused tests but have not been rerun against SITL;
-complete machine-readable phase and teardown acceptance remain open.
+Those corrections were subsequently exercised through complete supervised SITL
+acceptance and independent adjudication. The 31/08/2026 current-source run at
+`bba195b` passed all phases and clean teardown in
+`sitl_digital_twin_20260831_161839`.
 
 In the operator-supplied Pi transcript on 10/08/2026, the Pi received the FCU
 heartbeat, but parameter requests returned no values and the FCU was observed
@@ -299,11 +309,14 @@ Then open **<http://localhost:8002>**.
 
 ### Real-FCU Digital Twin (current procedure)
 
-The dashboard's real-hardware mode as run on 02/09 and 03/09/2026 is the
-real-FCU digital twin: one command on the workstation,
-`tools/real_fcu_full_stack_workstation.sh run-t3a`, one on the Pi, then this
-dashboard at `http://127.0.0.1:8002/` with the bench-control URL printed by
-the workstation supervisor. It carries the `0.20` throttle ceiling, advisory
+The dashboard's current real-hardware mode is the real-FCU digital twin. Its
+single-workstation entry point,
+`tools/real_fcu_full_stack_workstation.sh run-t3a`, was exercised on
+03–04/09/2026; the first full loop on 02/09/2026 used the underlying
+supervisors separately. Run that entry point on the workstation, one command
+on the Pi, then this dashboard at `http://127.0.0.1:8002/` with the
+bench-control URL printed by the workstation supervisor. It carries the `0.20`
+throttle ceiling, advisory
 person detection (`REAL_FCU_PERSON_ALERT_ADVISORY=1`: a detection raises the
 badge and stops nothing) and the optional Hailo window on the Pi desktop.
 Follow [Real-FCU Digital Twin Runbook](../../wiki/Real_FCU_Digital_Twin_Runbook.md);
@@ -368,14 +381,18 @@ distinct demand-enabled props-fitted authority. It rejects every T2 approval
 and a propellers-removed declaration, and requires T0a complete, T0b approved,
 separate T3a approval, disarmed start, hardware safety ON, propellers fitted,
 restrained hull, installed mechanical guarding, a clear exclusion zone and
-propulsion isolated at launch. It keeps the same `0.20` steering and `0.12`
-throttle bounds. After guard and bridge resolution it asks the operator to
-enable propulsion while disarmed, safe and guarded, then requires the exact
-retained confirmation before proceeding to manual safety release. READY also
-requires `/real_fcu_command_feedback_capture` to be visible; the separately
-started recorder must use `t3a --esc-threshold-calibration`, whose verdict binds
-the T3a bridge identity. None of these modes arms, disarms, changes mode, writes
-parameters or issues a software safety release.
+propulsion isolated at launch. It keeps the same `0.20` steering and `0.20`
+throttle bounds. After guard and bridge resolution, approved T3a runtime flags
+authorize the external propulsion-enable and hardware-safety-release steps; the
+helper records those authorizations but does not request a typed start token.
+The safe-closeout token remains mandatory at shutdown. Without the Hailo
+person-stop feed, READY also requires `/real_fcu_command_feedback_capture` to be
+visible; the separately started recorder must use
+`t3a --esc-threshold-calibration`, whose verdict binds the T3a bridge identity.
+When the person-stop feed is enabled, its monitor and video nodes satisfy the
+discovery gate and the READY marker reports `capture=not-required`. None of
+these modes arms, disarms, changes mode, writes parameters or issues a software
+safety release.
 Those actions remain outside the helpers, and external disarm is required before
 stopping them.
 
@@ -428,9 +445,10 @@ not a measured start threshold. The ordinary T2a/T2b verdict behavior is
 unchanged, and calibration still requires the complete demand-enabled
 bridge-state sequence, E-Stop and final connected/disarmed `MANUAL` evidence.
 
-The 31/08/2026 calibration interface was prepared but had not run on hardware,
-and no honest T3a runtime existed then. The 01/09/2026 source now adds distinct
-`run-t3a` and `t3a --esc-threshold-calibration` paths, still offline and unrun.
+At the close of 31/08/2026, the calibration interface had been prepared but had
+not run on hardware, and no honest T3a runtime existed. The 01/09/2026 source
+then added distinct `run-t3a` and `t3a --esc-threshold-calibration` paths; at
+that checkpoint they were still offline and unrun.
 The recorder remains subscriber-only and has no authority to enable propulsion
 or command the controller. Pi `run-t3a` is the separate demand-enabled
 authority and owns the T3a declarations, propulsion-enable confirmation and
@@ -443,6 +461,14 @@ timed-out or interrupted response fails closed. Cleanup then still attempts
 final-state capture and child teardown. No hardware declaration,
 approval, parameter action, FCU session, ESC threshold or T3a acceptance is
 created by this source preparation.
+
+**Later live closure, 01–04/09/2026:** T3a was deployed and exercised on the
+props-fitted boat. The 03/09 full showcase proved Hailo images, advisory person
+detection and the dashboard-to-FCU-to-VRX loop. The 04/09 focused mouse-path
+run proved continuous held demand through pointer movement and the subsequent
+neutral return. The capture still reports failure when the optional per-side
+ESC annotations are omitted; decoupling that calibration requirement from the
+general T3a verdict remains open.
 
 Deploy the Pi helper, command bridge and both physical MAVROS allowlists with
 their `tools/` and `config/` layout intact. The four governed members are pinned
@@ -468,6 +494,11 @@ This changes the classification only to **DEPLOYED / CERTIFIED / NOT RUN** and
 does not grant Block E authority or establish any probe, command runtime,
 parameter action, arm, propulsion action, threshold or T3a acceptance.
 
+**Deployment supersession, 03/09/2026:** bundle `a8bed50` was deployed and
+certified, then used for the Hailo-enabled T3a showcase and the unchanged Pi
+side of the 04/09 mouse-path confirmation. The older `025f48c` classification
+above remains the dated state of its own deployment.
+
 No physical mode is currently accepted for routine use. The guarded one-off
 Test A path was operator-accepted on 26/08/2026 after a hash-pinned parameter
 snapshot resolved `RC1`/`RC3`, left `SERVO3`, right `SERVO1` and both
@@ -485,15 +516,17 @@ that active interval to propellers fitted and reported limited one-sided
 rotation, but only neutral RC/output snapshots were retained. It is therefore
 an Enhanced Test A props-fitted functional observation. The launch assertion
 `REAL_FCU_PROPELLERS_REMOVED=1` was inaccurate for that interval; the run is
-neither T2b nor T3a acceptance. Exact steering `+/-0.20` is currently rejected
-after `float32` transport slightly exceeds the bridge's exact bound.
+neither T2b nor T3a acceptance. At that checkpoint, exact steering `+/-0.20`
+was rejected after `float32` transport slightly exceeded the bridge's exact
+bound; the following repair supersedes that behaviour.
 
 **Forward repair 31/08/2026:** the command bridge now normalizes only the exact
 float32 encoding of each configured steering or throttle endpoint. The next
 adjacent float32, materially larger requests and any negative throttle remain
 rejected, while an enabled endpoint is covered through paired override
-publication. The configured `0.20` steering and `0.12` throttle limits are
-unchanged. The focused bridge suite passes `36` tests. The bridge bundle
+publication. The then-configured `0.20` steering and `0.12` throttle limits
+were unchanged by that repair. The focused bridge suite passes `36` tests. The
+bridge bundle
 manifest changed, so these bytes still require current-source SITL acceptance,
 transfer and checksum verification before any later Pi use; this is not live
 hardware evidence.
@@ -524,6 +557,14 @@ are retained under
 `/home/ghostzero/Desktop/pi_run_evidence/rc_override_rollback_20260828`; the
 snapshot SHA-256 is
 `a50fe5d313dd7ef2f2ab93f86dc2b6f7c800182eb603a1e4559580339aa1555b`.
+
+**Current parameter note, 04/09/2026:** `RC_OVERRIDE_TIME` was set to `0.5`
+again for the T3a work on 01/09/2026. The operator confirmed it remains `0.5`
+and deliberately retained it through the weekend for Monday 07/09/2026's
+same-scope video recording. This is not a fresh readback. Verify it before the
+next run, then restore `3.0` with retained readback evidence when that session
+completes or is abandoned. All hardware was operator-confirmed powered off on
+departure on 04/09/2026; no live approval carries forward.
 
 ### FCU Bench Command/Feedback Component
 
@@ -812,4 +853,4 @@ Part of the uvautoboat project — Apache License 2.0.
 
 Built with [roslibjs](http://robotwebtools.org/), [Leaflet.js](https://leafletjs.com/), [OpenStreetMap](https://www.openstreetmap.org/).
 
-Last updated: 02/09/2026
+Last updated: 04/09/2026

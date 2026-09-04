@@ -11,6 +11,13 @@
 | **Last Updated** | 04/09/2026 |
 | **Status** | 🟢 Simulation ready (A\* path planning + one-click launcher + wiki docs + dashboard config system + MP/QGC install). First wet test completed 07/05/2026: boat survived float/manual-control bring-up, Herelink manual control works, QGC/MP MAVLink arm/disarm works. Herelink video A/B campus side verified 11/05/2026 — Linux QGC video works via the `Source = Herelink Hotspot` preset and `ffplay rtsp://<herelink-ip>:8554/fpv_stream` independently confirms the underlying LIVE555 H.264 stream; Linux MP video + arm/disarm also working after a host-local SkiaSharp 2.88.8 NuGet swap + `~/MissionPlanner/libdl.so` → `libdl.so.2` symlink (11/05/2026 late-day fix, reversible — see `wiki/Common_Issues.md` MP-Linux entry); GDAL/OGR/OSR Mono gaps from 24/04 remain (terrain / advanced geo-ref still degraded) but no longer block the video panel. Second-site (lake) retest deferred to next field session. **22/06/2026 update:** workstation on `IMT-Aquatic-drone` again reached the Herelink RTSP endpoint (`rtsp://192.168.43.1:8554/fpv_stream`, LIVE555 H.264 1920×1080@30); TCP was clean while UDP showed packet loss, but the current video source was a Pi desktop / `rqt_image_view` screen capture after starting the Pi camera node, not a direct camera feed. Treat this as transport reachability plus a current source-regression finding, not dashboard-camera integration evidence. Pi 5 MAVLink telemetry path proven 04/06/2026 (`/mavros/state connected: true` via MAVProxy → MAVROS on the reconfigured ArduPilot endpoint; GPS fix / EKF config still open). Pi 5 RealSense camera display in the workstation dashboard was proven 18/06/2026 over `IoT IMT Nord Europe` using a camera-only `424x240x15` profile; this is camera display only, not command/write validation. Local dashboard/planner → QGC visual mission bridge accepted 10-11/06/2026 (`tools/qgc_live_mission_bridge.py` over `127.0.0.1:14550`) and observed under a Herelink-hotspot mixed-topology setup 17/06/2026; visual-only — real-FCU upload, bidirectional sync, and command/write validation remain open. |
 
+> **Current status - 04/09/2026:** the historical summary above is superseded
+> for the real-FCU command path. A props-fitted T3a stack has carried dashboard
+> demand through the real flight controller, mirrored measured output into VRX
+> and returned twin telemetry. Hailo advisory detection is separately proven,
+> and the focused mouse-path confirmation passed. Full routine deployment and
+> the capture calibration verdict remain separate open gates.
+
 > **15/07/2026 live update:** the workstation dashboard simultaneously displayed
 > the live stock-COCO Hailo overlay and read-only control-box telemetry from five
 > direct MAVROS topics. The temporary diagnostic did not exercise a
@@ -882,12 +889,21 @@ The whole repo is expected to run on the Pi 5. Long-term (Phase 5.2+): QGC and t
 | 04/09/2026 | **Defect - auto-move held with the mouse releases after one frame:** `20` mouse presses each produced a single enabled frame while the bridge stayed healthy, going `ACTIVE` for one status and back. Confirmed on a static copy of the page at the run's window width: the status text written on the first frame grows the auto-move box by `46` px (box `238` px wide), moving the `64` px button out from under the pointer, so the browser's pointer-leave release fires. Keyboard hold is unaffected and was the workaround (`Neutral Now`, Tab twice, hold Space). Proposed fix: pointer capture on both hold buttons and a fixed-height status line; awaiting approval. Also open: the Pi lacks the kernel-headers meta-package, so every kernel update will remove the Hailo driver again until headers are installed. | 🟡 |
 | 04/09/2026 | **Mouse-hold fix landed the same evening, dashboard only:** both hold buttons now capture the pointer on press (`captureHoldPointer`, guarded, `try/catch`); the auto-move status line also reserves the tested two-line phase height (`display: block; min-height: 2.6em`), while pointer capture remains the continuity mechanism under any other reflow. Four suite cases, `114` passing, three mutants caught, including proof that keyboard activation does not request pointer capture. Browser at the tested width: phase texts shift the buttons `0` px; a drag test released `230` px off the button with `pointerup` delivered and `pointerleave` only after `lostpointercapture`. Behaviour change: sliding the pressed mouse off the button no longer releases; releasing the mouse button anywhere does. Not yet run on hardware. | 🟡 |
 | 04/09/2026 | **Pointer-capture repair confirmed on props-fitted T3a hardware:** published workstation revision `8fda5a2a0392529cb8f73501a69c93fb944f2c73`, with served `app.js` SHA-256 `ce9e480feae29076f58df30cce79c2b1983ce252a0f00194fdb9c47b44e44ae3`, ran against the unchanged certified Pi bundle `a8bed50`. The operator held Auto Move at throttle `0.17`, `1` s straight, right turn, steering `0.10`, `3` s turn; dragged the pressed pointer fully outside for at least two seconds; and observed `ACTIVE` continuity in both real propellers and VRX until mouse-up outside. Mouse-up immediately restored `ARMED_NEUTRAL` and request `0.00/0.00`; measured output then reached `800/800` and VRX thrust reached zero. Mouse input, pointer position and physical propeller continuity are operator-observed; the `17,045`-event capture and W2 trace machine-correlate `10` active bursts and `587` enabled command frames with FCU output and VRX response. The capture has `0` invalid status documents, the single expected T3a bridge publisher and a terminal connected/disarmed, hardware-safe, E-stop-latched neutral state. W2, W1, Pi and the full-stack wrapper all closed cleanly; Pi evidence is copied to `/home/ghostzero/Desktop/test_logs_folder/pi_run_evidence/real_fcu_t3a_mouse_path_20260904_181410`. Its `pass:false` is solely the two deliberately uncollected ESC-calibration annotations. Classification: **FOCUSED T3A MOUSE-PATH HARDWARE CONFIRMATION PASS / NOT ESC-CALIBRATION ACCEPTANCE**. | 🟢 |
-| TBD | Complete real-hardware deployment acceptance (Pi 5 target; bounded read-only Hailo/MAVROS dashboard proven 17/07/2026; lifecycle, endurance, low-level CCU, and write-path gates remain open) | 🔜 |
+| 04/09/2026 | **End-of-day parameter carry and power-off closure:** the operator confirmed that `RC_OVERRIDE_TIME` remains `0.5` and explicitly chose to retain it through the weekend for the next same-scope T3a video-recording session on Monday 07/09/2026. This is an operator-confirmed carry decision, not a fresh controller readback and not a rollback. The value must be verified before reuse and restored to `3.0` with retained readback evidence after the recording session completes or is abandoned. The operator also confirmed that all hardware was powered off on departure. No hardware approval carries forward to Monday. | 🟢 |
+| TBD | Complete routine real-hardware deployment acceptance; the bounded T3a command/output/VRX loop, Hailo advisory path and mouse-path control are proven, while the general capture verdict, post-video parameter rollback and broader field qualification remain open | 🔜 |
 | TBD | Coverage Planning | ⏸️ |
 
 ---
 
 ## 🎯 Next Priorities
+
+> **Current order after 04/09/2026:** record the bounded T3a demonstration video
+> on Monday 07/09/2026 after a fresh declaration, approval and verification of
+> the deliberately retained `RC_OVERRIDE_TIME=0.5`; restore `3.0` with readback and
+> a retained snapshot when that session completes or is abandoned; decouple the
+> optional ESC annotations from the general T3a capture verdict; and install the
+> Pi kernel-headers meta-package so future kernel updates rebuild `hailo_pci`.
+> The older numbered priorities below are retained as the development history.
 
 1. **Live-dashboard graph-query hardening (05/08/2026 update)**:
    the two 24/07 failures are confirmed separate, and **two 03/08 live runs confirmed the
@@ -1259,7 +1275,7 @@ Current position ──────>│  (in Planner)       │
 
 ## 📜 Acknowledgments
 
-**Document Version**: 9.62 | **Last Updated**: 04/09/2026
+**Document Version**: 9.63 | **Last Updated**: 04/09/2026
 
 **Maintained By**: AutoBoat Development Team
 

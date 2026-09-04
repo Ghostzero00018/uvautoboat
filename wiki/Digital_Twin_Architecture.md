@@ -6,7 +6,7 @@
 
 ## 1. Purpose
 
-Several places in the repo describe this project's water-quality monitoring USV as a "digital-twin baseline" (see [Roadmap §1.1](Roadmap#11-scope-clarifications-locked-30042026) and the §4 research-extensions architecture diagram). That framing has implications for how the system is positioned against existing reference architectures and standards. This page makes the positioning explicit so that downstream artifacts (formal documents, conference paper drafts, future operator-facing material) reference it consistently.
+Several places in the repo describe this project's water-quality monitoring USV as a "digital-twin baseline" (see [Roadmap §1.1](Roadmap#11-scope-clarifications-locked-30042026) and the §4 research-extensions architecture diagram). Since 02/09/2026, that baseline also has a bounded real-FCU implementation: measured flight-controller output drives VRX, and VRX pose/thrust telemetry returns to the same dashboard. This page makes the positioning explicit so that downstream artifacts (formal documents, conference paper drafts, future operator-facing material) reference it consistently.
 
 This page is **internal positioning notes**, not a normative architecture spec — the canonical runtime architecture lives in [System Overview](System_Overview) and the launch / source code.
 
@@ -56,12 +56,40 @@ This project is an **aquatic environmental-monitoring USV**, not a manufacturing
 
 | Layer (per 30141 / 23247 vocabulary) | This project's realization |
 |:-------------------------------------|:----------------------------|
-| **L1 — Physical / Observable entities** | USV hull + thrusters + multi-parameter water sensors (pH, dissolved oxygen, turbidity, temperature, conductivity, …); the water body itself; the autopilot (MAVLink-speaking — ArduPilot / PX4 working hypothesis per [Roadmap §3](Roadmap#3-phase-5--real-hardware-deployment)). |
-| **L2 — Device communication** | ROS 2 Jazzy nodes + topics over the *IoT IMT Nord Europe* WiFi (DDS cross-machine discovery verified 12/05/2026); `mavros2` as MAVLink ↔ ROS bridge per the 20/05/2026 supervisor session (see [Roadmap §1.1](Roadmap#11-scope-clarifications-locked-30042026)). |
-| **L3 — Digital twin entity** | VRX / Gazebo simulator mirroring boat pose + the cellular-automata propagation model for water-quality parameters ([Roadmap §6](Roadmap#6-phases-b--e-sketches-not-yet-scoped) Phase B). Twin value beyond mirroring includes predict-ahead, what-if, and sim-side water-quality field reconstruction (Roadmap §1.1 design implications). |
-| **L4 — User / Application** | Web dashboard (Leaflet map, telemetry, mission control, health check); the eventual water-quality heatmap overlay ([Roadmap §6](Roadmap#6-phases-b--e-sketches-not-yet-scoped) Phase C); residual-based anomaly detection / time-series forecasting / physics-informed ML ([Roadmap §6](Roadmap#6-phases-b--e-sketches-not-yet-scoped) Phase E, time-permitting). |
+| **L1 — Physical / Observable entities** | USV hull + thrusters; the real boat's Cube Orange+ running ArduRover 4.6.3; the water body itself. Multi-parameter water sensors (pH, dissolved oxygen, turbidity, temperature and conductivity) remain a planned physical-layer extension; see [Roadmap §3](Roadmap#3-phase-5--real-hardware-deployment). |
+| **L2 — Device communication** | ROS 2 Jazzy nodes and topics over the `IoT IMT Nord Europe` Wi-Fi (DDS cross-machine discovery verified 12/05/2026); MAVROS as the MAVLink-to-ROS bridge on the Pi; guarded RC demand and measured `/mavros/rc/out`; relays between the real-FCU domain and the local VRX domain. |
+| **L3 — Digital twin entity** | **Implemented:** VRX / Gazebo receives thrust derived from measured flight-controller output and returns pose and thrust telemetry. **Planned research extension:** cellular-automata propagation and sim-side water-quality field reconstruction ([Roadmap §6](Roadmap#6-phases-b--e-sketches-not-yet-scoped) Phase B), followed by predict-ahead and what-if functions. |
+| **L4 — User / Application** | Web dashboard for map, telemetry, guarded command ownership, Hailo alerts, health state and twin feedback; eventual water-quality heatmap ([Roadmap §6](Roadmap#6-phases-b--e-sketches-not-yet-scoped) Phase C); residual-based anomaly detection / time-series forecasting / physics-informed ML ([Roadmap §6](Roadmap#6-phases-b--e-sketches-not-yet-scoped) Phase E, time-permitting). |
 
 This mapping is **structural inspiration**, not standards compliance. None of the manufacturing-specific protocols listed in ISO 23247 (MTConnect, OPC/UA, QIF, AP242) appear in this project; ROS 2 + DDS + MAVLink replace them at the equivalent layers.
+
+### 3.1 Implemented feedback loop and evidence boundary
+
+```text
+Dashboard -> Pi command bridge -> guarded RC override --+
+                                                        |
+Herelink ---------------------> direct FCU RC input -----+-> real FCU
+                                                             |
+                                                             v
+                                                   measured /mavros/rc/out
+                                                             |
+                                                             v
+                                                       VRX thrust/pose
+                                                             |
+                                                             v
+                                                    dashboard twin telemetry
+```
+
+In Herelink ownership the bridge releases its MAVROS RC overrides rather than
+forwarding the pilot input. It continues to supervise measured output and can
+reassert the neutral E-stop override.
+
+The 03/09/2026 T3a showcase closed this loop while also carrying live Hailo
+images and an advisory person alert. The 04/09/2026 focused run correlated a
+held dashboard mouse command with real FCU output, VRX response and neutral
+return; Hailo was deliberately disabled in that later run. These results prove
+the bounded command/feedback implementation, not ISO conformance, autonomous
+water-quality prediction or complete routine deployment acceptance.
 
 ---
 

@@ -464,3 +464,24 @@ declaration at the time of this entry:
 
 The Pi kernel-headers meta-package and capture Fix C remain future maintenance
 items; they do not invalidate today's focused result.
+
+### Night close - explicit parameter carry and power-off confirmation
+
+The operator resolved the three items in the preceding day-close audit. The
+mouse-path documentation was committed and pushed as `f34f573`. For the night
+session, only the workstation is available and the scope is documentation;
+there is no Pi, flight-controller or actuator runtime.
+
+The operator confirmed that `RC_OVERRIDE_TIME` remains `0.5` and explicitly
+chose to retain it through the weekend for the next same-scope T3a video
+recording on Monday 07/09/2026. No fresh controller readback is possible in the
+workstation-only session, so this is an operator-confirmed carry decision, not
+a machine-verified readback and not a rollback. Before the next run, verify the
+live value. After the video session completes or is abandoned, restore `3.0`,
+read it back and retain the rollback snapshot. No declaration or approval from
+today carries forward to that future live run.
+
+The operator also confirmed that all hardware was powered off on departure.
+The physical and runtime end-of-day state is therefore closed. This night
+documentation refresh creates a new repository change and needs its own commit
+and push before the repository end-of-day state is clean again.

@@ -45,7 +45,7 @@ Welcome to the **AutoBoat Wiki**! This documentation provides comprehensive guid
 - **[YOLO Dataset Plan](YOLO_Dataset_Plan)** — object-detection dataset plan for Pi 5 RealSense frames, workstation GPU training, NCNN export, and Pi-side validation gates.
 - **[Hailo HAT Workstream Memo](Hailo_HAT_Workstream)** — active accelerator branch for the Raspberry Pi AI HAT+ 13 TOPS board, including RealSense compatibility, Ubuntu/Jazzy version gates, HEF export risk, the proven runtime baseline, and next integration gates.
 - **[Pi Hailo COCO-Overlay Demo](Hailo_COCO_Overlay_Demo)** — reproducible build-and-run procedure for the Pi 5 + Hailo-8L live detection overlay (stock COCO `yolov11n`), with a temperature-guarded launcher and how a custom detector plugs in.
-- **[Real-FCU Digital Twin Runbook](Real_FCU_Digital_Twin_Runbook)** — operator runbook for the Pi 5 + Cube Orange+ digital twin with Hailo advisory detection: one command per machine, start and stop order, evidence, verdict reading, reference figures (03/09/2026)
+- **[Real-FCU Digital Twin Runbook](Real_FCU_Digital_Twin_Runbook)** — operator runbook for the Pi 5 + Cube Orange+ digital twin: one command per machine, start and stop order, evidence, 03/09 Hailo-advisory proof and 04/09 mouse-path confirmation
 - **[Live Hailo and MAVROS Dashboard Testing](Live_Hailo_MAVLink_Dashboard_Testing)** — bounded view-only two-command procedure proven on `IoT IMT Nord Europe` with the stock-COCO overlay and five live MAVROS feeds; full endurance remains open.
 - **[MP + QGC Update Procedures](MP_QGC_Update_Procedures)** — host-local update workflow for Mission Planner (under Mono on Linux) and QGroundControl (AppImage). Includes how to check for newer builds + the SkiaSharp / libdl fix re-apply step after MP updates.
 
@@ -66,6 +66,13 @@ Welcome to the **AutoBoat Wiki**! This documentation provides comprehensive guid
 | Phase 4 | Integration & Testing | 🔄 90% |
 | Phase 5 | Real-Hardware Deployment | 🔄 In Progress |
 
+Current integration status: the props-fitted T3a stack carried dashboard
+commands through the real flight controller into VRX and returned twin
+telemetry on 03/09/2026, together with live Hailo images and a bounded advisory
+person-alert proof. The repaired mouse-hold path was confirmed on the real and
+simulated outputs on 04/09/2026. Full routine deployment acceptance remains
+separate and Phase 5 stays in progress.
+
 See [Board.md](https://github.com/Ghostzero00018/uvautoboat/blob/main/Board.md) for detailed milestones.
 
 ---
@@ -76,7 +83,7 @@ See [Board.md](https://github.com/Ghostzero00018/uvautoboat/blob/main/Board.md) 
 **Institution**: [IMT Nord Europe](https://imt-nord-europe.fr/) — Industry 4.0 Students & Faculty
 **License**: Apache 2.0
 
-**Last Updated**: 07/08/2026
+**Last Updated**: 04/09/2026
 
 ---
 

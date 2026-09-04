@@ -7,6 +7,8 @@ Get AutoBoat running in 5 minutes! This guide assumes you've already completed t
 > **Real hardware?** This page is the simulator. The Pi 5 + Cube Orange+
 > digital twin runs from one command per machine; see
 > [Real-FCU Digital Twin Runbook](Real_FCU_Digital_Twin_Runbook).
+> Its guarded start and evidence-preserving stop sequence is different from the
+> simulator commands below; do not combine the two procedures.
 
 ## Two-Terminal Quick Start
 
@@ -180,16 +182,12 @@ ros2 run plan autoboat_cli home
 
 Press `Ctrl+C` in each terminal to stop the nodes.
 
-### Force Kill (if needed)
+### If Graceful Shutdown Does Not Finish
 
-```bash
-# Kill Gazebo
-pkill -9 -f "gz sim"
-
-# Kill ROS nodes
-pkill -9 -f autoboat
-pkill -9 -f rosbridge
-```
+Do not use a broad `pkill -9 -f` recipe: it bypasses normal cleanup and can
+match unrelated processes. Follow the process-specific recovery guidance in
+[Common Issues](Common_Issues), then verify that the expected ports and nodes
+are gone before restarting.
 
 ---
 

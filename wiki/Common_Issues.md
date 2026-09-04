@@ -1380,22 +1380,26 @@ Returns a direct-discovery snapshot without the daemon cache. Typically a smalle
 
 ---
 
-### Cannot Kill Processes
+### A Process Does Not Stop
 
-**Symptoms**: `Ctrl+C` doesn't stop nodes
+**Symptoms**: `Ctrl+C` does not stop one node or service.
 
-**Nuclear Option**:
+Do not use broad `pkill -9 -f` patterns. They bypass normal cleanup, can match
+unrelated sessions and can even match the shell running the command. Keep the
+original terminal open long enough to read the PID printed by the launcher,
+then inspect that exact process before sending a signal:
 
 ```bash
-# Kill all Gazebo
-pkill -9 -f "gz sim" && pkill -9 -f "gzserver" && pkill -9 -f "gzclient"
-
-# Kill the three pipeline nodes + CLI + rosbridge
-pkill -9 -f "heading_controller|lidar_perception|waypoint_planner|autoboat_cli|rosbridge"
-
-# Kill everything (last resort)
-pkill -9 -f ros && pkill -9 -f gz && pkill -9 -f gazebo
+# Replace 12345 with the exact PID printed for the stuck component.
+TARGET_PID=12345
+ps -o pid=,ppid=,pgid=,stat=,args= -p "$TARGET_PID"
+kill -TERM "$TARGET_PID"
 ```
+
+Wait for the component's own teardown output, then verify the exact PID is
+gone with `ps -p "$TARGET_PID"`. Use `kill -KILL "$TARGET_PID"` only if that
+same inspected process remains and graceful termination has failed. Restart
+only after its required ports and ROS nodes are absent.
 
 ---
 

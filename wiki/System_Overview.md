@@ -12,7 +12,7 @@ High-level architecture and design philosophy of the AutoBoat autonomous navigat
 
 ## Abstract
 
-AutoBoat is an autonomous navigation system for unmanned surface vehicles (USVs) developed as a research project on the Virtual RobotX ([VRX](https://github.com/osrf/vrx)) simulation platform. The system integrates advanced path planning, real-time obstacle avoidance, and precise trajectory tracking algorithms optimized for the WAM-V maritime platform.
+AutoBoat is an autonomous navigation system for unmanned surface vehicles (USVs) developed as a research project on the Virtual RobotX ([VRX](https://github.com/osrf/vrx)) simulation platform. The system integrates advanced path planning, real-time obstacle avoidance, and precise trajectory tracking algorithms optimized for the WAM-V maritime platform. A separate guarded path connects the web dashboard, a Raspberry Pi 5 and a real Cube Orange+ flight controller to a VRX twin driven by measured motor output.
 
 Built on **ROS 2 Jazzy** and **Gazebo Harmonic**, the framework provides a robust foundation for autonomous maritime navigation in simulated environments.
 
@@ -26,6 +26,8 @@ Built on **ROS 2 Jazzy** and **Gazebo Harmonic**, the framework provides a robus
 - **Web Dashboard**: Real-time monitoring with visualization
 - **Waypoint Skip Strategy**: Automatic skip for blocked waypoints ensuring mission completion
 - **A\* Path Planning**: Grid-based pathfinding for obstacle avoidance
+- **Real-FCU Digital Twin**: Guarded dashboard or Herelink command ownership, measured flight-controller output mirrored into VRX, and twin telemetry returned to the dashboard
+- **Hailo Edge Perception**: Live stock-COCO overlay with explicit stop-enabled and advisory person-alert modes
 
 ---
 
@@ -47,17 +49,28 @@ The **Modular (Perception–Planner–Controller)** three-node pipeline is the a
 
 ---
 
-## Real-Hardware Path (03/09/2026)
+## Real-Hardware Digital-Twin Path (verified 02–04/09/2026)
 
-On the real boat the only actuator path is dashboard demand on
-`/command_ingress/rc_axes` into the Pi's RC command bridge, which holds the RC
-override, the rails, the parameter guard and every interlock; the VRX
-simulator follows the measured outputs rather than being driven. The Hailo-8L
-detector publishes a person alert that, in advisory mode, warns on the
-dashboard without stopping. Procedure, markers and evidence:
+The dashboard is the default command owner. Its bounded demand enters the Pi's
+RC command bridge on `/command_ingress/rc_axes`; the bridge owns the RC
+override, selected parameter guard, channel mapping and neutral/E-stop
+behaviour. The verified 02–04/09/2026 T3a runs used an approved hash-pinned
+MAVProxy parameter snapshot rather than a live parameter pull.
+An explicit neutral-confirmed handover can instead give command ownership to
+the Herelink. Dashboard demand is inhibited during Herelink ownership, but
+measured `/mavros/rc/out` continues to drive the VRX twin and return pose and
+thrust telemetry to the dashboard. A latched E-stop regains neutral override
+authority.
+
+When Hailo person detection is enabled, stop-enabled behaviour is the default.
+Advisory mode must be selected explicitly; it keeps the alert visible without
+publishing a stop. On 03/09/2026, a full Hailo-enabled T3a run proved the live
+overlay, advisory alerts and the real-FCU-to-VRX loop. On 04/09/2026, a focused
+no-Hailo run confirmed the repaired mouse-hold path through real output and VRX
+neutral return. Procedure, markers and evidence boundaries:
 [Real-FCU Digital Twin Runbook](Real_FCU_Digital_Twin_Runbook).
 
-## High-Level Data Flow
+## Simulation Navigation Data Flow
 
 ```text
 ┌─────────────────────────────────────────────────────────────┐
