@@ -243,8 +243,13 @@ capture the pointer on press. Reserving the tested two-line phase height also
 removes that measured shift, but pointer capture is what preserves the hold
 under any other reflow. Sliding the pressed mouse off the button no longer
 releases and releasing the mouse button anywhere does. Keyboard activation
-does not request pointer capture. The mouse path has not been re-run on
-hardware. Procedure and stop order: the Real-FCU Digital Twin Runbook.
+does not request pointer capture. The mouse path was confirmed on props-fitted
+T3a hardware later on 04/09/2026: Auto Move stayed active while the pressed
+pointer was dragged fully outside for at least two seconds, the real
+propellers and VRX continued responding, and mouse-up outside restored
+`ARMED_NEUTRAL` with request `0.00/0.00`; measured output subsequently reached
+`800/800` and VRX thrust zero. Procedure, retained evidence and stop order:
+the Real-FCU Digital Twin Runbook.
 
 
 On 17/07/2026, two runs from the clean, pushed workstation checkout on

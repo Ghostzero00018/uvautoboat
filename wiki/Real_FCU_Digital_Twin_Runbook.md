@@ -4,13 +4,21 @@ Operator runbook for the real-flight-controller digital twin: the Raspberry Pi 5
 driving a Cube Orange+ running ArduRover 4.6.3, the Hailo-8L person detector,
 the workstation dashboard, and the VRX simulator following the real outputs.
 One command per machine. Everything here has been run on hardware; the dated
-records are the 02/09/2026 and 03/09/2026 working diaries.
+records are the 02/09/2026, 03/09/2026 and 04/09/2026 working diaries.
 
 > Status 03/09/2026: bundle `a8bed50` deployed and certified on the Pi. A
 > `42`-minute armed run from these commands held the full showcase: Hailo
 > images on the dashboard and on the Pi desktop, dashboard demand reaching the
 > propellers with the simulator following, advisory person detection with `96`
 > detections against `0` stops, Herelink arm and disarm live on the dashboard.
+>
+> Status 04/09/2026: the mouse-path pointer-capture repair was confirmed on
+> props-fitted T3a hardware at workstation revision `8fda5a2` with the
+> unchanged certified Pi bundle `a8bed50`. A pressed Auto Move pointer was
+> dragged fully outside for at least two seconds without losing `ACTIVE`; both
+> the real propellers and VRX continued until mouse-up outside by operator
+> observation, while capture and W2 evidence correlate the held command, FCU
+> output, VRX response and subsequent neutral return.
 
 The older two-command view-only procedure with
 `tools/live_dashboard_preflight.sh` and `tools/pi_live_hailo_mavlink_dashboard.sh`
@@ -168,7 +176,7 @@ records the frames like any other demand. Defaults `0.17`, `5` s, right,
 the dashboard E-stop or any supervisor shutdown in section 5. Running it after
 that stop sequence requires a second full-stack launch.
 
-**Mouse hold, fixed on the evening of 04/09/2026, not yet re-run on hardware.**
+**Mouse hold, fixed and confirmed on props-fitted hardware on 04/09/2026.**
 At the bench that afternoon every mouse press released itself after one
 frame: the status text written on the first frame grew the box above the
 buttons by `46` px at its `238` px width, the `64` px button slid out from
@@ -183,6 +191,16 @@ One behaviour changed with it: sliding the pressed mouse off the button no
 longer releases; letting go of the mouse button does, anywhere on the page,
 as do E-stop, lost readiness, a stale status, keyboard release, focus loss
 and a hidden page.
+The later focused run used throttle `0.17`, `1` s straight, right turn,
+steering `0.10` and `3` s turn. The operator dragged the pressed pointer fully
+outside, held it there for at least two seconds and released outside. It
+stayed `ACTIVE`; both the real propellers and VRX continued until release,
+then the panel returned immediately to `ARMED_NEUTRAL` with requested
+`0.00/0.00`. Measured output subsequently returned to `800/800` and VRX thrust
+to zero, about half a second later. Capture and W2 evidence correlate the
+command phases with FCU output and VRX response; the mouse and physical
+propeller observations are the operator's. This closes the mouse-path repair;
+it does not close the separately omitted ESC calibration.
 The keyboard hold still works and needs nothing: click `Neutral Now`, press
 Tab twice so the auto-move button shows its focus outline, hold Space. That
 is how the first hardware run went on 04/09/2026: straight then right at
@@ -216,6 +234,16 @@ reading the logs for.
 | W2 own run directory | `~/Desktop/fcu_to_vrx_workstation_<stamp>/` |
 | Capture verdict and events | `~/Desktop/real_fcu_capture_t3a_esc_threshold_<stamp>/evidence/verdict.json` |
 | Pi run directory, to copy back | `/home/imt-aqua-drone/Desktop/real_fcu_t3a_pi_<stamp>/` |
+
+Focused mouse-path confirmation on 04/09/2026:
+
+| Artifact | Retained path |
+| --- | --- |
+| Entry point | `~/Desktop/real_fcu_full_stack_20260904_181309` |
+| W1 | `~/Desktop/real_fcu_digital_twin_workstation_20260904_181326` |
+| W2 | `~/Desktop/fcu_to_vrx_workstation_20260904_181312` |
+| Capture | `~/Desktop/real_fcu_capture_t3a_esc_threshold_20260904_181329` |
+| Pi copy-back | `~/Desktop/test_logs_folder/pi_run_evidence/real_fcu_t3a_mouse_path_20260904_181410` |
 
 Copy back from the workstation:
 
@@ -318,12 +346,6 @@ Hailo gate, which accepts only run modes; section 2 covers that by hand.
 
 ## 11. Known limits, updated 04/09/2026
 
-- The mouse-hold release after one frame is fixed in the tree since the
-  evening of 04/09/2026. Pointer capture on both hold buttons is the
-  continuity mechanism; reserving the tested two-line status height removes
-  the measured reflow but is not relied on for other layouts. Verified by
-  the suite and a browser drag test, not yet on hardware. Section 4 has the
-  detail and the keyboard hold.
 - A Pi kernel update removes the Hailo driver until the new kernel's headers
   are installed; section 2 has the check and the repair. Installing the
   kernel-headers meta-package on the Pi would stop it recurring.

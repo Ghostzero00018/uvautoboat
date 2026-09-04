@@ -382,3 +382,85 @@ two missed drags.
 Behaviour change to know: sliding the pressed mouse off the button no longer
 releases the hold; releasing the mouse button does, anywhere, as do the other
 release paths. Recorded in the runbook. Not yet run on hardware.
+
+### Late bench run - mouse path confirmed on the props-fitted T3a stack
+
+The focused confirmation ran on published workstation revision
+`8fda5a2a0392529cb8f73501a69c93fb944f2c73`. The Pi stayed on the previously
+certified `a8bed50` bundle because this repair changes only the workstation
+dashboard. The page actually served by W1 had `app.js` SHA-256
+`ce9e480feae29076f58df30cce79c2b1983ce252a0f00194fdb9c47b44e44ae3`.
+The operator declared the T3a physical conditions and approved this specific
+mouse-path run; Hailo person detection was deliberately disabled, so this run
+does not add person-alert evidence.
+
+| Component | Retained evidence |
+| --- | --- |
+| Full-stack entry point | `/home/ghostzero/Desktop/real_fcu_full_stack_20260904_181309` |
+| W1 real-FCU supervisor | `/home/ghostzero/Desktop/real_fcu_digital_twin_workstation_20260904_181326` |
+| W2 FCU-to-VRX supervisor | `/home/ghostzero/Desktop/fcu_to_vrx_workstation_20260904_181312` |
+| T3a capture | `/home/ghostzero/Desktop/real_fcu_capture_t3a_esc_threshold_20260904_181329` |
+| Pi copy-back | `/home/ghostzero/Desktop/test_logs_folder/pi_run_evidence/real_fcu_t3a_mouse_path_20260904_181410` |
+
+W1 and W2 reached their READY markers before the test. After external arming,
+the dashboard reached `ARMED_NEUTRAL`; the operator clicked `Neutral Now`,
+selected the physical-condition box, and configured auto-move for throttle
+`0.17`, `1` s straight, right turn, steering `0.10`, and `3` s turn. The mouse
+was held down, dragged fully outside the button, kept down for at least two
+seconds and released outside. Operator observation matched every acceptance
+point: the button stayed `ACTIVE` during the drag, the real propellers and VRX
+continued responding while held. Mouse-up outside immediately returned the
+panel to `ARMED_NEUTRAL` with requested `0.00/0.00`; measured output then
+returned to `800/800`, the propellers stopped and VRX thrust reached zero.
+
+The retained capture contains `17,045` events, `0` invalid status documents,
+and one bound status publisher,
+`/real_fcu_rc_command_bridge_t3a`. Its active frames contain the requested
+straight `0.00/0.17` and right-turn `0.10/0.17` phases across `10` distinct
+bursts and `587` enabled frames. W2 retained straight output at `1024/1024` us
+and `128/128` N, right-turn output at `1163/884` us and
+`207.428571/48.0` N, then `800/800` us and `0/0` N after release. Across the
+bursts, the disabled command followed mouse-up in `4` to `55` ms,
+`ARMED_NEUTRAL` in `13` to `64` ms, FCU output reached `800/800` in `462` to
+`642` ms, and VRX thrust reached zero in `422` to `621` ms. This machine
+evidence correlates the command, real FCU output and VRX response; mouse input,
+pointer position and continued physical propeller rotation remain the
+operator-observed part of the result.
+
+The capture verdict is still `pass:false`, solely on
+`calibration_left_observation_incomplete` and
+`calibration_right_observation_incomplete`. No ESC observations were entered
+because this was a focused mouse-path confirmation, not another threshold
+calibration. Its final status is connected, disarmed, hardware safety
+`ENGAGED`, E-stop latched, command zero and both outputs at `800` us.
+
+All lifecycle owners closed cleanly. W2 reported its ordered teardown with
+both UDP ports free and exited `status=0 cleanup_rc=0`; W1 retained a connected,
+disarmed final state, published the stop marker and exited
+`status=0 cleanup_rc=0`; the Pi recorded the typed safe closeout, connected and
+disarmed final state, received the workstation stop marker and exited
+`status=0 cleanup_rc=0`. The full-stack wrapper reported `stop=clean`; it found
+one ROS 2 CLI daemon left in W1's process group and terminated it as designed.
+
+Classification: **FOCUSED T3A MOUSE-PATH HARDWARE CONFIRMATION - PASS,
+OPERATOR-OBSERVED AND MACHINE-CORRELATED; NOT AN ESC-CALIBRATION ACCEPTANCE.**
+No repeat hardware run is needed for the pointer-capture repair.
+
+### Day-close audit
+
+The two workstation supervisors, the capture and the Pi run are stopped, their
+evidence is retained, and the safe closeout is captured. A current workstation
+audit found no matching stack processes and found TCP `8002`, `8080`, `9090`
+and UDP `14555`, `14556` free. Three items still prevent a complete end-of-day
+declaration at the time of this entry:
+
+1. `RC_OVERRIDE_TIME=0.5` remains a temporary flight-controller value by the
+   operator's pre-run declaration. The standing rollback to `3.0` needs a live
+   readback and retained snapshot unless the operator explicitly records a new
+   decision to keep `0.5` for the next same-scope T3a session.
+2. A final operator confirmation that the FCU, Pi and Herelink are powered off
+   has not yet been recorded.
+3. This documentation update still needs its own commit and push.
+
+The Pi kernel-headers meta-package and capture Fix C remain future maintenance
+items; they do not invalidate today's focused result.
