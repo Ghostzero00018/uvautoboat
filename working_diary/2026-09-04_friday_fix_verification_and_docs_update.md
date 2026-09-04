@@ -4,6 +4,10 @@
 implemented. Read the 03/09/2026 diary first, in particular "Day close" and
 "Correction to the stop".**
 
+**The session record from `16:30` on 04/09/2026 is appended at the end. The
+pre-diary sections stay as written; where the record differs, the record is
+what happened.**
+
 ## Where the day starts
 
 Bundle `a8bed50` is deployed and certified on the Pi at
@@ -190,3 +194,149 @@ Undated pages to sweep for stale terms: `Glossary`, `System_Overview`, `SASS`,
   `colcon build --merge-install` from `~/seal_ws`, never from `src/`. The
   misplaced trees were removed.
 - `legacy/misc/PORT_ALLOCATION.md:54` MD040, flagged 02/09.
+
+## Session record - 04/09/2026, at the bench
+
+Pi and flight controller present from `16:30`. Committed before the session:
+`38fac0e` moved the auto-move paragraph inside the armed window and corrected
+the runbook's copy-back path to `~/Desktop/test_logs_folder/pi_run_evidence/`,
+where the 02/09 and 03/09 Pi run directories already were. The workstation
+preflight was not rerun: the tree was docs-only since the `7d1eece` pass. Pi
+Hailo checkout on `891ce701c2ebe239a5d277759eb75a30f76678a9` and clean.
+
+### The Hailo driver was gone: a kernel update without headers
+
+Workstation launcher at `16:31:00`, run directory
+`real_fcu_full_stack_20260904_163100`; W2 prestart at `16:31:10`, then the
+`HAILO MODE` hint. The Pi helper's first start passed the bundle and Hailo
+pins and stopped at `STOP: /dev/hailo0 missing`.
+
+Read-only look on the Pi: `uname -r` gave `6.8.0-1064-raspi`; `dkms status`
+listed `hailo_pci/4.24.0` installed for `6.8.0-1063-raspi` only; `lsmod` had no
+`hailo_pci`; `lspci` still listed the Hailo-8 at `0000:01:00.0`. The Pi had
+taken the kernel update from `1063` to `1064` since 03/09 with no headers for
+it, so DKMS could not rebuild the module and the device node was never
+created. Nothing physical.
+
+Fix at `16:36`, on the Pi:
+
+```bash
+[ -e /lib/modules/$(uname -r)/build ] || sudo apt-get install -y linux-headers-$(uname -r); sudo dkms install hailo_pci/4.24.0 -k $(uname -r) && sudo modprobe hailo_pci && ls -l /dev/hailo0 && lsmod | grep -i hailo
+```
+
+`apt` pulled `linux-headers-6.8.0-1064-raspi` and
+`linux-raspi-headers-6.8.0-1064` (`16.6` MB); the headers' postinst ran the
+DKMS autoinstall, which built and installed `hailo_pci.ko.zst` for `1064`, so
+the explicit `dkms install` reported "already installed". `modprobe` then gave
+`crw-rw-rw- 1 root root 509, 0 /dev/hailo0` and `hailo_pci 126976 0`. Six
+minutes lost, inside the workstation's `1200` s wait for the Pi feed.
+
+Root cause and the durable fix, not applied: the Pi has no
+`linux-headers-raspi` meta-package, so every kernel update arrives without
+headers and removes Hailo until the headers are installed by hand.
+`sudo apt-get install linux-headers-raspi` on the Pi (package name untested)
+would make future updates carry their headers and let DKMS rebuild on its
+own. Operator's decision.
+
+### Second start, READY on both machines
+
+Pi helper at `16:37:24`, run directory `real_fcu_t3a_pi_20260904_163724`:
+`REAL_FCU_HAILO_PERSON_STOP=PASS ... person_alert=fresh-clear`, guard snapshot
+`PASS` on `5ea352bc` with `parameter_write=none`, telemetry `PASS`, bridge
+resolved `986` parameters, `RC1/RC3`, `SERVO3/SERVO1`. In `run-t3a` the helper
+prints its propulsion-enable and safety-release gate lines with
+`source=approved-runtime-flags operator_action=external` and does not pause at
+them; the physical steps and their timing are the operator's.
+`REAL_FCU_PI_READY=PASS`, then `REAL_FCU_T3A_READY=PASS ... hailo=ready
+person_alert=advisory-no-stop display=local-window`. Workstation: capture
+`READY` at `16:37:37` (`real_fcu_capture_t3a_esc_threshold_20260904_163737`),
+`REAL_FCU_WORKSTATION_READY=PASS ... hailo=image,person-detections
+person_alert=advisory-no-stop`, bench URL carrying
+`thrust_left_servo=3&thrust_right_servo=1`.
+
+Bridge timeline from the capture: `READY_DISARMED` at `16:41:13`,
+`ARMED_NEUTRAL` at `16:42:14` on the external arm, dashboard page loaded at
+`16:42:31`, seventeen seconds after arming, and it primed the epoch on its
+first armed status, as read in the code that morning. Hardware Safety read
+`RELEASED`, sticks `1515/1515` us, outputs `800/800` us.
+
+### Defect - auto-move with the mouse releases itself after one frame
+
+From `16:44:19` to `16:46:21` the operator pressed `Hold to Run Auto Move`
+with the mouse at throttle `0.17`, `0.18`, `0.15` and `0.20`. Every press
+produced exactly one enabled frame: `20` single-frame bursts in the capture,
+each with the bridge going `ACTIVE` for one status and back to
+`ARMED_NEUTRAL`, alert fresh and feedback fresh throughout. The bridge was
+never the problem; the page stopped sending.
+
+The manual hold worked and sustained in the same minutes: `16:47:53` to
+`16:48:57`, holds up to `13.7` s at steering `+0.12` throttle `0.10` (left
+`1090` us, right `800` us), and at throttle `0.17` with steering `-0.03` or
+`+0.03` (`983/1064` us, sides swapping with the sign).
+
+Cause, confirmed after the run on a static copy of the page served locally at
+the run's window width: the first enabled frame writes the status text
+(`Straight — steering 0.00, throttle 0.20`) into the auto-move box above the
+buttons; the box is `238` px wide there, the text wraps, the box grows by
+`46` px and the `64` px button moves down under the stationary pointer. The
+browser reports the pointer leaving the button, and pointer-leave is the
+release path, exactly as for a plain hold. The manual hold never changes the
+layout, so it never sees this; a keyboard hold does not involve the pointer.
+The dashboard suite cannot see it either: its element stubs have no layout.
+
+Workaround used, no code change: click `Neutral Now` (which also re-primes
+after a handback), Tab twice to the auto-move button, hold Space.
+
+### Auto-move first use, by keyboard
+
+`16:55:34` to `16:55:44`, `10.4` s: straight at throttle `0.20`, then steering
+`+0.18`: left `1315` us, right `1066` us, and the hull turned right, operator
+observed, so the side label ("right: +steering, left propeller faster")
+matches the mixer. Repeated at `16:56:27`. `16:57:07`: throttle `0.18`, turn
+`+0.03`. A Herelink handover and handback from `16:58:23` to `16:59:04`, then
+four `15` s runs from `17:00:00` to `17:05:16` at throttle `0.18`, `10` s
+straight and `5` s turn at `0.03` to either side. The status line showed the
+phases and returned to `Idle`; every run ended itself at the profile's end.
+
+The operator's statement for the record: on both 03/09 and 04/09, the real
+propellers and the VRX twin moved together on the same dashboard command.
+That is the two-way digital twin working end to end, the project's first
+success criterion.
+
+### The stop - both fixes proven
+
+Order actually executed: external disarm at `17:07:33` (`READY_DISARMED`),
+dashboard E-stop at `17:10:53` (`EMERGENCY_STOP`), workstation Ctrl+C at
+`17:11:37`. The documented order is E-stop first; the verdict's two checks
+passed anyway because the E-stop was recorded before the capture ended.
+
+Workstation: `REAL_FCU_CAPTURE_FINAL=FAIL tier=T3A
+reasons=calibration_left_observation_incomplete,calibration_right_observation_incomplete`,
+the two calibration reasons only; `final_status_not_disarmed` and
+`tier_status_sequence_incomplete` are gone (Fix B). W2 `stopped cleanly after
+7s`; the closeout prompt named the Pi line to wait for; Enter at `17:12:32`
+after the Pi had printed it; W1 `stopped cleanly after 6s` with one straggler,
+the `ros2` daemon, terminated by the wrapper; `FULL_STACK_EXIT status=0
+stop=clean` at `17:12:40`.
+
+Pi: `REAL_FCU_T3A_SAFE_CLOSEOUT=PASS`, `REAL_FCU_FINAL_STATE=PASS
+connected=true armed=false`, `waiting for workstation operator stop before
+bridge shutdown`, then `REAL_FCU_WORKSTATION_STOP=PASS marker=received` with
+no manual republish: W1's marker log shows the five-publish burst (Fix A).
+`REAL_FCU_PI_EXIT status=0 cleanup_rc=0`. Nothing survived on the workstation;
+ports `8002`, `8080` and `9090` free.
+
+Capture: `38,946` bridge statuses from `16:39:09` to `17:11:37`; `4,119`
+demand frames, `3,111` of them enabled, in `48` bursts of which `8` lasted
+`10` s or more; `7,915` RC-in and `7,913` RC-out samples; verdict
+`final_status` `EMERGENCY_STOP` latched with `armed:false`.
+
+### Open after the session
+
+- Auto-move mouse hold: fix proposed as pointer capture on both hold buttons
+  plus a fixed-height status line, a code change awaiting approval; verify on
+  hardware at the next bench session.
+- Pi: install the kernel-headers meta-package so kernel updates keep Hailo
+  alive; operator's decision.
+- Fix C unchanged.
+- Copy back `real_fcu_t3a_pi_20260904_163724`.

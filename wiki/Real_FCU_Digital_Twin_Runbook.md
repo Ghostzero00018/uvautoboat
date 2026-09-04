@@ -63,6 +63,28 @@ git -C ~/hailo_coco_overlay_2026-07-10/hailo-apps status --porcelain=v1 --untrac
 The first prints `891ce701c2ebe239a5d277759eb75a30f76678a9`; the second prints
 nothing. `REAL_FCU_HAILO_ROOT` moves the checkout root if it was relocated.
 
+Then the Hailo driver, which a kernel update removes silently. The Pi has no
+kernel-headers meta-package, so a new kernel arrives without headers, DKMS
+cannot rebuild `hailo_pci` for it, and the helper stops at
+`STOP: /dev/hailo0 missing`. That is what happened on 04/09/2026: the Pi had
+booted `6.8.0-1064-raspi` with the module built for `1063` only, while
+`lspci` still listed the Hailo-8. Check before the helper:
+
+```bash
+ls -l /dev/hailo0; uname -r; dkms status | grep -i hailo
+```
+
+The device node must exist and the DKMS line must name the running kernel.
+If not, this installs the running kernel's headers when missing, which
+triggers the DKMS build, then loads the module (sudo, a minute or two):
+
+```bash
+[ -e /lib/modules/$(uname -r)/build ] || sudo apt-get install -y linux-headers-$(uname -r); sudo dkms install hailo_pci/4.24.0 -k $(uname -r) && sudo modprobe hailo_pci && ls -l /dev/hailo0 && lsmod | grep -i hailo
+```
+
+Pass is a `/dev/hailo0` line followed by a `hailo_pci` line. It took six
+minutes on 04/09/2026, inside the workstation's wait for the Pi feed.
+
 Flight controller powered and steady before the Pi helper starts. Do not judge
 the link with `cat /dev/ttyAMA0` on a fresh boot: the port opens at its default
 rate, the `57600` stream arrives as framing errors and prints nothing, and the
@@ -131,7 +153,7 @@ Confirm Hardware Safety agrees with the physical switch; `Unknown (stale)` is
 not a reading. Arming is external and the operator's. HOLD applies demand only
 while held; release is neutral within a frame.
 
-**Auto move** (added 03/09/2026 evening, not yet run on hardware). A second
+**Auto move** (added 03/09/2026 evening, first run on hardware 04/09/2026). A second
 hold-to-run button on the bench panel publishes a bounded scripted maneuver
 through the same guarded path as the sliders: straight at the configured
 throttle for `1` to `10` s, then the same throttle with steering to the chosen
@@ -145,6 +167,17 @@ records the frames like any other demand. Defaults `0.17`, `5` s, right,
 `0.10`, `5` s. Run it after all READY markers and external arming, and before
 the dashboard E-stop or any supervisor shutdown in section 5. Running it after
 that stop sequence requires a second full-stack launch.
+
+**Hold it with the keyboard, not the mouse, until the defect below is fixed.**
+Click `Neutral Now`, press Tab twice so the auto-move button shows its focus
+outline, then hold Space; letting go is neutral. With the mouse the button
+releases itself after one frame: the status text written on the first frame
+grows the box above the buttons and moves the button out from under the
+pointer, and the browser's pointer-leave is the release path (measured
+04/09/2026: the box grows by `46` px at a `238` px box width, the button is
+`64` px tall). On 04/09/2026 the keyboard hold ran straight then right at
+throttle `0.20`, steering `0.18`, left `1315` us and right `1066` us, and the
+hull turned right, so the side label matches the mixer.
 
 ## 5. Stop, in this order
 
@@ -273,7 +306,14 @@ sha256sum -c config/real_fcu_digital_twin_bundle.sha256 && bash tools/real_fcu_d
 Four `OK` lines and `REAL_FCU_PI_CHECK=PASS`. `check` cannot pre-validate the
 Hailo gate, which accepts only run modes; section 2 covers that by hand.
 
-## 11. Known limits, 03/09/2026
+## 11. Known limits, updated 04/09/2026
+
+- Auto-move held with the mouse releases after one frame; hold it with the
+  keyboard as section 4 says. Fix proposed: pointer capture on both hold
+  buttons and a fixed-height status line.
+- A Pi kernel update removes the Hailo driver until the new kernel's headers
+  are installed; section 2 has the check and the repair. Installing the
+  kernel-headers meta-package on the Pi would stop it recurring.
 
 - GPS has no fix indoors; the dashboard shows `Waiting` and holds the map on
   its default, which is correct behaviour.
