@@ -289,7 +289,7 @@ ros2 launch rosbridge_server rosbridge_websocket_launch.xml delay_between_messag
 > **Offline / restricted-egress status:** `roslib.js`, Leaflet, and dashboard fonts
 > are vendored under `web_dashboard/autoboat/vendor/` as of 05/05/2026, so internet
 > access is no longer required for those libraries. OpenStreetMap tiles still
-> depend on external tile egress until [Roadmap §1.3](Roadmap#13-iot-imt-nord-europe--local-only-network-constraint-analysed-30042026)
+> depend on external tile egress until [Roadmap §1.3](Roadmap#13-iot-imt-nord-europe--managed-egress--offline-map-constraint-analysed-30042026-corrected-13052026)
 > Path B (offline tile server) lands.
 
 **6. Firewall blocking?**
@@ -1534,5 +1534,6 @@ If your problem isn't listed here:
 ## Related Pages
 
 - **[Installation Guide](Installation_Guide)** — Setup troubleshooting
+- **[Pi and Hailo Lifecycle Guide](Pi_Hailo_Lifecycle_Guide)** — Hailo installation, maintenance, kernel/DKMS recovery, rollback, layered removal and recurring symptoms on the provisioned boat Pi
 - **[System Overview](System_Overview)** — Architecture, topic flow, node responsibilities
 - **[Glossary](Glossary)** — Terminology (TUNED state, SASS, VFH, etc.)

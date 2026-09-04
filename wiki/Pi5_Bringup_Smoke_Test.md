@@ -425,6 +425,7 @@ finally:
 
 ## 8. Cross-references
 
+- [Pi and Hailo Lifecycle Guide](Pi_Hailo_Lifecycle_Guide) — Hailo install and maintenance on this provisioned Pi, including kernel/DKMS recovery, rollback and layered removal.
 - [Roadmap §1.1](Roadmap#11-scope-clarifications-locked-30042026) — production architecture (`mavros2` as the canonical MAVLink ↔ ROS bridge; MAVProxy as a router not a bridge; DDS multicast verification on the IoT WiFi — verified WORKS on `IoT IMT Nord Europe` 12/05/2026).
 - [Roadmap §3 — Phase 5](Roadmap#3-phase-5--real-hardware-deployment) — full Phase 5 hardware-deployment summary, including `launch/remap.launch.yaml` for sim-vs-real swap-in routing.
 - ArduPilot MAVProxy: <https://ardupilot.org/mavproxy/index.html>

@@ -227,6 +227,7 @@ uvautoboat/
 | [USER_MANUAL.md](USER_MANUAL.md) | Full technical manual (architecture, algorithms, troubleshooting) |
 | [Dashboard Guide](web_dashboard/autoboat/README_autoboat_dashboard.md) | Dashboard setup and camera panel |
 | [Real-FCU Digital Twin Runbook](wiki/Real_FCU_Digital_Twin_Runbook.md) | Guarded Pi/FCU/VRX start, operation, stop, and evidence procedure |
+| [Pi and Hailo Lifecycle Guide](wiki/Pi_Hailo_Lifecycle_Guide.md) | Hailo lifecycle on the provisioned boat Pi: install, maintenance, kernel recovery, rollback, layered removal, and recurring problems |
 | [Board.md](Board.md) | Development milestones |
 | [Wiki](wiki/Home.md) | Installation, system overview, common issues |
 | [Glossary](wiki/Glossary.md) | Plain-language definitions of every technical term |

@@ -240,6 +240,7 @@ pipx install <package>
 Once installation is complete:
 
 - **[Quick Start](Quick_Start)** — Launch your first mission
+- **[Pi and Hailo Lifecycle Guide](Pi_Hailo_Lifecycle_Guide)** — Install and maintain the Hailo-8L runtime on the provisioned boat Pi
 
 ---
 

@@ -77,27 +77,29 @@ git -C ~/hailo_coco_overlay_2026-07-10/hailo-apps status --porcelain=v1 --untrac
 The first prints `891ce701c2ebe239a5d277759eb75a30f76678a9`; the second prints
 nothing. `REAL_FCU_HAILO_ROOT` moves the checkout root if it was relocated.
 
-Then the Hailo driver, which a kernel update removes silently. The Pi has no
-kernel-headers meta-package, so a new kernel arrives without headers, DKMS
-cannot rebuild `hailo_pci` for it, and the helper stops at
-`STOP: /dev/hailo0 missing`. That is what happened on 04/09/2026: the Pi had
-booted `6.8.0-1064-raspi` with the module built for `1063` only, while
+Then the Hailo driver, because a kernel update can leave the new running kernel
+without a matching module. The Pi has no kernel-headers meta-package, so a new
+kernel arrives without headers, DKMS cannot rebuild `hailo_pci` for it, and the
+helper stops at `STOP: /dev/hailo0 missing`. That is what happened on
+04/09/2026: the Pi had booted `6.8.0-1064-raspi` with the module built for
+`1063` only, while
 `lspci` still listed the Hailo-8. Check before the helper:
 
 ```bash
 ls -l /dev/hailo0; uname -r; dkms status | grep -i hailo
 ```
 
-The device node must exist and the DKMS line must name the running kernel.
-If not, this installs the running kernel's headers when missing, which
-triggers the DKMS build, then loads the module (sudo, a minute or two):
-
-```bash
-[ -e /lib/modules/$(uname -r)/build ] || sudo apt-get install -y linux-headers-$(uname -r); sudo dkms install hailo_pci/4.24.0 -k $(uname -r) && sudo modprobe hailo_pci && ls -l /dev/hailo0 && lsmod | grep -i hailo
-```
-
-Pass is a `/dev/hailo0` line followed by a `hailo_pci` line. It took six
-minutes on 04/09/2026, inside the workstation's wait for the Pi feed.
+The device node must exist and the DKMS line must name the running kernel. If
+either check fails, use the exact
+[kernel and DKMS recovery procedure](Pi_Hailo_Lifecycle_Guide#5-kernel-and-dkms-recovery).
+It checks the running-kernel headers, installs the DKMS row only when it is
+missing, loads the module and verifies the device node. This avoids an
+unconditional `dkms install && modprobe` chain in which an already-installed
+DKMS result can prevent the load and verification steps from running. The
+04/09/2026 recovery took six minutes inside the workstation's wait for the Pi
+feed. Durable installation, maintenance, rollback and layered-removal
+procedures are in the
+[Pi and Hailo Lifecycle Guide](Pi_Hailo_Lifecycle_Guide).
 
 Flight controller powered and steady before the Pi helper starts. Do not judge
 the link with `cat /dev/ttyAMA0` on a fresh boot: the port opens at its default
@@ -367,8 +369,9 @@ Hailo gate, which accepts only run modes; section 2 covers that by hand.
 - The temporary `RC_OVERRIDE_TIME=0.5` carry is governed by the pre-run note in
   section 2. It is not the normal closed state.
 
-- A Pi kernel update removes the Hailo driver until the new kernel's headers
-  are installed; section 2 has the check and the repair. Installing the
+- A Pi kernel update can leave the new running kernel without a matching Hailo
+  module until its headers are installed; section 2 has the check and repair.
+  Installing the
   kernel-headers meta-package on the Pi would stop it recurring.
 
 - GPS has no fix indoors; the dashboard shows `Waiting` and holds the map on
@@ -380,3 +383,10 @@ Hailo gate, which accepts only run modes; section 2 covers that by hand.
 - Workspace layout is `~/seal_ws/{src,build,install,log}`, built with
   `colcon build --merge-install` from `~/seal_ws`. W2 requires
   `~/seal_ws/install/setup.bash`.
+
+## Navigation
+
+- [Home](Home)
+- [Pi and Hailo Lifecycle Guide](Pi_Hailo_Lifecycle_Guide)
+- [Hailo HAT Workstream Memo](Hailo_HAT_Workstream)
+- [Common Issues](Common_Issues)

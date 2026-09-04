@@ -2030,3 +2030,7 @@ restored `/dev/hailo0`, after which the Hailo-enabled stack reached READY.
 The later 04/09 focused mouse-path confirmation deliberately set both Hailo
 flags to `0`, so it adds no detector or image-path evidence. Its result belongs
 to the current runbook, not to this view-only procedure.
+
+The durable install, maintenance, current-kernel/DKMS recovery, pinned rollback
+and layered-removal procedures are in the
+[Pi and Hailo Lifecycle Guide](Pi_Hailo_Lifecycle_Guide).

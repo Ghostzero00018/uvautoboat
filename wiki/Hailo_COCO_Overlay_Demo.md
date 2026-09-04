@@ -425,6 +425,7 @@ procedure documented here.
 ## Navigation
 
 - [Home](Home)
+- [Pi and Hailo Lifecycle Guide](Pi_Hailo_Lifecycle_Guide)
 - [Live Hailo and MAVROS Dashboard Testing](Live_Hailo_MAVLink_Dashboard_Testing)
 - [Hailo HAT Workstream Memo](Hailo_HAT_Workstream)
 - [YOLO Dataset Plan](YOLO_Dataset_Plan)

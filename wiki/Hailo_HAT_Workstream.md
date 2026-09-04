@@ -162,7 +162,7 @@ Pin all four to the SAME 4.x version, or the runtime refuses to start
 | PCIe driver `hailo_pci` | `hailort-pcie-driver_4.24.0_all.deb` | Developer Zone | DKMS driver package; install after matching `linux-headers-$(uname -r)` and `build-essential`. Driver floor for the Pi `6.8-raspi` kernel remains >= 4.19. |
 | HailoRT runtime | `hailort_4.24.0_arm64.deb` | Developer Zone | provides `hailortcli` on the Pi |
 | Python binding `pyhailort` wheel | `hailort-4.24.0-cp312-cp312-linux_aarch64.whl` | Developer Zone | cp312 exists for the Pi's Ubuntu 24.04 Python 3.12, so no Python 3.11 venv is needed for this pinned row. Keep the venv/source-build route only as a fallback if the row changes later. |
-| Firmware `hailo8_fw.<ver>.bin` | bundled with the 4.24.0 driver/runtime packages | Developer Zone packages | verify `/lib/firmware/hailo/hailo8_fw.bin` after Pi install; fetch a standalone firmware file only if the package install does not provide it |
+| Firmware `hailo8_fw.<ver>.bin` | bundled with the 4.24.0 driver package | Developer Zone package | verify `/lib/firmware/hailo/hailo8_fw.bin` after Pi install; fetch a standalone firmware file only if the package install does not provide it |
 
 ### x86_64 compile toolchain (the Pi never compiles)
 
@@ -410,6 +410,7 @@ remains open.
 ## Navigation
 
 - [Home](Home)
+- [Pi and Hailo Lifecycle Guide](Pi_Hailo_Lifecycle_Guide)
 - [Pi Hailo COCO-Overlay Demo](Hailo_COCO_Overlay_Demo)
 - [YOLO Dataset Plan](YOLO_Dataset_Plan)
 - [Roadmap](Roadmap)

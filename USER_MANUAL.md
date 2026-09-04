@@ -180,6 +180,7 @@ uvautoboat/
 | [YOLO Dataset Plan](wiki/YOLO_Dataset_Plan.md) | Object-detection dataset plan for Pi 5 RealSense frames, workstation training, NCNN export, and Pi validation |
 | [Pi 5 Bring-up Smoke Test](wiki/Pi5_Bringup_Smoke_Test.md) | Manual Pi 5 serial/MAVProxy smoke-test procedure before MAVROS integration |
 | [Hailo HAT Workstream Memo](wiki/Hailo_HAT_Workstream.md) | Hailo AI HAT+ / Hailo-8L accelerator branch notes and next gates |
+| [Pi and Hailo Lifecycle Guide](wiki/Pi_Hailo_Lifecycle_Guide.md) | Hailo lifecycle on the provisioned boat Pi: install, maintenance, kernel/DKMS recovery, rollback and layered removal |
 | [Real-FCU Digital Twin Runbook](wiki/Real_FCU_Digital_Twin_Runbook.md) | Operator runbook for the real flight-controller digital twin: one command per machine, start and stop order, evidence, verdict reading, reference figures (03/09/2026) |
 | [MP + QGC Update Procedures](wiki/MP_QGC_Update_Procedures.md) | Host-local Mission Planner and QGroundControl update procedure |
 | [Dashboard Security](wiki/Dashboard_Security.md) | Security posture, known vulnerabilities, mitigations |
@@ -1515,18 +1516,14 @@ chmod +x one_click_launch_all/launch_autoboat_complete.sh
 
 ## Command Cheatsheet
 
-### Kill Processes
+### Recover a Stuck Process
 
-```bash
-# Kill all Gazebo
-pkill -9 -f "gz sim" && pkill -9 -f "gzserver" && pkill -9 -f "gzclient"
-
-# Kill ROS nodes
-pkill -9 -f autoboat && pkill -9 -f rosbridge
-
-# Nuclear option
-pkill -9 -f ros && pkill -9 -f gz && pkill -9 -f gazebo
-```
+Use `Ctrl+C` in the terminal that owns the process and wait for its normal
+teardown. Do not use broad `pkill -9 -f` patterns: they bypass cleanup and can
+match unrelated processes or the shell running the command. If a component
+remains, follow the exact-PID procedure in
+[Common Issues](wiki/Common_Issues.md#a-process-does-not-stop), then verify its
+ports and ROS nodes are absent before restarting.
 
 ### Build
 
@@ -1749,7 +1746,7 @@ Open an issue on [GitHub](https://github.com/Ghostzero00018/uvautoboat/issues) w
 
 Project finished by IMT NORD EUROPE DNM DMI-2026
 
-Last updated at 01/08/2026
+Last updated at 04/09/2026
 
 ---
 

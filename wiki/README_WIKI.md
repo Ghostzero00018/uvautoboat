@@ -24,6 +24,8 @@ The following pages are published to the wiki by `scripts/sync_wiki.sh`:
 | **RealSense_Dashboard_Testing.md** | Camera-only procedure for showing the Pi 5 RealSense feed in the workstation dashboard, with loopback-only browser services and explicit non-goals |
 | **YOLO_Dataset_Plan.md** | Object-detection dataset plan for Pi 5 RealSense frames, workstation GPU training, NCNN export, and Pi-side validation gates |
 | **Hailo_HAT_Workstream.md** | Hailo AI HAT+ 13 TOPS / Hailo-8L accelerator branch: version and runtime pin sheet, proven runtime baseline, host-side decode contract, and next integration gates |
+| **Hailo_COCO_Overlay_Demo.md** | Reproducible build-and-run procedure for the Pi 5 + Hailo-8L live detection overlay |
+| **Pi_Hailo_Lifecycle_Guide.md** | Hailo lifecycle on the provisioned boat Pi: install, maintenance, kernel/DKMS recovery, rollback and layered removal |
 | **Real_FCU_Digital_Twin_Runbook.md** | Operator runbook for the real-FCU digital twin: Pi 5 + Cube Orange+ + Hailo-8L, one command per machine, start/stop order, evidence, verdict reading, ESC reference, advisory mode, Pi window, bundle governance |
 | **Live_Hailo_MAVLink_Dashboard_Testing.md** | Older two-command view-only live procedure (`live_dashboard_preflight.sh` + `pi_live_hailo_mavlink_dashboard.sh`) and its acceptance records |
 | **MP_QGC_Update_Procedures.md** | Host-local update workflow for Mission Planner (under Mono on Linux) + QGroundControl (AppImage), including the SkiaSharp/libdl fix re-apply step after MP updates |
@@ -148,5 +150,5 @@ When contributing to the wiki:
 
 ---
 
-**Last Updated**: 09/07/2026
+**Last Updated**: 04/09/2026
 **Maintained By**: AutoBoat Development Team

@@ -485,3 +485,85 @@ The operator also confirmed that all hardware was powered off on departure.
 The physical and runtime end-of-day state is therefore closed. This night
 documentation refresh creates a new repository change and needs its own commit
 and push before the repository end-of-day state is clean again.
+
+### Night documentation - Pi and Hailo lifecycle guide
+
+A documentation audit found that Pi bring-up, the proven Hailo `4.24.0`
+installation, the 04/09 kernel/DKMS repair and recurring troubleshooting were
+spread across separate pages and dated evidence. No durable Pi/Hailo uninstall
+or pinned-version rollback procedure existed.
+
+`wiki/Pi_Hailo_Lifecycle_Guide.md` now provides one indexed lifecycle page for
+the boat's Ubuntu 24.04 Pi and Hailo-8L stack. It promotes the hardware-proven
+03/07 install order and 04/09 running-kernel recovery, adds non-actuating
+inventory and evidence capture, routine pre/post-update checks, the exact
+`4.24.0` rollback path, layered application/Python quarantine, system-package
+removal and a recurring-symptom index. Navigation links were added to the main
+README, user manual, wiki index, installation and troubleshooting pages, Pi
+bring-up, the Hailo workstream, demo and live-testing pages, and the real-FCU
+runbook.
+
+The exact composite command blocks, including the strengthened fresh-install,
+recovery, post-update, rollback and layered-removal wrappers, are classified as
+**DOCUMENTED / NOT RUN as exact blocks on the project Pi**. Package rollback
+and system-package removal begin with an apt simulation before the actual
+transaction; application and Python-environment removal use recoverable
+quarantine. The guide records that the pinned driver's own pre-removal script
+has broad firmware, DKMS, kernel-module and source-directory effects, so it
+requires a pre-change archive and refuses to describe that operation as a
+version-local uninstall. Shared support packages and recovery assets remain.
+This workstation-only documentation work did not access the Pi, flight
+controller or actuators and does not change the previously closed physical
+end-of-day state.
+
+Corrections after review, same night, before the commit: the six firmware
+symlink checks used `readlink -f`, which canonicalises the merged `/lib` to
+`/usr/lib` on Ubuntu 24.04 and would have failed silently in every block that
+carried it; they now compare inodes with `-ef`. The two rollback rebuilds
+built a virtual environment at a temporary path and renamed it, which leaves
+`activate`, `pip` and the `hailo` script pointing at the build path; they now
+build at the final path with the old environment set aside. The system-package
+removal now states the three load-affecting residues the purge leaves on this
+Pi (the emptied `/var/lib/dkms/hailo_pci` directory, the compressed
+`hailo_pci.ko.zst`
+per kernel, which stays loadable until moved and `depmod` rerun, and the
+dangling `/usr/lib/libhailort.so`), adds a quarantine block for exactly those
+paths, and its verifier names each failed check. The rollback verifier now
+lists `/lib/modules` as its prose claimed; the archive root is created `700`;
+the `INSTALL_ORDER.txt` hash provenance names the workstation payload copy;
+the busy-device token reads `HAILO_DEVICE_IN_USE`; the pre-update headers
+check now aborts explicitly when the running-kernel headers are missing and
+prints a PASS marker only after its complete preview succeeds. Final-path
+activation, `pip` and `hailo` script checks now remain inside the recoverable
+virtual-environment rebuild transactions. The residue mover distinguishes an
+unowned path from a package-query error and fails if directory inspection is
+incomplete, while the removal verifier names and rejects a failed partial
+filesystem scan. The residue facts were read from the retained
+`hailort-pcie-driver` and `hailort` package scripts at
+`~/hailo_artifacts/2026-07-02/pi_payload_2026-07-02/`. Every composite block
+stays DOCUMENTED / NOT RUN.
+
+The final review also closed lifecycle and error-propagation gaps before
+publication. Fresh installation now distinguishes an absent package from a
+package-query error, and the archive copies package control files with a
+failure-propagating `find` form. Rollback verifies the inactive, masked service
+through explicit systemd properties. Package removal distinguishes an unloaded
+module from a failed `/proc/modules` query, identifies the retained package
+logs as diagnostic evidence, and directs a post-removal reinstall through the
+standalone-environment quarantine before the fresh-install path. Physical HAT
+inspection is explicitly gated behind full power-off and physical-access
+approval.
+
+The last adjacent-document pass replaced the real-FCU runbook's fragile
+one-line kernel repair with a link to the lifecycle guide's conditional
+recovery procedure. It also adds forward corrections to the Board and Roadmap:
+the 04/09 incident left the `4.24.0` package and source installed, while the new
+running kernel lacked matching headers and a built module. The pre-update block
+now requires the installed `hailo_pci/4.24.0` DKMS row to match the running
+kernel before it can print PASS.
+
+Three stale Roadmap §1.3 links in the current troubleshooting and dashboard
+security pages now point at the renamed managed-egress/offline-map heading.
+The user manual's obsolete broad force-kill cheatsheet now delegates to the
+existing exact-PID recovery procedure; no launcher source changed in this
+documentation-only session.
